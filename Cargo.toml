@@ -10,3 +10,4 @@ readme = "README.md"
 keywords = ["chess", "cli"]
 
 [dependencies]
+thiserror = "1.0.16"
