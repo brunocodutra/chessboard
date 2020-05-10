@@ -1,0 +1,72 @@
+name: CI
+
+on:
+  push:
+    branches:
+    - master
+  pull_request:
+    branches:
+    - master
+  schedule:
+  - cron:  '0 6 * * SAT'
+
+jobs:
+  fmt:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@master
+    - uses: hecrj/setup-rust-action@master
+      with:
+        rust-version: stable
+        components: rustfmt
+    - run: cargo +stable fmt --all -- --check
+
+  clippy:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@master
+    - uses: hecrj/setup-rust-action@master
+      with:
+        rust-version: stable
+        components: clippy
+    - run: cargo +stable clippy --all-targets -- -D warnings
+
+  doc:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@master
+    - uses: hecrj/setup-rust-action@master
+      with:
+        rust-version: nightly
+    - run: cargo +nightly doc --all-features
+
+  sanitize:
+    needs: [fmt, clippy, doc]
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        sanitizer: [address, leak]
+    steps:
+    - uses: actions/checkout@master
+    - uses: hecrj/setup-rust-action@master
+      with:
+        rust-version: nightly
+    - run: RUSTFLAGS="-Z sanitizer=${{ matrix.sanitizer }}" cargo +nightly test --tests --lib --all-features --target x86_64-unknown-linux-gnu
+
+  test:
+    needs: [sanitize]
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macOS-latest]
+        rust: [stable, nightly]
+    steps:
+    - uses: actions/checkout@master
+    - uses: hecrj/setup-rust-action@master
+      with:
+        rust-version: ${{ matrix.rust }}
+    - run: cargo +${{ matrix.rust }} test
+    - run: cargo +${{ matrix.rust }} test --no-default-features --tests
+    - run: cargo +${{ matrix.rust }} test --all-features
