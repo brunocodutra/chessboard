@@ -1,3 +1,4 @@
+mod chess;
 mod rules;
 
 fn main() {
