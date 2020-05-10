@@ -3,7 +3,8 @@ name = "chessboard"
 version = "0.1.0"
 authors = ["Bruno Dutra <brunocodutra@gmail.com>"]
 edition = "2018"
-
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+description = "A CLI for chess"
+repository = "https://github.com/brunocodutra/chessboard.git"
+keywords = ["chess", "cli"]
 
 [dependencies]
