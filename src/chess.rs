@@ -1,4 +1,79 @@
 use std::fmt;
+/// Denotes the color of a chess [Piece].
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
+pub enum Color {
+    White,
+    Black,
+}
+
+impl Color {
+    pub fn to_str(self) -> &'static str {
+        use Color::*;
+        match self {
+            White => &"white",
+            Black => &"black",
+        }
+    }
+}
+
+/// Denotes a chess piece.
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
+pub enum Piece {
+    Pawn,
+    Knight,
+    Bishop,
+    Rook,
+    Queen,
+    King,
+}
+
+impl Piece {
+    pub fn to_str(self) -> &'static str {
+        use Piece::*;
+        match self {
+            Pawn => &"pawn",
+            Knight => &"knight",
+            Bishop => &"bishop",
+            Rook => &"rook",
+            Queen => &"queen",
+            King => &"king",
+        }
+    }
+}
+
+/// Denotes a chess piece of a certain color.
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
+pub struct Figure {
+    pub piece: Piece,
+    pub color: Color,
+}
+
+impl Figure {
+    pub fn to_str(self) -> &'static str {
+        use Color::*;
+        use Piece::*;
+        match (self.piece, self.color) {
+            (Pawn, White) => &"♙",
+            (Knight, White) => &"♘",
+            (Bishop, White) => &"♗",
+            (Rook, White) => &"♖",
+            (Queen, White) => &"♕",
+            (King, White) => &"♔",
+            (Pawn, Black) => &"♟",
+            (Knight, Black) => &"♞",
+            (Bishop, Black) => &"♝",
+            (Rook, Black) => &"♜",
+            (Queen, Black) => &"♛",
+            (King, Black) => &"♚",
+        }
+    }
+}
+
+impl fmt::Display for Figure {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.to_str())
+    }
+}
 
 /// Denotes a column of the chessboard.
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
