@@ -6,6 +6,7 @@ edition = "2018"
 description = "A CLI for chess"
 repository = "https://github.com/brunocodutra/chessboard.git"
 license = "GPL-3.0"
+readme = "README.md"
 keywords = ["chess", "cli"]
 
 [dependencies]
