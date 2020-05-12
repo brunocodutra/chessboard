@@ -145,3 +145,30 @@ impl fmt::Display for Square {
         write!(f, "{}{}", self.file.to_str(), self.rank.to_str())
     }
 }
+
+/// Denotes a player by color.
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
+pub struct Player {
+    pub color: Color,
+}
+
+/// One of the possible outcomes of a chess game.
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
+pub enum Outcome {
+    Resignation(Player),
+    Checkmate(Player),
+    Stalemate,
+    Draw,
+}
+
+impl fmt::Display for Outcome {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        use Outcome::*;
+        match self {
+            Resignation(p) => write!(f, "resignation by the {} player", p.color.to_str()),
+            Checkmate(p) => write!(f, "checkmate by the {} player", p.color.to_str()),
+            Stalemate => write!(f, "stalemate"),
+            Draw => write!(f, "draw"),
+        }
+    }
+}
