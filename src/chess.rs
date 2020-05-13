@@ -1,6 +1,7 @@
 use std::fmt;
 /// Denotes the color of a chess [Piece].
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
+#[cfg_attr(test, derive(proptest_derive::Arbitrary))]
 pub enum Color {
     White,
     Black,
@@ -18,6 +19,7 @@ impl Color {
 
 /// Denotes a chess piece.
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
+#[cfg_attr(test, derive(proptest_derive::Arbitrary))]
 pub enum Piece {
     Pawn,
     Knight,
@@ -43,6 +45,7 @@ impl Piece {
 
 /// Denotes a chess piece of a certain color.
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
+#[cfg_attr(test, derive(proptest_derive::Arbitrary))]
 pub struct Figure {
     pub piece: Piece,
     pub color: Color,
@@ -77,6 +80,7 @@ impl fmt::Display for Figure {
 
 /// Denotes a column of the chessboard.
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
+#[cfg_attr(test, derive(proptest_derive::Arbitrary))]
 pub enum File {
     A,
     B,
@@ -106,6 +110,7 @@ impl File {
 
 /// Denotes a row of the chessboard.
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
+#[cfg_attr(test, derive(proptest_derive::Arbitrary))]
 pub enum Rank {
     First,
     Second,
@@ -135,6 +140,7 @@ impl Rank {
 
 /// Denotes a square of the chessboard.
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
+#[cfg_attr(test, derive(proptest_derive::Arbitrary))]
 pub struct Square {
     pub file: File,
     pub rank: Rank,
@@ -148,12 +154,14 @@ impl fmt::Display for Square {
 
 /// Denotes a player by color.
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
+#[cfg_attr(test, derive(proptest_derive::Arbitrary))]
 pub struct Player {
     pub color: Color,
 }
 
 /// One of the possible outcomes of a chess game.
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
+#[cfg_attr(test, derive(proptest_derive::Arbitrary))]
 pub enum Outcome {
     Resignation(Player),
     Checkmate(Player),

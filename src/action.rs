@@ -3,6 +3,7 @@ use thiserror::Error;
 
 /// Denotes a move.
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
+#[cfg_attr(test, derive(proptest_derive::Arbitrary))]
 pub struct Move {
     pub from: Square,
     pub to: Square,
@@ -12,6 +13,7 @@ pub struct Move {
 
 /// The possible actions a player can take.
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
+#[cfg_attr(test, derive(proptest_derive::Arbitrary))]
 pub enum PlayerAction {
     /// Move a piece on the board.    
     MakeMove(Player, Move),
@@ -31,6 +33,7 @@ impl PlayerAction {
 
 /// The reason why a player action was rejected.
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash, Error)]
+#[cfg_attr(test, derive(proptest_derive::Arbitrary), proptest(no_params))]
 pub enum InvalidPlayerAction {
     #[error("the game has ended in a {}", .0)]
     GameHasEnded(Outcome),
