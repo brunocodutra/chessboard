@@ -14,5 +14,6 @@ chess = "3.1.1"
 thiserror = "1.0.16"
 
 [dev-dependencies]
+mockall = "0.7.1"
 proptest = "0.9.6"
 proptest-derive = "0.1.2"
