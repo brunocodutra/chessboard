@@ -1,6 +1,8 @@
 use crate::action::{InvalidPlayerAction, PlayerAction};
 
-pub mod standard;
+mod standard;
+
+pub use standard::*;
 
 pub trait ChessRules {
     fn execute(&mut self, action: PlayerAction) -> Result<(), InvalidPlayerAction>;
