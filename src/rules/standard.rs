@@ -86,6 +86,14 @@ impl Into<foreign::Piece> for Piece {
     }
 }
 
+impl From<foreign::Square> for Square {
+    fn from(s: foreign::Square) -> Self {
+        let file = File::VARIANTS[s.get_file().to_index()];
+        let rank = Rank::VARIANTS[s.get_rank().to_index()];
+        Square { file, rank }
+    }
+}
+
 impl Into<foreign::Square> for Square {
     fn into(self: Self) -> foreign::Square {
         let Square { file, rank } = self;
@@ -114,10 +122,10 @@ impl From<foreign::Color> for Player {
 }
 
 impl From<foreign::GameResult> for Outcome {
-    fn from(c: foreign::GameResult) -> Self {
+    fn from(r: foreign::GameResult) -> Self {
         use Color::*;
         use Outcome::*;
-        match c {
+        match r {
             foreign::GameResult::WhiteResigns => Resignation(Player { color: White }),
             foreign::GameResult::BlackResigns => Resignation(Player { color: Black }),
             foreign::GameResult::WhiteCheckmates => Checkmate(Player { color: White }),
@@ -141,6 +149,24 @@ impl Into<foreign::GameResult> for Outcome {
             Stalemate => foreign::GameResult::Stalemate,
             Draw => foreign::GameResult::DrawDeclared,
         }
+    }
+}
+
+impl From<foreign::Board> for Position {
+    fn from(b: foreign::Board) -> Self {
+        let mut squares: [[Option<Figure>; 8]; 8] = Default::default();
+
+        for &s in foreign::ALL_SQUARES.iter() {
+            squares[s.get_rank().to_index()][s.get_file().to_index()] =
+                b.piece_on(s).and_then(|p| {
+                    b.color_on(s).map(move |c| Figure {
+                        piece: p.into(),
+                        color: c.into(),
+                    })
+                });
+        }
+
+        Position { squares }
     }
 }
 
@@ -183,6 +209,10 @@ impl ChessRules for Standard {
 
     fn outcome(&self) -> Option<Outcome> {
         self.0.result().map(Into::into)
+    }
+
+    fn position(&self) -> Position {
+        self.0.current_position().into()
     }
 }
 
@@ -316,6 +346,19 @@ mod tests {
             let mut game = foreign::Game::new();
             game.expect_result().times(1).return_const(o.map(Into::into));
             assert_eq!(Standard(game).outcome(), o);
+        }
+
+        #[test]
+        fn position_returns_the_current_board(p: Position) {
+            let mut board = foreign::Board::new();
+
+            board.expect_piece_on().times(0..=64).returning(move |s| p[s.into()].map(|f| f.piece.into()));
+            board.expect_color_on().times(0..=64).returning(move |s| p[s.into()].map(|f| f.color.into()));
+
+            let mut game = foreign::Game::new();
+            game.expect_current_position().times(1).return_once(move || board);
+
+            assert_eq!(Standard(game).position(), p);
         }
     }
 }

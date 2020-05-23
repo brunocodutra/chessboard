@@ -1,4 +1,4 @@
-use crate::{action::*, chess::Outcome};
+use crate::{action::*, chess::*};
 
 mod standard;
 
@@ -11,4 +11,7 @@ pub trait ChessRules {
 
     /// `Some(Outcome)` is the game has ended or `None`.
     fn outcome(&self) -> Option<Outcome>;
+
+    /// The current position.
+    fn position(&self) -> Position;
 }
