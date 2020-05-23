@@ -108,10 +108,10 @@ name = "chessboard"
 version = "0.1.0"
 dependencies = [
  "chess",
+ "derive_more",
  "mockall",
  "proptest",
  "proptest-derive",
- "thiserror",
 ]
 
 [[package]]
@@ -121,6 +121,17 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ddfc5b9aa5d4507acaf872de71051dfd0e309860e88966e1051e462a077aac4f"
 dependencies = [
  "bitflags",
+]
+
+[[package]]
+name = "derive_more"
+version = "0.99.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2127768764f1556535c01b5326ef94bd60ff08dcfbdc544d53e69ed155610f5d"
+dependencies = [
+ "proc-macro2 1.0.12",
+ "quote 1.0.4",
+ "syn 1.0.19",
 ]
 
 [[package]]
@@ -635,26 +646,6 @@ dependencies = [
  "redox_syscall",
  "remove_dir_all",
  "winapi",
-]
-
-[[package]]
-name = "thiserror"
-version = "1.0.16"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d12a1dae4add0f0d568eebc7bf142f145ba1aa2544cafb195c76f0f409091b60"
-dependencies = [
- "thiserror-impl",
-]
-
-[[package]]
-name = "thiserror-impl"
-version = "1.0.16"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3f34e0c1caaa462fd840ec6b768946ea1e7842620d94fe29d5b847138f521269"
-dependencies = [
- "proc-macro2 1.0.12",
- "quote 1.0.4",
- "syn 1.0.19",
 ]
 
 [[package]]
