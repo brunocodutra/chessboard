@@ -214,6 +214,12 @@ impl ChessRules for Standard {
     fn position(&self) -> Position {
         self.0.current_position().into()
     }
+
+    fn player(&self) -> Player {
+        Player {
+            color: self.0.side_to_move().into(),
+        }
+    }
 }
 
 #[cfg(test)]

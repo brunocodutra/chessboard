@@ -14,4 +14,7 @@ pub trait ChessRules {
 
     /// The current position.
     fn position(&self) -> Position;
+
+    /// The player of the current turn.
+    fn player(&self) -> Player;
 }
