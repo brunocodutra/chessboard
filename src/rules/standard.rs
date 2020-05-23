@@ -180,6 +180,10 @@ impl ChessRules for Standard {
 
         Ok(())
     }
+
+    fn outcome(&self) -> Option<Outcome> {
+        self.0.result().map(Into::into)
+    }
 }
 
 #[cfg(test)]
@@ -305,6 +309,13 @@ mod tests {
 
             use PlayerAction::*;
             assert_eq!(Standard(game).execute(Resign(p)), Ok(()));
+        }
+
+        #[test]
+        fn outcome_returns_the_result_of_the_game_if_it_has_ended(o: Option<Outcome>) {
+            let mut game = foreign::Game::new();
+            game.expect_result().times(1).return_const(o.map(Into::into));
+            assert_eq!(Standard(game).outcome(), o);
         }
     }
 }
