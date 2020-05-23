@@ -1,5 +1,6 @@
 use super::ChessRules;
 use crate::{action::*, chess::*};
+use derivative::Derivative;
 
 #[cfg(not(test))]
 use chess as foreign;
@@ -33,7 +34,9 @@ mod foreign {
 }
 
 /// Standard chess rules.
-pub struct Standard(foreign::Game);
+#[derive(Derivative)]
+#[derivative(Default)]
+pub struct Standard(#[derivative(Default(value = "foreign::Game::new()"))] foreign::Game);
 
 impl From<foreign::Color> for Color {
     fn from(c: foreign::Color) -> Self {
