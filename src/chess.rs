@@ -1,4 +1,5 @@
-use std::fmt;
+use derive_more::Display;
+
 /// Denotes the color of a chess [Piece].
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
 #[cfg_attr(test, derive(proptest_derive::Arbitrary))]
@@ -44,8 +45,9 @@ impl Piece {
 }
 
 /// Denotes a chess piece of a certain color.
-#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
+#[derive(Debug, Display, Copy, Clone, Eq, PartialEq, Hash)]
 #[cfg_attr(test, derive(proptest_derive::Arbitrary))]
+#[display(fmt = "{}", "self.to_str()")]
 pub struct Figure {
     pub piece: Piece,
     pub color: Color,
@@ -69,12 +71,6 @@ impl Figure {
             (Queen, Black) => &"♛",
             (King, Black) => &"♚",
         }
-    }
-}
-
-impl fmt::Display for Figure {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.to_str())
     }
 }
 
@@ -139,17 +135,12 @@ impl Rank {
 }
 
 /// Denotes a square of the chessboard.
-#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
+#[derive(Debug, Display, Copy, Clone, Eq, PartialEq, Hash)]
 #[cfg_attr(test, derive(proptest_derive::Arbitrary))]
+#[display(fmt = "{}{}", "self.file.to_str()", "self.rank.to_str()")]
 pub struct Square {
     pub file: File,
     pub rank: Rank,
-}
-
-impl fmt::Display for Square {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}{}", self.file.to_str(), self.rank.to_str())
-    }
 }
 
 /// Denotes a player by color.
@@ -160,23 +151,18 @@ pub struct Player {
 }
 
 /// One of the possible outcomes of a chess game.
-#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
+#[derive(Debug, Display, Copy, Clone, Eq, PartialEq, Hash)]
 #[cfg_attr(test, derive(proptest_derive::Arbitrary))]
 pub enum Outcome {
+    #[display(fmt = "resignation by the {} player", "_0.color.to_str()")]
     Resignation(Player),
-    Checkmate(Player),
-    Stalemate,
-    Draw,
-}
 
-impl fmt::Display for Outcome {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        use Outcome::*;
-        match self {
-            Resignation(p) => write!(f, "resignation by the {} player", p.color.to_str()),
-            Checkmate(p) => write!(f, "checkmate by the {} player", p.color.to_str()),
-            Stalemate => write!(f, "stalemate"),
-            Draw => write!(f, "draw"),
-        }
-    }
+    #[display(fmt = "checkmate by the {} player", "_0.color.to_str()")]
+    Checkmate(Player),
+
+    #[display(fmt = "stalemate")]
+    Stalemate,
+
+    #[display(fmt = "draw")]
+    Draw,
 }
