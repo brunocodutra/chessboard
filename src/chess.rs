@@ -1,6 +1,7 @@
 use derive_more::Display;
+use std::{fmt, iter::*, ops::*};
 
-/// Denotes the color of a chess [Piece].
+/// The color of a chess [Piece].
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
 #[cfg_attr(test, derive(proptest_derive::Arbitrary))]
 pub enum Color {
@@ -18,7 +19,7 @@ impl Color {
     }
 }
 
-/// Denotes a chess piece.
+/// A chess piece.
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
 #[cfg_attr(test, derive(proptest_derive::Arbitrary))]
 pub enum Piece {
@@ -44,7 +45,7 @@ impl Piece {
     }
 }
 
-/// Denotes a chess piece of a certain color.
+/// A chess piece of a certain color.
 #[derive(Debug, Display, Copy, Clone, Eq, PartialEq, Hash)]
 #[cfg_attr(test, derive(proptest_derive::Arbitrary))]
 #[display(fmt = "{}", "self.to_str()")]
@@ -74,7 +75,7 @@ impl Figure {
     }
 }
 
-/// Denotes a column of the chessboard.
+/// A column of the board.
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
 #[cfg_attr(test, derive(proptest_derive::Arbitrary))]
 pub enum File {
@@ -89,6 +90,17 @@ pub enum File {
 }
 
 impl File {
+    pub const VARIANTS: &'static [File] = &[
+        File::A,
+        File::B,
+        File::C,
+        File::D,
+        File::E,
+        File::F,
+        File::G,
+        File::H,
+    ];
+
     pub fn to_str(self) -> &'static str {
         use File::*;
         match self {
@@ -104,7 +116,7 @@ impl File {
     }
 }
 
-/// Denotes a row of the chessboard.
+/// A row of the board.
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
 #[cfg_attr(test, derive(proptest_derive::Arbitrary))]
 pub enum Rank {
@@ -119,6 +131,17 @@ pub enum Rank {
 }
 
 impl Rank {
+    pub const VARIANTS: &'static [Rank] = &[
+        Rank::First,
+        Rank::Second,
+        Rank::Third,
+        Rank::Fourth,
+        Rank::Fifth,
+        Rank::Sixth,
+        Rank::Seventh,
+        Rank::Eighth,
+    ];
+
     pub fn to_str(self) -> &'static str {
         use Rank::*;
         match self {
@@ -134,7 +157,7 @@ impl Rank {
     }
 }
 
-/// Denotes a square of the chessboard.
+/// A square of the board.
 #[derive(Debug, Display, Copy, Clone, Eq, PartialEq, Hash)]
 #[cfg_attr(test, derive(proptest_derive::Arbitrary))]
 #[display(fmt = "{}{}", "self.file.to_str()", "self.rank.to_str()")]
@@ -143,7 +166,7 @@ pub struct Square {
     pub rank: Rank,
 }
 
-/// Denotes a player by color.
+/// A player by color.
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
 #[cfg_attr(test, derive(proptest_derive::Arbitrary))]
 pub struct Player {
@@ -165,4 +188,74 @@ pub enum Outcome {
 
     #[display(fmt = "draw")]
     Draw,
+}
+
+/// A position on the board.
+///
+/// This type does not validate whether the position it holds is valid
+/// according to any set of chess rules.
+#[derive(Debug, Default, Copy, Clone, Eq, PartialEq, Hash)]
+pub struct Position {
+    pub squares: [[Option<Figure>; 8]; 8],
+}
+
+// We provide a custom implementation of Arbitrary rather than deriving,
+// otherwise proptest overflows the stack generating large arrays.
+#[cfg(test)]
+impl proptest::arbitrary::Arbitrary for Position {
+    type Parameters = ();
+    type Strategy = proptest::prelude::BoxedStrategy<Position>;
+
+    fn arbitrary_with(_: Self::Parameters) -> Self::Strategy {
+        use proptest::prelude::*;
+
+        vec![any::<Option<Figure>>(); 64]
+            .prop_map(|v| {
+                let mut squares: [[Option<Figure>; 8]; 8] = Default::default();
+                squares
+                    .iter_mut()
+                    .flatten()
+                    .zip(v)
+                    .for_each(|(s, f)| *s = f);
+                Position { squares }
+            })
+            .boxed()
+    }
+}
+
+impl Index<Square> for Position {
+    type Output = Option<Figure>;
+
+    fn index(&self, s: Square) -> &Self::Output {
+        &self.squares[s.rank as usize][s.file as usize]
+    }
+}
+
+impl fmt::Display for Position {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "   ")?;
+
+        for &file in File::VARIANTS {
+            write!(f, "  {} ", file.to_str())?;
+        }
+
+        writeln!(f)?;
+        writeln!(f, "   +---+---+---+---+---+---+---+---+")?;
+        for (&rank, row) in Rank::VARIANTS.iter().zip(&self.squares).rev() {
+            write!(f, " {} |", rank.to_str())?;
+
+            for &figure in row {
+                write!(f, " {} |", figure.map(Figure::to_str).unwrap_or(" "))?;
+            }
+            writeln!(f, " {}", rank.to_str())?;
+            writeln!(f, "   +---+---+---+---+---+---+---+---+")?;
+        }
+
+        write!(f, "   ")?;
+        for &file in File::VARIANTS {
+            write!(f, "  {} ", file.to_str())?;
+        }
+
+        Ok(())
+    }
 }

@@ -1,7 +1,7 @@
 use crate::chess::{Figure, Outcome, Piece, Player, Square};
 use derive_more::{Display, Error};
 
-/// Denotes a move.
+/// A move.
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
 #[cfg_attr(test, derive(proptest_derive::Arbitrary))]
 pub struct Move {
