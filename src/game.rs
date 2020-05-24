@@ -1,4 +1,4 @@
-use crate::{chess::*, foreign};
+use crate::{action::*, figure::*, foreign, outcome::*, player::*, position::*};
 use derivative::Derivative;
 
 /// Standard chess rules.
@@ -7,138 +7,6 @@ use derivative::Derivative;
 pub struct Game {
     #[derivative(Default(value = "foreign::Game::new()"))]
     rules: foreign::Game,
-}
-
-impl From<foreign::Color> for Color {
-    fn from(c: foreign::Color) -> Self {
-        use Color::*;
-        match c {
-            foreign::Color::White => White,
-            foreign::Color::Black => Black,
-        }
-    }
-}
-
-impl Into<foreign::Color> for Color {
-    fn into(self) -> foreign::Color {
-        use Color::*;
-        match self {
-            White => foreign::Color::White,
-            Black => foreign::Color::Black,
-        }
-    }
-}
-
-impl From<foreign::Piece> for Piece {
-    fn from(p: foreign::Piece) -> Self {
-        use Piece::*;
-        match p {
-            foreign::Piece::Pawn => Pawn,
-            foreign::Piece::Knight => Knight,
-            foreign::Piece::Bishop => Bishop,
-            foreign::Piece::Rook => Rook,
-            foreign::Piece::Queen => Queen,
-            foreign::Piece::King => King,
-        }
-    }
-}
-
-impl Into<foreign::Piece> for Piece {
-    fn into(self: Self) -> foreign::Piece {
-        use Piece::*;
-        match self {
-            Pawn => foreign::Piece::Pawn,
-            Knight => foreign::Piece::Knight,
-            Bishop => foreign::Piece::Bishop,
-            Rook => foreign::Piece::Rook,
-            Queen => foreign::Piece::Queen,
-            King => foreign::Piece::King,
-        }
-    }
-}
-
-impl From<foreign::Square> for Square {
-    fn from(s: foreign::Square) -> Self {
-        let file = File::VARIANTS[s.get_file().to_index()];
-        let rank = Rank::VARIANTS[s.get_rank().to_index()];
-        Square { file, rank }
-    }
-}
-
-impl Into<foreign::Square> for Square {
-    fn into(self: Self) -> foreign::Square {
-        let Square { file, rank } = self;
-
-        foreign::Square::make_square(
-            foreign::Rank::from_index(rank as usize),
-            foreign::File::from_index(file as usize),
-        )
-    }
-}
-
-impl Into<foreign::ChessMove> for Move {
-    fn into(self: Self) -> foreign::ChessMove {
-        foreign::ChessMove::new(
-            self.from.into(),
-            self.to.into(),
-            self.promotion.map(Piece::into),
-        )
-    }
-}
-
-impl From<foreign::Color> for Player {
-    fn from(c: foreign::Color) -> Self {
-        Player { color: c.into() }
-    }
-}
-
-impl From<foreign::GameResult> for Outcome {
-    fn from(r: foreign::GameResult) -> Self {
-        use Color::*;
-        use Outcome::*;
-        match r {
-            foreign::GameResult::WhiteResigns => Resignation(Player { color: White }),
-            foreign::GameResult::BlackResigns => Resignation(Player { color: Black }),
-            foreign::GameResult::WhiteCheckmates => Checkmate(Player { color: White }),
-            foreign::GameResult::BlackCheckmates => Checkmate(Player { color: Black }),
-            foreign::GameResult::Stalemate => Stalemate,
-            foreign::GameResult::DrawAccepted | foreign::GameResult::DrawDeclared => Draw,
-        }
-    }
-}
-
-#[cfg(test)]
-impl Into<foreign::GameResult> for Outcome {
-    fn into(self) -> foreign::GameResult {
-        use Color::*;
-        use Outcome::*;
-        match self {
-            Resignation(Player { color: White }) => foreign::GameResult::WhiteResigns,
-            Resignation(Player { color: Black }) => foreign::GameResult::BlackResigns,
-            Checkmate(Player { color: White }) => foreign::GameResult::WhiteCheckmates,
-            Checkmate(Player { color: Black }) => foreign::GameResult::BlackCheckmates,
-            Stalemate => foreign::GameResult::Stalemate,
-            Draw => foreign::GameResult::DrawDeclared,
-        }
-    }
-}
-
-impl From<foreign::Board> for Position {
-    fn from(b: foreign::Board) -> Self {
-        let mut squares: [[Option<Figure>; 8]; 8] = Default::default();
-
-        for &s in foreign::ALL_SQUARES.iter() {
-            squares[s.get_rank().to_index()][s.get_file().to_index()] =
-                b.piece_on(s).and_then(|p| {
-                    b.color_on(s).map(move |c| Figure {
-                        piece: p.into(),
-                        color: c.into(),
-                    })
-                });
-        }
-
-        Position { squares }
-    }
 }
 
 impl Game {
@@ -150,7 +18,7 @@ impl Game {
             return Err(GameHasEnded(result));
         }
 
-        if action.player() != &self.rules.side_to_move().into() {
+        if action.player().color != self.rules.side_to_move().into() {
             return Err(TurnOfTheOpponent(*action.player()));
         }
 
@@ -200,6 +68,7 @@ impl Game {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::{color::Color, player::Player};
     use mockall::predicate::*;
     use proptest::prelude::*;
 
