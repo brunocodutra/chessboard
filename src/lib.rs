@@ -26,3 +26,7 @@ pub use crate::position::*;
 pub use crate::promotion::*;
 pub use crate::rank::*;
 pub use crate::square::*;
+
+pub mod actor;
+
+pub use crate::actor::Actor;
