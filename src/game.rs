@@ -210,5 +210,12 @@ mod tests {
 
             assert_eq!(Game { rules }.position(), p);
         }
+
+        #[test]
+        fn player_returns_the_current_side_to_move(p: Player) {
+            let mut rules = foreign::Game::new();
+            rules.expect_side_to_move().times(1).return_const(p.color);
+            assert_eq!(Game { rules }.player(), p);
+        }
     }
 }
