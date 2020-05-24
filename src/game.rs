@@ -1,4 +1,3 @@
-use super::ChessRules;
 use crate::{action::*, chess::*};
 use derivative::Derivative;
 
@@ -36,7 +35,10 @@ mod foreign {
 /// Standard chess rules.
 #[derive(Derivative)]
 #[derivative(Default)]
-pub struct Standard(#[derivative(Default(value = "foreign::Game::new()"))] foreign::Game);
+pub struct Game {
+    #[derivative(Default(value = "foreign::Game::new()"))]
+    rules: foreign::Game,
+}
 
 impl From<foreign::Color> for Color {
     fn from(c: foreign::Color) -> Self {
@@ -170,24 +172,25 @@ impl From<foreign::Board> for Position {
     }
 }
 
-impl ChessRules for Standard {
-    fn execute(&mut self, action: PlayerAction) -> Result<(), InvalidPlayerAction> {
+impl Game {
+    /// Executes a player action if valid, otherwise returns the reason why not.
+    pub fn execute(&mut self, action: PlayerAction) -> Result<(), InvalidPlayerAction> {
         use InvalidPlayerAction::*;
 
-        if let Some(result) = self.0.result().map(Into::into) {
+        if let Some(result) = self.rules.result().map(Into::into) {
             return Err(GameHasEnded(result));
         }
 
-        if action.player() != &self.0.side_to_move().into() {
+        if action.player() != &self.rules.side_to_move().into() {
             return Err(TurnOfTheOpponent(*action.player()));
         }
 
         use PlayerAction::*;
         match action {
             MakeMove(p, m) => {
-                if !self.0.make_move(m.into()) {
+                if !self.rules.make_move(m.into()) {
                     let square = m.from.into();
-                    let board = self.0.current_position();
+                    let board = self.rules.current_position();
 
                     debug_assert!(!board.legal(m.into()));
 
@@ -201,23 +204,26 @@ impl ChessRules for Standard {
                 }
             }
 
-            Resign(p) => assert!(self.0.resign(p.color.into())),
+            Resign(p) => assert!(self.rules.resign(p.color.into())),
         }
 
         Ok(())
     }
 
-    fn outcome(&self) -> Option<Outcome> {
-        self.0.result().map(Into::into)
+    // The result of the game if it has ended.
+    pub fn outcome(&self) -> Option<Outcome> {
+        self.rules.result().map(Into::into)
     }
 
-    fn position(&self) -> Position {
-        self.0.current_position().into()
+    /// The current position on the board.
+    pub fn position(&self) -> Position {
+        self.rules.current_position().into()
     }
 
-    fn player(&self) -> Player {
+    /// The player of the current turn.
+    pub fn player(&self) -> Player {
         Player {
-            color: self.0.side_to_move().into(),
+            color: self.rules.side_to_move().into(),
         }
     }
 }
@@ -231,23 +237,23 @@ mod tests {
     proptest! {
         #[test]
         fn any_player_action_after_the_game_has_ended_is_invalid(a: PlayerAction, o: Outcome) {
-            let mut game = foreign::Game::new();
-            game.expect_result().times(1).return_const(Some(o.into()));
-            assert_eq!(Standard(game).execute(a), Err(InvalidPlayerAction::GameHasEnded(o)));
+            let mut rules = foreign::Game::new();
+            rules.expect_result().times(1).return_const(Some(o.into()));
+            assert_eq!(Game { rules }.execute(a), Err(InvalidPlayerAction::GameHasEnded(o)));
         }
 
         #[test]
         fn players_can_only_act_in_their_turn(a: PlayerAction) {
-            let mut game = foreign::Game::new();
+            let mut rules = foreign::Game::new();
 
-            game.expect_result().times(1).return_const(None);
-            game.expect_side_to_move().times(1).returning(move || match a.player() {
+            rules.expect_result().times(1).return_const(None);
+            rules.expect_side_to_move().times(1).returning(move || match a.player() {
                 Player { color: Color::White } => foreign::Color::Black,
                 Player { color: Color::Black } => foreign::Color::White,
             });
 
             use InvalidPlayerAction::*;
-            assert_eq!(Standard(game).execute(a), Err(TurnOfTheOpponent(*a.player())));
+            assert_eq!(Game { rules }.execute(a), Err(TurnOfTheOpponent(*a.player())));
         }
 
         #[test]
@@ -270,20 +276,20 @@ mod tests {
                 .times(1)
                 .return_const(Some(f.color.into()));
 
-            let mut game = foreign::Game::new();
+            let mut rules = foreign::Game::new();
 
-            game.expect_result().times(1).return_const(None);
-            game.expect_side_to_move().times(1).return_const(p.color);
-            game.expect_current_position().times(1).return_once(move || board);
+            rules.expect_result().times(1).return_const(None);
+            rules.expect_side_to_move().times(1).return_const(p.color);
+            rules.expect_current_position().times(1).return_once(move || board);
 
-            game.expect_make_move()
+            rules.expect_make_move()
                 .with(eq(Into::<foreign::ChessMove>::into(m)))
                 .times(1)
                 .return_const(false);
 
             use PlayerAction::*;
             use InvalidPlayerAction::*;
-            assert_eq!(Standard(game).execute(MakeMove(p, m)), Err(IllegalMove(p, f, m)));
+            assert_eq!(Game { rules }.execute(MakeMove(p, m)), Err(IllegalMove(p, f, m)));
         }
 
         #[test]
@@ -299,59 +305,59 @@ mod tests {
             board.expect_piece_on().times(0..=1).return_const(None);
             board.expect_color_on().times(0..=1).return_const(None);
 
-            let mut game = foreign::Game::new();
+            let mut rules = foreign::Game::new();
 
-            game.expect_result().times(1).return_const(None);
-            game.expect_side_to_move().times(1).return_const(p.color);
-            game.expect_current_position().times(1).return_once(move || board);
+            rules.expect_result().times(1).return_const(None);
+            rules.expect_side_to_move().times(1).return_const(p.color);
+            rules.expect_current_position().times(1).return_once(move || board);
 
-            game.expect_make_move()
+            rules.expect_make_move()
                 .with(eq(Into::<foreign::ChessMove>::into(m)))
                 .times(1)
                 .return_const(false);
 
             use PlayerAction::*;
             use InvalidPlayerAction::*;
-            assert_eq!(Standard(game).execute(MakeMove(p, m)), Err(InvalidMove(p, m)));
+            assert_eq!(Game { rules }.execute(MakeMove(p, m)), Err(InvalidMove(p, m)));
         }
 
         #[test]
         fn players_can_make_valid_and_legal_moves(p: Player, m: Move) {
-            let mut game = foreign::Game::new();
+            let mut rules = foreign::Game::new();
 
-            game.expect_result().times(1).return_const(None);
-            game.expect_side_to_move().times(1).return_const(p.color);
+            rules.expect_result().times(1).return_const(None);
+            rules.expect_side_to_move().times(1).return_const(p.color);
 
-            game.expect_make_move()
+            rules.expect_make_move()
                 .with(eq(Into::<foreign::ChessMove>::into(m)))
                 .times(1)
                 .return_const(true);
 
             use PlayerAction::*;
-            assert_eq!(Standard(game).execute(MakeMove(p, m)), Ok(()));
+            assert_eq!(Game { rules }.execute(MakeMove(p, m)), Ok(()));
         }
 
         #[test]
         fn players_can_resign(p: Player) {
-            let mut game = foreign::Game::new();
+            let mut rules = foreign::Game::new();
 
-            game.expect_result().times(1).return_const(None);
-            game.expect_side_to_move().times(1).return_const(p.color);
+            rules.expect_result().times(1).return_const(None);
+            rules.expect_side_to_move().times(1).return_const(p.color);
 
-            game.expect_resign()
+            rules.expect_resign()
                 .with(eq(Into::<foreign::Color>::into(p.color)))
                 .times(1)
                 .return_const(true);
 
             use PlayerAction::*;
-            assert_eq!(Standard(game).execute(Resign(p)), Ok(()));
+            assert_eq!(Game { rules }.execute(Resign(p)), Ok(()));
         }
 
         #[test]
         fn outcome_returns_the_result_of_the_game_if_it_has_ended(o: Option<Outcome>) {
-            let mut game = foreign::Game::new();
-            game.expect_result().times(1).return_const(o.map(Into::into));
-            assert_eq!(Standard(game).outcome(), o);
+            let mut rules = foreign::Game::new();
+            rules.expect_result().times(1).return_const(o.map(Into::into));
+            assert_eq!(Game { rules }.outcome(), o);
         }
 
         #[test]
@@ -361,10 +367,10 @@ mod tests {
             board.expect_piece_on().times(0..=64).returning(move |s| p[s.into()].map(|f| f.piece.into()));
             board.expect_color_on().times(0..=64).returning(move |s| p[s.into()].map(|f| f.color.into()));
 
-            let mut game = foreign::Game::new();
-            game.expect_current_position().times(1).return_once(move || board);
+            let mut rules = foreign::Game::new();
+            rules.expect_current_position().times(1).return_once(move || board);
 
-            assert_eq!(Standard(game).position(), p);
+            assert_eq!(Game { rules }.position(), p);
         }
     }
 }

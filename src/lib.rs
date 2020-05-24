@@ -2,6 +2,6 @@
 
 pub mod action;
 pub mod chess;
-pub mod rules;
+mod game;
 
-pub use rules::ChessRules;
+pub use game::*;
