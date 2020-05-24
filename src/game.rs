@@ -1,36 +1,5 @@
-use crate::chess::*;
+use crate::{chess::*, foreign};
 use derivative::Derivative;
-
-#[cfg(not(test))]
-use chess as foreign;
-
-#[cfg(test)]
-mod foreign {
-    pub use chess::*;
-    use mockall::mock;
-
-    mock! {
-        pub Board {
-            fn legal(&self, m: ChessMove) -> bool;
-            fn piece_on(&self, square: Square) -> Option<Piece>;
-            fn color_on(&self, square: Square) -> Option<Color>;
-        }
-    }
-
-    pub use MockBoard as Board;
-
-    mock! {
-        pub Game {
-            fn current_position(&self) -> Board;
-            fn make_move(&mut self, m: ChessMove) -> bool;
-            fn resign(&mut self, color: Color) -> bool;
-            fn result(&self) -> Option<GameResult>;
-            fn side_to_move(&self) -> Color;
-        }
-    }
-
-    pub use MockGame as Game;
-}
 
 /// Standard chess rules.
 #[derive(Derivative)]
