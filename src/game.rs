@@ -1,4 +1,4 @@
-use crate::{action::*, chess::*};
+use crate::chess::*;
 use derivative::Derivative;
 
 #[cfg(not(test))]
