@@ -162,6 +162,7 @@ dependencies = [
  "mockall",
  "proptest",
  "proptest-derive",
+ "smol",
 ]
 
 [[package]]
