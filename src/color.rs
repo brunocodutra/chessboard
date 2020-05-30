@@ -1,21 +1,14 @@
 use crate::foreign;
+use derive_more::Display;
 
 /// The color of a chess piece.
-#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
+#[derive(Debug, Display, Copy, Clone, Eq, PartialEq, Hash)]
 #[cfg_attr(test, derive(proptest_derive::Arbitrary))]
 pub enum Color {
+    #[display(fmt = "white")]
     White,
+    #[display(fmt = "black")]
     Black,
-}
-
-impl Color {
-    pub fn to_str(self) -> &'static str {
-        use Color::*;
-        match self {
-            White => &"white",
-            Black => &"black",
-        }
-    }
 }
 
 impl From<foreign::Color> for Color {

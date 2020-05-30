@@ -5,10 +5,10 @@ use derive_more::Display;
 #[derive(Debug, Display, Copy, Clone, Eq, PartialEq, Hash)]
 #[cfg_attr(test, derive(proptest_derive::Arbitrary))]
 pub enum Outcome {
-    #[display(fmt = "resignation by the {} player", "_0.color.to_str()")]
+    #[display(fmt = "resignation by the {} player", "_0.color")]
     Resignation(Player),
 
-    #[display(fmt = "checkmate by the {} player", "_0.color.to_str()")]
+    #[display(fmt = "checkmate by the {} player", "_0.color")]
     Checkmate(Player),
 
     #[display(fmt = "stalemate")]

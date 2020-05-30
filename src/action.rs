@@ -49,23 +49,23 @@ pub enum InvalidPlayerAction {
     #[display(fmt = "the game has ended in a {}", "_0")]
     GameHasEnded(Outcome),
 
-    #[display(fmt = "it's not {} player's turn", "_0.color.to_str()")]
+    #[display(fmt = "it's not {} player's turn", "_0.color")]
     TurnOfTheOpponent(Player),
 
     #[display(
         fmt = "the {} player is not allowed move the {} {} from {} to {} with {} promotion",
-        "_0.color.to_str()",
-        "_1.color.to_str()",
-        "_1.piece.to_str()",
+        "_0.color",
+        "_1.color",
+        "_1.piece",
         "_2.from",
         "_2.to",
-        "_2.promotion.map(|p| p.to_str()).unwrap_or(\"no\")"
+        "_2.promotion.map(|p| p.to_string()).unwrap_or_else(|| \"no\".into())"
     )]
     IllegalMove(Player, Figure, Move),
 
     #[display(
         fmt = "the {} player attempted to move a nonexistent piece from {} to {}",
-        "_0.color.to_str()",
+        "_0.color",
         "_1.from",
         "_1.to"
     )]

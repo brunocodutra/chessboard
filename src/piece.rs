@@ -1,29 +1,22 @@
 use crate::foreign;
+use derive_more::Display;
 
 /// A chess piece.
-#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
+#[derive(Debug, Display, Copy, Clone, Eq, PartialEq, Hash)]
 #[cfg_attr(test, derive(proptest_derive::Arbitrary))]
 pub enum Piece {
+    #[display(fmt = "pawn")]
     Pawn,
+    #[display(fmt = "knight")]
     Knight,
+    #[display(fmt = "bishop")]
     Bishop,
+    #[display(fmt = "rook")]
     Rook,
+    #[display(fmt = "queen")]
     Queen,
+    #[display(fmt = "king")]
     King,
-}
-
-impl Piece {
-    pub fn to_str(self) -> &'static str {
-        use Piece::*;
-        match self {
-            Pawn => &"pawn",
-            Knight => &"knight",
-            Bishop => &"bishop",
-            Rook => &"rook",
-            Queen => &"queen",
-            King => &"king",
-        }
-    }
 }
 
 impl From<foreign::Piece> for Piece {
