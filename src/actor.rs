@@ -1,6 +1,10 @@
 use crate::{action::*, position::*};
 use async_trait::async_trait;
 
+mod cli;
+
+pub use cli::*;
+
 /// Traits for type that know how to play chess.
 #[async_trait]
 pub trait Actor {
