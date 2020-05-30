@@ -1,16 +1,25 @@
 use crate::foreign;
+use derive_more::Display;
 
 /// A row of the board.
-#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
+#[derive(Debug, Display, Copy, Clone, Eq, PartialEq, Hash)]
 #[cfg_attr(test, derive(proptest_derive::Arbitrary))]
 pub enum Rank {
+    #[display(fmt = "1")]
     First,
+    #[display(fmt = "2")]
     Second,
+    #[display(fmt = "3")]
     Third,
+    #[display(fmt = "4")]
     Fourth,
+    #[display(fmt = "5")]
     Fifth,
+    #[display(fmt = "6")]
     Sixth,
+    #[display(fmt = "7")]
     Seventh,
+    #[display(fmt = "8")]
     Eighth,
 }
 
@@ -25,20 +34,6 @@ impl Rank {
         Rank::Seventh,
         Rank::Eighth,
     ];
-
-    pub fn to_str(self) -> &'static str {
-        use Rank::*;
-        match self {
-            First => &"1",
-            Second => &"2",
-            Third => &"3",
-            Fourth => &"4",
-            Fifth => &"5",
-            Sixth => &"6",
-            Seventh => &"7",
-            Eighth => &"8",
-        }
-    }
 }
 
 impl From<foreign::Rank> for Rank {

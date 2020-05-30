@@ -47,24 +47,27 @@ impl fmt::Display for Position {
         write!(f, "   ")?;
 
         for &file in File::VARIANTS {
-            write!(f, "  {} ", file.to_str())?;
+            write!(f, "  {} ", file)?;
         }
 
         writeln!(f)?;
         writeln!(f, "   +---+---+---+---+---+---+---+---+")?;
         for (&rank, row) in Rank::VARIANTS.iter().zip(&self.squares).rev() {
-            write!(f, " {} |", rank.to_str())?;
+            write!(f, " {} |", rank)?;
 
             for &figure in row {
-                write!(f, " {} |", figure.map(Figure::to_str).unwrap_or(" "))?;
+                match figure {
+                    Some(figure) => write!(f, " {} |", figure)?,
+                    None => write!(f, "   |",)?,
+                }
             }
-            writeln!(f, " {}", rank.to_str())?;
+            writeln!(f, " {}", rank)?;
             writeln!(f, "   +---+---+---+---+---+---+---+---+")?;
         }
 
         write!(f, "   ")?;
         for &file in File::VARIANTS {
-            write!(f, "  {} ", file.to_str())?;
+            write!(f, "  {} ", file)?;
         }
 
         Ok(())

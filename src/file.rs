@@ -1,16 +1,25 @@
 use crate::foreign;
+use derive_more::Display;
 
 /// A column of the board.
-#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
+#[derive(Debug, Display, Copy, Clone, Eq, PartialEq, Hash)]
 #[cfg_attr(test, derive(proptest_derive::Arbitrary))]
 pub enum File {
+    #[display(fmt = "a")]
     A,
+    #[display(fmt = "b")]
     B,
+    #[display(fmt = "c")]
     C,
+    #[display(fmt = "d")]
     D,
+    #[display(fmt = "e")]
     E,
+    #[display(fmt = "f")]
     F,
+    #[display(fmt = "g")]
     G,
+    #[display(fmt = "h")]
     H,
 }
 
@@ -25,20 +34,6 @@ impl File {
         File::G,
         File::H,
     ];
-
-    pub fn to_str(self) -> &'static str {
-        use File::*;
-        match self {
-            A => &"a",
-            B => &"b",
-            C => &"c",
-            D => &"d",
-            E => &"e",
-            F => &"f",
-            G => &"g",
-            H => &"h",
-        }
-    }
 }
 
 impl From<foreign::File> for File {

@@ -11,7 +11,7 @@ pub struct Figure {
 }
 
 impl Figure {
-    pub fn to_str(self) -> &'static str {
+    fn to_str(self) -> &'static str {
         use Color::*;
         use Piece::*;
         match (self.piece, self.color) {

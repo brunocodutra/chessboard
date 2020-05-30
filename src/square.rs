@@ -4,7 +4,7 @@ use derive_more::Display;
 /// A square of the board.
 #[derive(Debug, Display, Copy, Clone, Eq, PartialEq, Hash)]
 #[cfg_attr(test, derive(proptest_derive::Arbitrary))]
-#[display(fmt = "{}{}", "self.file.to_str()", "self.rank.to_str()")]
+#[display(fmt = "{}{}", "self.file", "self.rank")]
 pub struct Square {
     pub file: File,
     pub rank: Rank,
