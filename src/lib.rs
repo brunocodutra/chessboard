@@ -10,6 +10,7 @@ mod outcome;
 mod piece;
 mod player;
 mod position;
+mod promotion;
 mod rank;
 mod square;
 
@@ -22,5 +23,6 @@ pub use crate::outcome::*;
 pub use crate::piece::*;
 pub use crate::player::*;
 pub use crate::position::*;
+pub use crate::promotion::*;
 pub use crate::rank::*;
 pub use crate::square::*;
