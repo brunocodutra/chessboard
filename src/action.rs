@@ -2,8 +2,14 @@ use crate::{figure::Figure, foreign, outcome::*, player::*, promotion::*, square
 use derive_more::{Display, Error};
 
 /// The move of a piece on the board.
-#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
+#[derive(Debug, Display, Copy, Clone, Eq, PartialEq, Hash)]
 #[cfg_attr(test, derive(proptest_derive::Arbitrary))]
+#[display(
+    fmt = "{}{}{}",
+    "self.from",
+    "self.to",
+    "self.promotion.map(|p| p.to_string()).unwrap_or_else(String::new)"
+)]
 pub struct Move {
     pub from: Square,
     pub to: Square,
