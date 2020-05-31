@@ -1,4 +1,4 @@
-use crate::{figure::Figure, foreign, outcome::*, piece::*, player::*, square::*};
+use crate::{figure::Figure, foreign, outcome::*, player::*, promotion::*, square::*};
 use derive_more::{Display, Error};
 
 /// The move of a piece on the board.
@@ -8,7 +8,7 @@ pub struct Move {
     pub from: Square,
     pub to: Square,
     /// If the move of a pawn triggers a promotion, the target piece should be specified.
-    pub promotion: Option<Piece>,
+    pub promotion: Option<Promotion>,
 }
 
 impl Into<foreign::ChessMove> for Move {
@@ -16,7 +16,7 @@ impl Into<foreign::ChessMove> for Move {
         foreign::ChessMove::new(
             self.from.into(),
             self.to.into(),
-            self.promotion.map(Piece::into),
+            self.promotion.map(Into::into),
         )
     }
 }
