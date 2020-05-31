@@ -1,4 +1,4 @@
-use crate::{action::*, figure::*, foreign, outcome::*, player::*, position::*};
+use crate::{foreign, Figure, InvalidPlayerAction, Outcome, Player, PlayerAction, Position};
 use derivative::Derivative;
 
 /// Standard chess rules.
@@ -68,7 +68,7 @@ impl Game {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{color::Color, player::Player};
+    use crate::{Color, Move};
     use mockall::predicate::*;
     use proptest::prelude::*;
 

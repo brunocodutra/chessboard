@@ -1,4 +1,4 @@
-use crate::{file::*, foreign, rank::*};
+use crate::{foreign, File, Rank};
 use derive_more::Display;
 
 /// A square of the board.

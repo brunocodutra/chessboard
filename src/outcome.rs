@@ -1,4 +1,4 @@
-use crate::{color::*, foreign, player::*};
+use crate::{foreign, Color, Player};
 use derive_more::Display;
 
 /// One of the possible outcomes of a chess game.
