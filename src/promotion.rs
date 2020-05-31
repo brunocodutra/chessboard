@@ -1,4 +1,4 @@
-use crate::{foreign, piece::*};
+use crate::{foreign, Piece};
 use derive_more::Display;
 
 /// A chess piece.

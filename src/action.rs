@@ -1,4 +1,4 @@
-use crate::{figure::Figure, foreign, outcome::*, player::*, promotion::*, square::*};
+use crate::{foreign, Figure, Outcome, Player, Promotion, Square};
 use derive_more::{Display, Error};
 
 /// The move of a piece on the board.

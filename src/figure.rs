@@ -1,4 +1,4 @@
-use crate::{color::*, piece::*};
+use crate::{Color, Piece};
 use derive_more::Display;
 
 /// A chess piece of a certain color.

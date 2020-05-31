@@ -1,4 +1,4 @@
-use crate::{figure::*, file::*, foreign, rank::*, square::*};
+use crate::{foreign, Figure, File, Rank, Square};
 use std::{fmt, ops::*};
 
 /// A position on the board.
