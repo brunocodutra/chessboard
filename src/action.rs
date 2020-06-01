@@ -99,7 +99,7 @@ pub enum InvalidPlayerAction {
         "_1",
         "_2.from",
         "_2.to",
-        "_2.promotion.map(|p| p.to_string()).unwrap_or_else(|| \"no\".into())"
+        "_2.promotion.map(|p| Piece::from(p).to_string()).unwrap_or_else(|| \"no\".into())"
     )]
     IllegalMove(Player, Figure, Move),
 
