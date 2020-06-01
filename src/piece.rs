@@ -1,4 +1,4 @@
-use crate::foreign;
+use crate::{foreign, Promotion};
 use derive_more::Display;
 
 /// A chess piece.
@@ -17,6 +17,18 @@ pub enum Piece {
     Queen,
     #[display(fmt = "king")]
     King,
+}
+
+impl From<Promotion> for Piece {
+    fn from(p: Promotion) -> Self {
+        use Piece::*;
+        match p {
+            Promotion::Knight => Knight,
+            Promotion::Bishop => Bishop,
+            Promotion::Rook => Rook,
+            Promotion::Queen => Queen,
+        }
+    }
 }
 
 impl From<foreign::Piece> for Piece {

@@ -1,4 +1,4 @@
-use crate::{foreign, Piece};
+use crate::foreign;
 use derive_more::{Display, Error};
 use std::str::FromStr;
 
@@ -38,18 +38,6 @@ impl FromStr for Promotion {
             "r" => Ok(Promotion::Rook),
             "q" => Ok(Promotion::Queen),
             _ => Err(ParsePromotionError),
-        }
-    }
-}
-
-impl Into<Piece> for Promotion {
-    fn into(self: Self) -> Piece {
-        use Promotion::*;
-        match self {
-            Knight => Piece::Knight,
-            Bishop => Piece::Bishop,
-            Rook => Piece::Rook,
-            Queen => Piece::Queen,
         }
     }
 }
