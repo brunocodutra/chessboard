@@ -1,32 +1,41 @@
 use crate::{Color, Piece};
-use derive_more::Display;
+use std::fmt;
 
 /// A chess piece of a certain color.
-#[derive(Debug, Display, Copy, Clone, Eq, PartialEq, Hash)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
 #[cfg_attr(test, derive(proptest_derive::Arbitrary))]
-#[display(fmt = "{}", "self.to_str()")]
 pub struct Figure {
     pub piece: Piece,
     pub color: Color,
 }
 
 impl Figure {
-    fn to_str(self) -> &'static str {
+    fn symbol(self) -> &'static str {
         use Color::*;
         use Piece::*;
         match (self.piece, self.color) {
-            (Pawn, White) => &"♙",
-            (Knight, White) => &"♘",
-            (Bishop, White) => &"♗",
-            (Rook, White) => &"♖",
-            (Queen, White) => &"♕",
-            (King, White) => &"♔",
-            (Pawn, Black) => &"♟",
-            (Knight, Black) => &"♞",
-            (Bishop, Black) => &"♝",
-            (Rook, Black) => &"♜",
-            (Queen, Black) => &"♛",
-            (King, Black) => &"♚",
+            (Pawn, White) => "♙",
+            (Knight, White) => "♘",
+            (Bishop, White) => "♗",
+            (Rook, White) => "♖",
+            (Queen, White) => "♕",
+            (King, White) => "♔",
+            (Pawn, Black) => "♟",
+            (Knight, Black) => "♞",
+            (Bishop, Black) => "♝",
+            (Rook, Black) => "♜",
+            (Queen, Black) => "♛",
+            (King, Black) => "♚",
+        }
+    }
+}
+
+impl fmt::Display for Figure {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        if f.alternate() {
+            write!(f, "{}", self.symbol())
+        } else {
+            write!(f, "{} {}", self.color, self.piece)
         }
     }
 }

@@ -57,10 +57,11 @@ impl fmt::Display for Position {
 
             for &figure in row {
                 match figure {
-                    Some(figure) => write!(f, " {} |", figure)?,
+                    Some(figure) => write!(f, " {:#} |", figure)?,
                     None => write!(f, "   |",)?,
                 }
             }
+
             writeln!(f, " {}", rank)?;
             writeln!(f, "   +---+---+---+---+---+---+---+---+")?;
         }

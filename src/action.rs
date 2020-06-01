@@ -94,10 +94,9 @@ pub enum InvalidPlayerAction {
     TurnOfTheOpponent(Player),
 
     #[display(
-        fmt = "the {} player is not allowed move the {} {} from {} to {} with {} promotion",
+        fmt = "the {} player is not allowed move the {} from {} to {} with {} promotion",
         "_0.color",
-        "_1.color",
-        "_1.piece",
+        "_1",
         "_2.from",
         "_2.to",
         "_2.promotion.map(|p| p.to_string()).unwrap_or_else(|| \"no\".into())"
