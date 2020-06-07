@@ -37,7 +37,7 @@ impl Rank {
     ];
 }
 
-/// The reason why a player action was rejected.
+/// The reason parsing a [`Rank`] failed.
 #[derive(Debug, Display, Copy, Clone, Eq, PartialEq, Hash, Error)]
 #[cfg_attr(test, derive(proptest_derive::Arbitrary))]
 #[display(
