@@ -83,13 +83,9 @@ impl From<foreign::Board> for Placement {
         let mut squares: [[Option<Figure>; 8]; 8] = Default::default();
 
         for &s in foreign::ALL_SQUARES.iter() {
-            squares[s.get_rank().to_index()][s.get_file().to_index()] =
-                b.piece_on(s).and_then(|p| {
-                    b.color_on(s).map(move |c| Figure {
-                        piece: p.into(),
-                        color: c.into(),
-                    })
-                });
+            squares[s.get_rank().to_index()][s.get_file().to_index()] = b
+                .piece_on(s)
+                .and_then(|p| b.color_on(s).map(move |c| Figure::new(c.into(), p.into())));
         }
 
         Placement { squares }
