@@ -3,7 +3,7 @@ use derivative::Derivative;
 
 /// Standard chess rules.
 #[derive(Derivative)]
-#[derivative(Default)]
+#[derivative(Default(new = "true"))]
 pub struct Game {
     #[derivative(Default(value = "foreign::Game::new()"))]
     rules: foreign::Game,
