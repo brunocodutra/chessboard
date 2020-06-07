@@ -1,4 +1,4 @@
-use crate::{foreign, Figure, InvalidPlayerAction, Outcome, Player, PlayerAction, Position};
+use crate::{foreign, Figure, InvalidPlayerAction, Outcome, Placement, Player, PlayerAction};
 use derivative::Derivative;
 
 /// Standard chess rules.
@@ -53,7 +53,7 @@ impl Game {
     }
 
     /// The current position on the board.
-    pub fn position(&self) -> Position {
+    pub fn position(&self) -> Placement {
         self.rules.current_position().into()
     }
 
@@ -199,7 +199,7 @@ mod tests {
         }
 
         #[test]
-        fn position_returns_the_current_board(p: Position) {
+        fn position_returns_the_current_board(p: Placement) {
             let mut board = foreign::Board::new();
 
             board.expect_piece_on().times(0..=64).returning(move |s| p[s.into()].map(|f| f.piece.into()));
