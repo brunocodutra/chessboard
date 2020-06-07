@@ -18,7 +18,7 @@ pub struct Move {
     pub promotion: Option<Promotion>,
 }
 
-/// The reason why a player action was rejected.
+/// The reason parsing a [`Move`] failed.
 #[derive(Debug, Display, Copy, Clone, Eq, PartialEq, Hash, Error)]
 #[cfg_attr(test, derive(proptest_derive::Arbitrary))]
 #[display(fmt = "unable to parse move, {}")]

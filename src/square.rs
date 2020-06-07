@@ -11,7 +11,7 @@ pub struct Square {
     pub rank: Rank,
 }
 
-/// The reason why a player action was rejected.
+/// The reason parsing a [`Square`] failed.
 #[derive(Debug, Display, Copy, Clone, Eq, PartialEq, Hash, Error, From)]
 #[cfg_attr(test, derive(proptest_derive::Arbitrary))]
 #[display(fmt = "unable to parse square, {}")]
