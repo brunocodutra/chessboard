@@ -1,40 +1,43 @@
 use crate::{foreign, Figure, File, Rank, Square};
 use std::{fmt, ops::*};
 
-/// A position on the board.
+/// The piece placement on the board.
 ///
-/// This type does not validate whether the position it holds is valid
+/// This type does not validate whether the placement it holds is valid
 /// according to any set of chess rules.
 #[derive(Debug, Default, Copy, Clone, Eq, PartialEq, Hash)]
-pub struct Position {
+pub struct Placement {
     pub squares: [[Option<Figure>; 8]; 8],
 }
 
 // We provide a custom implementation of Arbitrary rather than deriving,
 // otherwise proptest overflows the stack generating large arrays.
 #[cfg(test)]
-impl proptest::arbitrary::Arbitrary for Position {
+impl proptest::arbitrary::Arbitrary for Placement {
     type Parameters = ();
-    type Strategy = proptest::prelude::BoxedStrategy<Position>;
+    type Strategy = proptest::strategy::BoxedStrategy<Placement>;
 
     fn arbitrary_with(_: Self::Parameters) -> Self::Strategy {
         use proptest::prelude::*;
 
         vec![any::<Option<Figure>>(); 64]
             .prop_map(|v| {
-                let mut squares: [[Option<Figure>; 8]; 8] = Default::default();
-                squares
+                let mut placement = Placement::default();
+
+                placement
+                    .squares
                     .iter_mut()
                     .flatten()
                     .zip(v)
                     .for_each(|(s, f)| *s = f);
-                Position { squares }
+
+                placement
             })
             .boxed()
     }
 }
 
-impl Index<Square> for Position {
+impl Index<Square> for Placement {
     type Output = Option<Figure>;
 
     fn index(&self, s: Square) -> &Self::Output {
@@ -42,7 +45,7 @@ impl Index<Square> for Position {
     }
 }
 
-impl fmt::Display for Position {
+impl fmt::Display for Placement {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "   ")?;
 
@@ -75,7 +78,7 @@ impl fmt::Display for Position {
     }
 }
 
-impl From<foreign::Board> for Position {
+impl From<foreign::Board> for Placement {
     fn from(b: foreign::Board) -> Self {
         let mut squares: [[Option<Figure>; 8]; 8] = Default::default();
 
@@ -89,6 +92,6 @@ impl From<foreign::Board> for Position {
                 });
         }
 
-        Position { squares }
+        Placement { squares }
     }
 }
