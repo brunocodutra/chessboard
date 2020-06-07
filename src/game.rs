@@ -33,7 +33,7 @@ impl Game {
 
                     if let Some(piece) = board.piece_on(square).map(Into::into) {
                         if let Some(color) = board.color_on(square).map(Into::into) {
-                            return Err(IllegalMove(p, Figure { piece, color }, m));
+                            return Err(IllegalMove(p, Figure::new(color, piece), m));
                         }
                     }
 
@@ -107,12 +107,12 @@ mod tests {
             board.expect_piece_on()
                 .with(eq(Into::<foreign::Square>::into(m.from)))
                 .times(1)
-                .return_const(Some(f.piece.into()));
+                .return_const(Some(f.piece().into()));
 
             board.expect_color_on()
                 .with(eq(Into::<foreign::Square>::into(m.from)))
                 .times(1)
-                .return_const(Some(f.color.into()));
+                .return_const(Some(f.color().into()));
 
             let mut rules = foreign::Game::new();
 
@@ -202,8 +202,8 @@ mod tests {
         fn position_returns_the_current_board(p: Placement) {
             let mut board = foreign::Board::new();
 
-            board.expect_piece_on().times(0..=64).returning(move |s| p[s.into()].map(|f| f.piece.into()));
-            board.expect_color_on().times(0..=64).returning(move |s| p[s.into()].map(|f| f.color.into()));
+            board.expect_piece_on().times(0..=64).returning(move |s| p[s.into()].map(|f| f.piece().into()));
+            board.expect_color_on().times(0..=64).returning(move |s| p[s.into()].map(|f| f.color().into()));
 
             let mut rules = foreign::Game::new();
             rules.expect_current_position().times(1).return_once(move || board);
