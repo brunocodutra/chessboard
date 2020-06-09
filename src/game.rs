@@ -1,12 +1,18 @@
 use crate::{foreign, Figure, InvalidPlayerAction, Outcome, Placement, Player, PlayerAction};
 use derivative::Derivative;
 
+#[cfg(test)]
+use foreign::MockGame as Rules;
+
+#[cfg(not(test))]
+use foreign::Game as Rules;
+
 /// Standard chess rules.
 #[derive(Derivative)]
 #[derivative(Default(new = "true"))]
 pub struct Game {
-    #[derivative(Default(value = "foreign::Game::new()"))]
-    rules: foreign::Game,
+    #[derivative(Default(value = "Rules::new()"))]
+    rules: Rules,
 }
 
 impl Game {
@@ -75,14 +81,14 @@ mod tests {
     proptest! {
         #[test]
         fn any_player_action_after_the_game_has_ended_is_invalid(a: PlayerAction, o: Outcome) {
-            let mut rules = foreign::Game::new();
+            let mut rules = Rules::new();
             rules.expect_result().times(1).return_const(Some(o.into()));
             assert_eq!(Game { rules }.execute(a), Err(InvalidPlayerAction::GameHasEnded(o)));
         }
 
         #[test]
         fn players_can_only_act_in_their_turn(a: PlayerAction) {
-            let mut rules = foreign::Game::new();
+            let mut rules = Rules::new();
 
             rules.expect_result().times(1).return_const(None);
             rules.expect_side_to_move().times(1).returning(move || match a.player() {
@@ -96,7 +102,7 @@ mod tests {
 
         #[test]
         fn players_can_only_play_legal_moves(p: Player, m: Move, f: Figure) {
-            let mut board = foreign::Board::new();
+            let mut board = foreign::MockBoard::new();
 
             #[cfg(debug_assertions)]
             board.expect_legal()
@@ -114,7 +120,7 @@ mod tests {
                 .times(1)
                 .return_const(Some(f.color().into()));
 
-            let mut rules = foreign::Game::new();
+            let mut rules = Rules::new();
 
             rules.expect_result().times(1).return_const(None);
             rules.expect_side_to_move().times(1).return_const(p.color);
@@ -132,7 +138,7 @@ mod tests {
 
         #[test]
         fn players_can_only_play_valid_moves(p: Player, m: Move) {
-            let mut board = foreign::Board::new();
+            let mut board = foreign::MockBoard::new();
 
             #[cfg(debug_assertions)]
             board.expect_legal()
@@ -143,7 +149,7 @@ mod tests {
             board.expect_piece_on().times(0..=1).return_const(None);
             board.expect_color_on().times(0..=1).return_const(None);
 
-            let mut rules = foreign::Game::new();
+            let mut rules = Rules::new();
 
             rules.expect_result().times(1).return_const(None);
             rules.expect_side_to_move().times(1).return_const(p.color);
@@ -161,7 +167,7 @@ mod tests {
 
         #[test]
         fn players_can_make_valid_and_legal_moves(p: Player, m: Move) {
-            let mut rules = foreign::Game::new();
+            let mut rules = Rules::new();
 
             rules.expect_result().times(1).return_const(None);
             rules.expect_side_to_move().times(1).return_const(p.color);
@@ -177,7 +183,7 @@ mod tests {
 
         #[test]
         fn players_can_resign(p: Player) {
-            let mut rules = foreign::Game::new();
+            let mut rules = Rules::new();
 
             rules.expect_result().times(1).return_const(None);
             rules.expect_side_to_move().times(1).return_const(p.color);
@@ -193,19 +199,17 @@ mod tests {
 
         #[test]
         fn outcome_returns_the_result_of_the_game_if_it_has_ended(o: Option<Outcome>) {
-            let mut rules = foreign::Game::new();
+            let mut rules = Rules::new();
             rules.expect_result().times(1).return_const(o.map(Into::into));
             assert_eq!(Game { rules }.outcome(), o);
         }
 
         #[test]
         fn position_returns_the_current_board(p: Placement) {
-            let mut board = foreign::Board::new();
+            let mut board = foreign::MockBoard::new();
+            board.expect_into::<Placement>().times(1).return_const(p);
 
-            board.expect_piece_on().times(0..=64).returning(move |s| p[s.into()].map(|f| f.piece().into()));
-            board.expect_color_on().times(0..=64).returning(move |s| p[s.into()].map(|f| f.color().into()));
-
-            let mut rules = foreign::Game::new();
+            let mut rules = Rules::new();
             rules.expect_current_position().times(1).return_once(move || board);
 
             assert_eq!(Game { rules }.position(), p);
@@ -213,7 +217,7 @@ mod tests {
 
         #[test]
         fn player_returns_the_current_side_to_move(p: Player) {
-            let mut rules = foreign::Game::new();
+            let mut rules = Rules::new();
             rules.expect_side_to_move().times(1).return_const(p.color);
             assert_eq!(Game { rules }.player(), p);
         }
