@@ -67,19 +67,10 @@ impl Into<foreign::ChessMove> for Move {
 #[cfg_attr(test, derive(proptest_derive::Arbitrary))]
 pub enum PlayerAction {
     /// Move a piece on the board.    
-    MakeMove(Player, Move),
+    MakeMove(Move),
 
     /// Resign the match in favor of the opponent.
-    Resign(Player),
-}
-
-impl PlayerAction {
-    pub fn player(&self) -> &Player {
-        use PlayerAction::*;
-        match self {
-            MakeMove(p, _) | Resign(p) => p,
-        }
-    }
+    Resign,
 }
 
 /// The reason why a player action was rejected.
@@ -89,9 +80,6 @@ impl PlayerAction {
 pub enum InvalidPlayerAction {
     #[display(fmt = "the game has ended in a {}", "_0")]
     GameHasEnded(Outcome),
-
-    #[display(fmt = "it's not {} player's turn", "_0.color")]
-    TurnOfTheOpponent(Player),
 
     #[display(
         fmt = "the {} player is not allowed move the {} from {} to {} with {} promotion",

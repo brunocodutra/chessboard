@@ -11,20 +11,8 @@ macro_rules! echo {
 fn main() -> Result<(), Error> {
     smol::run(async {
         let mut game = Game::new();
-
-        let mut black = actor::Cli::new(
-            Terminal::new(Color::Black.to_string()),
-            Player {
-                color: Color::Black,
-            },
-        );
-
-        let mut white = actor::Cli::new(
-            Terminal::new(Color::White.to_string()),
-            Player {
-                color: Color::White,
-            },
-        );
+        let mut black = actor::Cli::new(Terminal::new(Color::Black.to_string()));
+        let mut white = actor::Cli::new(Terminal::new(Color::White.to_string()));
 
         let outcome = loop {
             match game.outcome() {
