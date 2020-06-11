@@ -57,8 +57,8 @@ where
 {
     type Error = Failure;
 
-    async fn act(&mut self, p: Placement) -> Result<PlayerAction, Failure> {
-        self.terminal.send(p).await?;
+    async fn act(&mut self, p: Position) -> Result<PlayerAction, Failure> {
+        self.terminal.send(p.placement()).await?;
 
         let matches = loop {
             let line = self.terminal.recv().await?;
@@ -96,10 +96,10 @@ mod tests {
 
     proptest! {
         #[test]
-        fn player_can_resign(p: Player, pos: Placement, cmd in "\\s*resign\\s*") {
+        fn player_can_resign(p: Player, pos: Position, cmd in "\\s*resign\\s*") {
             let mut terminal = MockRemote::new();
 
-            terminal.expect_send().times(1).with(eq(pos))
+            terminal.expect_send().times(1).with(eq(pos.placement()))
                 .return_once(|_| Ok(()));
 
             terminal.expect_recv().times(1)
@@ -110,10 +110,10 @@ mod tests {
         }
 
         #[test]
-        fn player_can_make_a_move(p: Player, pos: Placement, m: Move, cmd in "\\s*move\\s*") {
+        fn player_can_make_a_move(p: Player, pos: Position, m: Move, cmd in "\\s*move\\s*") {
             let mut terminal = MockRemote::new();
 
-            terminal.expect_send().times(1).with(eq(pos))
+            terminal.expect_send().times(1).with(eq(pos.placement()))
                 .return_once(|_| Ok(()));
 
             terminal.expect_recv().times(1)
@@ -124,10 +124,10 @@ mod tests {
         }
 
         #[test]
-        fn resign_takes_no_arguments(p: Player, pos: Placement, arg in "[^\\s]+") {
+        fn resign_takes_no_arguments(p: Player, pos: Position, arg in "[^\\s]+") {
             let mut terminal = MockRemote::new();
 
-            terminal.expect_send().with(eq(pos))
+            terminal.expect_send().times(1).with(eq(pos.placement()))
                 .returning(|_| Ok(()));
 
             terminal.expect_send().times(1)
@@ -142,10 +142,10 @@ mod tests {
         }
 
         #[test]
-        fn move_does_not_accept_invalid_descriptors(p: Player, pos: Placement, m: Move, arg in "[^a-h]*") {
+        fn move_does_not_accept_invalid_descriptors(p: Player, pos: Position, m: Move, arg in "[^a-h]*") {
             let mut terminal = MockRemote::new();
 
-            terminal.expect_send().with(eq(pos))
+            terminal.expect_send().times(1).with(eq(pos.placement()))
                 .returning(|_| Ok(()));
 
             terminal.expect_send().times(1)
@@ -160,10 +160,10 @@ mod tests {
         }
 
         #[test]
-        fn player_can_ask_for_help(p: Player, pos: Placement, cmd in "|help|resign|move") {
+        fn player_can_ask_for_help(p: Player, pos: Position, cmd in "|help|resign|move") {
             let mut terminal = MockRemote::new();
 
-            terminal.expect_send().with(eq(pos))
+            terminal.expect_send().times(1).with(eq(pos.placement()))
                 .returning(|_| Ok(()));
 
             terminal.expect_send().times(1)
@@ -179,10 +179,10 @@ mod tests {
         }
 
         #[test]
-        fn player_is_prompted_again_after_invalid_command(p: Player, pos: Placement, cmds in "[^resign]+") {
+        fn player_is_prompted_again_after_invalid_command(p: Player, pos: Position, cmds in "[^resign]+") {
             let mut terminal = MockRemote::new();
 
-            terminal.expect_send().with(eq(pos))
+            terminal.expect_send().times(1).with(eq(pos.placement()))
                 .returning(|_| Ok(()));
 
             let mut cmds: Vec<_> = cmds.split_whitespace().map(String::from).collect();
@@ -197,10 +197,10 @@ mod tests {
         }
 
         #[test]
-        fn writing_to_terminal_can_fail(p: Player, pos: Placement, e: String) {
+        fn writing_to_terminal_can_fail(p: Player, pos: Position, e: String) {
             let mut terminal = MockRemote::new();
             let failure = anyhow!(e.clone());
-            terminal.expect_send().times(1).with(eq(pos))
+            terminal.expect_send().times(1).with(eq(pos.placement()))
                 .return_once(move |_| Err(failure));
 
             let mut cli = Cli::new(terminal, p);
@@ -208,10 +208,10 @@ mod tests {
         }
 
         #[test]
-        fn reading_from_terminal_can_fail(p: Player, pos: Placement, e: String) {
+        fn reading_from_terminal_can_fail(p: Player, pos: Position, e: String) {
             let mut terminal = MockRemote::new();
 
-            terminal.expect_send().with(eq(pos))
+            terminal.expect_send().times(1).with(eq(pos.placement()))
                 .returning(|_| Ok(()));
 
             let failure = anyhow!(e.clone());
