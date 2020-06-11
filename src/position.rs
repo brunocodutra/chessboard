@@ -1,4 +1,4 @@
-use crate::foreign;
+use crate::{foreign, Figure, Placement};
 use derivative::Derivative;
 use derive_more::{Display, Error, From};
 use std::{hash::*, str::FromStr};
@@ -8,6 +8,22 @@ use std::{hash::*, str::FromStr};
 #[derivative(Default(new = "true"))]
 pub struct Position {
     board: foreign::Board,
+}
+
+impl Position {
+    pub fn placement(&self) -> Placement {
+        let mut placement = Placement::default();
+
+        for &s in foreign::ALL_SQUARES.iter() {
+            placement[s.into()] = self.board.piece_on(s).and_then(|p| {
+                self.board
+                    .color_on(s)
+                    .map(move |c| Figure::new(c.into(), p.into()))
+            });
+        }
+
+        placement
+    }
 }
 
 impl PartialEq for Position {
@@ -155,9 +171,27 @@ impl FromStr for Position {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::{File, Rank, Square};
     use proptest::prelude::*;
 
     proptest! {
+        #[test]
+        fn placement_returns_current_piece_arrangement(p: Position) {
+            let placement = p.placement();
+
+            for &file in File::VARIANTS {
+                for &rank in Rank::VARIANTS {
+                    let square = Square { file, rank };
+                    let figure = placement[square];
+                    let piece = figure.map(|f| f.piece().into());
+                    let color = figure.map(|f| f.color().into());
+
+                    assert_eq!(piece, p.board.piece_on(square.into()));
+                    assert_eq!(color, p.board.color_on(square.into()));
+                }
+            }
+        }
+
         #[test]
         fn parsing_printed_position_is_an_identity(p: Position) {
             assert_eq!(p.to_string().parse(), Ok(p));
