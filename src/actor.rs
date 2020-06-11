@@ -5,7 +5,7 @@ mod cli;
 
 pub use cli::*;
 
-/// Traits for type that know how to play chess.
+/// Trait for types that play chess.
 #[async_trait]
 pub trait Actor {
     /// The reason why acting failed.
