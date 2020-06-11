@@ -1,6 +1,10 @@
 use async_trait::async_trait;
 use std::fmt::Display;
 
+mod terminal;
+
+pub use terminal::*;
+
 /// Trait for types that communicate via message-passing.
 #[async_trait]
 pub trait Remote {

@@ -2,57 +2,15 @@ use crate::*;
 use anyhow::Error as Failure;
 use async_trait::async_trait;
 use clap::{App, AppSettings, Arg, SubCommand};
-use std::fmt::Display;
 
-#[cfg(test)]
-mockall::mock! {
-    Terminal {
-        async fn read<D: Display + Send + 'static>(&self, prompt: D) -> Result<String, Failure>;
-        async fn write<D: Display + Send + 'static>(&self, line: D) -> Result<(), Failure>;
-    }
-}
-
-#[cfg(test)]
-use MockTerminal as Terminal;
-
-#[cfg(not(test))]
-use async_std::{io::stdout, prelude::*, sync::*};
-
-#[cfg(not(test))]
-struct Terminal(Arc<Mutex<rustyline::Editor<()>>>);
-
-#[cfg(not(test))]
-impl Terminal {
-    fn new() -> Self {
-        use rustyline::{Config, Editor};
-        Terminal(Arc::new(Mutex::new(Editor::<()>::with_config(
-            Config::builder().auto_add_history(true).build(),
-        ))))
-    }
-
-    async fn read<D: Display + Send + 'static>(&self, prompt: D) -> Result<String, Failure> {
-        let editor = self.0.clone();
-        let line = smol::blocking!(editor.lock().await.readline(&format!("{} > ", prompt)))?;
-        Ok(line)
-    }
-
-    async fn write<D: Display + Send + 'static>(&self, line: D) -> Result<(), Failure> {
-        stdout().write_all(format!("{}\n", line).as_bytes()).await?;
-        Ok(())
-    }
-}
-
-pub struct Cli {
+pub struct Cli<T: Remote> {
+    terminal: T,
     player: Player,
-    terminal: Terminal,
 }
 
-impl Cli {
-    pub fn new(player: Player) -> Self {
-        Cli {
-            player,
-            terminal: Terminal::new(),
-        }
+impl<T: Remote> Cli<T> {
+    pub fn new(terminal: T, player: Player) -> Self {
+        Cli { terminal, player }
     }
 
     fn spec() -> App<'static, 'static> {
@@ -92,19 +50,23 @@ impl Cli {
 }
 
 #[async_trait]
-impl Actor for Cli {
+impl<T> Actor for Cli<T>
+where
+    T: Remote + Send + Sync,
+    Failure: From<T::Error>,
+{
     type Error = Failure;
 
     async fn act(&mut self, p: Position) -> Result<PlayerAction, Failure> {
-        self.terminal.write(p).await?;
+        self.terminal.send(p).await?;
 
         let matches = loop {
-            let line = self.terminal.read(self.player.color).await?;
-            let args = Cli::spec().get_matches_from_safe(line.split_whitespace());
+            let line = self.terminal.recv().await?;
+            let args = Self::spec().get_matches_from_safe(line.split_whitespace());
 
             match args {
                 Ok(m) => break m,
-                Err(e) => self.terminal.write(e).await?,
+                Err(e) => self.terminal.send(e).await?,
             };
         };
 
@@ -126,6 +88,7 @@ impl Actor for Cli {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::MockRemote;
     use anyhow::anyhow;
     use mockall::predicate::*;
     use proptest::prelude::*;
@@ -134,115 +97,128 @@ mod tests {
     proptest! {
         #[test]
         fn player_can_resign(p: Player, pos: Position, cmd in "\\s*resign\\s*") {
-            let mut cli = Cli::new(p);
+            let mut terminal = MockRemote::new();
 
-            cli.terminal.expect_write().times(1).with(eq(pos))
+            terminal.expect_send().times(1).with(eq(pos))
                 .return_once(|_| Ok(()));
 
-            cli.terminal.expect_read().times(1).with(eq(p.color))
-                .return_once(move |_| Ok(cmd));
+            terminal.expect_recv().times(1)
+                .return_once(move || Ok(cmd));
 
+            let mut cli = Cli::new(terminal, p);
             assert_eq!(block_on(cli.act(pos)).unwrap(), PlayerAction::Resign(p));
         }
 
         #[test]
         fn player_can_make_a_move(p: Player, pos: Position, m: Move, cmd in "\\s*move\\s*") {
-            let mut cli = Cli::new(p);
+            let mut terminal = MockRemote::new();
 
-            cli.terminal.expect_write().times(1).with(eq(pos))
+            terminal.expect_send().times(1).with(eq(pos))
                 .return_once(|_| Ok(()));
 
-            cli.terminal.expect_read().times(1).with(eq(p.color))
-                .return_once(move |_| Ok(format!("{} {}", cmd, m)));
+            terminal.expect_recv().times(1)
+                .return_once(move || Ok(format!("{} {}", cmd, m)));
 
+            let mut cli = Cli::new(terminal, p);
             assert_eq!(block_on(cli.act(pos)).unwrap(), PlayerAction::MakeMove(p, m));
         }
 
         #[test]
         fn resign_takes_no_arguments(p: Player, pos: Position, arg in "[^\\s]+") {
-            let mut cli = Cli::new(p);
-            cli.terminal.expect_write().with(eq(pos))
+            let mut terminal = MockRemote::new();
+
+            terminal.expect_send().with(eq(pos))
                 .returning(|_| Ok(()));
 
-            cli.terminal.expect_write().times(1)
+            terminal.expect_send().times(1)
                 .returning(|_: clap::Error| Ok(()));
 
             let mut cmd = Some(format!("resign {}", arg));
-            cli.terminal.expect_read().times(2).with(eq(p.color))
-                .returning(move |_| Ok(cmd.take().unwrap_or_else(|| "resign".into())));
+            terminal.expect_recv().times(2)
+                .returning(move || Ok(cmd.take().unwrap_or_else(|| "resign".into())));
 
+            let mut cli = Cli::new(terminal, p);
             assert!(block_on(cli.act(pos)).is_ok());
         }
 
         #[test]
         fn move_does_not_accept_invalid_descriptors(p: Player, pos: Position, m: Move, arg in "[^a-h]*") {
-            let mut cli = Cli::new(p);
-            cli.terminal.expect_write().with(eq(pos))
+            let mut terminal = MockRemote::new();
+
+            terminal.expect_send().with(eq(pos))
                 .returning(|_| Ok(()));
 
-            cli.terminal.expect_write().times(1)
+            terminal.expect_send().times(1)
                 .returning(|_: clap::Error| Ok(()));
 
             let mut cmd = Some(format!("move {}", arg));
-            cli.terminal.expect_read().times(2).with(eq(p.color))
-                .returning(move |_| Ok(cmd.take().unwrap_or(format!("move {}", m))));
+            terminal.expect_recv().times(2)
+                .returning(move || Ok(cmd.take().unwrap_or(format!("move {}", m))));
 
+            let mut cli = Cli::new(terminal, p);
             assert!(block_on(cli.act(pos)).is_ok());
         }
 
         #[test]
         fn player_can_ask_for_help(p: Player, pos: Position, cmd in "|help|resign|move") {
-            let mut cli = Cli::new(p);
-            cli.terminal.expect_write().with(eq(pos))
+            let mut terminal = MockRemote::new();
+
+            terminal.expect_send().with(eq(pos))
                 .returning(|_| Ok(()));
 
-            cli.terminal.expect_write().times(1)
+            terminal.expect_send().times(1)
                 .with(function(|&clap::Error { kind, .. }| kind == clap::ErrorKind::HelpDisplayed))
                 .returning(|_| Ok(()));
 
             let mut help = Some(format!("help {}", cmd));
-            cli.terminal.expect_read().times(2).with(eq(p.color))
-                .returning(move |_| Ok(help.take().unwrap_or_else(|| "resign".into())));
+            terminal.expect_recv().times(2)
+                .returning(move || Ok(help.take().unwrap_or_else(|| "resign".into())));
 
+            let mut cli = Cli::new(terminal, p);
             assert!(block_on(cli.act(pos)).is_ok());
         }
 
         #[test]
         fn player_is_prompted_again_after_invalid_command(p: Player, pos: Position, cmds in "[^resign]+") {
-            let mut cli = Cli::new(p);
-            cli.terminal.expect_write().with(eq(pos))
+            let mut terminal = MockRemote::new();
+
+            terminal.expect_send().with(eq(pos))
                 .returning(|_| Ok(()));
 
             let mut cmds: Vec<_> = cmds.split_whitespace().map(String::from).collect();
-            cli.terminal.expect_write().times(cmds.len())
+            terminal.expect_send().times(cmds.len())
                 .returning(|_: clap::Error| Ok(()));
 
-            cli.terminal.expect_read().times(cmds.len() + 1).with(eq(p.color))
-                .returning(move |_| Ok(cmds.pop().unwrap_or_else(|| "resign".into())));
+            terminal.expect_recv().times(cmds.len() + 1)
+                .returning(move || Ok(cmds.pop().unwrap_or_else(|| "resign".into())));
 
+            let mut cli = Cli::new(terminal, p);
             assert!(block_on(cli.act(pos)).is_ok());
         }
 
         #[test]
         fn writing_to_terminal_can_fail(p: Player, pos: Position, e: String) {
-            let mut cli = Cli::new(p);
+            let mut terminal = MockRemote::new();
             let failure = anyhow!(e.clone());
-            cli.terminal.expect_write().times(1).with(eq(pos))
+            terminal.expect_send().times(1).with(eq(pos))
                 .return_once(move |_| Err(failure));
 
+            let mut cli = Cli::new(terminal, p);
             assert_eq!(block_on(cli.act(pos)).unwrap_err().to_string(), e);
         }
 
         #[test]
         fn reading_from_terminal_can_fail(p: Player, pos: Position, e: String) {
-            let mut cli = Cli::new(p);
-            cli.terminal.expect_write().with(eq(pos))
+            let mut terminal = MockRemote::new();
+
+            terminal.expect_send().with(eq(pos))
                 .returning(|_| Ok(()));
 
             let failure = anyhow!(e.clone());
-            cli.terminal.expect_read().times(1).with(eq(p.color))
-                .return_once(move |_| Err(failure));
+            terminal.expect_recv().times(1)
+                .return_once(move || Err(failure));
 
+            let mut cli = Cli::new(terminal, p);
             assert_eq!(block_on(cli.act(pos)).unwrap_err().to_string(), e);
         }
     }
