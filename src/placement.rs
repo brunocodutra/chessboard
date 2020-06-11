@@ -45,6 +45,12 @@ impl Index<Square> for Placement {
     }
 }
 
+impl IndexMut<Square> for Placement {
+    fn index_mut(&mut self, s: Square) -> &mut Self::Output {
+        &mut self.squares[s.rank as usize][s.file as usize]
+    }
+}
+
 impl fmt::Display for Placement {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "   ")?;
