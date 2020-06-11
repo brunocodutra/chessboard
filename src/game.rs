@@ -24,30 +24,30 @@ impl Game {
             return Err(GameHasEnded(result));
         }
 
-        if action.player().color != self.rules.side_to_move().into() {
-            return Err(TurnOfTheOpponent(*action.player()));
-        }
-
         use PlayerAction::*;
         match action {
-            MakeMove(p, m) => {
+            MakeMove(m) => {
                 if !self.rules.make_move(m.into()) {
                     let square = m.from.into();
                     let board = self.rules.current_position();
 
                     debug_assert!(!board.legal(m.into()));
 
+                    let player = Player {
+                        color: self.rules.side_to_move().into(),
+                    };
+
                     if let Some(piece) = board.piece_on(square).map(Into::into) {
                         if let Some(color) = board.color_on(square).map(Into::into) {
-                            return Err(IllegalMove(p, Figure::new(color, piece), m));
+                            return Err(IllegalMove(player, Figure::new(color, piece), m));
                         }
                     }
 
-                    return Err(InvalidMove(p, m));
+                    return Err(InvalidMove(player, m));
                 }
             }
 
-            Resign(p) => assert!(self.rules.resign(p.color.into())),
+            Resign => assert!(self.rules.resign(self.rules.side_to_move())),
         }
 
         Ok(())
@@ -74,7 +74,7 @@ impl Game {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{Color, Move};
+    use crate::Move;
     use mockall::predicate::*;
     use proptest::prelude::*;
 
@@ -84,20 +84,6 @@ mod tests {
             let mut rules = Rules::new();
             rules.expect_result().times(1).return_const(Some(o.into()));
             assert_eq!(Game { rules }.execute(a), Err(InvalidPlayerAction::GameHasEnded(o)));
-        }
-
-        #[test]
-        fn players_can_only_act_in_their_turn(a: PlayerAction) {
-            let mut rules = Rules::new();
-
-            rules.expect_result().times(1).return_const(None);
-            rules.expect_side_to_move().times(1).returning(move || match a.player() {
-                Player { color: Color::White } => foreign::Color::Black,
-                Player { color: Color::Black } => foreign::Color::White,
-            });
-
-            use InvalidPlayerAction::*;
-            assert_eq!(Game { rules }.execute(a), Err(TurnOfTheOpponent(*a.player())));
         }
 
         #[test]
@@ -133,7 +119,7 @@ mod tests {
 
             use PlayerAction::*;
             use InvalidPlayerAction::*;
-            assert_eq!(Game { rules }.execute(MakeMove(p, m)), Err(IllegalMove(p, f, m)));
+            assert_eq!(Game { rules }.execute(MakeMove(m)), Err(IllegalMove(p, f, m)));
         }
 
         #[test]
@@ -162,7 +148,7 @@ mod tests {
 
             use PlayerAction::*;
             use InvalidPlayerAction::*;
-            assert_eq!(Game { rules }.execute(MakeMove(p, m)), Err(InvalidMove(p, m)));
+            assert_eq!(Game { rules }.execute(MakeMove(m)), Err(InvalidMove(p, m)));
         }
 
         #[test]
@@ -170,7 +156,6 @@ mod tests {
             let mut rules = Rules::new();
 
             rules.expect_result().times(1).return_const(None);
-            rules.expect_side_to_move().times(1).return_const(p.color);
 
             rules.expect_make_move()
                 .with(eq(Into::<foreign::ChessMove>::into(m)))
@@ -178,7 +163,7 @@ mod tests {
                 .return_const(true);
 
             use PlayerAction::*;
-            assert_eq!(Game { rules }.execute(MakeMove(p, m)), Ok(()));
+            assert_eq!(Game { rules }.execute(MakeMove(m)), Ok(()));
         }
 
         #[test]
@@ -194,7 +179,7 @@ mod tests {
                 .return_const(true);
 
             use PlayerAction::*;
-            assert_eq!(Game { rules }.execute(Resign(p)), Ok(()));
+            assert_eq!(Game { rules }.execute(Resign), Ok(()));
         }
 
         #[test]
