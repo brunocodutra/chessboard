@@ -1,4 +1,4 @@
-use crate::{foreign, Figure, InvalidPlayerAction, Outcome, Placement, Player, PlayerAction};
+use crate::{foreign, Figure, InvalidPlayerAction, Outcome, Player, PlayerAction, Position};
 use derivative::Derivative;
 
 #[cfg(test)]
@@ -59,7 +59,7 @@ impl Game {
     }
 
     /// The current position on the board.
-    pub fn position(&self) -> Placement {
+    pub fn position(&self) -> Position {
         self.rules.current_position().into()
     }
 
@@ -205,9 +205,9 @@ mod tests {
         }
 
         #[test]
-        fn position_returns_the_current_board(p: Placement) {
+        fn position_returns_the_current_board(p: Position) {
             let mut board = foreign::MockBoard::new();
-            board.expect_into::<Placement>().times(1).return_const(p);
+            board.expect_into::<Position>().times(1).return_const(p);
 
             let mut rules = Rules::new();
             rules.expect_current_position().times(1).return_once(move || board);

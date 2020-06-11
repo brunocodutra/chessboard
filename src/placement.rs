@@ -1,4 +1,4 @@
-use crate::{foreign, Figure, File, Rank, Square};
+use crate::{Figure, File, Rank, Square};
 use std::{fmt, ops::*};
 
 /// The piece placement on the board.
@@ -81,19 +81,5 @@ impl fmt::Display for Placement {
         }
 
         Ok(())
-    }
-}
-
-impl From<foreign::Board> for Placement {
-    fn from(b: foreign::Board) -> Self {
-        let mut squares: [[Option<Figure>; 8]; 8] = Default::default();
-
-        for &s in foreign::ALL_SQUARES.iter() {
-            squares[s.get_rank().to_index()][s.get_file().to_index()] = b
-                .piece_on(s)
-                .and_then(|p| b.color_on(s).map(move |c| Figure::new(c.into(), p.into())));
-        }
-
-        Placement { squares }
     }
 }
