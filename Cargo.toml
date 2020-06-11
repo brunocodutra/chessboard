@@ -19,6 +19,7 @@ derivative = "2.1.1"
 derive_more = "0.99.7"
 rustyline = "6.2.0"
 smol = "0.1.11"
+vampirc-uci = { version = "0.10.1", features = ["chess"] }
 
 [dev-dependencies]
 mockall = "0.7.1"
