@@ -12,15 +12,15 @@ keywords = ["chess", "cli"]
 [dependencies]
 anyhow = "1.0.31"
 async-std = "1.6.0"
-async-trait = "0.1.31"
+async-trait = "0.1.33"
 chess = "3.1.1"
 clap = "2.33.1"
 derivative = "2.1.1"
 derive_more = "0.99.7"
-rustyline = "6.1.2"
-smol = "0.1.10"
+rustyline = "6.2.0"
+smol = "0.1.11"
 
 [dev-dependencies]
 mockall = "0.7.1"
-proptest = "0.9.6"
-proptest-derive = "0.1.2"
+proptest = "0.10.0"
+proptest-derive = "0.2.0"
