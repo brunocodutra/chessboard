@@ -2,8 +2,10 @@ use crate::{PlayerAction, Position};
 use async_trait::async_trait;
 
 mod cli;
+mod uci;
 
 pub use cli::*;
+pub use uci::*;
 
 /// Trait for types that play chess.
 #[async_trait]

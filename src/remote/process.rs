@@ -39,7 +39,10 @@ impl Process {
 /// Waits for the child process to exit.
 impl Drop for Process {
     fn drop(&mut self) {
-        let _ = self.child.wait();
+        let status = self.child.wait();
+        if let Err(e) = status.context("warn: the child process exited with an error") {
+            eprintln!("{:?}", e);
+        }
     }
 }
 

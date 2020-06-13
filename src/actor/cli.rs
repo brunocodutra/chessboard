@@ -1,8 +1,12 @@
 use crate::*;
 use async_trait::async_trait;
 use clap::{App, AppSettings, Arg, SubCommand};
+use derivative::Derivative;
 
+#[derive(Derivative)]
+#[derivative(Debug)]
 pub struct Cli<R: Remote> {
+    #[derivative(Debug = "ignore")]
     remote: R,
 }
 
@@ -194,8 +198,8 @@ mod tests {
         fn writing_to_remote_can_fail(pos: Position, e: String) {
             let mut remote = MockRemote::new();
             let failure = anyhow!(e.clone());
-            remote.expect_send().times(1).with(eq(pos.placement()))
-                .return_once(move |_| Err(failure));
+
+            remote.expect_send().return_once(move |_: Placement| Err(failure));
 
             let mut cli = Cli::new(remote);
             assert_eq!(block_on(cli.act(pos)).unwrap_err().to_string(), e);
@@ -205,12 +209,10 @@ mod tests {
         fn reading_from_remote_can_fail(pos: Position, e: String) {
             let mut remote = MockRemote::new();
 
-            remote.expect_send().times(1).with(eq(pos.placement()))
-                .returning(|_| Ok(()));
+            remote.expect_send().returning(|_: Placement| Ok(()));
 
             let failure = anyhow!(e.clone());
-            remote.expect_recv().times(1)
-                .return_once(move || Err(failure));
+            remote.expect_recv().return_once(move || Err(failure));
 
             let mut cli = Cli::new(remote);
             assert_eq!(block_on(cli.act(pos)).unwrap_err().to_string(), e);

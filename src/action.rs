@@ -52,6 +52,22 @@ impl FromStr for Move {
     }
 }
 
+impl From<foreign::ChessMove> for Move {
+    fn from(m: foreign::ChessMove) -> Self {
+        Move {
+            from: m.get_source().into(),
+            to: m.get_dest().into(),
+            promotion: match m.get_promotion() {
+                Some(foreign::Piece::Knight) => Some(Promotion::Knight),
+                Some(foreign::Piece::Bishop) => Some(Promotion::Bishop),
+                Some(foreign::Piece::Rook) => Some(Promotion::Rook),
+                Some(foreign::Piece::Queen) => Some(Promotion::Queen),
+                _ => None,
+            },
+        }
+    }
+}
+
 impl Into<foreign::ChessMove> for Move {
     fn into(self: Self) -> foreign::ChessMove {
         foreign::ChessMove::new(
