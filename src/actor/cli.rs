@@ -3,13 +3,13 @@ use anyhow::Error as Failure;
 use async_trait::async_trait;
 use clap::{App, AppSettings, Arg, SubCommand};
 
-pub struct Cli<T: Remote> {
-    terminal: T,
+pub struct Cli<R: Remote> {
+    remote: R,
 }
 
-impl<T: Remote> Cli<T> {
-    pub fn new(terminal: T) -> Self {
-        Cli { terminal }
+impl<R: Remote> Cli<R> {
+    pub fn new(remote: R) -> Self {
+        Cli { remote }
     }
 
     fn spec() -> App<'static, 'static> {
@@ -49,23 +49,23 @@ impl<T: Remote> Cli<T> {
 }
 
 #[async_trait]
-impl<T> Actor for Cli<T>
+impl<R> Actor for Cli<R>
 where
-    T: Remote + Send + Sync,
-    Failure: From<T::Error>,
+    R: Remote + Send + Sync,
+    Failure: From<R::Error>,
 {
     type Error = Failure;
 
     async fn act(&mut self, p: Position) -> Result<PlayerAction, Failure> {
-        self.terminal.send(p.placement()).await?;
+        self.remote.send(p.placement()).await?;
 
         let matches = loop {
-            let line = self.terminal.recv().await?;
+            let line = self.remote.recv().await?;
             let args = Self::spec().get_matches_from_safe(line.split_whitespace());
 
             match args {
                 Ok(m) => break m,
-                Err(e) => self.terminal.send(e).await?,
+                Err(e) => self.remote.send(e).await?,
             };
         };
 
@@ -96,128 +96,128 @@ mod tests {
     proptest! {
         #[test]
         fn player_can_resign(pos: Position, cmd in "\\s*resign\\s*") {
-            let mut terminal = MockRemote::new();
+            let mut remote = MockRemote::new();
 
-            terminal.expect_send().times(1).with(eq(pos.placement()))
+            remote.expect_send().times(1).with(eq(pos.placement()))
                 .return_once(|_| Ok(()));
 
-            terminal.expect_recv().times(1)
+            remote.expect_recv().times(1)
                 .return_once(move || Ok(cmd));
 
-            let mut cli = Cli::new(terminal);
+            let mut cli = Cli::new(remote);
             assert_eq!(block_on(cli.act(pos)).unwrap(), PlayerAction::Resign);
         }
 
         #[test]
         fn player_can_make_a_move(pos: Position, m: Move, cmd in "\\s*move\\s*") {
-            let mut terminal = MockRemote::new();
+            let mut remote = MockRemote::new();
 
-            terminal.expect_send().times(1).with(eq(pos.placement()))
+            remote.expect_send().times(1).with(eq(pos.placement()))
                 .return_once(|_| Ok(()));
 
-            terminal.expect_recv().times(1)
+            remote.expect_recv().times(1)
                 .return_once(move || Ok(format!("{} {}", cmd, m)));
 
-            let mut cli = Cli::new(terminal);
+            let mut cli = Cli::new(remote);
             assert_eq!(block_on(cli.act(pos)).unwrap(), PlayerAction::MakeMove(m));
         }
 
         #[test]
         fn resign_takes_no_arguments(pos: Position, arg in "[^\\s]+") {
-            let mut terminal = MockRemote::new();
+            let mut remote = MockRemote::new();
 
-            terminal.expect_send().times(1).with(eq(pos.placement()))
+            remote.expect_send().times(1).with(eq(pos.placement()))
                 .returning(|_| Ok(()));
 
-            terminal.expect_send().times(1)
+            remote.expect_send().times(1)
                 .returning(|_: clap::Error| Ok(()));
 
             let mut cmd = Some(format!("resign {}", arg));
-            terminal.expect_recv().times(2)
+            remote.expect_recv().times(2)
                 .returning(move || Ok(cmd.take().unwrap_or_else(|| "resign".into())));
 
-            let mut cli = Cli::new(terminal);
+            let mut cli = Cli::new(remote);
             assert!(block_on(cli.act(pos)).is_ok());
         }
 
         #[test]
         fn move_does_not_accept_invalid_descriptors(pos: Position, m: Move, arg in "[^a-h]*") {
-            let mut terminal = MockRemote::new();
+            let mut remote = MockRemote::new();
 
-            terminal.expect_send().times(1).with(eq(pos.placement()))
+            remote.expect_send().times(1).with(eq(pos.placement()))
                 .returning(|_| Ok(()));
 
-            terminal.expect_send().times(1)
+            remote.expect_send().times(1)
                 .returning(|_: clap::Error| Ok(()));
 
             let mut cmd = Some(format!("move {}", arg));
-            terminal.expect_recv().times(2)
+            remote.expect_recv().times(2)
                 .returning(move || Ok(cmd.take().unwrap_or(format!("move {}", m))));
 
-            let mut cli = Cli::new(terminal);
+            let mut cli = Cli::new(remote);
             assert!(block_on(cli.act(pos)).is_ok());
         }
 
         #[test]
         fn player_can_ask_for_help(pos: Position, cmd in "|help|resign|move") {
-            let mut terminal = MockRemote::new();
+            let mut remote = MockRemote::new();
 
-            terminal.expect_send().times(1).with(eq(pos.placement()))
+            remote.expect_send().times(1).with(eq(pos.placement()))
                 .returning(|_| Ok(()));
 
-            terminal.expect_send().times(1)
+            remote.expect_send().times(1)
                 .with(function(|&clap::Error { kind, .. }| kind == clap::ErrorKind::HelpDisplayed))
                 .returning(|_| Ok(()));
 
             let mut help = Some(format!("help {}", cmd));
-            terminal.expect_recv().times(2)
+            remote.expect_recv().times(2)
                 .returning(move || Ok(help.take().unwrap_or_else(|| "resign".into())));
 
-            let mut cli = Cli::new(terminal);
+            let mut cli = Cli::new(remote);
             assert!(block_on(cli.act(pos)).is_ok());
         }
 
         #[test]
         fn player_is_prompted_again_after_invalid_command(pos: Position, cmds in "[^resign]+") {
-            let mut terminal = MockRemote::new();
+            let mut remote = MockRemote::new();
 
-            terminal.expect_send().times(1).with(eq(pos.placement()))
+            remote.expect_send().times(1).with(eq(pos.placement()))
                 .returning(|_| Ok(()));
 
             let mut cmds: Vec<_> = cmds.split_whitespace().map(String::from).collect();
-            terminal.expect_send().times(cmds.len())
+            remote.expect_send().times(cmds.len())
                 .returning(|_: clap::Error| Ok(()));
 
-            terminal.expect_recv().times(cmds.len() + 1)
+            remote.expect_recv().times(cmds.len() + 1)
                 .returning(move || Ok(cmds.pop().unwrap_or_else(|| "resign".into())));
 
-            let mut cli = Cli::new(terminal);
+            let mut cli = Cli::new(remote);
             assert!(block_on(cli.act(pos)).is_ok());
         }
 
         #[test]
-        fn writing_to_terminal_can_fail(pos: Position, e: String) {
-            let mut terminal = MockRemote::new();
+        fn writing_to_remote_can_fail(pos: Position, e: String) {
+            let mut remote = MockRemote::new();
             let failure = anyhow!(e.clone());
-            terminal.expect_send().times(1).with(eq(pos.placement()))
+            remote.expect_send().times(1).with(eq(pos.placement()))
                 .return_once(move |_| Err(failure));
 
-            let mut cli = Cli::new(terminal);
+            let mut cli = Cli::new(remote);
             assert_eq!(block_on(cli.act(pos)).unwrap_err().to_string(), e);
         }
 
         #[test]
-        fn reading_from_terminal_can_fail(pos: Position, e: String) {
-            let mut terminal = MockRemote::new();
+        fn reading_from_remote_can_fail(pos: Position, e: String) {
+            let mut remote = MockRemote::new();
 
-            terminal.expect_send().times(1).with(eq(pos.placement()))
+            remote.expect_send().times(1).with(eq(pos.placement()))
                 .returning(|_| Ok(()));
 
             let failure = anyhow!(e.clone());
-            terminal.expect_recv().times(1)
+            remote.expect_recv().times(1)
                 .return_once(move || Err(failure));
 
-            let mut cli = Cli::new(terminal);
+            let mut cli = Cli::new(remote);
             assert_eq!(block_on(cli.act(pos)).unwrap_err().to_string(), e);
         }
     }
