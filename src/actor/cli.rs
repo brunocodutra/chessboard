@@ -1,5 +1,4 @@
 use crate::*;
-use anyhow::Error as Failure;
 use async_trait::async_trait;
 use clap::{App, AppSettings, Arg, SubCommand};
 
@@ -33,7 +32,7 @@ impl<R: Remote> Cli<R> {
                             .validator(|d| {
                                 d.parse()
                                     .map(|_: Move| ())
-                                    .map_err(|e| format!("{:?}", Failure::from(e)))
+                                    .map_err(|e| format!("{:?}", anyhow::Error::from(e)))
                             }),
                     )
                     .after_help(
@@ -49,14 +48,10 @@ impl<R: Remote> Cli<R> {
 }
 
 #[async_trait]
-impl<R> Actor for Cli<R>
-where
-    R: Remote + Send + Sync,
-    Failure: From<R::Error>,
-{
-    type Error = Failure;
+impl<R: Remote + Send + Sync> Actor for Cli<R> {
+    type Error = R::Error;
 
-    async fn act(&mut self, p: Position) -> Result<PlayerAction, Failure> {
+    async fn act(&mut self, p: Position) -> Result<PlayerAction, Self::Error> {
         self.remote.send(p.placement()).await?;
 
         let matches = loop {
