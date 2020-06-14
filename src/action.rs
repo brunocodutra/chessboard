@@ -79,13 +79,15 @@ impl Into<foreign::ChessMove> for Move {
 }
 
 /// The possible actions a player can take.
-#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
+#[derive(Debug, Display, Copy, Clone, Eq, PartialEq, Hash)]
 #[cfg_attr(test, derive(proptest_derive::Arbitrary))]
 pub enum PlayerAction {
-    /// Move a piece on the board.    
+    /// Move a piece on the board.
+    #[display(fmt = "move {}", "_0")]
     MakeMove(Move),
 
     /// Resign the match in favor of the opponent.
+    #[display(fmt = "resign")]
     Resign,
 }
 
