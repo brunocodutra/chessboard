@@ -1,9 +1,9 @@
 use crate::*;
 use anyhow::{anyhow, Error as Failure};
-use async_std::{io, prelude::*};
 use async_trait::async_trait;
 use derivative::Derivative;
 use smol::block_on;
+use tracing::*;
 use vampirc_uci::{parse_one, UciFen, UciMessage};
 
 #[derive(Derivative)]
@@ -13,42 +13,35 @@ pub struct Uci<R: Remote> {
     remote: R,
 }
 
-impl<R> Uci<R>
-where
-    R: Remote,
-    Failure: From<R::Error>,
-{
-    pub async fn init(mut remote: R) -> Result<Self, Failure> {
+impl<R: Remote> Uci<R> {
+    pub async fn init(mut remote: R) -> Result<Self, R::Error> {
         remote.send(UciMessage::Uci).await?;
 
         loop {
             let answer = remote.recv().await?;
             match parse_one(&answer) {
                 UciMessage::UciOk => break,
-                m => Self::ignore(m).await?,
+                m => Self::ignore(m),
             }
         }
 
         Ok(Uci { remote })
     }
-}
 
-impl<R: Remote> Uci<R> {
-    async fn ignore(msg: UciMessage) -> Result<(), io::Error> {
+    fn ignore(msg: UciMessage) {
         let error = match msg {
             UciMessage::Unknown(m, cause) => {
-                let error = anyhow!("warn: ignoring invalid UCI command '{}'", m);
+                let error = anyhow!("ignoring invalid UCI command '{}'", m);
                 match cause {
-                    Some(cause) => Into::<Failure>::into(cause).context(error),
+                    Some(cause) => Failure::from(cause).context(error),
                     None => error,
                 }
             }
 
-            msg => anyhow!("warn: ignoring unexpected UCI command '{}'", msg),
+            msg => anyhow!("ignoring unexpected UCI command '{}'", msg),
         };
 
-        let warning = format!("{:?}\n", error);
-        io::stderr().write_all(warning.as_bytes()).await
+        warn!("{:?}", error);
     }
 }
 
@@ -57,18 +50,14 @@ impl<R: Remote> Drop for Uci<R> {
         if block_on(self.remote.send(UciMessage::Stop)).is_err()
             || block_on(self.remote.send(UciMessage::Quit)).is_err()
         {
-            eprintln!("warn: failed to quit the uci engine");
+            error!("failed to gracefully quit the uci engine");
         }
     }
 }
 
 #[async_trait]
-impl<R> Actor for Uci<R>
-where
-    R: Remote + Send + Sync,
-    Failure: From<R::Error>,
-{
-    type Error = Failure;
+impl<R: Remote + Send + Sync> Actor for Uci<R> {
+    type Error = R::Error;
 
     async fn act(&mut self, p: Position) -> Result<PlayerAction, Self::Error> {
         let setpos = UciMessage::Position {
@@ -89,7 +78,7 @@ where
             let answer = self.remote.recv().await?;
             match parse_one(&answer) {
                 UciMessage::BestMove { best_move: m, .. } => break m.into(),
-                m => Self::ignore(m).await?,
+                m => Self::ignore(m),
             }
         };
 
