@@ -4,6 +4,7 @@ use async_std::{io, prelude::*, sync::*};
 use async_trait::async_trait;
 use smol::{blocking, reader, writer};
 use std::{ffi::OsStr, fmt::Display, process::*};
+use tracing::*;
 
 /// An implementation of trait [`Remote`] as a child process.
 ///
@@ -40,8 +41,8 @@ impl Process {
 impl Drop for Process {
     fn drop(&mut self) {
         let status = self.child.wait();
-        if let Err(e) = status.context("warn: the child process exited with an error") {
-            eprintln!("{:?}", e);
+        if let Err(e) = status.context("the child process exited with an error") {
+            error!("{:?}", e);
         }
     }
 }
