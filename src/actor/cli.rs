@@ -87,10 +87,10 @@ impl<R: Remote + Send + Sync> Actor for Cli<R> {
 mod tests {
     use super::*;
     use crate::MockRemote;
-    use anyhow::anyhow;
     use mockall::predicate::*;
     use proptest::prelude::*;
     use smol::block_on;
+    use std::io;
 
     proptest! {
         #[test]
@@ -195,27 +195,27 @@ mod tests {
         }
 
         #[test]
-        fn writing_to_remote_can_fail(pos: Position, e: String) {
+        fn writing_to_remote_can_fail(pos: Position, e: io::Error) {
             let mut remote = MockRemote::new();
-            let failure = anyhow!(e.clone());
 
-            remote.expect_send().return_once(move |_: Placement| Err(failure));
+            let kind = e.kind();
+            remote.expect_send().return_once(move |_: Placement| Err(e));
 
             let mut cli = Cli::new(remote);
-            assert_eq!(block_on(cli.act(pos)).unwrap_err().to_string(), e);
+            assert_eq!(block_on(cli.act(pos)).unwrap_err().kind(), kind);
         }
 
         #[test]
-        fn reading_from_remote_can_fail(pos: Position, e: String) {
+        fn reading_from_remote_can_fail(pos: Position, e: io::Error) {
             let mut remote = MockRemote::new();
 
             remote.expect_send().returning(|_: Placement| Ok(()));
 
-            let failure = anyhow!(e.clone());
-            remote.expect_recv().return_once(move || Err(failure));
+            let kind = e.kind();
+            remote.expect_recv().return_once(move || Err(e));
 
             let mut cli = Cli::new(remote);
-            assert_eq!(block_on(cli.act(pos)).unwrap_err().to_string(), e);
+            assert_eq!(block_on(cli.act(pos)).unwrap_err().kind(), kind);
         }
     }
 }
