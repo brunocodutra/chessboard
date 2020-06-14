@@ -1,25 +1,33 @@
 use crate::*;
-use anyhow::{anyhow, Error as Failure};
+use anyhow::{anyhow, Context, Error as Failure};
 use async_trait::async_trait;
 use derivative::Derivative;
 use smol::block_on;
+use std::error::Error;
 use tracing::*;
 use vampirc_uci::{parse_one, UciFen, UciMessage};
 
 #[derive(Derivative)]
 #[derivative(Debug)]
-pub struct Uci<R: Remote> {
+pub struct Uci<R>
+where
+    R: Remote,
+    R::Error: Error + Send + Sync + 'static,
+{
     #[derivative(Debug = "ignore")]
     remote: R,
 }
 
-impl<R: Remote> Uci<R> {
+impl<R> Uci<R>
+where
+    R: Remote,
+    R::Error: Error + Send + Sync + 'static,
+{
     pub async fn init(mut remote: R) -> Result<Self, R::Error> {
         remote.send(UciMessage::Uci).await?;
 
         loop {
-            let answer = remote.recv().await?;
-            match parse_one(&answer) {
+            match parse_one(&remote.recv().await?) {
                 UciMessage::UciOk => break,
                 m => Self::ignore(m),
             }
@@ -45,18 +53,32 @@ impl<R: Remote> Uci<R> {
     }
 }
 
-impl<R: Remote> Drop for Uci<R> {
+impl<R> Drop for Uci<R>
+where
+    R: Remote,
+    R::Error: Error + Send + Sync + 'static,
+{
     fn drop(&mut self) {
-        if block_on(self.remote.send(UciMessage::Stop)).is_err()
-            || block_on(self.remote.send(UciMessage::Quit)).is_err()
+        if let Err(e) = block_on(self.remote.send(UciMessage::Stop))
+            .context("failed to gracefully stop the uci engine")
         {
-            error!("failed to gracefully quit the uci engine");
+            error!("{:?}", e);
+        }
+
+        if let Err(e) = block_on(self.remote.send(UciMessage::Quit))
+            .context("failed to gracefully quit the uci engine")
+        {
+            error!("{:?}", e);
         }
     }
 }
 
 #[async_trait]
-impl<R: Remote + Send + Sync> Actor for Uci<R> {
+impl<R> Actor for Uci<R>
+where
+    R: Remote + Send + Sync,
+    R::Error: Error + Send + Sync + 'static,
+{
     type Error = R::Error;
 
     async fn act(&mut self, p: Position) -> Result<PlayerAction, Self::Error> {
@@ -75,8 +97,7 @@ impl<R: Remote + Send + Sync> Actor for Uci<R> {
         self.remote.send(go).await?;
 
         let m = loop {
-            let answer = self.remote.recv().await?;
-            match parse_one(&answer) {
+            match parse_one(&self.remote.recv().await?) {
                 UciMessage::BestMove { best_move: m, .. } => break m.into(),
                 m => Self::ignore(m),
             }
@@ -93,6 +114,7 @@ mod tests {
     use mockall::{predicate::*, Sequence};
     use proptest::prelude::*;
     use smol::block_on;
+    use std::io;
 
     fn unexpected_uci_command() -> impl Strategy<Value = UciMessage> {
         prop_oneof![
@@ -142,18 +164,18 @@ mod tests {
         }
 
         #[test]
-        fn init_can_fail(e: String) {
+        fn init_can_fail(e: io::Error) {
             let mut remote = MockRemote::new();
 
             remote.expect_send().times(1)
                 .with(eq(UciMessage::Uci))
                 .return_once(|_| Ok(()));
 
-            let failure = anyhow!(e.clone());
+            let kind = e.kind();
             remote.expect_recv().times(1)
-                .return_once(move || Err(failure));
+                .return_once(move || Err(e));
 
-            assert_eq!(block_on(Uci::init(remote)).unwrap_err().to_string(), e);
+            assert_eq!(block_on(Uci::init(remote)).unwrap_err().kind(), kind);
         }
 
         #[test]
@@ -246,12 +268,12 @@ mod tests {
         }
 
         #[test]
-        fn act_can_fail_writing_to_remote(pos: Position, e: String) {
+        fn act_can_fail_writing_to_remote(pos: Position, e: io::Error) {
             let mut remote = MockRemote::new();
-            let failure = anyhow!(e.clone());
 
+            let kind = e.kind();
             remote.expect_send().times(1)
-                .return_once(move |_: UciMessage| Err(failure));
+                .return_once(move |_: UciMessage| Err(e));
 
             remote.expect_send().times(1)
                 .with(eq(UciMessage::Stop))
@@ -262,18 +284,18 @@ mod tests {
                 .return_once(|_| Ok(()));
 
             let mut uci = Uci { remote };
-            assert_eq!(block_on(uci.act(pos)).unwrap_err().to_string(), e);
+            assert_eq!(block_on(uci.act(pos)).unwrap_err().kind(), kind);
         }
 
         #[test]
-        fn act_can_fail_reading_from_remote(pos: Position, e: String) {
+        fn act_can_fail_reading_from_remote(pos: Position, e: io::Error) {
             let mut remote = MockRemote::new();
 
             remote.expect_send().times(2)
                 .returning(|_: UciMessage| Ok(()));
 
-            let failure = anyhow!(e.clone());
-            remote.expect_recv().return_once(move || Err(failure));
+            let kind = e.kind();
+            remote.expect_recv().return_once(move || Err(e));
 
             remote.expect_send().times(1)
                 .with(eq(UciMessage::Stop))
@@ -284,7 +306,7 @@ mod tests {
                 .return_once(|_| Ok(()));
 
             let mut uci = Uci { remote };
-            assert_eq!(block_on(uci.act(pos)).unwrap_err().to_string(), e);
+            assert_eq!(block_on(uci.act(pos)).unwrap_err().kind(), kind);
         }
     }
 }

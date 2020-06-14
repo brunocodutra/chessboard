@@ -23,15 +23,15 @@ pub trait Remote {
 #[cfg(test)]
 mockall::mock! {
     pub(crate) Remote {
-        fn recv(&mut self) -> Result<String, anyhow::Error>;
-        fn send<D: 'static>(&mut self, msg: D) -> Result<(), anyhow::Error>;
+        fn recv(&mut self) -> std::io::Result<String>;
+        fn send<D: 'static>(&mut self, msg: D) -> std::io::Result<()>;
     }
 }
 
 #[cfg(test)]
 #[async_trait]
 impl Remote for MockRemote {
-    type Error = anyhow::Error;
+    type Error = std::io::Error;
 
     async fn recv(&mut self) -> Result<String, Self::Error> {
         MockRemote::recv(self)

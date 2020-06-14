@@ -1,10 +1,28 @@
 use crate::Remote;
-use anyhow::Context;
+use anyhow::{Context, Error as Failure};
 use async_std::{io, prelude::*, sync::*};
 use async_trait::async_trait;
+use derive_more::{Display, Error, From};
 use smol::{blocking, reader, writer};
 use std::{ffi::OsStr, fmt::Display, process::*};
 use tracing::*;
+
+/// The reason why spawning, writing to or reading from the remote process failed.
+#[derive(Debug, Display, Error, From)]
+#[cfg_attr(test, derive(proptest_derive::Arbitrary))]
+pub struct RemoteProcessIoError(io::Error);
+
+impl From<io::ErrorKind> for RemoteProcessIoError {
+    fn from(k: io::ErrorKind) -> Self {
+        io::Error::from(k).into()
+    }
+}
+
+impl From<Failure> for RemoteProcessIoError {
+    fn from(e: Failure) -> Self {
+        io::Error::new(io::ErrorKind::Other, e).into()
+    }
+}
 
 /// An implementation of trait [`Remote`] as a child process.
 ///
@@ -17,7 +35,7 @@ pub struct Process {
 }
 
 impl Process {
-    pub async fn spawn<S>(program: S) -> Result<Self, anyhow::Error>
+    pub async fn spawn<S>(program: S) -> Result<Self, RemoteProcessIoError>
     where
         S: AsRef<OsStr> + Send + 'static,
     {
@@ -49,11 +67,11 @@ impl Drop for Process {
 
 #[async_trait]
 impl Remote for Process {
-    type Error = anyhow::Error;
+    type Error = RemoteProcessIoError;
 
     async fn recv(&mut self) -> Result<String, Self::Error> {
         let next = self.reader.lock().await.next().await;
-        let line = next.context("broken pipe")??;
+        let line = next.ok_or(io::ErrorKind::UnexpectedEof)??;
         Ok(line)
     }
 
