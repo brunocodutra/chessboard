@@ -109,6 +109,20 @@ mod tests {
 
     proptest! {
         #[test]
+        fn player_can_make_any_action(pos: Position, a: PlayerAction) {
+            let mut remote = MockRemote::new();
+
+            remote.expect_send().times(1).with(eq(pos.placement()))
+                .return_once(|_| Ok(()));
+
+            remote.expect_recv().times(1)
+                .return_once(move || Ok(a.to_string()));
+
+            let mut cli = Cli::new(remote);
+            assert_eq!(block_on(cli.act(pos)).unwrap(), a);
+        }
+
+        #[test]
         fn player_can_resign(pos: Position, cmd in "\\s*resign\\s*") {
             let mut remote = MockRemote::new();
 
@@ -137,7 +151,7 @@ mod tests {
         }
 
         #[test]
-        fn resign_takes_no_arguments(pos: Position, arg in "[^\\s]+") {
+        fn resign_takes_no_arguments(pos: Position, a: PlayerAction, arg in "[^\\s]+") {
             let mut remote = MockRemote::new();
 
             remote.expect_send().times(1).with(eq(pos.placement()))
@@ -148,14 +162,14 @@ mod tests {
 
             let mut cmd = Some(format!("resign {}", arg));
             remote.expect_recv().times(2)
-                .returning(move || Ok(cmd.take().unwrap_or_else(|| "resign".into())));
+                .returning(move || Ok(cmd.take().unwrap_or_else(|| a.to_string())));
 
             let mut cli = Cli::new(remote);
-            assert!(block_on(cli.act(pos)).is_ok());
+            assert_eq!(block_on(cli.act(pos)).unwrap(), a);
         }
 
         #[test]
-        fn move_does_not_accept_invalid_descriptors(pos: Position, m: Move, arg in "[^a-h]*") {
+        fn move_does_not_accept_invalid_descriptors(pos: Position, a: PlayerAction, m: Move, arg in "[^a-h]*") {
             let mut remote = MockRemote::new();
 
             remote.expect_send().times(1).with(eq(pos.placement()))
@@ -166,14 +180,14 @@ mod tests {
 
             let mut cmd = Some(format!("move {}", arg));
             remote.expect_recv().times(2)
-                .returning(move || Ok(cmd.take().unwrap_or(format!("move {}", m))));
+                .returning(move || Ok(cmd.take().unwrap_or_else(|| a.to_string())));
 
             let mut cli = Cli::new(remote);
-            assert!(block_on(cli.act(pos)).is_ok());
+            assert_eq!(block_on(cli.act(pos)).unwrap(), a);
         }
 
         #[test]
-        fn player_can_ask_for_help(pos: Position, cmd in "|help|resign|move") {
+        fn player_can_ask_for_help(pos: Position, a: PlayerAction, cmd in "|help|resign|move") {
             let mut remote = MockRemote::new();
 
             remote.expect_send().times(1).with(eq(pos.placement()))
@@ -185,14 +199,14 @@ mod tests {
 
             let mut help = Some(format!("help {}", cmd));
             remote.expect_recv().times(2)
-                .returning(move || Ok(help.take().unwrap_or_else(|| "resign".into())));
+                .returning(move || Ok(help.take().unwrap_or_else(|| a.to_string())));
 
             let mut cli = Cli::new(remote);
-            assert!(block_on(cli.act(pos)).is_ok());
+            assert_eq!(block_on(cli.act(pos)).unwrap(), a);
         }
 
         #[test]
-        fn player_is_prompted_again_after_invalid_command(pos: Position, cmds in "[^resign]+") {
+        fn player_is_prompted_again_after_invalid_command(pos: Position, a: PlayerAction, cmds in "[^resign]+") {
             let mut remote = MockRemote::new();
 
             remote.expect_send().times(1).with(eq(pos.placement()))
@@ -203,10 +217,10 @@ mod tests {
                 .returning(|_: clap::Error| Ok(()));
 
             remote.expect_recv().times(cmds.len() + 1)
-                .returning(move || Ok(cmds.pop().unwrap_or_else(|| "resign".into())));
+                .returning(move || Ok(cmds.pop().unwrap_or_else(|| a.to_string())));
 
             let mut cli = Cli::new(remote);
-            assert!(block_on(cli.act(pos)).is_ok());
+            assert_eq!(block_on(cli.act(pos)).unwrap(), a);
         }
 
         #[test]

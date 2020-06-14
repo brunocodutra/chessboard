@@ -4,8 +4,9 @@ use derive_more::{Display, Error, From};
 use std::{hash::*, str::FromStr};
 
 /// The current board.
-#[derive(Debug, Copy, Clone, Derivative, From)]
+#[derive(Debug, Display, Copy, Clone, Derivative, From)]
 #[derivative(Default(new = "true"))]
+#[display(fmt = "{}", "board")]
 pub struct Position {
     board: foreign::Board,
 }
@@ -133,13 +134,6 @@ impl proptest::arbitrary::Arbitrary for Position {
         ]
         .prop_map(|fen| Position::from_str(&fen).unwrap())
         .boxed()
-    }
-}
-
-/// Converts this position into a FEN string.
-impl std::fmt::Display for Position {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        f.write_str(&self.board.to_string())
     }
 }
 

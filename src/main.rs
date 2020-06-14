@@ -24,7 +24,7 @@ async fn chess() -> Result<(), Failure> {
                 info!(%position);
 
                 let action = player.act(position).await?;
-                info!(player = %game.player().color, ?action);
+                info!(player = %game.player().color, %action);
 
                 if let Err(e) = game.execute(action).context("invalid player action") {
                     warn!("{:?}", e);
