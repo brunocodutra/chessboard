@@ -35,10 +35,13 @@ pub struct Process {
 }
 
 impl Process {
+    #[instrument(skip(program), err)]
     pub async fn spawn<S>(program: S) -> Result<Self, RemoteProcessIoError>
     where
         S: AsRef<OsStr> + Send + 'static,
     {
+        info!(program = ?program.as_ref());
+
         let mut child = blocking!(Command::new(program)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
@@ -57,6 +60,7 @@ impl Process {
 
 /// Waits for the child process to exit.
 impl Drop for Process {
+    #[instrument(skip(self))]
     fn drop(&mut self) {
         let status = self.child.wait();
         if let Err(e) = status.context("the child process exited with an error") {
@@ -69,14 +73,18 @@ impl Drop for Process {
 impl Remote for Process {
     type Error = RemoteProcessIoError;
 
+    #[instrument(skip(self), err)]
     async fn recv(&mut self) -> Result<String, Self::Error> {
         let next = self.reader.lock().await.next().await;
         let line = next.ok_or(io::ErrorKind::UnexpectedEof)??;
+        trace!(%line);
         Ok(line)
     }
 
+    #[instrument(skip(self, msg), err)]
     async fn send<D: Display + Send + 'static>(&mut self, msg: D) -> Result<(), Self::Error> {
         let line = format!("{}\n", msg);
+        trace!(%line);
         self.writer.lock().await.write_all(line.as_bytes()).await?;
         Ok(())
     }

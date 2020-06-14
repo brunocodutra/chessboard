@@ -3,39 +3,50 @@ use chessboard::*;
 use std::{error::Error, io::stderr};
 use tracing::*;
 
-fn main() -> Result<(), Box<dyn Error + Send + Sync + 'static>> {
-    tracing_subscriber::fmt()
-        .with_writer(stderr)
-        .with_max_level(Level::INFO)
-        .try_init()?;
+#[instrument(err)]
+#[allow(clippy::unit_arg)]
+async fn chess() -> Result<(), Failure> {
+    let mut game = Game::new();
+    let mut white = actor::Cli::new(Terminal::new(Color::White.to_string()));
+    let mut black = actor::Cli::new(Terminal::new(Color::Black.to_string()));
 
-    let result: Result<Outcome, Failure> = smol::run(async {
-        let mut game = Game::new();
-        let mut black = actor::Cli::new(Terminal::new(Color::Black.to_string()));
-        let mut white = actor::Cli::new(Terminal::new(Color::White.to_string()));
+    let outcome = loop {
+        match game.outcome() {
+            Some(o) => break o,
 
-        loop {
-            match game.outcome() {
-                Some(o) => break Ok(o),
+            None => {
+                let player = match game.player().color {
+                    Color::Black => &mut black,
+                    Color::White => &mut white,
+                };
 
-                None => {
-                    let player = match game.player().color {
-                        Color::Black => &mut black,
-                        Color::White => &mut white,
-                    };
+                let position = game.position();
+                info!(%position);
 
-                    let action = player.act(game.position()).await?;
+                let action = player.act(position).await?;
+                info!(player = %game.player().color, ?action);
 
-                    if let Err(e) = game.execute(action).context("invalid player action") {
-                        warn!("{:?}", e);
-                    }
+                if let Err(e) = game.execute(action).context("invalid player action") {
+                    warn!("{:?}", e);
                 }
             }
         }
-    });
+    };
 
-    let outcome = result.context("the match was interrupted")?;
-    info!("the match ended in a {}", outcome);
+    info!(%outcome);
+
+    Ok(())
+}
+
+fn main() -> Result<(), Box<dyn Error + Send + Sync + 'static>> {
+    let (writer, _guard) = tracing_appender::non_blocking(stderr());
+
+    tracing_subscriber::fmt()
+        .with_writer(writer)
+        .with_env_filter("warn,chessboard=info")
+        .try_init()?;
+
+    smol::run(chess()).context("the match was interrupted")?;
 
     Ok(())
 }

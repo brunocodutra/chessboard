@@ -23,12 +23,23 @@ where
     R: Remote,
     R::Error: Error + Send + Sync + 'static,
 {
+    #[instrument(skip(remote), err)]
     pub async fn init(mut remote: R) -> Result<Self, R::Error> {
         remote.send(UciMessage::Uci).await?;
 
         loop {
+            debug!("expecting 'uciok'");
             match parse_one(&remote.recv().await?) {
                 UciMessage::UciOk => break,
+                UciMessage::Id { name, author } => {
+                    if let Some(engine) = name {
+                        info!(?engine)
+                    }
+
+                    if let Some(author) = author {
+                        info!(?author)
+                    }
+                }
                 m => Self::ignore(m),
             }
         }
@@ -37,7 +48,7 @@ where
     }
 
     fn ignore(msg: UciMessage) {
-        let error = match msg {
+        let e = match msg {
             UciMessage::Unknown(m, cause) => {
                 let error = anyhow!("ignoring invalid UCI command '{}'", m);
                 match cause {
@@ -49,7 +60,7 @@ where
             msg => anyhow!("ignoring unexpected UCI command '{}'", msg),
         };
 
-        warn!("{:?}", error);
+        warn!("{:?}", e);
     }
 }
 
@@ -58,6 +69,7 @@ where
     R: Remote,
     R::Error: Error + Send + Sync + 'static,
 {
+    #[instrument(skip(self))]
     fn drop(&mut self) {
         if let Err(e) = block_on(self.remote.send(UciMessage::Stop))
             .context("failed to gracefully stop the uci engine")
@@ -81,6 +93,7 @@ where
 {
     type Error = R::Error;
 
+    #[instrument(skip(self, p), err)]
     async fn act(&mut self, p: Position) -> Result<PlayerAction, Self::Error> {
         let setpos = UciMessage::Position {
             startpos: false,
@@ -97,8 +110,10 @@ where
         self.remote.send(go).await?;
 
         let m = loop {
+            debug!("expecting 'bestmove'");
             match parse_one(&self.remote.recv().await?) {
                 UciMessage::BestMove { best_move: m, .. } => break m.into(),
+                i @ UciMessage::Info(_) => debug!("{}", i),
                 m => Self::ignore(m),
             }
         };
