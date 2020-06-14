@@ -2,15 +2,25 @@ use crate::*;
 use async_trait::async_trait;
 use clap::{App, AppSettings, Arg, SubCommand};
 use derivative::Derivative;
+use std::error::Error;
+use tracing::*;
 
 #[derive(Derivative)]
 #[derivative(Debug)]
-pub struct Cli<R: Remote> {
+pub struct Cli<R>
+where
+    R: Remote,
+    R::Error: Error + Send + Sync + 'static,
+{
     #[derivative(Debug = "ignore")]
     remote: R,
 }
 
-impl<R: Remote> Cli<R> {
+impl<R> Cli<R>
+where
+    R: Remote,
+    R::Error: Error + Send + Sync + 'static,
+{
     pub fn new(remote: R) -> Self {
         Cli { remote }
     }
@@ -52,9 +62,14 @@ impl<R: Remote> Cli<R> {
 }
 
 #[async_trait]
-impl<R: Remote + Send + Sync> Actor for Cli<R> {
+impl<R> Actor for Cli<R>
+where
+    R: Remote + Send + Sync,
+    R::Error: Error + Send + Sync + 'static,
+{
     type Error = R::Error;
 
+    #[instrument(skip(self, p), err)]
     async fn act(&mut self, p: Position) -> Result<PlayerAction, Self::Error> {
         self.remote.send(p.placement()).await?;
 

@@ -4,6 +4,7 @@ use async_trait::async_trait;
 use derive_more::{Display, Error, From};
 use rustyline::{error::ReadlineError, Config, Editor};
 use std::fmt::Display;
+use tracing::*;
 
 /// The reason why writing to or reading from the terminal failed.
 #[derive(Debug, Display, Error, From)]
@@ -61,6 +62,7 @@ impl Terminal {
 impl Remote for Terminal {
     type Error = TerminalIoError;
 
+    #[instrument(skip(self), err)]
     async fn recv(&mut self) -> Result<String, Self::Error> {
         let reader = self.reader.clone();
         let prompt = self.prompt.clone();
@@ -68,6 +70,7 @@ impl Remote for Terminal {
         Ok(line)
     }
 
+    #[instrument(skip(self, msg), err)]
     async fn send<D: Display + Send + 'static>(&mut self, msg: D) -> Result<(), Self::Error> {
         let line = format!("{}\n", msg);
         self.writer.write_all(line.as_bytes()).await?;
