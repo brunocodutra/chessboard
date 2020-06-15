@@ -24,6 +24,7 @@ tracing-appender = "0.1.0"
 tracing-futures = { version = "0.2.4", features = ["std", "std-future"], default-features = false }
 tracing-subscriber = "0.2.5"
 vampirc-uci = { version = "0.10.1", features = ["chess"] }
+structopt = "0.3.14"
 
 [dev-dependencies]
 mockall = "0.7.1"
