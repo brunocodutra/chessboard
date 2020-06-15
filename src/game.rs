@@ -20,7 +20,7 @@ impl Game {
     pub fn execute(&mut self, action: PlayerAction) -> Result<(), InvalidPlayerAction> {
         use InvalidPlayerAction::*;
 
-        if let Some(result) = self.rules.result().map(Into::into) {
+        if let Some(result) = self.outcome() {
             return Err(GameHasEnded(result));
         }
 
@@ -33,21 +33,29 @@ impl Game {
 
                     debug_assert!(!board.legal(m.into()));
 
-                    let player = Player {
-                        color: self.rules.side_to_move().into(),
-                    };
-
                     if let Some(piece) = board.piece_on(square).map(Into::into) {
                         if let Some(color) = board.color_on(square).map(Into::into) {
-                            return Err(IllegalMove(player, Figure::new(color, piece), m));
+                            return Err(IllegalMove(self.player(), Figure::new(color, piece), m));
                         }
                     }
 
-                    return Err(InvalidMove(player, m));
+                    return Err(InvalidMove(self.player(), m));
                 }
             }
 
-            Resign => assert!(self.rules.resign(self.rules.side_to_move())),
+            Resign => {
+                assert!(self.rules.resign(self.rules.side_to_move()));
+
+                #[cfg(not(test))]
+                debug_assert_eq!(self.outcome(), Some(Outcome::Resignation(self.player())));
+            }
+        }
+
+        if self.rules.can_declare_draw() {
+            assert!(self.rules.declare_draw());
+
+            #[cfg(not(test))]
+            debug_assert_eq!(self.outcome(), Some(Outcome::Draw));
         }
 
         Ok(())
@@ -93,24 +101,21 @@ mod tests {
             #[cfg(debug_assertions)]
             board.expect_legal()
                 .with(eq(Into::<foreign::ChessMove>::into(m)))
-                .times(1)
                 .return_const(false);
 
             board.expect_piece_on()
                 .with(eq(Into::<foreign::Square>::into(m.from)))
-                .times(1)
                 .return_const(Some(f.piece().into()));
 
             board.expect_color_on()
                 .with(eq(Into::<foreign::Square>::into(m.from)))
-                .times(1)
                 .return_const(Some(f.color().into()));
 
             let mut rules = Rules::new();
 
-            rules.expect_result().times(1).return_const(None);
-            rules.expect_side_to_move().times(1).return_const(p.color);
-            rules.expect_current_position().times(1).return_once(move || board);
+            rules.expect_result().return_const(None);
+            rules.expect_side_to_move().return_const(p.color);
+            rules.expect_current_position().return_once(move || board);
 
             rules.expect_make_move()
                 .with(eq(Into::<foreign::ChessMove>::into(m)))
@@ -129,7 +134,6 @@ mod tests {
             #[cfg(debug_assertions)]
             board.expect_legal()
                 .with(eq(Into::<foreign::ChessMove>::into(m)))
-                .times(1)
                 .return_const(false);
 
             board.expect_piece_on().times(0..=1).return_const(None);
@@ -137,9 +141,9 @@ mod tests {
 
             let mut rules = Rules::new();
 
-            rules.expect_result().times(1).return_const(None);
-            rules.expect_side_to_move().times(1).return_const(p.color);
-            rules.expect_current_position().times(1).return_once(move || board);
+            rules.expect_result().return_const(None);
+            rules.expect_side_to_move().return_const(p.color);
+            rules.expect_current_position().return_once(move || board);
 
             rules.expect_make_move()
                 .with(eq(Into::<foreign::ChessMove>::into(m)))
@@ -155,12 +159,14 @@ mod tests {
         fn players_can_make_valid_and_legal_moves(p: Player, m: Move) {
             let mut rules = Rules::new();
 
-            rules.expect_result().times(1).return_const(None);
+            rules.expect_result().return_const(None);
 
             rules.expect_make_move()
                 .with(eq(Into::<foreign::ChessMove>::into(m)))
                 .times(1)
                 .return_const(true);
+
+            rules.expect_can_declare_draw().times(1).return_const(false);
 
             use PlayerAction::*;
             assert_eq!(Game { rules }.execute(MakeMove(m)), Ok(()));
@@ -170,16 +176,34 @@ mod tests {
         fn players_can_resign(p: Player) {
             let mut rules = Rules::new();
 
-            rules.expect_result().times(1).return_const(None);
-            rules.expect_side_to_move().times(1).return_const(p.color);
+            rules.expect_result().return_const(None);
+            rules.expect_side_to_move().return_const(p.color);
 
             rules.expect_resign()
                 .with(eq(Into::<foreign::Color>::into(p.color)))
                 .times(1)
                 .return_const(true);
 
+            rules.expect_can_declare_draw().times(1).return_const(false);
+
             use PlayerAction::*;
             assert_eq!(Game { rules }.execute(Resign), Ok(()));
+        }
+
+
+        #[test]
+        fn draw_is_declared_if_the_criteria_is_met(p: Player, a: PlayerAction) {
+            let mut rules = Rules::new();
+
+            rules.expect_result().return_const(None);
+            rules.expect_side_to_move().return_const(p.color);
+            rules.expect_make_move().times(0..=1).return_const(true);
+            rules.expect_resign().times(0..=1).return_const(true);
+
+            rules.expect_can_declare_draw().times(1).return_const(true);
+            rules.expect_declare_draw().times(1).return_const(true);
+
+            assert_eq!(Game { rules }.execute(a), Ok(()));
         }
 
         #[test]

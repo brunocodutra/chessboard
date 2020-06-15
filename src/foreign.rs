@@ -18,5 +18,7 @@ mockall::mock! {
         fn resign(&mut self, color: Color) -> bool;
         fn result(&self) -> Option<GameResult>;
         fn side_to_move(&self) -> Color;
+        fn can_declare_draw(&self) -> bool;
+        fn declare_draw(&self) -> bool;
     }
 }
