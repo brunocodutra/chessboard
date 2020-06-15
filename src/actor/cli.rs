@@ -1,9 +1,47 @@
 use crate::*;
+use anyhow::Error as Failure;
 use async_trait::async_trait;
-use clap::{App, AppSettings, Arg, SubCommand};
+use clap::AppSettings::*;
 use derivative::Derivative;
-use std::error::Error;
+use std::{error::Error, str::FromStr};
+use structopt::StructOpt;
 use tracing::*;
+
+#[derive(Debug, StructOpt)]
+#[structopt(
+    author,
+    name = "Chessboard",
+    usage = "<SUBCOMMAND> [ARGS]",
+    after_help = "See 'help <SUBCOMMAND>' for more information on a specific command.",
+    global_settings = &[NoBinaryName, DisableVersion, DisableHelpFlags],
+)]
+enum CliSpec {
+    #[structopt(about = "Resign the match in favor of the opponent", no_version)]
+    Resign,
+
+    #[structopt(
+        about = "Moves a piece on the board",
+        after_help = r#"SYNTAX:
+    <descriptor>    ::= <square:from><square:to>[<promotion>]
+    <square>        ::= <file><rank>
+    <file>          ::= a|b|c|d|e|f|g|h
+    <rank>          ::= 1|2|3|4|5|6|7|8
+    <promotion>     ::= q|r|b|n"#,
+        no_version
+    )]
+    Move {
+        #[structopt(help = "A chess move in pure coordinate notation", parse(try_from_str = try_parse))]
+        descriptor: Move,
+    },
+}
+
+fn try_parse<T>(s: &str) -> Result<T, String>
+where
+    T: FromStr,
+    Failure: From<T::Err>,
+{
+    s.parse().map_err(|e| format!("{:?}", Failure::from(e)))
+}
 
 #[derive(Derivative)]
 #[derivative(Debug)]
@@ -24,41 +62,6 @@ where
     pub fn new(remote: R) -> Self {
         Cli { remote }
     }
-
-    fn spec() -> App<'static, 'static> {
-        App::new("chessboard")
-            .setting(AppSettings::NoBinaryName)
-            .setting(AppSettings::DisableVersion)
-            .setting(AppSettings::VersionlessSubcommands)
-            .setting(AppSettings::SubcommandRequired)
-            .usage("<SUBCOMMAND> [ARGS]")
-            .after_help("See 'help <SUBCOMMAND>' for more information on a specific command.")
-            .subcommand(
-                SubCommand::with_name("resign").about("Resign the match in favor of the opponent"),
-            )
-            .subcommand(
-                SubCommand::with_name("move")
-                    .about("Moves a piece on the board")
-                    .arg(
-                        Arg::with_name("descriptor")
-                            .help("A chess move in pure coordinate notation")
-                            .required(true)
-                            .validator(|d| {
-                                d.parse()
-                                    .map(|_: Move| ())
-                                    .map_err(|e| format!("{:?}", anyhow::Error::from(e)))
-                            }),
-                    )
-                    .after_help(
-                        r#"SYNTAX:
-    <descriptor>    ::= <square:from><square:to>[<promotion>]
-    <square>        ::= <file><rank>
-    <file>          ::= a|b|c|d|e|f|g|h
-    <rank>          ::= 1|2|3|4|5|6|7|8
-    <promotion>     ::= q|r|b|n"#,
-                    ),
-            )
-    }
 }
 
 #[async_trait]
@@ -73,28 +76,19 @@ where
     async fn act(&mut self, p: Position) -> Result<PlayerAction, Self::Error> {
         self.remote.send(p.placement()).await?;
 
-        let matches = loop {
+        let spec = loop {
             let line = self.remote.recv().await?;
-            let args = Self::spec().get_matches_from_safe(line.split_whitespace());
 
-            match args {
-                Ok(m) => break m,
+            match CliSpec::from_iter_safe(line.split_whitespace()) {
+                Ok(s) => break s,
                 Err(e) => self.remote.send(e).await?,
             };
         };
 
-        let action = match matches.subcommand() {
-            ("resign", _) => PlayerAction::Resign,
-
-            ("move", Some(args)) => {
-                let descriptor = args.value_of("descriptor").expect("missing required arg");
-                PlayerAction::MakeMove(descriptor.parse().unwrap())
-            }
-
-            (cmd, _) => panic!("unexpected subcommand '{}'", cmd),
-        };
-
-        Ok(action)
+        match spec {
+            CliSpec::Resign => Ok(PlayerAction::Resign),
+            CliSpec::Move { descriptor } => Ok(PlayerAction::MakeMove(descriptor)),
+        }
     }
 }
 
@@ -109,7 +103,7 @@ mod tests {
 
     proptest! {
         #[test]
-        fn player_can_make_any_action(pos: Position, a: PlayerAction) {
+        fn player_can_take_any_action(pos: Position, a: PlayerAction) {
             let mut remote = MockRemote::new();
 
             remote.expect_send().times(1).with(eq(pos.placement()))
