@@ -19,14 +19,16 @@ derivative = "2.1.1"
 derive_more = "0.99.7"
 rustyline = "6.2.0"
 smol = "0.1.11"
+structopt = "0.3.14"
 tracing = { version = "0.1.15", features = ["log"] }
 tracing-appender = "0.1.0"
 tracing-futures = { version = "0.2.4", features = ["std", "std-future"], default-features = false }
 tracing-subscriber = "0.2.5"
 vampirc-uci = { version = "0.10.1", features = ["chess"] }
-structopt = "0.3.14"
 
 [dev-dependencies]
+futures = "0.3.5"
 mockall = "0.7.1"
+port_check = "0.1.5"
 proptest = "0.10.0"
 proptest-derive = "0.2.0"
