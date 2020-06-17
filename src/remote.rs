@@ -2,9 +2,11 @@ use async_trait::async_trait;
 use std::fmt::Display;
 
 mod process;
+mod tcp;
 mod terminal;
 
 pub use process::*;
+pub use tcp::*;
 pub use terminal::*;
 
 /// Trait for types that communicate via message-passing.
