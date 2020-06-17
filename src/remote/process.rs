@@ -1,5 +1,5 @@
 use crate::Remote;
-use anyhow::{Context, Error as Failure};
+use anyhow::{Context, Error as Anyhow};
 use async_std::{io, prelude::*, sync::*};
 use async_trait::async_trait;
 use derive_more::{Display, Error, From};
@@ -18,8 +18,8 @@ impl From<io::ErrorKind> for RemoteProcessIoError {
     }
 }
 
-impl From<Failure> for RemoteProcessIoError {
-    fn from(e: Failure) -> Self {
+impl From<Anyhow> for RemoteProcessIoError {
+    fn from(e: Anyhow) -> Self {
         io::Error::new(io::ErrorKind::Other, e).into()
     }
 }
