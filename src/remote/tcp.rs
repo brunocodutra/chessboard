@@ -1,0 +1,127 @@
+use crate::Remote;
+use anyhow::Context;
+use async_std::{io, net::*, prelude::*};
+use async_trait::async_trait;
+use derive_more::{Display, Error, From};
+use smol::block_on;
+use std::fmt::Display;
+use tracing::*;
+
+/// The reason why connecting, writing to or reading from the tcp stream failed.
+#[derive(Debug, Display, Error, From)]
+#[cfg_attr(test, derive(proptest_derive::Arbitrary))]
+pub struct TcpIoError(io::Error);
+
+impl From<io::ErrorKind> for TcpIoError {
+    fn from(k: io::ErrorKind) -> Self {
+        io::Error::from(k).into()
+    }
+}
+
+/// An implementation of trait [`Remote`] as a tcp stream.
+pub struct Tcp {
+    reader: io::Lines<io::BufReader<TcpStream>>,
+    writer: io::BufWriter<TcpStream>,
+}
+
+impl Tcp {
+    #[instrument(skip(addrs), err)]
+    pub async fn connect<A: ToSocketAddrs>(addrs: A) -> Result<Self, TcpIoError> {
+        let socket = TcpStream::connect(addrs).await?;
+        info!(local_addr = %socket.local_addr()?, peer_addr = %socket.peer_addr()?);
+
+        Ok(Tcp {
+            reader: io::BufReader::new(socket.clone()).lines(),
+            writer: io::BufWriter::new(socket),
+        })
+    }
+}
+
+/// Flushes the outbound buffer.
+impl Drop for Tcp {
+    #[instrument(skip(self))]
+    fn drop(&mut self) {
+        if let Err(e) = block_on(self.writer.flush())
+            .context("failed to flush the buffer, messages may be lost")
+        {
+            error!("{:?}", e);
+        }
+    }
+}
+
+#[async_trait]
+impl Remote for Tcp {
+    type Error = TcpIoError;
+
+    #[instrument(skip(self), err)]
+    async fn recv(&mut self) -> Result<String, Self::Error> {
+        let next = self.reader.next().await;
+        let line = next.ok_or(io::ErrorKind::UnexpectedEof)??;
+        trace!(%line);
+        Ok(line)
+    }
+
+    #[instrument(skip(self, msg), err)]
+    async fn send<D: Display + Send + 'static>(&mut self, msg: D) -> Result<(), Self::Error> {
+        let line = format!("{}\n", msg);
+        trace!(%line);
+        self.writer.write_all(line.as_bytes()).await?;
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use anyhow::{Context, Error as Failure};
+    use futures::join;
+    use port_check::free_local_port;
+    use proptest::{collection::vec, prelude::*};
+
+    async fn connect() -> Result<(Tcp, TcpStream), Failure> {
+        let port = free_local_port().context("no free port")?;
+        let addr = format!("127.0.0.1:{}", port);
+        let listener = TcpListener::bind(&addr).await?;
+        let (connected, accepted) = join!(Tcp::connect(addr), listener.accept());
+
+        let tcp = connected?;
+        let (peer, _) = accepted?;
+
+        Ok((tcp, peer))
+    }
+
+    proptest! {
+        #[test]
+        fn send_appends_new_line_to_message(msg: String) {
+            smol::run(async {
+                let (mut tcp, mut peer) = connect().await.unwrap();
+
+                tcp.send(msg.clone()).await.unwrap();
+                drop(tcp);
+
+                let mut received = String::new();
+                peer.read_to_string(&mut received).await.unwrap();
+
+                assert_eq!(received, format!("{}\n", msg));
+            });
+        }
+
+        #[test]
+        fn recv_splits_by_new_line(msgs in vec("[^\r\n]*\n", 0..=10)) {
+            smol::run(async {
+                let (mut tcp, mut peer) = connect().await.unwrap();
+
+                peer.write_all(msgs.concat().as_bytes()).await.unwrap();
+                peer.flush().await.unwrap();
+                drop(peer);
+
+                let mut received = vec![];
+                while let Ok(msg) = tcp.recv().await {
+                    received.push(format!("{}\n", msg));
+                }
+
+                assert_eq!(received, msgs);
+            });
+        }
+    }
+}
