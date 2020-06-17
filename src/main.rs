@@ -7,8 +7,8 @@ use tracing::*;
 #[allow(clippy::unit_arg)]
 async fn chess() -> Result<(), Failure> {
     let mut game = Game::new();
-    let mut white = actor::Cli::new(Terminal::new(Color::White.to_string()));
-    let mut black = actor::Cli::new(Terminal::new(Color::Black.to_string()));
+    let mut white = actor::Cli::new(remote::Terminal::new(Color::White.to_string()));
+    let mut black = actor::Cli::new(remote::Terminal::new(Color::Black.to_string()));
 
     let outcome = loop {
         match game.outcome() {
