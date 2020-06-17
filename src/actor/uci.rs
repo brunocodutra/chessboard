@@ -125,7 +125,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::MockRemote;
+    use crate::remote::MockRemote;
     use mockall::{predicate::*, Sequence};
     use proptest::prelude::*;
     use smol::block_on;
