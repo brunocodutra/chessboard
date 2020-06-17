@@ -73,12 +73,12 @@ impl Remote for Tcp {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use anyhow::{Context, Error as Failure};
+    use anyhow::{Context, Error as Anyhow};
     use futures::join;
     use port_check::free_local_port;
     use proptest::{collection::vec, prelude::*};
 
-    async fn connect() -> Result<(Tcp, TcpStream), Failure> {
+    async fn connect() -> Result<(Tcp, TcpStream), Anyhow> {
         let port = free_local_port().context("no free port")?;
         let addr = format!("127.0.0.1:{}", port);
         let listener = TcpListener::bind(&addr).await?;

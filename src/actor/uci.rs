@@ -1,5 +1,5 @@
 use crate::*;
-use anyhow::{anyhow, Context, Error as Failure};
+use anyhow::{anyhow, Context, Error as Anyhow};
 use async_trait::async_trait;
 use derivative::Derivative;
 use smol::block_on;
@@ -52,7 +52,7 @@ where
             UciMessage::Unknown(m, cause) => {
                 let error = anyhow!("ignoring invalid UCI command '{}'", m);
                 match cause {
-                    Some(cause) => Failure::from(cause).context(error),
+                    Some(cause) => Anyhow::from(cause).context(error),
                     None => error,
                 }
             }

@@ -1,11 +1,11 @@
-use anyhow::{Context, Error as Failure};
+use anyhow::{Context, Error as Anyhow};
 use chessboard::*;
 use std::{error::Error, io::stderr};
 use tracing::*;
 
 #[instrument(err)]
 #[allow(clippy::unit_arg)]
-async fn chess() -> Result<(), Failure> {
+async fn chess() -> Result<(), Anyhow> {
     let mut game = Game::new();
     let mut white = actor::Cli::new(remote::Terminal::new(Color::White.to_string()));
     let mut black = actor::Cli::new(remote::Terminal::new(Color::Black.to_string()));

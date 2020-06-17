@@ -1,5 +1,5 @@
 use crate::*;
-use anyhow::Error as Failure;
+use anyhow::Error as Anyhow;
 use async_trait::async_trait;
 use clap::AppSettings::*;
 use derivative::Derivative;
@@ -38,9 +38,9 @@ enum CliSpec {
 fn try_parse<T>(s: &str) -> Result<T, String>
 where
     T: FromStr,
-    Failure: From<T::Err>,
+    Anyhow: From<T::Err>,
 {
-    s.parse().map_err(|e| format!("{:?}", Failure::from(e)))
+    s.parse().map_err(|e| format!("{:?}", Anyhow::from(e)))
 }
 
 #[derive(Derivative)]
