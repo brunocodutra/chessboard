@@ -32,5 +32,5 @@ pub use crate::square::*;
 pub mod actor;
 pub mod remote;
 
-pub use crate::actor::Actor;
+pub use crate::actor::{Actor, ActorDispatcher};
 pub use crate::remote::{Remote, RemoteDispatcher, RemoteDispatcherError};
