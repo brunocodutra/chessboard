@@ -26,9 +26,13 @@ pub trait Remote {
 /// The reason why the underlying remote failed.
 #[derive(Debug, Display, Error, From)]
 #[cfg_attr(test, derive(proptest_derive::Arbitrary))]
+#[display(fmt = "the remote {} encountered an error")]
 pub enum RemoteDispatcherError {
+    #[display(fmt = "TCP connection")]
     TcpIoError(TcpIoError),
+    #[display(fmt = "process")]
     ProcessIoError(ProcessIoError),
+    #[display(fmt = "terminal")]
     Terminal(TerminalIoError),
 }
 

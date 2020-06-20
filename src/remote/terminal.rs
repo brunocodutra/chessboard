@@ -6,18 +6,18 @@ use rustyline::{error::ReadlineError, Config, Editor};
 use std::fmt::Display;
 use tracing::*;
 
-/// The reason why writing to or reading from the terminal failed.
+/// The reason why reading from the terminal failed.
 #[derive(Debug, Display, Error, From)]
 #[cfg_attr(test, derive(proptest_derive::Arbitrary))]
-pub struct TerminalIoError(io::Error);
+pub struct TerminalReadError(#[error(not(source))] io::Error);
 
-impl From<io::ErrorKind> for TerminalIoError {
+impl From<io::ErrorKind> for TerminalReadError {
     fn from(k: io::ErrorKind) -> Self {
         io::Error::from(k).into()
     }
 }
 
-impl From<ReadlineError> for TerminalIoError {
+impl From<ReadlineError> for TerminalReadError {
     fn from(e: ReadlineError) -> Self {
         match e {
             ReadlineError::Io(e) => e.into(),
@@ -33,6 +33,21 @@ impl From<ReadlineError> for TerminalIoError {
             e => io::Error::new(io::ErrorKind::Other, e).into(),
         }
     }
+}
+
+/// The reason why writing to the terminal failed.
+#[derive(Debug, Display, Error, From)]
+#[cfg_attr(test, derive(proptest_derive::Arbitrary))]
+pub struct TerminalWriteError(#[error(not(source))] io::Error);
+
+/// The reason why writing to or reading from the terminal failed.
+#[derive(Debug, Display, Error, From)]
+#[cfg_attr(test, derive(proptest_derive::Arbitrary))]
+pub enum TerminalIoError {
+    #[display(fmt = "failed to read from the standard input")]
+    Read(TerminalReadError),
+    #[display(fmt = "failed to write to the standard output")]
+    Write(TerminalWriteError),
 }
 
 /// An implementation of trait [`Remote`] as a terminal based on [rustyline].
@@ -66,14 +81,20 @@ impl Remote for Terminal {
     async fn recv(&mut self) -> Result<String, Self::Error> {
         let reader = self.reader.clone();
         let prompt = self.prompt.clone();
-        let line = smol::blocking!(reader.lock().await.readline(&prompt))?;
+        let result = smol::blocking!(reader.lock().await.readline(&prompt));
+        let line = result.map_err(TerminalReadError::from)?;
+
         Ok(line)
     }
 
     #[instrument(skip(self, msg), err)]
     async fn send<D: Display + Send + 'static>(&mut self, msg: D) -> Result<(), Self::Error> {
         let line = format!("{}\n", msg);
-        self.writer.write_all(line.as_bytes()).await?;
+        self.writer
+            .write_all(line.as_bytes())
+            .await
+            .map_err(TerminalWriteError::from)?;
+
         Ok(())
     }
 }
