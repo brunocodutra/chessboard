@@ -1,4 +1,5 @@
 use async_trait::async_trait;
+use derive_more::{Display, Error, From};
 use std::fmt::Display;
 
 mod process;
@@ -20,6 +21,49 @@ pub trait Remote {
 
     /// Send a message to the remote endpoint.
     async fn send<D: Display + Send + 'static>(&mut self, msg: D) -> Result<(), Self::Error>;
+}
+
+/// The reason why the underlying remote failed.
+#[derive(Debug, Display, Error, From)]
+#[cfg_attr(test, derive(proptest_derive::Arbitrary))]
+pub enum RemoteDispatcherError {
+    TcpIoError(TcpIoError),
+    ProcessIoError(ProcessIoError),
+    Terminal(TerminalIoError),
+}
+
+#[derive(From)]
+pub enum RemoteDispatcher {
+    Tcp(Tcp),
+    Process(Process),
+    Terminal(Terminal),
+}
+
+#[async_trait]
+impl Remote for RemoteDispatcher {
+    type Error = RemoteDispatcherError;
+
+    async fn recv(&mut self) -> Result<String, Self::Error> {
+        use RemoteDispatcher::*;
+        let line = match self {
+            Tcp(r) => r.recv().await?,
+            Process(r) => r.recv().await?,
+            Terminal(r) => r.recv().await?,
+        };
+
+        Ok(line)
+    }
+
+    async fn send<D: Display + Send + 'static>(&mut self, msg: D) -> Result<(), Self::Error> {
+        use RemoteDispatcher::*;
+        match self {
+            Tcp(r) => r.send(msg).await?,
+            Process(r) => r.send(msg).await?,
+            Terminal(r) => r.send(msg).await?,
+        }
+
+        Ok(())
+    }
 }
 
 #[cfg(test)]

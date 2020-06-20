@@ -10,15 +10,15 @@ use tracing::*;
 /// The reason why spawning, writing to or reading from the remote process failed.
 #[derive(Debug, Display, Error, From)]
 #[cfg_attr(test, derive(proptest_derive::Arbitrary))]
-pub struct RemoteProcessIoError(io::Error);
+pub struct ProcessIoError(io::Error);
 
-impl From<io::ErrorKind> for RemoteProcessIoError {
+impl From<io::ErrorKind> for ProcessIoError {
     fn from(k: io::ErrorKind) -> Self {
         io::Error::from(k).into()
     }
 }
 
-impl From<Anyhow> for RemoteProcessIoError {
+impl From<Anyhow> for ProcessIoError {
     fn from(e: Anyhow) -> Self {
         io::Error::new(io::ErrorKind::Other, e).into()
     }
@@ -36,7 +36,7 @@ pub struct Process {
 
 impl Process {
     #[instrument(skip(program), err)]
-    pub async fn spawn<S>(program: S) -> Result<Self, RemoteProcessIoError>
+    pub async fn spawn<S>(program: S) -> Result<Self, ProcessIoError>
     where
         S: AsRef<OsStr> + Send + 'static,
     {
@@ -71,7 +71,7 @@ impl Drop for Process {
 
 #[async_trait]
 impl Remote for Process {
-    type Error = RemoteProcessIoError;
+    type Error = ProcessIoError;
 
     #[instrument(skip(self), err)]
     async fn recv(&mut self) -> Result<String, Self::Error> {
