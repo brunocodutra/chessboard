@@ -7,9 +7,16 @@ use smol::block_on;
 use std::fmt::Display;
 use tracing::*;
 
-/// The reason why connecting, writing to or reading from the tcp stream failed.
+/// The reason why connecting to remote TCP server failed.
 #[derive(Debug, Display, Error, From)]
 #[cfg_attr(test, derive(proptest_derive::Arbitrary))]
+#[display(fmt = "failed to connect to remote TCP server")]
+pub struct TcpConnectionError(io::Error);
+
+/// The reason why writing to or reading from the tcp stream failed.
+#[derive(Debug, Display, Error, From)]
+#[cfg_attr(test, derive(proptest_derive::Arbitrary))]
+#[display(fmt = "the remote TCP connection was terminated")]
 pub struct TcpIoError(io::Error);
 
 impl From<io::ErrorKind> for TcpIoError {
@@ -26,7 +33,7 @@ pub struct Tcp {
 
 impl Tcp {
     #[instrument(skip(addrs), err)]
-    pub async fn connect<A: ToSocketAddrs>(addrs: A) -> Result<Self, TcpIoError> {
+    pub async fn connect<A: ToSocketAddrs>(addrs: A) -> Result<Self, TcpConnectionError> {
         let socket = TcpStream::connect(addrs).await?;
         info!(local_addr = %socket.local_addr()?, peer_addr = %socket.peer_addr()?);
 

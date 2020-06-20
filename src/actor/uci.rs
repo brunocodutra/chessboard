@@ -71,15 +71,13 @@ where
 {
     #[instrument(skip(self))]
     fn drop(&mut self) {
-        if let Err(e) = block_on(self.remote.send(UciMessage::Stop))
-            .context("failed to gracefully stop the uci engine")
-        {
-            error!("{:?}", e);
-        }
+        let result: Result<(), Anyhow> = block_on(async {
+            self.remote.send(UciMessage::Stop).await?;
+            self.remote.send(UciMessage::Quit).await?;
+            Ok(())
+        });
 
-        if let Err(e) = block_on(self.remote.send(UciMessage::Quit))
-            .context("failed to gracefully quit the uci engine")
-        {
+        if let Err(e) = result.context("failed to gracefully shutdown the uci engine") {
             error!("{:?}", e);
         }
     }
@@ -128,7 +126,6 @@ mod tests {
     use crate::remote::MockRemote;
     use mockall::{predicate::*, Sequence};
     use proptest::prelude::*;
-    use smol::block_on;
     use std::io;
 
     fn unexpected_uci_command() -> impl Strategy<Value = UciMessage> {

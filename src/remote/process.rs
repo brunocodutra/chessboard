@@ -7,20 +7,27 @@ use smol::{blocking, reader, writer};
 use std::{ffi::OsStr, fmt::Display, process::*};
 use tracing::*;
 
-/// The reason why spawning, writing to or reading from the remote process failed.
+/// The reason why spawning the remote process failed.
 #[derive(Debug, Display, Error, From)]
 #[cfg_attr(test, derive(proptest_derive::Arbitrary))]
+#[display(fmt = "failed to spawn the remote process")]
+pub struct ProcessSpawnError(io::Error);
+
+impl From<Anyhow> for ProcessSpawnError {
+    fn from(e: Anyhow) -> Self {
+        io::Error::new(io::ErrorKind::Other, e).into()
+    }
+}
+
+/// The reason why writing to or reading from the remote process failed.
+#[derive(Debug, Display, Error, From)]
+#[cfg_attr(test, derive(proptest_derive::Arbitrary))]
+#[display(fmt = "the remote process failed during IO")]
 pub struct ProcessIoError(io::Error);
 
 impl From<io::ErrorKind> for ProcessIoError {
     fn from(k: io::ErrorKind) -> Self {
         io::Error::from(k).into()
-    }
-}
-
-impl From<Anyhow> for ProcessIoError {
-    fn from(e: Anyhow) -> Self {
-        io::Error::new(io::ErrorKind::Other, e).into()
     }
 }
 
@@ -36,7 +43,7 @@ pub struct Process {
 
 impl Process {
     #[instrument(skip(program), err)]
-    pub async fn spawn<S>(program: S) -> Result<Self, ProcessIoError>
+    pub async fn spawn<S>(program: S) -> Result<Self, ProcessSpawnError>
     where
         S: AsRef<OsStr> + Send + 'static,
     {
