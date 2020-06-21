@@ -95,4 +95,10 @@ impl Remote for Process {
         self.writer.lock().await.write_all(line.as_bytes()).await?;
         Ok(())
     }
+
+    #[instrument(skip(self), err)]
+    async fn flush(&mut self) -> Result<(), Self::Error> {
+        self.writer.lock().await.flush().await?;
+        Ok(())
+    }
 }

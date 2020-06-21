@@ -21,6 +21,9 @@ pub trait Remote {
 
     /// Send a message to the remote endpoint.
     async fn send<D: Display + Send + 'static>(&mut self, msg: D) -> Result<(), Self::Error>;
+
+    /// Flush the internal buffers.
+    async fn flush(&mut self) -> Result<(), Self::Error>;
 }
 
 /// The reason why the underlying remote failed.
@@ -68,6 +71,17 @@ impl Remote for RemoteDispatcher {
 
         Ok(())
     }
+
+    async fn flush(&mut self) -> Result<(), Self::Error> {
+        use RemoteDispatcher::*;
+        match self {
+            Tcp(r) => r.flush().await?,
+            Process(r) => r.flush().await?,
+            Terminal(r) => r.flush().await?,
+        }
+
+        Ok(())
+    }
 }
 
 #[cfg(test)]
@@ -75,6 +89,7 @@ mockall::mock! {
     pub(crate) Remote {
         fn recv(&mut self) -> std::io::Result<String>;
         fn send<D: 'static>(&mut self, msg: D) -> std::io::Result<()>;
+        fn flush(&mut self) -> std::io::Result<()>;
     }
 }
 
@@ -89,5 +104,9 @@ impl Remote for MockRemote {
 
     async fn send<D: Display + Send + 'static>(&mut self, msg: D) -> Result<(), Self::Error> {
         MockRemote::send(self, msg)
+    }
+
+    async fn flush(&mut self) -> Result<(), Self::Error> {
+        MockRemote::flush(self)
     }
 }

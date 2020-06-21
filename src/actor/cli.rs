@@ -77,6 +77,7 @@ where
         self.remote.send(p.placement()).await?;
 
         let spec = loop {
+            self.remote.flush().await?;
             let line = self.remote.recv().await?;
 
             match CliSpec::from_iter_safe(line.split_whitespace()) {
@@ -96,7 +97,7 @@ where
 mod tests {
     use super::*;
     use crate::remote::MockRemote;
-    use mockall::predicate::*;
+    use mockall::{predicate::*, Sequence};
     use proptest::prelude::*;
     use smol::block_on;
     use std::io;
@@ -105,12 +106,17 @@ mod tests {
         #[test]
         fn player_can_take_any_action(pos: Position, a: PlayerAction) {
             let mut remote = MockRemote::new();
+            let mut seq = Sequence::new();
 
-            remote.expect_send().times(1).with(eq(pos.placement()))
-                .return_once(|_| Ok(()));
+            remote.expect_send().times(1).in_sequence(&mut seq)
+                .with(eq(pos.placement()))
+                .returning(|_| Ok(()));
 
-            remote.expect_recv().times(1)
-                .return_once(move || Ok(a.to_string()));
+            remote.expect_flush().times(1).in_sequence(&mut seq)
+                .returning(|| Ok(()));
+
+            remote.expect_recv().times(1).in_sequence(&mut seq)
+                .returning(move || Ok(a.to_string()));
 
             let mut cli = Cli::new(remote);
             assert_eq!(block_on(cli.act(pos)).unwrap(), a);
@@ -119,11 +125,16 @@ mod tests {
         #[test]
         fn player_can_resign(pos: Position, cmd in "\\s*resign\\s*") {
             let mut remote = MockRemote::new();
+            let mut seq = Sequence::new();
 
-            remote.expect_send().times(1).with(eq(pos.placement()))
-                .return_once(|_| Ok(()));
+            remote.expect_send().times(1).in_sequence(&mut seq)
+                .with(eq(pos.placement()))
+                .returning(|_| Ok(()));
 
-            remote.expect_recv().times(1)
+            remote.expect_flush().times(1).in_sequence(&mut seq)
+                .returning(|| Ok(()));
+
+            remote.expect_recv().times(1).in_sequence(&mut seq)
                 .return_once(move || Ok(cmd));
 
             let mut cli = Cli::new(remote);
@@ -133,12 +144,17 @@ mod tests {
         #[test]
         fn player_can_make_a_move(pos: Position, m: Move, cmd in "\\s*move\\s*") {
             let mut remote = MockRemote::new();
+            let mut seq = Sequence::new();
 
-            remote.expect_send().times(1).with(eq(pos.placement()))
-                .return_once(|_| Ok(()));
+            remote.expect_send().times(1).in_sequence(&mut seq)
+                .with(eq(pos.placement()))
+                .returning(|_| Ok(()));
 
-            remote.expect_recv().times(1)
-                .return_once(move || Ok(format!("{} {}", cmd, m)));
+            remote.expect_flush().times(1).in_sequence(&mut seq)
+                .returning(|| Ok(()));
+
+            remote.expect_recv().times(1).in_sequence(&mut seq)
+                .returning(move || Ok(format!("{} {}", cmd, m)));
 
             let mut cli = Cli::new(remote);
             assert_eq!(block_on(cli.act(pos)).unwrap(), PlayerAction::MakeMove(m));
@@ -148,11 +164,15 @@ mod tests {
         fn resign_takes_no_arguments(pos: Position, a: PlayerAction, arg in "[^\\s]+") {
             let mut remote = MockRemote::new();
 
-            remote.expect_send().times(1).with(eq(pos.placement()))
+            remote.expect_send().times(1)
+                .with(eq(pos.placement()))
                 .returning(|_| Ok(()));
 
             remote.expect_send().times(1)
                 .returning(|_: clap::Error| Ok(()));
+
+            remote.expect_flush().times(2)
+                .returning(|| Ok(()));
 
             let mut cmd = Some(format!("resign {}", arg));
             remote.expect_recv().times(2)
@@ -166,11 +186,15 @@ mod tests {
         fn move_does_not_accept_invalid_descriptors(pos: Position, a: PlayerAction, m: Move, arg in "[^a-h]*") {
             let mut remote = MockRemote::new();
 
-            remote.expect_send().times(1).with(eq(pos.placement()))
+            remote.expect_send().times(1)
+                .with(eq(pos.placement()))
                 .returning(|_| Ok(()));
 
             remote.expect_send().times(1)
                 .returning(|_: clap::Error| Ok(()));
+
+            remote.expect_flush().times(2)
+                .returning(|| Ok(()));
 
             let mut cmd = Some(format!("move {}", arg));
             remote.expect_recv().times(2)
@@ -184,12 +208,16 @@ mod tests {
         fn player_can_ask_for_help(pos: Position, a: PlayerAction, cmd in "|help|resign|move") {
             let mut remote = MockRemote::new();
 
-            remote.expect_send().times(1).with(eq(pos.placement()))
+            remote.expect_send().times(1)
+                .with(eq(pos.placement()))
                 .returning(|_| Ok(()));
 
             remote.expect_send().times(1)
                 .with(function(|&clap::Error { kind, .. }| kind == clap::ErrorKind::HelpDisplayed))
                 .returning(|_| Ok(()));
+
+            remote.expect_flush().times(2)
+                .returning(|| Ok(()));
 
             let mut help = Some(format!("help {}", cmd));
             remote.expect_recv().times(2)
@@ -203,12 +231,16 @@ mod tests {
         fn player_is_prompted_again_after_invalid_command(pos: Position, a: PlayerAction, cmds in "[^resign]+") {
             let mut remote = MockRemote::new();
 
-            remote.expect_send().times(1).with(eq(pos.placement()))
+            remote.expect_send().times(1)
+                .with(eq(pos.placement()))
                 .returning(|_| Ok(()));
 
             let mut cmds: Vec<_> = cmds.split_whitespace().map(String::from).collect();
             remote.expect_send().times(cmds.len())
                 .returning(|_: clap::Error| Ok(()));
+
+            remote.expect_flush().times(cmds.len() + 1)
+                .returning(|| Ok(()));
 
             remote.expect_recv().times(cmds.len() + 1)
                 .returning(move || Ok(cmds.pop().unwrap_or_else(|| a.to_string())));
@@ -218,7 +250,7 @@ mod tests {
         }
 
         #[test]
-        fn writing_to_remote_can_fail(pos: Position, e: io::Error) {
+        fn act_can_fail_writing_to_the_remote(pos: Position, e: io::Error) {
             let mut remote = MockRemote::new();
 
             let kind = e.kind();
@@ -229,10 +261,24 @@ mod tests {
         }
 
         #[test]
-        fn reading_from_remote_can_fail(pos: Position, e: io::Error) {
+        fn act_can_fail_flushing_the_remote(pos: Position, e: io::Error) {
             let mut remote = MockRemote::new();
 
             remote.expect_send().returning(|_: Placement| Ok(()));
+
+            let kind = e.kind();
+            remote.expect_flush().return_once(move || Err(e));
+
+            let mut cli = Cli::new(remote);
+            assert_eq!(block_on(cli.act(pos)).unwrap_err().kind(), kind);
+        }
+
+        #[test]
+        fn act_can_fail_reading_from_remote(pos: Position, e: io::Error) {
+            let mut remote = MockRemote::new();
+
+            remote.expect_send().returning(|_: Placement| Ok(()));
+            remote.expect_flush().returning(|| Ok(()));
 
             let kind = e.kind();
             remote.expect_recv().return_once(move || Err(e));

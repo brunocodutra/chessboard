@@ -40,6 +40,11 @@ impl From<ReadlineError> for TerminalReadError {
 #[cfg_attr(test, derive(proptest_derive::Arbitrary))]
 pub struct TerminalWriteError(#[error(not(source))] io::Error);
 
+/// The reason why flushing the internal buffers failed.
+#[derive(Debug, Display, Error, From)]
+#[cfg_attr(test, derive(proptest_derive::Arbitrary))]
+pub struct TerminalFlushError(#[error(not(source))] io::Error);
+
 /// The reason why writing to or reading from the terminal failed.
 #[derive(Debug, Display, Error, From)]
 #[cfg_attr(test, derive(proptest_derive::Arbitrary))]
@@ -48,6 +53,8 @@ pub enum TerminalIoError {
     Read(TerminalReadError),
     #[display(fmt = "failed to write to the standard output")]
     Write(TerminalWriteError),
+    #[display(fmt = "failed to flush internal buffers")]
+    Flueh(TerminalFlushError),
 }
 
 /// An implementation of trait [`Remote`] as a terminal based on [rustyline].
@@ -89,11 +96,20 @@ impl Remote for Terminal {
 
     #[instrument(skip(self, msg), err)]
     async fn send<D: Display + Send + 'static>(&mut self, msg: D) -> Result<(), Self::Error> {
-        let line = format!("{}\n", msg);
         self.writer
-            .write_all(line.as_bytes())
+            .write_all(format!("{}\n", msg).as_bytes())
             .await
             .map_err(TerminalWriteError::from)?;
+
+        Ok(())
+    }
+
+    #[instrument(skip(self), err)]
+    async fn flush(&mut self) -> Result<(), Self::Error> {
+        self.writer
+            .flush()
+            .await
+            .map_err(TerminalFlushError::from)?;
 
         Ok(())
     }
