@@ -48,9 +48,7 @@ impl Tcp {
 impl Drop for Tcp {
     #[instrument(skip(self))]
     fn drop(&mut self) {
-        if let Err(e) = block_on(self.writer.flush())
-            .context("failed to flush the buffer, messages may be lost")
-        {
+        if let Err(e) = block_on(self.flush()).context("failed to flush the buffer") {
             error!("{:?}", e);
         }
     }
@@ -73,6 +71,12 @@ impl Remote for Tcp {
         let line = format!("{}\n", msg);
         trace!(%line);
         self.writer.write_all(line.as_bytes()).await?;
+        Ok(())
+    }
+
+    #[instrument(skip(self), err)]
+    async fn flush(&mut self) -> Result<(), Self::Error> {
+        self.writer.flush().await?;
         Ok(())
     }
 }

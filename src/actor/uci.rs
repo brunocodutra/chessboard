@@ -26,6 +26,7 @@ where
     #[instrument(skip(remote), err)]
     pub async fn init(mut remote: R) -> Result<Self, R::Error> {
         remote.send(UciMessage::Uci).await?;
+        remote.flush().await?;
 
         loop {
             debug!("expecting 'uciok'");
@@ -106,6 +107,7 @@ where
 
         self.remote.send(setpos).await?;
         self.remote.send(go).await?;
+        self.remote.flush().await?;
 
         let m = loop {
             debug!("expecting 'bestmove'");
@@ -150,27 +152,33 @@ mod tests {
         #[test]
         fn init_shakes_hand_with_engine(name: String, author: String) {
             let mut remote = MockRemote::new();
+            let mut seq = Sequence::new();
 
-            remote.expect_send().times(1)
+            remote.expect_send().times(1).in_sequence(&mut seq)
                 .with(eq(UciMessage::Uci))
-                .return_once(|_| Ok(()));
+                .returning(|_| Ok(()));
+
+            remote.expect_flush().times(1).in_sequence(&mut seq)
+                .returning(|| Ok(()));
 
             remote.expect_recv().times(1)
-                .return_once(move || Ok(UciMessage::id_name(&name).to_string()));
+                .returning(move || Ok(UciMessage::id_name(&name).to_string()));
 
             remote.expect_recv().times(1)
-                .return_once(move || Ok(UciMessage::id_author(&author).to_string()));
+                .returning(move || Ok(UciMessage::id_author(&author).to_string()));
 
-            remote.expect_recv().times(1)
-                .return_once(move || Ok(UciMessage::UciOk.to_string()));
+            remote.expect_recv().times(1).in_sequence(&mut seq)
+                .returning(move || Ok(UciMessage::UciOk.to_string()));
 
-            remote.expect_send().times(1)
+            let mut seq = Sequence::new();
+
+            remote.expect_send().times(1).in_sequence(&mut seq)
                 .with(eq(UciMessage::Stop))
-                .return_once(|_| Ok(()));
+                .returning(|_| Ok(()));
 
-            remote.expect_send().times(1)
+            remote.expect_send().times(1).in_sequence(&mut seq)
                 .with(eq(UciMessage::Quit))
-                .return_once(|_| Ok(()));
+                .returning(|_| Ok(()));
 
             assert!(block_on(Uci::init(remote)).is_ok());
         }
@@ -179,13 +187,9 @@ mod tests {
         fn init_can_fail(e: io::Error) {
             let mut remote = MockRemote::new();
 
-            remote.expect_send().times(1)
-                .with(eq(UciMessage::Uci))
-                .return_once(|_| Ok(()));
-
             let kind = e.kind();
-            remote.expect_recv().times(1)
-                .return_once(move || Err(e));
+            remote.expect_send().times(1).return_once(move |_: UciMessage| Err(e));
+            remote.expect_send().returning(|_: UciMessage| Ok(()));
 
             assert_eq!(block_on(Uci::init(remote)).unwrap_err().kind(), kind);
         }
@@ -198,22 +202,27 @@ mod tests {
             let fen = pos.to_string();
             remote.expect_send().times(1).in_sequence(&mut seq)
                 .with(function(move |msg: &UciMessage| msg.to_string().contains(&fen)))
-                .return_once(|_| Ok(()));
+                .returning(|_| Ok(()));
 
             remote.expect_send().times(1).in_sequence(&mut seq)
                 .with(function(move |msg: &UciMessage| msg.to_string().starts_with("go")))
-                .return_once(|_| Ok(()));
+                .returning(|_| Ok(()));
 
-            remote.expect_recv().times(1)
-                .return_once(move || Ok(format!("bestmove {}", m)));
+            remote.expect_flush().times(1).in_sequence(&mut seq)
+                .returning(|| Ok(()));
 
-            remote.expect_send().times(1)
+            remote.expect_recv().times(1).in_sequence(&mut seq)
+                .returning(move || Ok(format!("bestmove {}", m)));
+
+            let mut seq = Sequence::new();
+
+            remote.expect_send().times(1).in_sequence(&mut seq)
                 .with(eq(UciMessage::Stop))
-                .return_once(|_| Ok(()));
+                .returning(|_| Ok(()));
 
-            remote.expect_send().times(1)
+            remote.expect_send().times(1).in_sequence(&mut seq)
                 .with(eq(UciMessage::Quit))
-                .return_once(|_| Ok(()));
+                .returning(|_| Ok(()));
 
             let mut uci = Uci { remote };
             assert_eq!(block_on(uci.act(pos)).unwrap(), PlayerAction::MakeMove(m));
@@ -222,28 +231,13 @@ mod tests {
         #[test]
         fn act_ignores_invalid_uci_commands(pos: Position, m: Move, cmd in "[^bestmove]+") {
             let mut remote = MockRemote::new();
-            let mut seq = Sequence::new();
 
-            let fen = pos.to_string();
-            remote.expect_send().times(1).in_sequence(&mut seq)
-                .with(function(move |msg: &UciMessage| msg.to_string().contains(&fen)))
-                .return_once(|_| Ok(()));
-
-            remote.expect_send().times(1).in_sequence(&mut seq)
-                .with(function(move |msg: &UciMessage| msg.to_string().starts_with("go")))
-                .return_once(|_| Ok(()));
+            remote.expect_send().returning(|_: UciMessage| Ok(()));
+            remote.expect_flush().returning(|| Ok(()));
 
             let mut cmd = Some(cmd);
             remote.expect_recv().times(2)
                 .returning(move || Ok(cmd.take().unwrap_or_else(|| format!("bestmove {}", m))));
-
-            remote.expect_send().times(1)
-                .with(eq(UciMessage::Stop))
-                .return_once(|_| Ok(()));
-
-            remote.expect_send().times(1)
-                .with(eq(UciMessage::Quit))
-                .return_once(|_| Ok(()));
 
             let mut uci = Uci { remote };
             assert_eq!(block_on(uci.act(pos)).unwrap(), PlayerAction::MakeMove(m));
@@ -252,28 +246,13 @@ mod tests {
         #[test]
         fn act_ingnores_unexpected_uci_commands(pos: Position, m: Move, cmd in unexpected_uci_command()) {
             let mut remote = MockRemote::new();
-            let mut seq = Sequence::new();
 
-            let fen = pos.to_string();
-            remote.expect_send().times(1).in_sequence(&mut seq)
-                .with(function(move |msg: &UciMessage| msg.to_string().contains(&fen)))
-                .return_once(|_| Ok(()));
-
-            remote.expect_send().times(1).in_sequence(&mut seq)
-                .with(function(move |msg: &UciMessage| msg.to_string().starts_with("go")))
-                .return_once(|_| Ok(()));
+            remote.expect_send().returning(|_: UciMessage| Ok(()));
+            remote.expect_flush().returning(|| Ok(()));
 
             let mut cmd = Some(cmd.to_string());
             remote.expect_recv().times(2)
                 .returning(move || Ok(cmd.take().unwrap_or_else(|| format!("bestmove {}", m))));
-
-            remote.expect_send().times(1)
-                .with(eq(UciMessage::Stop))
-                .return_once(|_| Ok(()));
-
-            remote.expect_send().times(1)
-                .with(eq(UciMessage::Quit))
-                .return_once(|_| Ok(()));
 
             let mut uci = Uci { remote };
             assert_eq!(block_on(uci.act(pos)).unwrap(), PlayerAction::MakeMove(m));
@@ -284,16 +263,21 @@ mod tests {
             let mut remote = MockRemote::new();
 
             let kind = e.kind();
-            remote.expect_send().times(1)
-                .return_once(move |_: UciMessage| Err(e));
+            remote.expect_send().times(1).return_once(move |_: UciMessage| Err(e));
+            remote.expect_send().returning(|_: UciMessage| Ok(()));
 
-            remote.expect_send().times(1)
-                .with(eq(UciMessage::Stop))
-                .return_once(|_| Ok(()));
+            let mut uci = Uci { remote };
+            assert_eq!(block_on(uci.act(pos)).unwrap_err().kind(), kind);
+        }
 
-            remote.expect_send().times(1)
-                .with(eq(UciMessage::Quit))
-                .return_once(|_| Ok(()));
+        #[test]
+        fn act_can_fail_flushing_the_remote(pos: Position, e: io::Error) {
+            let mut remote = MockRemote::new();
+
+            remote.expect_send().returning(|_: UciMessage| Ok(()));
+
+            let kind = e.kind();
+            remote.expect_flush().times(1).return_once(move || Err(e));
 
             let mut uci = Uci { remote };
             assert_eq!(block_on(uci.act(pos)).unwrap_err().kind(), kind);
@@ -303,19 +287,11 @@ mod tests {
         fn act_can_fail_reading_from_remote(pos: Position, e: io::Error) {
             let mut remote = MockRemote::new();
 
-            remote.expect_send().times(2)
-                .returning(|_: UciMessage| Ok(()));
+            remote.expect_send().returning(|_: UciMessage| Ok(()));
+            remote.expect_flush().returning(|| Ok(()));
 
             let kind = e.kind();
-            remote.expect_recv().return_once(move || Err(e));
-
-            remote.expect_send().times(1)
-                .with(eq(UciMessage::Stop))
-                .return_once(|_| Ok(()));
-
-            remote.expect_send().times(1)
-                .with(eq(UciMessage::Quit))
-                .return_once(|_| Ok(()));
+            remote.expect_recv().times(1).return_once(move || Err(e));
 
             let mut uci = Uci { remote };
             assert_eq!(block_on(uci.act(pos)).unwrap_err().kind(), kind);
