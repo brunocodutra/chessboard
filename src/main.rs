@@ -1,7 +1,8 @@
 use anyhow::{bail, Context, Error as Anyhow};
 use chessboard::*;
+use clap::AppSettings::*;
 use futures::try_join;
-use std::{error::Error, io::stderr};
+use std::{cmp::min, error::Error, io::stderr};
 use structopt::StructOpt;
 use tracing::*;
 use url::Url;
@@ -68,7 +69,7 @@ async fn chessboard(white: &Url, black: &Url) -> Result<(), Anyhow> {
 }
 
 #[derive(StructOpt)]
-#[structopt(author, name = "Chessboard")]
+#[structopt(author, name = "Chessboard", setting = DeriveDisplayOrder)]
 struct AppSpec {
     #[structopt(
         short,
@@ -87,6 +88,15 @@ struct AppSpec {
         parse(try_from_str)
     )]
     black: Url,
+
+    #[structopt(
+        short,
+        long,
+        value_name = "level",
+        default_value = "info",
+        parse(try_from_str)
+    )]
+    verbosity: Level,
 }
 
 fn main() -> Result<(), Box<dyn Error + Send + Sync + 'static>> {
@@ -94,9 +104,15 @@ fn main() -> Result<(), Box<dyn Error + Send + Sync + 'static>> {
 
     let (writer, _guard) = tracing_appender::non_blocking(stderr());
 
+    let filter = format!(
+        "{},chessboard={}",
+        min(Level::WARN, spec.verbosity.clone()),
+        spec.verbosity
+    );
+
     tracing_subscriber::fmt()
         .with_writer(writer)
-        .with_env_filter("warn,chessboard=info")
+        .with_env_filter(filter)
         .try_init()?;
 
     smol::run(chessboard(&spec.white, &spec.black)).context("the match was interrupted")?;
