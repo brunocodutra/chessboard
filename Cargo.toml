@@ -18,15 +18,17 @@ clap = "2.33.1"
 derivative = "2.1.1"
 derive_more = "0.99.7"
 futures = "0.3.5"
+num_cpus = "1.13.0"
 rustyline = "6.2.0"
 smol = "0.1.11"
+smol-potat = { version = "0.3.3", features = ["auto"] }
 structopt = "0.3.14"
 tracing = { version = "0.1.15", features = ["log"] }
 tracing-appender = "0.1.0"
 tracing-futures = { version = "0.2.4", features = ["std", "std-future"], default-features = false }
 tracing-subscriber = "0.2.5"
-vampirc-uci = { version = "0.10.1", features = ["chess"] }
 url = "2.1.1"
+vampirc-uci = { version = "0.10.1", features = ["chess"] }
 
 [dev-dependencies]
 mockall = "0.7.1"
