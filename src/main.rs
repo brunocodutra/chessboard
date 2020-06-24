@@ -2,11 +2,13 @@ use anyhow::{bail, Context, Error as Anyhow};
 use chessboard::*;
 use clap::AppSettings::*;
 use futures::{prelude::*, stream::iter, try_join};
-use std::{cmp::min, collections::BTreeMap, error::Error, io::stderr, num::NonZeroUsize};
+use smol::Task;
+use std::{borrow::*, cmp::min, collections::*, error::Error, fmt::Debug, io::stderr, num::*};
 use structopt::StructOpt;
 use tracing::*;
 use url::Url;
 
+#[instrument(err)]
 async fn new_player(color: Color, url: &Url) -> Result<ActorDispatcher<RemoteDispatcher>, Anyhow> {
     let remote = match (url.host_str(), url.path()) {
         (None, "") => remote::Terminal::new(color).into(),
@@ -31,14 +33,14 @@ async fn new_player(color: Color, url: &Url) -> Result<ActorDispatcher<RemoteDis
     Ok(actor)
 }
 
-#[instrument(skip(white, black), err)]
+#[instrument(err)]
 #[allow(clippy::unit_arg)]
-async fn chessboard(white: &Url, black: &Url) -> Result<Outcome, Anyhow> {
+async fn chessboard<U: Borrow<Url> + Debug>(white: U, black: U) -> Result<Outcome, Anyhow> {
     let mut game = Game::new();
 
     let (mut white, mut black) = try_join!(
-        new_player(Color::White, white),
-        new_player(Color::Black, black)
+        new_player(Color::White, white.borrow()),
+        new_player(Color::Black, black.borrow())
     )?;
 
     let outcome = loop {
@@ -98,6 +100,9 @@ struct AppSpec {
     )]
     best_of: NonZeroUsize,
 
+    #[structopt(short, long, help = "Runs matches in parallel")]
+    parallel: bool,
+
     #[structopt(
         short,
         long,
@@ -131,9 +136,19 @@ async fn main() -> Result<(), Box<dyn Error + Send + Sync + 'static>> {
         .with_env_filter(filter)
         .try_init()?;
 
-    let stats = iter(0..spec.best_of.get())
+    let matches: Vec<_> = (0..spec.best_of.get())
+        .map(|_| {
+            if spec.parallel {
+                Task::spawn(chessboard(spec.white.clone(), spec.black.clone())).boxed()
+            } else {
+                chessboard(&spec.white, &spec.black).boxed()
+            }
+        })
+        .collect();
+
+    let stats = iter(matches)
         .map(Ok)
-        .and_then(|_| chessboard(&spec.white, &spec.black))
+        .and_then(|o| o)
         .try_fold(BTreeMap::<_, usize>::new(), |mut acc, o| async move {
             *acc.entry(o.to_string()).or_default() += 1;
             Ok(acc)
