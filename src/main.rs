@@ -114,7 +114,8 @@ macro_rules! echo {
     })
 }
 
-fn main() -> Result<(), Box<dyn Error + Send + Sync + 'static>> {
+#[smol_potat::main]
+async fn main() -> Result<(), Box<dyn Error + Send + Sync + 'static>> {
     let spec = AppSpec::from_args();
 
     let (writer, _guard) = tracing_appender::non_blocking(stderr());
@@ -130,28 +131,26 @@ fn main() -> Result<(), Box<dyn Error + Send + Sync + 'static>> {
         .with_env_filter(filter)
         .try_init()?;
 
-    smol::run(async {
-        let stats = iter(0..spec.best_of.get())
-            .map(Ok)
-            .and_then(|_| chessboard(&spec.white, &spec.black))
-            .try_fold(BTreeMap::<_, usize>::new(), |mut acc, o| async move {
-                *acc.entry(o.to_string()).or_default() += 1;
-                Ok(acc)
-            })
-            .await
-            .context("the match was interrupted")?;
+    let stats = iter(0..spec.best_of.get())
+        .map(Ok)
+        .and_then(|_| chessboard(&spec.white, &spec.black))
+        .try_fold(BTreeMap::<_, usize>::new(), |mut acc, o| async move {
+            *acc.entry(o.to_string()).or_default() += 1;
+            Ok(acc)
+        })
+        .await
+        .context("the match was interrupted")?;
 
-        let width = (spec.best_of.get() as f64).log10().ceil() as usize + 1;
+    let width = (spec.best_of.get() as f64).log10().ceil() as usize + 1;
 
-        echo!("+{:-<w$}+\n", "", w = width + 44)?;
-        echo!("| {:<w$} |\n", "Statistics", w = width + 42)?;
-        echo!("+{:-<w$}+\n", "", w = width + 44)?;
-        for (key, abs) in stats {
-            let rel = (100 * abs) / spec.best_of.get();
-            echo!("| {:<31} | {:>w$} | {:>3} % |\n", key, abs, rel, w = width)?;
-        }
-        echo!("+{:-<w$}+\n", "", w = width + 44)?;
+    echo!("+{:-<w$}+\n", "", w = width + 44)?;
+    echo!("| {:<w$} |\n", "Statistics", w = width + 42)?;
+    echo!("+{:-<w$}+\n", "", w = width + 44)?;
+    for (key, abs) in stats {
+        let rel = (100 * abs) / spec.best_of.get();
+        echo!("| {:<31} | {:>w$} | {:>3} % |\n", key, abs, rel, w = width)?;
+    }
+    echo!("+{:-<w$}+\n", "", w = width + 44)?;
 
-        Ok(())
-    })
+    Ok(())
 }
