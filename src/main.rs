@@ -1,7 +1,9 @@
 use anyhow::{bail, Context, Error as Anyhow};
 use chessboard::*;
 use clap::AppSettings::*;
+use future::ok;
 use futures::{prelude::*, stream::iter, try_join};
+use indicatif::{ProgressBar, ProgressStyle};
 use smol::Task;
 use std::{borrow::*, cmp::min, collections::*, error::Error, fmt::Debug, io::stderr, num::*};
 use structopt::StructOpt;
@@ -100,7 +102,7 @@ struct AppSpec {
     )]
     best_of: NonZeroUsize,
 
-    #[structopt(short, long, help = "Runs matches in parallel")]
+    #[structopt(short = "j", long, help = "Runs matches in parallel")]
     parallel: bool,
 
     #[structopt(
@@ -111,6 +113,9 @@ struct AppSpec {
         parse(try_from_str)
     )]
     verbosity: Level,
+
+    #[structopt(short, long, help = "Displays progress bar")]
+    progress: bool,
 }
 
 macro_rules! echo {
@@ -136,7 +141,23 @@ async fn main() -> Result<(), Box<dyn Error + Send + Sync + 'static>> {
         .with_env_filter(filter)
         .try_init()?;
 
-    let matches: Vec<_> = (0..spec.best_of.get())
+    let best_of = spec.best_of.get();
+
+    let pb = if spec.progress {
+        ProgressBar::new(best_of as u64).with_style(
+            ProgressStyle::default_bar()
+                .tick_chars("⠉⠙⠹⠸⠼⠴⠤⠦⠧⠇⠏⠋")
+                .template("{spinner} [{bar:30}] {pos}/{len} (-{eta})")
+                .progress_chars("=> "),
+        )
+    } else {
+        ProgressBar::hidden()
+    };
+
+    pb.tick();
+    pb.enable_steady_tick(100);
+
+    let matches: Vec<_> = (0..best_of)
         .map(|_| {
             if spec.parallel {
                 Task::spawn(chessboard(spec.white.clone(), spec.black.clone())).boxed()
@@ -149,23 +170,26 @@ async fn main() -> Result<(), Box<dyn Error + Send + Sync + 'static>> {
     let stats = iter(matches)
         .map(Ok)
         .and_then(|o| o)
-        .try_fold(BTreeMap::<_, usize>::new(), |mut acc, o| async move {
+        .try_fold(BTreeMap::<_, usize>::new(), |mut acc, o| {
             *acc.entry(o.to_string()).or_default() += 1;
-            Ok(acc)
+            pb.inc(1);
+            ok(acc)
         })
         .await
         .context("the match was interrupted")?;
 
-    let width = (spec.best_of.get() as f64).log10().ceil() as usize + 1;
+    pb.finish_and_clear();
 
-    echo!("+{:-<w$}+\n", "", w = width + 44)?;
-    echo!("| {:<w$} |\n", "Statistics", w = width + 42)?;
-    echo!("+{:-<w$}+\n", "", w = width + 44)?;
+    let digits = (spec.best_of.get() as f64).log10().ceil() as usize + 1;
+
+    echo!("+{:-<w$}+\n", "", w = digits + 44)?;
+    echo!("|{:<w$}|\n", " Statistics ", w = digits + 44)?;
+    echo!("+{:-<w$}+\n", "", w = digits + 44)?;
     for (key, abs) in stats {
-        let rel = (100 * abs) / spec.best_of.get();
-        echo!("| {:<31} | {:>w$} | {:>3} % |\n", key, abs, rel, w = width)?;
+        let rel = (100 * abs) / best_of;
+        echo!("| {:<31} | {:>w$} | {:>3} % |\n", key, abs, rel, w = digits)?;
     }
-    echo!("+{:-<w$}+\n", "", w = width + 44)?;
+    echo!("+{:-<w$}+\n", "", w = digits + 44)?;
 
     Ok(())
 }
