@@ -101,21 +101,21 @@ pub enum InvalidPlayerAction {
 
     #[display(
         fmt = "the {} player is not allowed move the {} from {} to {} with {} promotion",
-        "_0.color",
+        "_0",
         "_1",
         "_2.from",
         "_2.to",
         "_2.promotion.map(|p| Piece::from(p).to_string()).unwrap_or_else(|| \"no\".into())"
     )]
-    IllegalMove(Player, Figure, Move),
+    IllegalMove(Color, Figure, Move),
 
     #[display(
         fmt = "the {} player attempted to move a nonexistent piece from {} to {}",
-        "_0.color",
+        "_0",
         "_1.from",
         "_1.to"
     )]
-    InvalidMove(Player, Move),
+    InvalidMove(Color, Move),
 }
 
 #[cfg(test)]
