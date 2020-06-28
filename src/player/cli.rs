@@ -65,16 +65,16 @@ where
 }
 
 #[async_trait]
-impl<R> Actor for Cli<R>
+impl<R> Player for Cli<R>
 where
     R: Remote + Send + Sync,
     R::Error: Error + Send + Sync + 'static,
 {
     type Error = R::Error;
 
-    #[instrument(skip(self, p), err)]
-    async fn act(&mut self, p: Position) -> Result<PlayerAction, Self::Error> {
-        self.remote.send(p.placement()).await?;
+    #[instrument(skip(self, pos), err)]
+    async fn play(&mut self, pos: Position) -> Result<PlayerAction, Self::Error> {
+        self.remote.send(pos.placement()).await?;
 
         let spec = loop {
             self.remote.flush().await?;
@@ -119,7 +119,7 @@ mod tests {
                 .returning(move || Ok(a.to_string()));
 
             let mut cli = Cli::new(remote);
-            assert_eq!(block_on(cli.act(pos)).unwrap(), a);
+            assert_eq!(block_on(cli.play(pos)).unwrap(), a);
         }
 
         #[test]
@@ -138,7 +138,7 @@ mod tests {
                 .return_once(move || Ok(cmd));
 
             let mut cli = Cli::new(remote);
-            assert_eq!(block_on(cli.act(pos)).unwrap(), PlayerAction::Resign);
+            assert_eq!(block_on(cli.play(pos)).unwrap(), PlayerAction::Resign);
         }
 
         #[test]
@@ -157,7 +157,7 @@ mod tests {
                 .returning(move || Ok(format!("{} {}", cmd, m)));
 
             let mut cli = Cli::new(remote);
-            assert_eq!(block_on(cli.act(pos)).unwrap(), PlayerAction::MakeMove(m));
+            assert_eq!(block_on(cli.play(pos)).unwrap(), PlayerAction::MakeMove(m));
         }
 
         #[test]
@@ -179,7 +179,7 @@ mod tests {
                 .returning(move || Ok(cmd.take().unwrap_or_else(|| a.to_string())));
 
             let mut cli = Cli::new(remote);
-            assert_eq!(block_on(cli.act(pos)).unwrap(), a);
+            assert_eq!(block_on(cli.play(pos)).unwrap(), a);
         }
 
         #[test]
@@ -201,7 +201,7 @@ mod tests {
                 .returning(move || Ok(cmd.take().unwrap_or_else(|| a.to_string())));
 
             let mut cli = Cli::new(remote);
-            assert_eq!(block_on(cli.act(pos)).unwrap(), a);
+            assert_eq!(block_on(cli.play(pos)).unwrap(), a);
         }
 
         #[test]
@@ -224,7 +224,7 @@ mod tests {
                 .returning(move || Ok(help.take().unwrap_or_else(|| a.to_string())));
 
             let mut cli = Cli::new(remote);
-            assert_eq!(block_on(cli.act(pos)).unwrap(), a);
+            assert_eq!(block_on(cli.play(pos)).unwrap(), a);
         }
 
         #[test]
@@ -246,22 +246,22 @@ mod tests {
                 .returning(move || Ok(cmds.pop().unwrap_or_else(|| a.to_string())));
 
             let mut cli = Cli::new(remote);
-            assert_eq!(block_on(cli.act(pos)).unwrap(), a);
+            assert_eq!(block_on(cli.play(pos)).unwrap(), a);
         }
 
         #[test]
-        fn act_can_fail_writing_to_the_remote(pos: Position, e: io::Error) {
+        fn play_can_fail_writing_to_the_remote(pos: Position, e: io::Error) {
             let mut remote = MockRemote::new();
 
             let kind = e.kind();
             remote.expect_send().return_once(move |_: Placement| Err(e));
 
             let mut cli = Cli::new(remote);
-            assert_eq!(block_on(cli.act(pos)).unwrap_err().kind(), kind);
+            assert_eq!(block_on(cli.play(pos)).unwrap_err().kind(), kind);
         }
 
         #[test]
-        fn act_can_fail_flushing_the_remote(pos: Position, e: io::Error) {
+        fn play_can_fail_flushing_the_remote(pos: Position, e: io::Error) {
             let mut remote = MockRemote::new();
 
             remote.expect_send().returning(|_: Placement| Ok(()));
@@ -270,11 +270,11 @@ mod tests {
             remote.expect_flush().return_once(move || Err(e));
 
             let mut cli = Cli::new(remote);
-            assert_eq!(block_on(cli.act(pos)).unwrap_err().kind(), kind);
+            assert_eq!(block_on(cli.play(pos)).unwrap_err().kind(), kind);
         }
 
         #[test]
-        fn act_can_fail_reading_from_remote(pos: Position, e: io::Error) {
+        fn play_can_fail_reading_from_remote(pos: Position, e: io::Error) {
             let mut remote = MockRemote::new();
 
             remote.expect_send().returning(|_: Placement| Ok(()));
@@ -284,7 +284,7 @@ mod tests {
             remote.expect_recv().return_once(move || Err(e));
 
             let mut cli = Cli::new(remote);
-            assert_eq!(block_on(cli.act(pos)).unwrap_err().kind(), kind);
+            assert_eq!(block_on(cli.play(pos)).unwrap_err().kind(), kind);
         }
     }
 }

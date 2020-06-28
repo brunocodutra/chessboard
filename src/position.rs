@@ -170,8 +170,8 @@ mod tests {
 
     proptest! {
         #[test]
-        fn placement_returns_current_piece_arrangement(p: Position) {
-            let placement = p.placement();
+        fn placement_returns_current_piece_arrangement(pos: Position) {
+            let placement = pos.placement();
 
             for &file in File::VARIANTS {
                 for &rank in Rank::VARIANTS {
@@ -180,15 +180,15 @@ mod tests {
                     let piece = figure.map(|f| f.piece().into());
                     let color = figure.map(|f| f.color().into());
 
-                    assert_eq!(piece, p.board.piece_on(square.into()));
-                    assert_eq!(color, p.board.color_on(square.into()));
+                    assert_eq!(piece, pos.board.piece_on(square.into()));
+                    assert_eq!(color, pos.board.color_on(square.into()));
                 }
             }
         }
 
         #[test]
-        fn parsing_printed_position_is_an_identity(p: Position) {
-            assert_eq!(p.to_string().parse(), Ok(p));
+        fn parsing_printed_position_is_an_identity(pos: Position) {
+            assert_eq!(pos.to_string().parse(), Ok(pos));
         }
 
         #[test]
