@@ -85,18 +85,18 @@ where
 }
 
 #[async_trait]
-impl<R> Actor for Uci<R>
+impl<R> Player for Uci<R>
 where
     R: Remote + Send + Sync,
     R::Error: Error + Send + Sync + 'static,
 {
     type Error = R::Error;
 
-    #[instrument(skip(self, p), err)]
-    async fn act(&mut self, p: Position) -> Result<PlayerAction, Self::Error> {
+    #[instrument(skip(self, pos), err)]
+    async fn play(&mut self, pos: Position) -> Result<PlayerAction, Self::Error> {
         let setpos = UciMessage::Position {
             startpos: false,
-            fen: Some(UciFen(p.to_string())),
+            fen: Some(UciFen(pos.to_string())),
             moves: Vec::new(),
         };
 
@@ -225,11 +225,11 @@ mod tests {
                 .returning(|_| Ok(()));
 
             let mut uci = Uci { remote };
-            assert_eq!(block_on(uci.act(pos)).unwrap(), PlayerAction::MakeMove(m));
+            assert_eq!(block_on(uci.play(pos)).unwrap(), PlayerAction::MakeMove(m));
         }
 
         #[test]
-        fn act_ignores_invalid_uci_commands(pos: Position, m: Move, cmd in "[^bestmove]+") {
+        fn play_ignores_invalid_uci_commands(pos: Position, m: Move, cmd in "[^bestmove]+") {
             let mut remote = MockRemote::new();
 
             remote.expect_send().returning(|_: UciMessage| Ok(()));
@@ -240,11 +240,11 @@ mod tests {
                 .returning(move || Ok(cmd.take().unwrap_or_else(|| format!("bestmove {}", m))));
 
             let mut uci = Uci { remote };
-            assert_eq!(block_on(uci.act(pos)).unwrap(), PlayerAction::MakeMove(m));
+            assert_eq!(block_on(uci.play(pos)).unwrap(), PlayerAction::MakeMove(m));
         }
 
         #[test]
-        fn act_ingnores_unexpected_uci_commands(pos: Position, m: Move, cmd in unexpected_uci_command()) {
+        fn play_ingnores_unexpected_uci_commands(pos: Position, m: Move, cmd in unexpected_uci_command()) {
             let mut remote = MockRemote::new();
 
             remote.expect_send().returning(|_: UciMessage| Ok(()));
@@ -255,11 +255,11 @@ mod tests {
                 .returning(move || Ok(cmd.take().unwrap_or_else(|| format!("bestmove {}", m))));
 
             let mut uci = Uci { remote };
-            assert_eq!(block_on(uci.act(pos)).unwrap(), PlayerAction::MakeMove(m));
+            assert_eq!(block_on(uci.play(pos)).unwrap(), PlayerAction::MakeMove(m));
         }
 
         #[test]
-        fn act_can_fail_writing_to_remote(pos: Position, e: io::Error) {
+        fn play_can_fail_writing_to_remote(pos: Position, e: io::Error) {
             let mut remote = MockRemote::new();
 
             let kind = e.kind();
@@ -267,11 +267,11 @@ mod tests {
             remote.expect_send().returning(|_: UciMessage| Ok(()));
 
             let mut uci = Uci { remote };
-            assert_eq!(block_on(uci.act(pos)).unwrap_err().kind(), kind);
+            assert_eq!(block_on(uci.play(pos)).unwrap_err().kind(), kind);
         }
 
         #[test]
-        fn act_can_fail_flushing_the_remote(pos: Position, e: io::Error) {
+        fn play_can_fail_flushing_the_remote(pos: Position, e: io::Error) {
             let mut remote = MockRemote::new();
 
             remote.expect_send().returning(|_: UciMessage| Ok(()));
@@ -280,11 +280,11 @@ mod tests {
             remote.expect_flush().times(1).return_once(move || Err(e));
 
             let mut uci = Uci { remote };
-            assert_eq!(block_on(uci.act(pos)).unwrap_err().kind(), kind);
+            assert_eq!(block_on(uci.play(pos)).unwrap_err().kind(), kind);
         }
 
         #[test]
-        fn act_can_fail_reading_from_remote(pos: Position, e: io::Error) {
+        fn play_can_fail_reading_from_remote(pos: Position, e: io::Error) {
             let mut remote = MockRemote::new();
 
             remote.expect_send().returning(|_: UciMessage| Ok(()));
@@ -294,7 +294,7 @@ mod tests {
             remote.expect_recv().times(1).return_once(move || Err(e));
 
             let mut uci = Uci { remote };
-            assert_eq!(block_on(uci.act(pos)).unwrap_err().kind(), kind);
+            assert_eq!(block_on(uci.play(pos)).unwrap_err().kind(), kind);
         }
     }
 }

@@ -11,7 +11,7 @@ use tracing::*;
 use url::Url;
 
 #[instrument(err)]
-async fn new_player(color: Color, url: &Url) -> Result<ActorDispatcher<RemoteDispatcher>, Anyhow> {
+async fn new_player(color: Color, url: &Url) -> Result<PlayerDispatcher<RemoteDispatcher>, Anyhow> {
     let remote = match (url.host_str(), url.path()) {
         (None, "") => remote::Terminal::new(color).into(),
         (Some(host), "") => match url.port() {
@@ -26,13 +26,13 @@ async fn new_player(color: Color, url: &Url) -> Result<ActorDispatcher<RemoteDis
         (Some(_), _) => bail!("remote webservices are not supported yet"),
     };
 
-    let actor = match url.scheme() {
-        "cli" => actor::Cli::new(remote).into(),
-        "uci" => actor::Uci::init(remote).await?.into(),
+    let player = match url.scheme() {
+        "cli" => player::Cli::new(remote).into(),
+        "uci" => player::Uci::init(remote).await?.into(),
         scheme => bail!("unknown protocol '{}'", scheme),
     };
 
-    Ok(actor)
+    Ok(player)
 }
 
 #[instrument(err)]
@@ -54,8 +54,8 @@ async fn chessboard<U: Borrow<Url> + Debug>(white: U, black: U) -> Result<Outcom
                 info!(%position);
 
                 let action = match game.player() {
-                    Color::Black => black.act(position).await?,
-                    Color::White => white.act(position).await?,
+                    Color::Black => black.play(position).await?,
+                    Color::White => white.play(position).await?,
                 };
 
                 info!(player = %game.player(), %action);

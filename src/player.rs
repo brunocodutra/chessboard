@@ -10,15 +10,15 @@ pub use uci::*;
 
 /// Trait for types that play chess.
 #[async_trait]
-pub trait Actor {
+pub trait Player {
     /// The reason why acting failed.
     type Error;
 
     /// Play the next turn.
-    async fn act(&mut self, p: Position) -> Result<PlayerAction, Self::Error>;
+    async fn play(&mut self, pos: Position) -> Result<PlayerAction, Self::Error>;
 }
 
-pub enum ActorDispatcher<R>
+pub enum PlayerDispatcher<R>
 where
     R: Remote,
     R::Error: Error + Send + Sync + 'static,
@@ -27,39 +27,39 @@ where
     Uci(Uci<R>),
 }
 
-impl<R> From<Cli<R>> for ActorDispatcher<R>
+impl<R> From<Cli<R>> for PlayerDispatcher<R>
 where
     R: Remote,
     R::Error: Error + Send + Sync + 'static,
 {
     fn from(cli: Cli<R>) -> Self {
-        ActorDispatcher::Cli(cli)
+        PlayerDispatcher::Cli(cli)
     }
 }
 
-impl<R> From<Uci<R>> for ActorDispatcher<R>
+impl<R> From<Uci<R>> for PlayerDispatcher<R>
 where
     R: Remote,
     R::Error: Error + Send + Sync + 'static,
 {
     fn from(uci: Uci<R>) -> Self {
-        ActorDispatcher::Uci(uci)
+        PlayerDispatcher::Uci(uci)
     }
 }
 
 #[async_trait]
-impl<R> Actor for ActorDispatcher<R>
+impl<R> Player for PlayerDispatcher<R>
 where
     R: Remote + Send + Sync,
     R::Error: Error + Send + Sync + 'static,
 {
     type Error = R::Error;
 
-    async fn act(&mut self, p: Position) -> Result<PlayerAction, Self::Error> {
-        use ActorDispatcher::*;
+    async fn play(&mut self, pos: Position) -> Result<PlayerAction, Self::Error> {
+        use PlayerDispatcher::*;
         let action = match self {
-            Cli(a) => a.act(p).await?,
-            Uci(a) => a.act(p).await?,
+            Cli(p) => p.play(pos).await?,
+            Uci(p) => p.play(pos).await?,
         };
 
         Ok(action)

@@ -212,14 +212,14 @@ mod tests {
         }
 
         #[test]
-        fn position_returns_the_current_board(p: Position) {
+        fn position_returns_the_current_board(pos: Position) {
             let mut board = foreign::MockBoard::new();
-            board.expect_into::<Position>().times(1).return_const(p);
+            board.expect_into::<Position>().times(1).return_const(pos);
 
             let mut rules = Rules::new();
             rules.expect_current_position().times(1).return_once(move || board);
 
-            assert_eq!(Game { rules }.position(), p);
+            assert_eq!(Game { rules }.position(), pos);
         }
 
         #[test]

@@ -27,8 +27,8 @@ pub use crate::promotion::*;
 pub use crate::rank::*;
 pub use crate::square::*;
 
-pub mod actor;
+pub mod player;
 pub mod remote;
 
-pub use crate::actor::{Actor, ActorDispatcher};
+pub use crate::player::{Player, PlayerDispatcher};
 pub use crate::remote::{Remote, RemoteDispatcher, RemoteDispatcherError};
