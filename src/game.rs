@@ -1,4 +1,4 @@
-use crate::{foreign, Figure, InvalidPlayerAction, Outcome, Player, PlayerAction, Position};
+use crate::{foreign, Color, Figure, InvalidPlayerAction, Outcome, PlayerAction, Position};
 use derivative::Derivative;
 
 #[cfg(test)]
@@ -72,10 +72,8 @@ impl Game {
     }
 
     /// The player of the current turn.
-    pub fn player(&self) -> Player {
-        Player {
-            color: self.rules.side_to_move().into(),
-        }
+    pub fn player(&self) -> Color {
+        self.rules.side_to_move().into()
     }
 }
 
@@ -95,7 +93,7 @@ mod tests {
         }
 
         #[test]
-        fn players_can_only_play_legal_moves(p: Player, m: Move, f: Figure) {
+        fn players_can_only_play_legal_moves(p: Color, m: Move, f: Figure) {
             let mut board = foreign::MockBoard::new();
 
             #[cfg(debug_assertions)]
@@ -114,7 +112,7 @@ mod tests {
             let mut rules = Rules::new();
 
             rules.expect_result().return_const(None);
-            rules.expect_side_to_move().return_const(p.color);
+            rules.expect_side_to_move().return_const(p);
             rules.expect_current_position().return_once(move || board);
 
             rules.expect_make_move()
@@ -128,7 +126,7 @@ mod tests {
         }
 
         #[test]
-        fn players_can_only_play_valid_moves(p: Player, m: Move) {
+        fn players_can_only_play_valid_moves(p: Color, m: Move) {
             let mut board = foreign::MockBoard::new();
 
             #[cfg(debug_assertions)]
@@ -142,7 +140,7 @@ mod tests {
             let mut rules = Rules::new();
 
             rules.expect_result().return_const(None);
-            rules.expect_side_to_move().return_const(p.color);
+            rules.expect_side_to_move().return_const(p);
             rules.expect_current_position().return_once(move || board);
 
             rules.expect_make_move()
@@ -156,7 +154,7 @@ mod tests {
         }
 
         #[test]
-        fn players_can_make_valid_and_legal_moves(p: Player, m: Move) {
+        fn players_can_make_valid_and_legal_moves(p: Color, m: Move) {
             let mut rules = Rules::new();
 
             rules.expect_result().return_const(None);
@@ -173,14 +171,14 @@ mod tests {
         }
 
         #[test]
-        fn players_can_resign(p: Player) {
+        fn players_can_resign(p: Color) {
             let mut rules = Rules::new();
 
             rules.expect_result().return_const(None);
-            rules.expect_side_to_move().return_const(p.color);
+            rules.expect_side_to_move().return_const(p);
 
             rules.expect_resign()
-                .with(eq(Into::<foreign::Color>::into(p.color)))
+                .with(eq(Into::<foreign::Color>::into(p)))
                 .times(1)
                 .return_const(true);
 
@@ -192,11 +190,11 @@ mod tests {
 
 
         #[test]
-        fn draw_is_declared_if_the_criteria_is_met(p: Player, a: PlayerAction) {
+        fn draw_is_declared_if_the_criteria_is_met(p: Color, a: PlayerAction) {
             let mut rules = Rules::new();
 
             rules.expect_result().return_const(None);
-            rules.expect_side_to_move().return_const(p.color);
+            rules.expect_side_to_move().return_const(p);
             rules.expect_make_move().times(0..=1).return_const(true);
             rules.expect_resign().times(0..=1).return_const(true);
 
@@ -225,9 +223,9 @@ mod tests {
         }
 
         #[test]
-        fn player_returns_the_current_side_to_move(p: Player) {
+        fn player_returns_the_current_side_to_move(p: Color) {
             let mut rules = Rules::new();
-            rules.expect_side_to_move().times(1).return_const(p.color);
+            rules.expect_side_to_move().times(1).return_const(p);
             assert_eq!(Game { rules }.player(), p);
         }
     }
