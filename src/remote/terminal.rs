@@ -81,6 +81,7 @@ impl Terminal {
 }
 
 #[async_trait]
+#[allow(clippy::unit_arg)]
 impl Remote for Terminal {
     type Error = TerminalIoError;
 

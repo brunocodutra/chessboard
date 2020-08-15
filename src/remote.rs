@@ -1,3 +1,5 @@
+#![allow(clippy::unused_unit)]
+
 use async_trait::async_trait;
 use derive_more::{Display, Error, From};
 use std::fmt::Display;
