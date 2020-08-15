@@ -55,6 +55,7 @@ impl Drop for Tcp {
 }
 
 #[async_trait]
+#[allow(clippy::unit_arg)]
 impl Remote for Tcp {
     type Error = TcpIoError;
 

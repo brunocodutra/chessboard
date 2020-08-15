@@ -77,6 +77,7 @@ impl Drop for Process {
 }
 
 #[async_trait]
+#[allow(clippy::unit_arg)]
 impl Remote for Process {
     type Error = ProcessIoError;
 
