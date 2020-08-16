@@ -72,7 +72,7 @@ impl From<foreign::Rank> for Rank {
 }
 
 impl Into<foreign::Rank> for Rank {
-    fn into(self: Self) -> foreign::Rank {
+    fn into(self) -> foreign::Rank {
         foreign::Rank::from_index(self as usize)
     }
 }

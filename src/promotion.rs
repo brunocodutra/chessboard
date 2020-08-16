@@ -43,7 +43,7 @@ impl FromStr for Promotion {
 }
 
 impl Into<foreign::Piece> for Promotion {
-    fn into(self: Self) -> foreign::Piece {
+    fn into(self) -> foreign::Piece {
         use Promotion::*;
         match self {
             Knight => foreign::Piece::Knight,

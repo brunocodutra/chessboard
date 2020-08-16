@@ -46,7 +46,7 @@ impl From<foreign::Piece> for Piece {
 }
 
 impl Into<foreign::Piece> for Piece {
-    fn into(self: Self) -> foreign::Piece {
+    fn into(self) -> foreign::Piece {
         use Piece::*;
         match self {
             Pawn => foreign::Piece::Pawn,

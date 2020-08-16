@@ -45,7 +45,7 @@ impl From<foreign::Square> for Square {
 }
 
 impl Into<foreign::Square> for Square {
-    fn into(self: Self) -> foreign::Square {
+    fn into(self) -> foreign::Square {
         foreign::Square::make_square(self.rank.into(), self.file.into())
     }
 }
