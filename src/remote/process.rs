@@ -37,8 +37,8 @@ impl From<io::ErrorKind> for ProcessIoError {
 /// Dropping this type blocks until the child process exits.
 pub struct Process {
     child: Child,
-    reader: Box<Mutex<dyn Stream<Item = io::Result<String>> + Send + Unpin>>,
-    writer: Box<Mutex<dyn io::Write + Send + Unpin>>,
+    reader: Mutex<Box<dyn Stream<Item = io::Result<String>> + Send + Unpin>>,
+    writer: Mutex<Box<dyn io::Write + Send + Unpin>>,
 }
 
 impl Process {
@@ -59,8 +59,8 @@ impl Process {
 
         Ok(Process {
             child,
-            reader: Box::new(Mutex::new(io::BufReader::new(reader(stdout)).lines())),
-            writer: Box::new(Mutex::new(writer(stdin))),
+            reader: Mutex::new(Box::new(io::BufReader::new(reader(stdout)).lines())),
+            writer: Mutex::new(Box::new(writer(stdin))),
         })
     }
 }
