@@ -3,7 +3,7 @@
 * All code submitted to Chessboard via pull requests is
 assumed to be [licensed under the GPL-3.0][LICENSE].
 * Every code change must be covered by unit tests, use [tarpaulin] to generate the code coverage report:
-  + `cargo +nightly tarpaulin -v --all-features`
+  + `cargo tarpaulin -v --all-features`
 * Besides `cargo test`, make sure [Clippy] and [rustfmt] checks also pass before submitting a pull request:
   + `cargo clippy --all-targets -- -D warnings`
   + `cargo fmt --all -- --check`
