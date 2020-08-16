@@ -69,7 +69,7 @@ impl From<foreign::ChessMove> for Move {
 }
 
 impl Into<foreign::ChessMove> for Move {
-    fn into(self: Self) -> foreign::ChessMove {
+    fn into(self) -> foreign::ChessMove {
         foreign::ChessMove::new(
             self.from.into(),
             self.to.into(),

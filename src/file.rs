@@ -72,7 +72,7 @@ impl From<foreign::File> for File {
 }
 
 impl Into<foreign::File> for File {
-    fn into(self: Self) -> foreign::File {
+    fn into(self) -> foreign::File {
         foreign::File::from_index(self as usize)
     }
 }
