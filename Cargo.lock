@@ -132,7 +132,7 @@ dependencies = [
  "async-io",
  "async-mutex",
  "async-task",
- "blocking 0.5.1",
+ "blocking",
  "crossbeam-utils",
  "futures-channel",
  "futures-core",
@@ -264,20 +264,6 @@ dependencies = [
 
 [[package]]
 name = "blocking"
-version = "0.4.7"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d2468ff7bf85066b4a3678fede6fe66db31846d753ff0adfbfab2c6a6e81612b"
-dependencies = [
- "async-channel",
- "atomic-waker",
- "futures-lite",
- "once_cell",
- "parking 1.0.6",
- "waker-fn",
-]
-
-[[package]]
-name = "blocking"
 version = "0.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2ad97f54e1c9030ad57fae2f5e3791447f48bb225ab20f9d80515e7017d04378"
@@ -357,7 +343,6 @@ dependencies = [
  "proptest-derive",
  "rustyline",
  "smol",
- "smol-potat",
  "structopt",
  "tracing",
  "tracing-appender",
@@ -509,6 +494,12 @@ name = "downcast"
 version = "0.10.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4bb454f0228b18c7f4c3b0ebbee346ed9c52e7443b0999cd543ff3571205701d"
+
+[[package]]
+name = "easy-parallel"
+version = "3.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1dd4afd79212583ff429b913ad6605242ed7eec277e950b1438f300748f948f4"
 
 [[package]]
 name = "encode_unicode"
@@ -1472,44 +1463,18 @@ checksum = "fbee7696b84bbf3d89a1c2eccff0850e3047ed46bfcd2e92c29a2d074d57e252"
 
 [[package]]
 name = "smol"
-version = "0.1.18"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "620cbb3c6e34da57d3a248cda0cd01cd5848164dc062e764e65d06fe3ea7aed5"
-dependencies = [
- "async-task",
- "blocking 0.4.7",
- "concurrent-queue",
- "fastrand",
- "futures-io",
- "futures-util",
- "libc",
- "once_cell",
- "scoped-tls",
- "slab",
- "socket2",
- "wepoll-sys-stjepang",
- "winapi",
-]
-
-[[package]]
-name = "smol-potat"
 version = "0.3.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "888b677843b4a1a51d23aac1cda71fd3c365bd6bcf6b124653f9dad766c4990a"
+checksum = "67583f4ccc13bbb105a0752058d8ad66c47753d85445952809bcaca891954f83"
 dependencies = [
+ "async-channel",
+ "async-executor",
+ "async-io",
+ "blocking",
+ "cfg-if",
+ "easy-parallel",
+ "futures-lite",
  "num_cpus",
- "smol",
- "smol-potat-derive",
-]
-
-[[package]]
-name = "smol-potat-derive"
-version = "0.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a62773b8ef6acf14da474c54a85dcdfe6f08c9aace38396e1373f0c1e1b2df76"
-dependencies = [
- "quote 1.0.7",
- "syn 1.0.38",
 ]
 
 [[package]]

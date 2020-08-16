@@ -1,9 +1,10 @@
 use crate::Remote;
-use async_std::{io, prelude::*, sync::*};
+use async_std::{io, prelude::*, sync::Mutex};
 use async_trait::async_trait;
 use derive_more::{Display, Error, From};
 use rustyline::{error::ReadlineError, Config, Editor};
-use std::fmt::Display;
+use smol::{block_on, unblock};
+use std::{fmt::Display, sync::Arc};
 use tracing::*;
 
 /// The reason why reading from the terminal failed.
@@ -89,7 +90,7 @@ impl Remote for Terminal {
     async fn recv(&mut self) -> Result<String, Self::Error> {
         let reader = self.reader.clone();
         let prompt = self.prompt.clone();
-        let result = smol::blocking!(reader.lock().await.readline(&prompt));
+        let result = unblock!(block_on(reader.lock()).readline(&prompt));
         let line = result.map_err(TerminalReadError::from)?;
 
         Ok(line)
