@@ -124,8 +124,7 @@ macro_rules! echo {
     })
 }
 
-#[smol_potat::main]
-async fn main() -> Result<(), Box<dyn Error + Send + Sync + 'static>> {
+fn main() -> Result<(), Box<dyn Error + Send + Sync + 'static>> {
     let spec = AppSpec::from_args();
 
     let (writer, _guard) = tracing_appender::non_blocking(stderr());
@@ -141,55 +140,57 @@ async fn main() -> Result<(), Box<dyn Error + Send + Sync + 'static>> {
         .with_env_filter(filter)
         .try_init()?;
 
-    let best_of = spec.best_of.get();
+    smol::run(async {
+        let best_of = spec.best_of.get();
 
-    let pb = if spec.progress {
-        ProgressBar::new(best_of as u64).with_style(
-            ProgressStyle::default_bar()
-                .tick_chars("⠉⠙⠹⠸⠼⠴⠤⠦⠧⠇⠏⠋")
-                .template("{spinner} [{bar:30}] {pos}/{len} (-{eta})")
-                .progress_chars("=> "),
-        )
-    } else {
-        ProgressBar::hidden()
-    };
+        let pb = if spec.progress {
+            ProgressBar::new(best_of as u64).with_style(
+                ProgressStyle::default_bar()
+                    .tick_chars("⠉⠙⠹⠸⠼⠴⠤⠦⠧⠇⠏⠋")
+                    .template("{spinner} [{bar:30}] {pos}/{len} (-{eta})")
+                    .progress_chars("=> "),
+            )
+        } else {
+            ProgressBar::hidden()
+        };
 
-    pb.tick();
-    pb.enable_steady_tick(100);
+        pb.tick();
+        pb.enable_steady_tick(100);
 
-    let matches: Vec<_> = (0..best_of)
-        .map(|_| {
-            if spec.parallel {
-                Task::spawn(chessboard(spec.white.clone(), spec.black.clone())).boxed()
-            } else {
-                chessboard(&spec.white, &spec.black).boxed()
-            }
-        })
-        .collect();
+        let matches: Vec<_> = (0..best_of)
+            .map(|_| {
+                if spec.parallel {
+                    Task::spawn(chessboard(spec.white.clone(), spec.black.clone())).boxed()
+                } else {
+                    chessboard(&spec.white, &spec.black).boxed()
+                }
+            })
+            .collect();
 
-    let stats = iter(matches)
-        .map(Ok)
-        .and_then(|o| o)
-        .try_fold(BTreeMap::<_, usize>::new(), |mut acc, o| {
-            *acc.entry(o.to_string()).or_default() += 1;
-            pb.inc(1);
-            ok(acc)
-        })
-        .await
-        .context("the match was interrupted")?;
+        let stats = iter(matches)
+            .map(Ok)
+            .and_then(|o| o)
+            .try_fold(BTreeMap::<_, usize>::new(), |mut acc, o| {
+                *acc.entry(o.to_string()).or_default() += 1;
+                pb.inc(1);
+                ok(acc)
+            })
+            .await
+            .context("the match was interrupted")?;
 
-    pb.finish_and_clear();
+        pb.finish_and_clear();
 
-    let digits = (spec.best_of.get() as f64).log10().ceil() as usize + 1;
+        let digits = (spec.best_of.get() as f64).log10().ceil() as usize + 1;
 
-    echo!("+{:-<w$}+\n", "", w = digits + 44)?;
-    echo!("|{:<w$}|\n", " Statistics ", w = digits + 44)?;
-    echo!("+{:-<w$}+\n", "", w = digits + 44)?;
-    for (key, abs) in stats {
-        let rel = (100 * abs) / best_of;
-        echo!("| {:<31} | {:>w$} | {:>3} % |\n", key, abs, rel, w = digits)?;
-    }
-    echo!("+{:-<w$}+\n", "", w = digits + 44)?;
+        echo!("+{:-<w$}+\n", "", w = digits + 44)?;
+        echo!("|{:<w$}|\n", " Statistics ", w = digits + 44)?;
+        echo!("+{:-<w$}+\n", "", w = digits + 44)?;
+        for (key, abs) in stats {
+            let rel = (100 * abs) / best_of;
+            echo!("| {:<31} | {:>w$} | {:>3} % |\n", key, abs, rel, w = digits)?;
+        }
+        echo!("+{:-<w$}+\n", "", w = digits + 44)?;
 
-    Ok(())
+        Ok(())
+    })
 }

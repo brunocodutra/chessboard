@@ -1,9 +1,9 @@
 use crate::Remote;
 use anyhow::{Context, Error as Anyhow};
-use async_std::{io, prelude::*, sync::*};
+use async_std::{io, prelude::*, sync::Mutex};
 use async_trait::async_trait;
 use derive_more::{Display, Error, From};
-use smol::{blocking, reader, writer};
+use smol::Unblock;
 use std::{ffi::OsStr, fmt::Display, process::*};
 use tracing::*;
 
@@ -37,8 +37,8 @@ impl From<io::ErrorKind> for ProcessIoError {
 /// Dropping this type blocks until the child process exits.
 pub struct Process {
     child: Child,
-    reader: Mutex<Box<dyn Stream<Item = io::Result<String>> + Send + Unpin>>,
-    writer: Mutex<Box<dyn io::Write + Send + Unpin>>,
+    reader: Mutex<io::Lines<io::BufReader<Unblock<ChildStdout>>>>,
+    writer: Mutex<Unblock<ChildStdin>>,
 }
 
 impl Process {
@@ -49,18 +49,18 @@ impl Process {
     {
         info!(program = ?program.as_ref());
 
-        let mut child = blocking!(Command::new(program)
+        let mut child = Command::new(program)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
-            .spawn())?;
+            .spawn()?;
 
         let stdout = child.stdout.take().context("failed to open stdout")?;
         let stdin = child.stdin.take().context("failed to open stdin")?;
 
         Ok(Process {
             child,
-            reader: Mutex::new(Box::new(io::BufReader::new(reader(stdout)).lines())),
-            writer: Mutex::new(Box::new(writer(stdin))),
+            reader: Mutex::new(io::BufReader::new(Unblock::new(stdout)).lines()),
+            writer: Mutex::new(Unblock::new(stdin)),
         })
     }
 }
