@@ -337,7 +337,6 @@ dependencies = [
  "futures",
  "indicatif",
  "mockall",
- "num_cpus",
  "port_check",
  "proptest",
  "proptest-derive",
