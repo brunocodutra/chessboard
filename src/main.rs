@@ -4,8 +4,8 @@ use clap::AppSettings::*;
 use future::ok;
 use futures::{prelude::*, stream::iter, try_join};
 use indicatif::{ProgressBar, ProgressStyle};
-use smol::Task;
-use std::{borrow::*, cmp::min, collections::*, error::Error, fmt::Debug, io::stderr, num::*};
+use smol::{block_on, spawn, Unblock};
+use std::{borrow::*, cmp::min, collections::*, error::Error, fmt::Debug, io, num::*};
 use structopt::StructOpt;
 use tracing::*;
 use url::Url;
@@ -120,18 +120,18 @@ struct AppSpec {
 
 macro_rules! echo {
     ($($arg:tt)*) => ({
-        async_std::io::stdout().write_all(format!($($arg)*).as_bytes()).await
+        Unblock::new(io::stdout()).write_all(format!($($arg)*).as_bytes()).await
     })
 }
 
 fn main() -> Result<(), Box<dyn Error + Send + Sync + 'static>> {
     let spec = AppSpec::from_args();
 
-    let (writer, _guard) = tracing_appender::non_blocking(stderr());
+    let (writer, _guard) = tracing_appender::non_blocking(io::stderr());
 
     let filter = format!(
         "{},chessboard={}",
-        min(Level::WARN, spec.verbosity.clone()),
+        min(Level::WARN, spec.verbosity),
         spec.verbosity
     );
 
@@ -140,7 +140,7 @@ fn main() -> Result<(), Box<dyn Error + Send + Sync + 'static>> {
         .with_env_filter(filter)
         .try_init()?;
 
-    smol::run(async {
+    block_on(async {
         let best_of = spec.best_of.get();
 
         let pb = if spec.progress {
@@ -160,7 +160,7 @@ fn main() -> Result<(), Box<dyn Error + Send + Sync + 'static>> {
         let matches: Vec<_> = (0..best_of)
             .map(|_| {
                 if spec.parallel {
-                    Task::spawn(chessboard(spec.white.clone(), spec.black.clone())).boxed()
+                    spawn(chessboard(spec.white.clone(), spec.black.clone())).boxed()
                 } else {
                     chessboard(&spec.white, &spec.black).boxed()
                 }

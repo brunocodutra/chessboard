@@ -1,10 +1,10 @@
 use crate::Remote;
 use anyhow::{Context, Error as Anyhow};
-use async_std::{io, prelude::*, sync::Mutex};
 use async_trait::async_trait;
 use derive_more::{Display, Error, From};
-use smol::Unblock;
-use std::{ffi::OsStr, fmt::Display, process::*};
+use smol::io::{self, BufReader, Lines};
+use smol::{block_on, lock::Mutex, prelude::*, process::*};
+use std::{ffi::OsStr, fmt::Display};
 use tracing::*;
 
 /// The reason why spawning the remote process failed.
@@ -37,8 +37,8 @@ impl From<io::ErrorKind> for ProcessIoError {
 /// Dropping this type blocks until the child process exits.
 pub struct Process {
     child: Child,
-    reader: Mutex<io::Lines<io::BufReader<Unblock<ChildStdout>>>>,
-    writer: Mutex<Unblock<ChildStdin>>,
+    reader: Mutex<Lines<BufReader<ChildStdout>>>,
+    writer: Mutex<ChildStdin>,
 }
 
 impl Process {
@@ -59,8 +59,8 @@ impl Process {
 
         Ok(Process {
             child,
-            reader: Mutex::new(io::BufReader::new(Unblock::new(stdout)).lines()),
-            writer: Mutex::new(Unblock::new(stdin)),
+            reader: Mutex::new(io::BufReader::new(stdout).lines()),
+            writer: Mutex::new(stdin),
         })
     }
 }
@@ -69,7 +69,7 @@ impl Process {
 impl Drop for Process {
     #[instrument(skip(self))]
     fn drop(&mut self) {
-        let status = self.child.wait();
+        let status = block_on(self.child.status());
         if let Err(e) = status.context("the child process exited with an error") {
             error!("{:?}", e);
         }
