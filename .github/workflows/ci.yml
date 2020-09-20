@@ -71,9 +71,9 @@ jobs:
     - uses: actions/checkout@master
     - uses: hecrj/setup-rust-action@master
       with:
-        rust-version: stable
-    - run: cargo +stable install cargo-tarpaulin
-    - run: for i in 0 1 2; do cargo +stable tarpaulin --all-features --out Xml && break; done
+        rust-version: nightly
+    - run: cargo +nightly install cargo-tarpaulin
+    - run: for i in 0 1 2; do cargo +nightly tarpaulin --all-features --out Xml && break; done
     - run: bash <(curl -s https://codecov.io/bash) -C $GITHUB_SHA -B ${GITHUB_REF#refs/heads/} -Z
       env:
         CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
