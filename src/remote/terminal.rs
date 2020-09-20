@@ -1,10 +1,9 @@
 use crate::Remote;
-use async_std::{io, prelude::*, sync::Mutex};
 use async_trait::async_trait;
 use derive_more::{Display, Error, From};
 use rustyline::{error::ReadlineError, Config, Editor};
-use smol::{block_on, unblock};
-use std::{fmt::Display, sync::Arc};
+use smol::{io, lock::Mutex, prelude::*, unblock, Unblock};
+use std::{fmt::Display, io::stdout, io::Stdout, sync::Arc};
 use tracing::*;
 
 /// The reason why reading from the terminal failed.
@@ -64,7 +63,7 @@ pub enum TerminalIoError {
 pub struct Terminal {
     prompt: String,
     reader: Arc<Mutex<rustyline::Editor<()>>>,
-    writer: io::Stdout,
+    writer: Unblock<Stdout>,
 }
 
 impl Terminal {
@@ -76,7 +75,7 @@ impl Terminal {
                 Config::builder().auto_add_history(true).build(),
             ))),
 
-            writer: io::stdout(),
+            writer: Unblock::new(stdout()),
         }
     }
 }
@@ -88,9 +87,9 @@ impl Remote for Terminal {
 
     #[instrument(skip(self), err)]
     async fn recv(&mut self) -> Result<String, Self::Error> {
-        let reader = self.reader.clone();
+        let mut reader = self.reader.lock_arc().await;
         let prompt = self.prompt.clone();
-        let result = unblock!(block_on(reader.lock()).readline(&prompt));
+        let result = unblock(move || reader.readline(&prompt)).await;
         let line = result.map_err(TerminalReadError::from)?;
 
         Ok(line)

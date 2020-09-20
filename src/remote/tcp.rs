@@ -1,9 +1,8 @@
 use crate::Remote;
 use anyhow::Context;
-use async_std::{io, net::*, prelude::*};
 use async_trait::async_trait;
 use derive_more::{Display, Error, From};
-use smol::block_on;
+use smol::{block_on, io, net::*, prelude::*};
 use std::fmt::Display;
 use tracing::*;
 
@@ -33,7 +32,7 @@ pub struct Tcp {
 
 impl Tcp {
     #[instrument(skip(addrs), err)]
-    pub async fn connect<A: ToSocketAddrs>(addrs: A) -> Result<Self, TcpConnectionError> {
+    pub async fn connect<A: AsyncToSocketAddrs>(addrs: A) -> Result<Self, TcpConnectionError> {
         let socket = TcpStream::connect(addrs).await?;
         info!(local_addr = %socket.local_addr()?, peer_addr = %socket.peer_addr()?);
 
@@ -105,7 +104,7 @@ mod tests {
     proptest! {
         #[test]
         fn send_appends_new_line_to_message(msg: String) {
-            smol::run(async {
+            block_on(async {
                 let (mut tcp, mut peer) = connect().await.unwrap();
 
                 tcp.send(msg.clone()).await.unwrap();
@@ -120,7 +119,7 @@ mod tests {
 
         #[test]
         fn recv_splits_by_new_line(msgs in vec("[^\r\n]*\n", 0..=10)) {
-            smol::run(async {
+            block_on(async {
                 let (mut tcp, mut peer) = connect().await.unwrap();
 
                 peer.write_all(msgs.concat().as_bytes()).await.unwrap();
