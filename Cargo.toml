@@ -11,7 +11,7 @@ keywords = ["chess", "cli"]
 
 [dependencies]
 anyhow = "1.0.33"
-async-trait = "0.1.41"
+async-trait = "0.1.42"
 chess = "3.1.1"
 clap = "2.33.3"
 derivative = "2.1.1"
