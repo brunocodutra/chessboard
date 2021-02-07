@@ -18,7 +18,7 @@ derivative = "2.1.1"
 derive_more = "0.99.11"
 futures = "0.3.7"
 indicatif = "0.15.0"
-rustyline = "6.3.0"
+rustyline = "7.1.0"
 smol = "1.2.4"
 structopt = "0.3.20"
 tracing = { version = "0.1.21", features = ["log"] }
