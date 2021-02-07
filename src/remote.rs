@@ -13,6 +13,7 @@ pub use tcp::*;
 pub use terminal::*;
 
 /// Trait for types that communicate via message-passing.
+#[cfg_attr(test, mockall::automock(type Error = std::io::Error;))]
 #[async_trait]
 pub trait Remote {
     /// The reason why sending/receiving a message failed.
@@ -83,32 +84,5 @@ impl Remote for RemoteDispatcher {
         }
 
         Ok(())
-    }
-}
-
-#[cfg(test)]
-mockall::mock! {
-    pub(crate) Remote {
-        fn recv(&mut self) -> std::io::Result<String>;
-        fn send<D: 'static>(&mut self, msg: D) -> std::io::Result<()>;
-        fn flush(&mut self) -> std::io::Result<()>;
-    }
-}
-
-#[cfg(test)]
-#[async_trait]
-impl Remote for MockRemote {
-    type Error = std::io::Error;
-
-    async fn recv(&mut self) -> Result<String, Self::Error> {
-        MockRemote::recv(self)
-    }
-
-    async fn send<D: Display + Send + 'static>(&mut self, msg: D) -> Result<(), Self::Error> {
-        MockRemote::send(self, msg)
-    }
-
-    async fn flush(&mut self) -> Result<(), Self::Error> {
-        MockRemote::flush(self)
     }
 }
