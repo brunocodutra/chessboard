@@ -1,10 +1,10 @@
 use crate::{foreign, Promotion};
 use derive_more::Display;
 
-/// A chess piece.
+/// The chess piece type.
 #[derive(Debug, Display, Copy, Clone, Eq, PartialEq, Hash)]
 #[cfg_attr(test, derive(proptest_derive::Arbitrary))]
-pub enum Piece {
+pub enum Role {
     #[display(fmt = "pawn")]
     Pawn,
     #[display(fmt = "knight")]
@@ -19,9 +19,9 @@ pub enum Piece {
     King,
 }
 
-impl From<Promotion> for Piece {
+impl From<Promotion> for Role {
     fn from(p: Promotion) -> Self {
-        use Piece::*;
+        use Role::*;
         match p {
             Promotion::Knight => Knight,
             Promotion::Bishop => Bishop,
@@ -31,9 +31,9 @@ impl From<Promotion> for Piece {
     }
 }
 
-impl From<foreign::Piece> for Piece {
+impl From<foreign::Piece> for Role {
     fn from(p: foreign::Piece) -> Self {
-        use Piece::*;
+        use Role::*;
         match p {
             foreign::Piece::Pawn => Pawn,
             foreign::Piece::Knight => Knight,
@@ -45,9 +45,9 @@ impl From<foreign::Piece> for Piece {
     }
 }
 
-impl Into<foreign::Piece> for Piece {
+impl Into<foreign::Piece> for Role {
     fn into(self) -> foreign::Piece {
-        use Piece::*;
+        use Role::*;
         match self {
             Pawn => foreign::Piece::Pawn,
             Knight => foreign::Piece::Knight,

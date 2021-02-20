@@ -177,11 +177,11 @@ mod tests {
                 for &rank in Rank::VARIANTS {
                     let square = Square { file, rank };
                     let figure = placement[square];
-                    let piece = figure.map(|f| f.piece().into());
-                    let color = figure.map(|f| f.color().into());
+                    let role = figure.map(|f| f.role());
+                    let color = figure.map(|f| f.color());
 
-                    assert_eq!(piece, pos.board.piece_on(square.into()));
-                    assert_eq!(color, pos.board.color_on(square.into()));
+                    assert_eq!(role, pos.board.piece_on(square.into()).map(Into::into));
+                    assert_eq!(color, pos.board.color_on(square.into()).map(Into::into));
                 }
             }
         }

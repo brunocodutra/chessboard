@@ -1,4 +1,4 @@
-use crate::{Color, Piece};
+use crate::{Color, Role};
 use derive_more::Display;
 
 /// A chess piece of a certain color.
@@ -6,17 +6,17 @@ use derive_more::Display;
 #[cfg_attr(test, derive(proptest_derive::Arbitrary))]
 pub enum Figure {
     #[display(fmt = "{}", "char::from(*self)")]
-    White(Piece),
+    White(Role),
     #[display(fmt = "{}", "char::from(*self)")]
-    Black(Piece),
+    Black(Role),
 }
 
 impl Figure {
-    pub fn new(color: Color, piece: Piece) -> Self {
+    pub fn new(color: Color, role: Role) -> Self {
         use Figure::*;
         match color {
-            Color::White => White(piece),
-            Color::Black => Black(piece),
+            Color::White => White(role),
+            Color::Black => Black(role),
         }
     }
 
@@ -28,7 +28,7 @@ impl Figure {
         }
     }
 
-    pub fn piece(&self) -> Piece {
+    pub fn role(&self) -> Role {
         use Figure::*;
         match *self {
             White(p) | Black(p) => p,
@@ -39,7 +39,7 @@ impl Figure {
 impl From<Figure> for char {
     fn from(f: Figure) -> char {
         use Figure::*;
-        use Piece::*;
+        use Role::*;
         match f {
             White(Pawn) => '♙',
             White(Knight) => '♘',

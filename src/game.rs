@@ -33,9 +33,9 @@ impl Game {
 
                     debug_assert!(!board.legal(m.into()));
 
-                    if let Some(piece) = board.piece_on(square).map(Into::into) {
+                    if let Some(role) = board.piece_on(square).map(Into::into) {
                         if let Some(color) = board.color_on(square).map(Into::into) {
-                            return Err(IllegalMove(self.player(), Figure::new(color, piece), m));
+                            return Err(IllegalMove(self.player(), Figure::new(color, role), m));
                         }
                     }
 
@@ -103,7 +103,7 @@ mod tests {
 
             board.expect_piece_on()
                 .with(eq(Into::<foreign::Square>::into(m.from)))
-                .return_const(Some(f.piece().into()));
+                .return_const(Some(f.role().into()));
 
             board.expect_color_on()
                 .with(eq(Into::<foreign::Square>::into(m.from)))
