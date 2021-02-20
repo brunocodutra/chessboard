@@ -66,7 +66,7 @@ impl fmt::Display for Placement {
 
             for &figure in row {
                 match figure {
-                    Some(figure) => write!(f, " {:#} |", figure)?,
+                    Some(figure) => write!(f, " {} |", figure)?,
                     None => write!(f, "   |",)?,
                 }
             }

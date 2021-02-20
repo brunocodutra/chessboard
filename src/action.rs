@@ -100,9 +100,10 @@ pub enum InvalidPlayerAction {
     GameHasEnded(Outcome),
 
     #[display(
-        fmt = "the {} player is not allowed move the {} from {} to {} with {} promotion",
+        fmt = "the {} player is not allowed to move a {} {} from {} to {} with {} promotion",
         "_0",
-        "_1",
+        "_1.color()",
+        "_1.piece()",
         "_2.from",
         "_2.to",
         "_2.promotion.map(|p| Piece::from(p).to_string()).unwrap_or_else(|| \"no\".into())"
