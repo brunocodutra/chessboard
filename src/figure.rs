@@ -1,11 +1,13 @@
 use crate::{Color, Piece};
-use std::fmt;
+use derive_more::Display;
 
 /// A chess piece of a certain color.
-#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
+#[derive(Debug, Display, Copy, Clone, Eq, PartialEq, Hash)]
 #[cfg_attr(test, derive(proptest_derive::Arbitrary))]
 pub enum Figure {
+    #[display(fmt = "{}", "char::from(*self)")]
     White(Piece),
+    #[display(fmt = "{}", "char::from(*self)")]
     Black(Piece),
 }
 
@@ -32,33 +34,25 @@ impl Figure {
             White(p) | Black(p) => p,
         }
     }
-
-    fn symbol(self) -> &'static str {
-        use Figure::*;
-        use Piece::*;
-        match self {
-            White(Pawn) => "♙",
-            White(Knight) => "♘",
-            White(Bishop) => "♗",
-            White(Rook) => "♖",
-            White(Queen) => "♕",
-            White(King) => "♔",
-            Black(Pawn) => "♟",
-            Black(Knight) => "♞",
-            Black(Bishop) => "♝",
-            Black(Rook) => "♜",
-            Black(Queen) => "♛",
-            Black(King) => "♚",
-        }
-    }
 }
 
-impl fmt::Display for Figure {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        if f.alternate() {
-            write!(f, "{}", self.symbol())
-        } else {
-            write!(f, "{} {}", self.color(), self.piece())
+impl From<Figure> for char {
+    fn from(f: Figure) -> char {
+        use Figure::*;
+        use Piece::*;
+        match f {
+            White(Pawn) => '♙',
+            White(Knight) => '♘',
+            White(Bishop) => '♗',
+            White(Rook) => '♖',
+            White(Queen) => '♕',
+            White(King) => '♔',
+            Black(Pawn) => '♟',
+            Black(Knight) => '♞',
+            Black(Bishop) => '♝',
+            Black(Rook) => '♜',
+            Black(Queen) => '♛',
+            Black(King) => '♚',
         }
     }
 }
