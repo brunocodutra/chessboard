@@ -25,7 +25,7 @@ tracing = { version = "0.1.21", features = ["log"] }
 tracing-appender = "0.1.1"
 tracing-futures = { version = "0.2.4", features = ["std", "std-future"], default-features = false }
 tracing-subscriber = "0.2.14"
-url = "2.2.0"
+url = "2.2.1"
 vampirc-uci = { version = "0.11.0", features = ["chess"] }
 
 [dev-dependencies]
