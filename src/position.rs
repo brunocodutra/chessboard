@@ -1,4 +1,4 @@
-use crate::{foreign, Figure, Placement};
+use crate::{foreign, Piece, Placement};
 use derivative::Derivative;
 use derive_more::{Display, Error, From};
 use std::{hash::*, str::FromStr};
@@ -19,7 +19,7 @@ impl Position {
             placement[s.into()] = self.board.piece_on(s).and_then(|p| {
                 self.board
                     .color_on(s)
-                    .map(move |c| Figure::new(c.into(), p.into()))
+                    .map(move |c| Piece::new(c.into(), p.into()))
             });
         }
 
@@ -176,9 +176,8 @@ mod tests {
             for &file in File::VARIANTS {
                 for &rank in Rank::VARIANTS {
                     let square = Square { file, rank };
-                    let figure = placement[square];
-                    let role = figure.map(|f| f.role());
-                    let color = figure.map(|f| f.color());
+                    let role = placement[square].map(|f| f.role());
+                    let color = placement[square].map(|f| f.color());
 
                     assert_eq!(role, pos.board.piece_on(square.into()).map(Into::into));
                     assert_eq!(color, pos.board.color_on(square.into()).map(Into::into));

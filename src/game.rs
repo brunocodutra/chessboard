@@ -1,4 +1,4 @@
-use crate::{foreign, Color, Figure, InvalidPlayerAction, Outcome, PlayerAction, Position};
+use crate::{foreign, Color, InvalidPlayerAction, Outcome, Piece, PlayerAction, Position};
 use derivative::Derivative;
 
 #[cfg(test)]
@@ -35,7 +35,7 @@ impl Game {
 
                     if let Some(role) = board.piece_on(square).map(Into::into) {
                         if let Some(color) = board.color_on(square).map(Into::into) {
-                            return Err(IllegalMove(self.player(), Figure::new(color, role), m));
+                            return Err(IllegalMove(self.player(), Piece::new(color, role), m));
                         }
                     }
 
@@ -93,7 +93,7 @@ mod tests {
         }
 
         #[test]
-        fn players_can_only_play_legal_moves(p: Color, m: Move, f: Figure) {
+        fn players_can_only_play_legal_moves(p: Color, m: Move, f: Piece) {
             let mut board = foreign::MockBoard::new();
 
             #[cfg(debug_assertions)]
