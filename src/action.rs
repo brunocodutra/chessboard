@@ -103,10 +103,10 @@ pub enum InvalidPlayerAction {
         fmt = "the {} player is not allowed to move a {} {} from {} to {} with {} promotion",
         "_0",
         "_1.color()",
-        "_1.piece()",
+        "_1.role()",
         "_2.from",
         "_2.to",
-        "_2.promotion.map(|p| Piece::from(p).to_string()).unwrap_or_else(|| \"no\".into())"
+        "_2.promotion.map(|p| Role::from(p).to_string()).unwrap_or_else(|| \"no\".into())"
     )]
     IllegalMove(Color, Figure, Move),
 
