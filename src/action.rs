@@ -108,7 +108,7 @@ pub enum InvalidPlayerAction {
         "_2.to",
         "_2.promotion.map(|p| Role::from(p).to_string()).unwrap_or_else(|| \"no\".into())"
     )]
-    IllegalMove(Color, Figure, Move),
+    IllegalMove(Color, Piece, Move),
 
     #[display(
         fmt = "the {} player attempted to move a nonexistent piece from {} to {}",

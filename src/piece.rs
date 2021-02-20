@@ -4,16 +4,16 @@ use derive_more::Display;
 /// A chess piece of a certain color.
 #[derive(Debug, Display, Copy, Clone, Eq, PartialEq, Hash)]
 #[cfg_attr(test, derive(proptest_derive::Arbitrary))]
-pub enum Figure {
+pub enum Piece {
     #[display(fmt = "{}", "char::from(*self)")]
     White(Role),
     #[display(fmt = "{}", "char::from(*self)")]
     Black(Role),
 }
 
-impl Figure {
+impl Piece {
     pub fn new(color: Color, role: Role) -> Self {
-        use Figure::*;
+        use Piece::*;
         match color {
             Color::White => White(role),
             Color::Black => Black(role),
@@ -21,7 +21,7 @@ impl Figure {
     }
 
     pub fn color(&self) -> Color {
-        use Figure::*;
+        use Piece::*;
         match *self {
             White(_) => Color::White,
             Black(_) => Color::Black,
@@ -29,16 +29,16 @@ impl Figure {
     }
 
     pub fn role(&self) -> Role {
-        use Figure::*;
+        use Piece::*;
         match *self {
             White(p) | Black(p) => p,
         }
     }
 }
 
-impl From<Figure> for char {
-    fn from(f: Figure) -> char {
-        use Figure::*;
+impl From<Piece> for char {
+    fn from(f: Piece) -> char {
+        use Piece::*;
         use Role::*;
         match f {
             White(Pawn) => '♙',
@@ -53,6 +53,24 @@ impl From<Figure> for char {
             Black(Rook) => '♜',
             Black(Queen) => '♛',
             Black(King) => '♚',
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use proptest::prelude::*;
+
+    proptest! {
+        #[test]
+        fn every_piece_has_a_color(c: Color, r: Role) {
+            assert_eq!(Piece::new(c, r).color(), c);
+        }
+
+        #[test]
+        fn every_piece_has_a_role(c: Color, r: Role) {
+            assert_eq!(Piece::new(c, r).role(), r);
         }
     }
 }

@@ -1,4 +1,4 @@
-use crate::{Figure, File, Rank, Square};
+use crate::{File, Piece, Rank, Square};
 use std::{fmt, ops::*};
 
 /// The piece placement on the board.
@@ -7,7 +7,7 @@ use std::{fmt, ops::*};
 /// according to any set of chess rules.
 #[derive(Debug, Default, Copy, Clone, Eq, PartialEq, Hash)]
 pub struct Placement {
-    pub squares: [[Option<Figure>; 8]; 8],
+    pub squares: [[Option<Piece>; 8]; 8],
 }
 
 // We provide a custom implementation of Arbitrary rather than deriving,
@@ -20,7 +20,7 @@ impl proptest::arbitrary::Arbitrary for Placement {
     fn arbitrary_with(_: Self::Parameters) -> Self::Strategy {
         use proptest::prelude::*;
 
-        vec![any::<Option<Figure>>(); 64]
+        vec![any::<Option<Piece>>(); 64]
             .prop_map(|v| {
                 let mut placement = Placement::default();
 
@@ -29,7 +29,7 @@ impl proptest::arbitrary::Arbitrary for Placement {
                     .iter_mut()
                     .flatten()
                     .zip(v)
-                    .for_each(|(s, f)| *s = f);
+                    .for_each(|(s, p)| *s = p);
 
                 placement
             })
@@ -38,7 +38,7 @@ impl proptest::arbitrary::Arbitrary for Placement {
 }
 
 impl Index<Square> for Placement {
-    type Output = Option<Figure>;
+    type Output = Option<Piece>;
 
     fn index(&self, s: Square) -> &Self::Output {
         &self.squares[s.rank as usize][s.file as usize]
@@ -64,9 +64,9 @@ impl fmt::Display for Placement {
         for (&rank, row) in Rank::VARIANTS.iter().zip(&self.squares).rev() {
             write!(f, " {} |", rank)?;
 
-            for &figure in row {
-                match figure {
-                    Some(figure) => write!(f, " {} |", figure)?,
+            for &p in row {
+                match p {
+                    Some(p) => write!(f, " {} |", p)?,
                     None => write!(f, "   |",)?,
                 }
             }
