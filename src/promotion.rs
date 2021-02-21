@@ -46,6 +46,18 @@ impl FromStr for Promotion {
     }
 }
 
+impl From<Promotion> for &'static str {
+    fn from(p: Promotion) -> Self {
+        match p {
+            Promotion::Knight => "n",
+            Promotion::Bishop => "b",
+            Promotion::Rook => "r",
+            Promotion::Queen => "q",
+            Promotion::None => "",
+        }
+    }
+}
+
 impl From<Promotion> for Option<Role> {
     fn from(p: Promotion) -> Self {
         match p {
@@ -76,6 +88,11 @@ mod tests {
     use proptest::prelude::*;
 
     proptest! {
+        #[test]
+        fn every_promotion_has_an_associated_static_str(p: Promotion) {
+            assert_eq!(<&str>::from(p), p.to_string());
+        }
+
         #[test]
         fn parsing_printed_promotion_is_an_identity(p: Promotion) {
             assert_eq!(p.to_string().parse(), Ok(p));
