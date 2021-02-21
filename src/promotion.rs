@@ -1,5 +1,5 @@
 use crate::foreign;
-use derive_more::{Display, Error};
+use derive_more::{Display, Error, From};
 use std::str::FromStr;
 
 /// A chess piece.
@@ -17,16 +17,17 @@ pub enum Promotion {
 }
 
 /// The reason parsing a [`Promotion`] failed.
-#[derive(Debug, Display, Copy, Clone, Eq, PartialEq, Hash, Error)]
-#[cfg_attr(test, derive(proptest_derive::Arbitrary))]
+#[derive(Debug, Display, Clone, Eq, PartialEq, Hash, Error, From)]
 #[display(
-    fmt = "unable to parse promotion, expected one of four characters: '{}', '{}', '{}', '{}'",
-    "Promotion::Knight",
-    "Promotion::Bishop",
-    "Promotion::Rook",
-    "Promotion::Queen"
+    fmt = "unable to parse promotion from `{}`; expected one of four characters `[{}{}{}{}]`",
+    _0,
+    Promotion::Knight,
+    Promotion::Bishop,
+    Promotion::Rook,
+    Promotion::Queen
 )]
-pub struct ParsePromotionError;
+#[from(forward)]
+pub struct ParsePromotionError(#[error(not(source))] pub String);
 
 impl FromStr for Promotion {
     type Err = ParsePromotionError;
@@ -37,7 +38,7 @@ impl FromStr for Promotion {
             "b" => Ok(Promotion::Bishop),
             "r" => Ok(Promotion::Rook),
             "q" => Ok(Promotion::Queen),
-            _ => Err(ParsePromotionError),
+            _ => Err(s.into()),
         }
     }
 }
@@ -66,8 +67,8 @@ mod tests {
         }
 
         #[test]
-        fn parsing_promotion_fails_except_for_one_of_four_letters(p in "[^nbrq]*") {
-            assert_eq!(p.parse::<Promotion>(), Err(ParsePromotionError));
+        fn parsing_promotion_fails_except_for_one_of_four_letters(s in "[^nbrq]*") {
+            assert_eq!(s.parse::<Promotion>(), Err(ParsePromotionError(s)));
         }
     }
 }
