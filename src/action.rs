@@ -1,4 +1,4 @@
-use crate::{Color, Move, Outcome, Piece, Role};
+use crate::{Color, Move, Outcome, Position};
 use derive_more::{Display, Error, From};
 
 /// The possible actions a player can take.
@@ -9,36 +9,25 @@ pub enum Action {
     #[display(fmt = "move {}", _0)]
     Move(Move),
 
-    /// Resign the match in favor of the opponent.
+    /// Resign the game in favor of the opponent.
     #[display(fmt = "resign")]
     Resign,
 }
 
-/// The reason why a player action was rejected.
-#[derive(Debug, Display, Copy, Clone, Eq, PartialEq, Hash, Error)]
+/// Represents an illegal [`Move`] in a given [`Position`].
+#[derive(Debug, Display, Clone, /*Eq,*/ PartialEq, Hash, Error)]
+#[display(fmt = "position `{}` does not permit move `{}`", _1, _0)]
+pub struct IllegalMove(pub Move, pub Position);
+
+/// The reason why the player [`Action`] was rejected.
+#[derive(Debug, Display, Clone, /*Eq,*/ PartialEq, Hash, Error)]
 #[error(ignore)]
 pub enum InvalidAction {
     #[display(fmt = "the game has ended in a {}", _0)]
     GameHasEnded(Outcome),
 
-    #[display(
-        fmt = "the {} player is not allowed to move a {} {} from {} to {} with {} promotion",
-        "_0",
-        "_1.color()",
-        "_1.role()",
-        "_2.from",
-        "_2.to",
-        "Option::<Role>::from(_2.promotion).map_or_else(|| \"no\", |r| r.into())"
-    )]
-    IllegalMove(Color, Piece, Move),
-
-    #[display(
-        fmt = "the {} player attempted to move a nonexistent piece from {} to {}",
-        "_0",
-        "_1.from",
-        "_1.to"
-    )]
-    InvalidMove(Color, Move),
+    #[display(fmt = "the {} player attempted an illegal move", _0)]
+    PlayerAttemptedIllegalMove(Color, #[error(source)] IllegalMove),
 }
 
 #[cfg(test)]

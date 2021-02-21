@@ -1,4 +1,4 @@
-use crate::{foreign, Action, Color, InvalidAction, Outcome, Piece, Position};
+use crate::{foreign, Action, Color, IllegalMove, InvalidAction, Outcome, Position};
 use derivative::Derivative;
 
 #[cfg(test)]
@@ -24,26 +24,17 @@ impl Game {
             return Err(GameHasEnded(result));
         }
 
-        use Action::*;
         match action {
-            Move(m) => {
+            Action::Move(m) => {
                 if !self.rules.make_move(m.into()) {
-                    let square = m.from.into();
-                    let board = self.rules.current_position();
-
-                    debug_assert!(!board.legal(m.into()));
-
-                    if let Some(role) = board.piece_on(square).map(Into::into) {
-                        if let Some(color) = board.color_on(square).map(Into::into) {
-                            return Err(IllegalMove(self.player(), Piece::new(color, role), m));
-                        }
-                    }
-
-                    return Err(InvalidMove(self.player(), m));
+                    return Err(PlayerAttemptedIllegalMove(
+                        self.player(),
+                        IllegalMove(m, self.position()),
+                    ));
                 }
             }
 
-            Resign => {
+            Action::Resign => {
                 assert!(self.rules.resign(self.rules.side_to_move()));
 
                 #[cfg(not(test))]
@@ -89,25 +80,14 @@ mod tests {
         fn any_player_action_after_the_game_has_ended_is_invalid(a: Action, o: Outcome) {
             let mut rules = Rules::new();
             rules.expect_result().times(1).return_const(Some(o.into()));
-            assert_eq!(Game { rules }.execute(a), Err(InvalidAction::GameHasEnded(o)));
+            use InvalidAction::*;
+            assert_eq!(Game { rules }.execute(a), Err(GameHasEnded(o)));
         }
 
         #[test]
-        fn players_can_only_play_legal_moves(p: Color, m: Move, f: Piece) {
+        fn players_can_only_play_legal_moves(p: Color, m: Move, pos: Position) {
             let mut board = foreign::MockBoard::new();
-
-            #[cfg(debug_assertions)]
-            board.expect_legal()
-                .with(eq(Into::<foreign::ChessMove>::into(m)))
-                .return_const(false);
-
-            board.expect_piece_on()
-                .with(eq(Into::<foreign::Square>::into(m.from)))
-                .return_const(Some(f.role().into()));
-
-            board.expect_color_on()
-                .with(eq(Into::<foreign::Square>::into(m.from)))
-                .return_const(Some(f.color().into()));
+            board.expect_into::<Position>().times(1).return_const(pos);
 
             let mut rules = Rules::new();
 
@@ -122,35 +102,7 @@ mod tests {
 
             use Action::*;
             use InvalidAction::*;
-            assert_eq!(Game { rules }.execute(Move(m)), Err(IllegalMove(p, f, m)));
-        }
-
-        #[test]
-        fn players_can_only_play_valid_moves(p: Color, m: Move) {
-            let mut board = foreign::MockBoard::new();
-
-            #[cfg(debug_assertions)]
-            board.expect_legal()
-                .with(eq(Into::<foreign::ChessMove>::into(m)))
-                .return_const(false);
-
-            board.expect_piece_on().times(0..=1).return_const(None);
-            board.expect_color_on().times(0..=1).return_const(None);
-
-            let mut rules = Rules::new();
-
-            rules.expect_result().return_const(None);
-            rules.expect_side_to_move().return_const(p);
-            rules.expect_current_position().return_once(move || board);
-
-            rules.expect_make_move()
-                .with(eq(Into::<foreign::ChessMove>::into(m)))
-                .times(1)
-                .return_const(false);
-
-            use Action::*;
-            use InvalidAction::*;
-            assert_eq!(Game { rules }.execute(Move(m)), Err(InvalidMove(p, m)));
+            assert_eq!(Game { rules }.execute(Move(m)), Err(PlayerAttemptedIllegalMove(p, IllegalMove(m, pos))));
         }
 
         #[test]
