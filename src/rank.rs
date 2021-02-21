@@ -66,6 +66,21 @@ impl FromStr for Rank {
     }
 }
 
+impl From<Rank> for char {
+    fn from(r: Rank) -> char {
+        match r {
+            Rank::First => '1',
+            Rank::Second => '2',
+            Rank::Third => '3',
+            Rank::Fourth => '4',
+            Rank::Fifth => '5',
+            Rank::Sixth => '6',
+            Rank::Seventh => '7',
+            Rank::Eighth => '8',
+        }
+    }
+}
+
 impl From<foreign::Rank> for Rank {
     fn from(r: foreign::Rank) -> Self {
         Rank::VARIANTS[r.to_index()]
@@ -84,6 +99,11 @@ mod tests {
     use proptest::prelude::*;
 
     proptest! {
+        #[test]
+        fn every_rank_has_an_associated_character(r: Rank) {
+            assert_eq!(char::from(r).to_string(), r.to_string());
+        }
+
         #[test]
         fn parsing_printed_rank_is_an_identity(r: Rank) {
             assert_eq!(r.to_string().parse(), Ok(r));

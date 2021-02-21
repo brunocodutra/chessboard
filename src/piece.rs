@@ -37,10 +37,10 @@ impl Piece {
 }
 
 impl From<Piece> for char {
-    fn from(f: Piece) -> char {
+    fn from(p: Piece) -> char {
         use Piece::*;
         use Role::*;
-        match f {
+        match p {
             White(Pawn) => '♙',
             White(Knight) => '♘',
             White(Bishop) => '♗',
@@ -63,6 +63,11 @@ mod tests {
     use proptest::prelude::*;
 
     proptest! {
+        #[test]
+        fn every_file_has_an_associated_character(p: Piece) {
+            assert_eq!(char::from(p).to_string(), p.to_string());
+        }
+
         #[test]
         fn every_piece_has_a_color(c: Color, r: Role) {
             assert_eq!(Piece::new(c, r).color(), c);
