@@ -118,7 +118,7 @@ where
             }
         };
 
-        Ok(Action::MakeMove(m))
+        Ok(Action::Move(m))
     }
 }
 
@@ -225,7 +225,7 @@ mod tests {
                 .returning(|_| Ok(()));
 
             let mut uci = Uci { remote };
-            assert_eq!(block_on(uci.act(pos)).unwrap(), Action::MakeMove(m));
+            assert_eq!(block_on(uci.act(pos)).unwrap(), Action::Move(m));
         }
 
         #[test]
@@ -240,7 +240,7 @@ mod tests {
                 .returning(move || Ok(cmd.take().unwrap_or_else(|| format!("bestmove {}", m))));
 
             let mut uci = Uci { remote };
-            assert_eq!(block_on(uci.act(pos)).unwrap(), Action::MakeMove(m));
+            assert_eq!(block_on(uci.act(pos)).unwrap(), Action::Move(m));
         }
 
         #[test]
@@ -255,7 +255,7 @@ mod tests {
                 .returning(move || Ok(cmd.take().unwrap_or_else(|| format!("bestmove {}", m))));
 
             let mut uci = Uci { remote };
-            assert_eq!(block_on(uci.act(pos)).unwrap(), Action::MakeMove(m));
+            assert_eq!(block_on(uci.act(pos)).unwrap(), Action::Move(m));
         }
 
         #[test]

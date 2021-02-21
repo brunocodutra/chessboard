@@ -26,7 +26,7 @@ impl Game {
 
         use Action::*;
         match action {
-            MakeMove(m) => {
+            Move(m) => {
                 if !self.rules.make_move(m.into()) {
                     let square = m.from.into();
                     let board = self.rules.current_position();
@@ -122,7 +122,7 @@ mod tests {
 
             use Action::*;
             use InvalidAction::*;
-            assert_eq!(Game { rules }.execute(MakeMove(m)), Err(IllegalMove(p, f, m)));
+            assert_eq!(Game { rules }.execute(Move(m)), Err(IllegalMove(p, f, m)));
         }
 
         #[test]
@@ -150,7 +150,7 @@ mod tests {
 
             use Action::*;
             use InvalidAction::*;
-            assert_eq!(Game { rules }.execute(MakeMove(m)), Err(InvalidMove(p, m)));
+            assert_eq!(Game { rules }.execute(Move(m)), Err(InvalidMove(p, m)));
         }
 
         #[test]
@@ -167,7 +167,7 @@ mod tests {
             rules.expect_can_declare_draw().times(1).return_const(false);
 
             use Action::*;
-            assert_eq!(Game { rules }.execute(MakeMove(m)), Ok(()));
+            assert_eq!(Game { rules }.execute(Move(m)), Ok(()));
         }
 
         #[test]
