@@ -66,6 +66,21 @@ impl FromStr for File {
     }
 }
 
+impl From<File> for char {
+    fn from(f: File) -> char {
+        match f {
+            File::A => 'a',
+            File::B => 'b',
+            File::C => 'c',
+            File::D => 'd',
+            File::E => 'e',
+            File::F => 'f',
+            File::G => 'g',
+            File::H => 'h',
+        }
+    }
+}
+
 impl From<foreign::File> for File {
     fn from(f: foreign::File) -> Self {
         File::VARIANTS[f.to_index()]
@@ -84,6 +99,11 @@ mod tests {
     use proptest::prelude::*;
 
     proptest! {
+        #[test]
+        fn every_file_has_an_associated_character(f: File) {
+            assert_eq!(char::from(f).to_string(), f.to_string());
+        }
+
         #[test]
         fn parsing_printed_file_is_an_identity(f: File) {
             assert_eq!(f.to_string().parse(), Ok(f));
