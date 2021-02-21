@@ -11,7 +11,7 @@ pub struct Square {
     pub rank: Rank,
 }
 
-/// The reason why parsin a [`Square`] failed.
+/// The reason why parsing [`Square`] failed.
 #[derive(Debug, Display, Clone, Eq, PartialEq, Hash, Error, From)]
 pub enum ParseSquareError {
     #[display(fmt = "unable to parse square from `{}`; invalid file", _0)]

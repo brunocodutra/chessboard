@@ -137,7 +137,7 @@ impl proptest::arbitrary::Arbitrary for Position {
     }
 }
 
-/// The reason why parsing a position from a FEN string failed.
+/// The reason why parsing [`Position`] from a FEN string failed.
 #[derive(Debug, Display, Clone, Eq, PartialEq, Hash, Error)]
 pub enum ParsePositionError {
     #[display(fmt = "invalid FEN string")]
