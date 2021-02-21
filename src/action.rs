@@ -91,7 +91,7 @@ pub enum InvalidPlayerAction {
         "_1.role()",
         "_2.from",
         "_2.to",
-        "Option::<Role>::from(_2.promotion).map_or_else(|| \"no\".into(), |r| r.to_string())"
+        "Option::<Role>::from(_2.promotion).map_or_else(|| \"no\", |r| r.into())"
     )]
     IllegalMove(Color, Piece, Move),
 
