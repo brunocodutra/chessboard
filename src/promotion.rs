@@ -16,7 +16,7 @@ pub enum Promotion {
     Queen,
 }
 
-/// The reason parsing a [`Promotion`] failed.
+/// The reason parsing [`Promotion`] failed.
 #[derive(Debug, Display, Clone, Eq, PartialEq, Hash, Error, From)]
 #[display(
     fmt = "unable to parse promotion from `{}`; expected one of four characters `[{}{}{}{}]`",

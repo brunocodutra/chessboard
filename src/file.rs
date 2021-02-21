@@ -37,7 +37,7 @@ impl File {
     ];
 }
 
-/// The reason why parsin [`File`] failed.
+/// The reason why parsing [`File`] failed.
 #[derive(Debug, Display, Clone, Eq, PartialEq, Hash, Error, From)]
 #[display(
     fmt = "unable to parse file from `{}`; expected lower case letter in the range `[{}-{}]`",

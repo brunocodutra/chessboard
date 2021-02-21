@@ -18,7 +18,7 @@ pub struct Move {
     pub promotion: Option<Promotion>,
 }
 
-/// The reason why parsin a [`Move`] failed.
+/// The reason why parsing [`Move`] failed.
 #[derive(Debug, Display, Clone, Eq, PartialEq, Hash, Error)]
 pub enum ParseMoveError {
     #[display(fmt = "unable to parse move from `{}`; invalid 'from' square", _0)]
