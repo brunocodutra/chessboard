@@ -5,32 +5,30 @@ use std::str::{self, FromStr};
 /// A square of the board.
 #[derive(Debug, Display, Copy, Clone, Eq, PartialEq, Hash)]
 #[cfg_attr(test, derive(proptest_derive::Arbitrary))]
-#[display(fmt = "{}{}", "self.file", "self.rank")]
+#[display(fmt = "{}{}", file, rank)]
 pub struct Square {
     pub file: File,
     pub rank: Rank,
 }
 
-/// The reason parsing a [`Square`] failed.
-#[derive(Debug, Display, Copy, Clone, Eq, PartialEq, Hash, Error, From)]
-#[cfg_attr(test, derive(proptest_derive::Arbitrary))]
-#[display(fmt = "unable to parse square, {}")]
+/// The reason why parsin a [`Square`] failed.
+#[derive(Debug, Display, Clone, Eq, PartialEq, Hash, Error, From)]
 pub enum ParseSquareError {
-    #[display(fmt = "invalid file")]
-    InvalidFile(ParseFileError),
-    #[display(fmt = "invalid rank")]
-    InvalidRank(ParseRankError),
+    #[display(fmt = "unable to parse square from `{}`; invalid file", _0)]
+    InvalidFile(#[from(forward)] String, #[error(source)] ParseFileError),
+    #[display(fmt = "unable to parse square from `{}`; invalid rank", _0)]
+    InvalidRank(#[from(forward)] String, #[error(source)] ParseRankError),
 }
 
 impl FromStr for Square {
     type Err = ParseSquareError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let (i, _) = s.char_indices().nth(1).unwrap_or((s.len(), '\0'));
+        let i = s.char_indices().nth(1).map_or_else(|| s.len(), |(i, _)| i);
 
         Ok(Square {
-            file: s[..i].parse()?,
-            rank: s[i..].parse()?,
+            file: s[..i].parse().map_err(|e| (s, e))?,
+            rank: s[i..].parse().map_err(|e| (s, e))?,
         })
     }
 }
@@ -62,13 +60,15 @@ mod tests {
         }
 
         #[test]
-        fn parsing_square_fails_if_file_is_invalid(s in "[^a-h]*[1-8]") {
-            assert_eq!(s.parse::<Square>(), Err(ParseSquareError::InvalidFile(ParseFileError)));
+        fn parsing_square_fails_if_file_is_invalid(f in "[^a-h]", r: Rank) {
+            let s = [f.clone(), r.to_string()].concat();
+            assert_eq!(s.parse::<Square>(), Err((s, ParseFileError(f)).into()));
         }
 
         #[test]
-        fn parsing_square_fails_if_rank_is_invalid(s in "[a-h][^1-8]*") {
-            assert_eq!(s.parse::<Square>(), Err(ParseSquareError::InvalidRank(ParseRankError)));
+        fn parsing_square_fails_if_rank_is_invalid(f: File, r in "[^1-8]*") {
+            let s = [f.to_string(), r.clone()].concat();
+            assert_eq!(s.parse::<Square>(), Err((s, ParseRankError(r)).into()));
         }
     }
 }

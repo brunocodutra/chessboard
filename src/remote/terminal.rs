@@ -8,7 +8,6 @@ use tracing::*;
 
 /// The reason why reading from the terminal failed.
 #[derive(Debug, Display, Error, From)]
-#[cfg_attr(test, derive(proptest_derive::Arbitrary))]
 pub struct TerminalReadError(#[error(not(source))] io::Error);
 
 impl From<io::ErrorKind> for TerminalReadError {
@@ -37,17 +36,14 @@ impl From<ReadlineError> for TerminalReadError {
 
 /// The reason why writing to the terminal failed.
 #[derive(Debug, Display, Error, From)]
-#[cfg_attr(test, derive(proptest_derive::Arbitrary))]
 pub struct TerminalWriteError(#[error(not(source))] io::Error);
 
 /// The reason why flushing the internal buffers failed.
 #[derive(Debug, Display, Error, From)]
-#[cfg_attr(test, derive(proptest_derive::Arbitrary))]
 pub struct TerminalFlushError(#[error(not(source))] io::Error);
 
 /// The reason why writing to or reading from the terminal failed.
 #[derive(Debug, Display, Error, From)]
-#[cfg_attr(test, derive(proptest_derive::Arbitrary))]
 pub enum TerminalIoError {
     #[display(fmt = "failed to read from the standard input")]
     Read(TerminalReadError),

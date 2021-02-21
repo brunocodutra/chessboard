@@ -1,5 +1,5 @@
 use crate::foreign;
-use derive_more::{Display, Error};
+use derive_more::{Display, Error, From};
 use std::str::FromStr;
 
 /// A row of the board.
@@ -37,15 +37,16 @@ impl Rank {
     ];
 }
 
-/// The reason parsing a [`Rank`] failed.
-#[derive(Debug, Display, Copy, Clone, Eq, PartialEq, Hash, Error)]
-#[cfg_attr(test, derive(proptest_derive::Arbitrary))]
+/// The reason why parsin [`Rank`] failed.
+#[derive(Debug, Display, Clone, Eq, PartialEq, Hash, Error, From)]
 #[display(
-    fmt = "unable to parse rank, expected a sigle digit in the range [{}-{}]",
-    "Rank::First",
-    "Rank::Eighth"
+    fmt = "unable to parse rank from `{}`; expected digit in the range `[{}-{}]`",
+    _0,
+    Rank::First,
+    Rank::Eighth
 )]
-pub struct ParseRankError;
+#[from(forward)]
+pub struct ParseRankError(#[error(not(source))] pub String);
 
 impl FromStr for Rank {
     type Err = ParseRankError;
@@ -60,7 +61,7 @@ impl FromStr for Rank {
             "6" => Ok(Rank::Sixth),
             "7" => Ok(Rank::Seventh),
             "8" => Ok(Rank::Eighth),
-            _ => Err(ParseRankError),
+            _ => Err(s.into()),
         }
     }
 }
@@ -89,8 +90,13 @@ mod tests {
         }
 
         #[test]
-        fn parsing_rank_fails_except_for_single_digits_between_1_and_8(r in "[^1-8]*") {
-            assert_eq!(r.parse::<Rank>(), Err(ParseRankError));
+        fn parsing_rank_succeeds_for_digit_between_1_and_8(c in b'1'..=b'8') {
+            assert_eq!(char::from(c).to_string().parse::<Rank>(), Ok(Rank::VARIANTS[usize::from(c - b'1')]));
+        }
+
+        #[test]
+        fn parsing_rank_fails_except_for_digit_between_1_and_8(s in "[^1-8]*|[1-8]{2,}") {
+            assert_eq!(s.parse::<Rank>(), Err(ParseRankError(s)));
         }
     }
 }

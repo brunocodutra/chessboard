@@ -8,13 +8,11 @@ use tracing::*;
 
 /// The reason why connecting to remote TCP server failed.
 #[derive(Debug, Display, Error, From)]
-#[cfg_attr(test, derive(proptest_derive::Arbitrary))]
 #[display(fmt = "failed to connect to remote TCP server")]
 pub struct TcpConnectionError(io::Error);
 
 /// The reason why writing to or reading from the tcp stream failed.
 #[derive(Debug, Display, Error, From)]
-#[cfg_attr(test, derive(proptest_derive::Arbitrary))]
 #[display(fmt = "the remote TCP connection was terminated")]
 pub struct TcpIoError(io::Error);
 

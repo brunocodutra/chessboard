@@ -6,7 +6,7 @@ use std::{hash::*, str::FromStr};
 /// The current board.
 #[derive(Debug, Display, Copy, Clone, Derivative, From)]
 #[derivative(Default(new = "true"))]
-#[display(fmt = "{}", "board")]
+#[display(fmt = "{}", board)]
 pub struct Position {
     board: foreign::Board,
 }
@@ -139,7 +139,6 @@ impl proptest::arbitrary::Arbitrary for Position {
 
 /// The reason why parsing a position from a FEN string failed.
 #[derive(Debug, Display, Clone, Eq, PartialEq, Hash, Error)]
-#[cfg_attr(test, derive(proptest_derive::Arbitrary))]
 pub enum ParsePositionError {
     #[display(fmt = "invalid FEN string")]
     InvalidFen,

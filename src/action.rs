@@ -7,9 +7,9 @@ use std::str::{self, FromStr};
 #[cfg_attr(test, derive(proptest_derive::Arbitrary))]
 #[display(
     fmt = "{}{}{}",
-    "self.from",
-    "self.to",
-    "self.promotion.map(|p| p.to_string()).unwrap_or_else(String::new)"
+    "from",
+    "to",
+    "promotion.map_or_else(String::new, |p| p.to_string())"
 )]
 pub struct Move {
     pub from: Square,
@@ -18,17 +18,17 @@ pub struct Move {
     pub promotion: Option<Promotion>,
 }
 
-/// The reason parsing a [`Move`] failed.
-#[derive(Debug, Display, Copy, Clone, Eq, PartialEq, Hash, Error)]
-#[cfg_attr(test, derive(proptest_derive::Arbitrary))]
-#[display(fmt = "unable to parse move, {}")]
+/// The reason why parsin a [`Move`] failed.
+#[derive(Debug, Display, Clone, Eq, PartialEq, Hash, Error)]
 pub enum ParseMoveError {
-    #[display(fmt = "invalid square at the 'from' position")]
-    InvalidFromSquare(ParseSquareError),
-    #[display(fmt = "invalid square at the 'to' position")]
-    InvalidToSquare(ParseSquareError),
-    #[display(fmt = "invalid promotion specifier")]
-    InvalidPromotion(ParsePromotionError),
+    #[display(fmt = "unable to parse move from `{}`; invalid 'from' square", _0)]
+    InvalidFromSquare(String, #[error(source)] ParseSquareError),
+
+    #[display(fmt = "unable to parse move from `{}`; invalid 'to' square", _0)]
+    InvalidToSquare(String, #[error(source)] ParseSquareError),
+
+    #[display(fmt = "unable to parse move from `{}`; invalid promotion", _0)]
+    InvalidPromotion(String, #[error(source)] ParsePromotionError),
 }
 
 impl FromStr for Move {
@@ -37,16 +37,15 @@ impl FromStr for Move {
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         use ParseMoveError::*;
 
-        let terminator = (s.len(), '\0');
-        let (i, _) = s.char_indices().nth(2).unwrap_or(terminator);
-        let (j, _) = s.char_indices().nth(4).unwrap_or(terminator);
+        let i = s.char_indices().nth(2).map_or_else(|| s.len(), |(i, _)| i);
+        let j = s.char_indices().nth(4).map_or_else(|| s.len(), |(i, _)| i);
 
         Ok(Move {
-            from: s[..i].parse().map_err(InvalidFromSquare)?,
-            to: s[i..j].parse().map_err(InvalidToSquare)?,
+            from: s[..i].parse().map_err(|e| InvalidFromSquare(s.into(), e))?,
+            to: s[i..j].parse().map_err(|e| InvalidToSquare(s.into(), e))?,
             promotion: match &s[j..] {
                 "" => None,
-                p => Some(p.parse().map_err(InvalidPromotion)?),
+                p => Some(p.parse().map_err(|e| InvalidPromotion(s.into(), e))?),
             },
         })
     }
@@ -83,7 +82,7 @@ impl Into<foreign::ChessMove> for Move {
 #[cfg_attr(test, derive(proptest_derive::Arbitrary))]
 pub enum PlayerAction {
     /// Move a piece on the board.
-    #[display(fmt = "move {}", "_0")]
+    #[display(fmt = "move {}", _0)]
     MakeMove(Move),
 
     /// Resign the match in favor of the opponent.
@@ -93,10 +92,9 @@ pub enum PlayerAction {
 
 /// The reason why a player action was rejected.
 #[derive(Debug, Display, Copy, Clone, Eq, PartialEq, Hash, Error)]
-#[cfg_attr(test, derive(proptest_derive::Arbitrary), proptest(no_params))]
 #[error(ignore)]
 pub enum InvalidPlayerAction {
-    #[display(fmt = "the game has ended in a {}", "_0")]
+    #[display(fmt = "the game has ended in a {}", _0)]
     GameHasEnded(Outcome),
 
     #[display(
@@ -106,7 +104,7 @@ pub enum InvalidPlayerAction {
         "_1.role()",
         "_2.from",
         "_2.to",
-        "_2.promotion.map(|p| Role::from(p).to_string()).unwrap_or_else(|| \"no\".into())"
+        "_2.promotion.map_or_else(|| \"no\".into(), |p| Role::from(p).to_string())"
     )]
     IllegalMove(Color, Piece, Move),
 
@@ -131,37 +129,24 @@ mod tests {
         }
 
         #[test]
-        fn parsing_move_fails_if_from_square_file_is_invalid(m in "[^a-h][1-8][a-h][1-8][nbrq]*") {
+        fn parsing_move_fails_if_from_square_is_invalid(f in "[^a-h1-8]{2}", t: Square, p: Promotion) {
             use ParseMoveError::*;
-            use ParseSquareError::*;
-            assert_eq!(m.parse::<Move>(), Err(InvalidFromSquare(InvalidFile(ParseFileError))));
+            let s = [f.clone(), t.to_string(), p.to_string()].concat();
+            assert_eq!(s.parse::<Move>(), Err(InvalidFromSquare(s, f.parse::<Square>().unwrap_err())));
         }
 
         #[test]
-        fn parsing_move_fails_if_from_square_rank_is_invalid(m in "[a-h][^1-8][a-h][1-8][nbrq]*") {
+        fn parsing_move_fails_if_to_square_is_invalid(f: Square, t in "[^a-h1-8]{2}", p: Promotion) {
             use ParseMoveError::*;
-            use ParseSquareError::*;
-            assert_eq!(m.parse::<Move>(), Err(InvalidFromSquare(InvalidRank(ParseRankError))));
+            let s = [f.to_string(), t.clone(), p.to_string()].concat();
+            assert_eq!(s.parse::<Move>(), Err(InvalidToSquare(s, t.parse::<Square>().unwrap_err())));
         }
 
         #[test]
-        fn parsing_move_fails_if_to_square_file_is_invalid(m in "[a-h][1-8][^a-h][1-8][nbrq]*") {
+        fn parsing_move_fails_if_promotion_is_invalid(f: Square, t: Square, p in "[^nbrq]+") {
             use ParseMoveError::*;
-            use ParseSquareError::*;
-            assert_eq!(m.parse::<Move>(), Err(InvalidToSquare(InvalidFile(ParseFileError))));
-        }
-
-        #[test]
-        fn parsing_move_fails_if_to_square_rank_is_invalid(m in "[a-h][1-8][a-h][^1-8][nbrq]*") {
-            use ParseMoveError::*;
-            use ParseSquareError::*;
-            assert_eq!(m.parse::<Move>(), Err(InvalidToSquare(InvalidRank(ParseRankError))));
-        }
-
-        #[test]
-        fn parsing_move_fails_if_promotion_is_invalid(m in "[a-h][1-8][a-h][1-8][^nbrq]+") {
-            use ParseMoveError::*;
-            assert_eq!(m.parse::<Move>(), Err(InvalidPromotion(ParsePromotionError)));
+            let s = [f.to_string(), t.to_string(), p.clone()].concat();
+            assert_eq!(s.parse::<Move>(), Err(InvalidPromotion(s, p.parse::<Promotion>().unwrap_err())));
         }
     }
 }

@@ -9,7 +9,6 @@ use tracing::*;
 
 /// The reason why spawning the remote process failed.
 #[derive(Debug, Display, Error, From)]
-#[cfg_attr(test, derive(proptest_derive::Arbitrary))]
 #[display(fmt = "failed to spawn the remote process")]
 pub struct ProcessSpawnError(io::Error);
 
@@ -21,7 +20,6 @@ impl From<Anyhow> for ProcessSpawnError {
 
 /// The reason why writing to or reading from the remote process failed.
 #[derive(Debug, Display, Error, From)]
-#[cfg_attr(test, derive(proptest_derive::Arbitrary))]
 #[display(fmt = "the remote process failed during IO")]
 pub struct ProcessIoError(io::Error);
 
