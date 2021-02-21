@@ -1,8 +1,8 @@
-use crate::foreign;
+use crate::{foreign, Role};
 use derive_more::{Display, Error, From};
 use std::str::FromStr;
 
-/// A chess piece.
+/// A promotion specifier.
 #[derive(Debug, Display, Copy, Clone, Eq, PartialEq, Hash)]
 #[cfg_attr(test, derive(proptest_derive::Arbitrary))]
 pub enum Promotion {
@@ -14,12 +14,14 @@ pub enum Promotion {
     Rook,
     #[display(fmt = "q")]
     Queen,
+    #[display(fmt = "")]
+    None,
 }
 
 /// The reason parsing [`Promotion`] failed.
 #[derive(Debug, Display, Clone, Eq, PartialEq, Hash, Error, From)]
 #[display(
-    fmt = "unable to parse promotion from `{}`; expected one of four characters `[{}{}{}{}]`",
+    fmt = "unable to parse promotion from `{}`; expected either one of four characters `[{}{}{}{}]` or the empty string",
     _0,
     Promotion::Knight,
     Promotion::Bishop,
@@ -38,19 +40,32 @@ impl FromStr for Promotion {
             "b" => Ok(Promotion::Bishop),
             "r" => Ok(Promotion::Rook),
             "q" => Ok(Promotion::Queen),
+            "" => Ok(Promotion::None),
             _ => Err(s.into()),
         }
     }
 }
 
-impl Into<foreign::Piece> for Promotion {
-    fn into(self) -> foreign::Piece {
-        use Promotion::*;
-        match self {
-            Knight => foreign::Piece::Knight,
-            Bishop => foreign::Piece::Bishop,
-            Rook => foreign::Piece::Rook,
-            Queen => foreign::Piece::Queen,
+impl From<Promotion> for Option<Role> {
+    fn from(p: Promotion) -> Self {
+        match p {
+            Promotion::Knight => Some(Role::Knight),
+            Promotion::Bishop => Some(Role::Bishop),
+            Promotion::Rook => Some(Role::Rook),
+            Promotion::Queen => Some(Role::Queen),
+            Promotion::None => None,
+        }
+    }
+}
+
+impl From<Promotion> for Option<foreign::Piece> {
+    fn from(p: Promotion) -> Self {
+        match p {
+            Promotion::Knight => Some(foreign::Piece::Knight),
+            Promotion::Bishop => Some(foreign::Piece::Bishop),
+            Promotion::Rook => Some(foreign::Piece::Rook),
+            Promotion::Queen => Some(foreign::Piece::Queen),
+            Promotion::None => None,
         }
     }
 }
@@ -67,7 +82,7 @@ mod tests {
         }
 
         #[test]
-        fn parsing_promotion_fails_except_for_one_of_four_letters(s in "[^nbrq]*") {
+        fn parsing_promotion_fails_except_for_one_of_four_letters(s in "[^nbrq]+") {
             assert_eq!(s.parse::<Promotion>(), Err(ParsePromotionError(s)));
         }
     }

@@ -5,17 +5,11 @@ use std::str::{self, FromStr};
 /// The move of a piece on the board.
 #[derive(Debug, Display, Copy, Clone, Eq, PartialEq, Hash)]
 #[cfg_attr(test, derive(proptest_derive::Arbitrary))]
-#[display(
-    fmt = "{}{}{}",
-    "from",
-    "to",
-    "promotion.map_or_else(String::new, |p| p.to_string())"
-)]
+#[display(fmt = "{}{}{}", from, to, promotion)]
 pub struct Move {
     pub from: Square,
     pub to: Square,
-    /// If the move of a pawn triggers a promotion, the target piece should be specified.
-    pub promotion: Option<Promotion>,
+    pub promotion: Promotion,
 }
 
 /// The reason why parsing [`Move`] failed.
@@ -43,10 +37,7 @@ impl FromStr for Move {
         Ok(Move {
             from: s[..i].parse().map_err(|e| InvalidFromSquare(s.into(), e))?,
             to: s[i..j].parse().map_err(|e| InvalidToSquare(s.into(), e))?,
-            promotion: match &s[j..] {
-                "" => None,
-                p => Some(p.parse().map_err(|e| InvalidPromotion(s.into(), e))?),
-            },
+            promotion: s[j..].parse().map_err(|e| InvalidPromotion(s.into(), e))?,
         })
     }
 }
@@ -57,11 +48,11 @@ impl From<foreign::ChessMove> for Move {
             from: m.get_source().into(),
             to: m.get_dest().into(),
             promotion: match m.get_promotion() {
-                Some(foreign::Piece::Knight) => Some(Promotion::Knight),
-                Some(foreign::Piece::Bishop) => Some(Promotion::Bishop),
-                Some(foreign::Piece::Rook) => Some(Promotion::Rook),
-                Some(foreign::Piece::Queen) => Some(Promotion::Queen),
-                _ => None,
+                Some(foreign::Piece::Knight) => Promotion::Knight,
+                Some(foreign::Piece::Bishop) => Promotion::Bishop,
+                Some(foreign::Piece::Rook) => Promotion::Rook,
+                Some(foreign::Piece::Queen) => Promotion::Queen,
+                _ => Promotion::None,
             },
         }
     }
@@ -69,11 +60,7 @@ impl From<foreign::ChessMove> for Move {
 
 impl Into<foreign::ChessMove> for Move {
     fn into(self) -> foreign::ChessMove {
-        foreign::ChessMove::new(
-            self.from.into(),
-            self.to.into(),
-            self.promotion.map(Into::into),
-        )
+        foreign::ChessMove::new(self.from.into(), self.to.into(), self.promotion.into())
     }
 }
 
@@ -104,7 +91,7 @@ pub enum InvalidPlayerAction {
         "_1.role()",
         "_2.from",
         "_2.to",
-        "_2.promotion.map_or_else(|| \"no\".into(), |p| Role::from(p).to_string())"
+        "Option::<Role>::from(_2.promotion).map_or_else(|| \"no\".into(), |r| r.to_string())"
     )]
     IllegalMove(Color, Piece, Move),
 
