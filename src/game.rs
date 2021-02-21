@@ -1,4 +1,4 @@
-use crate::{foreign, Color, InvalidPlayerAction, Outcome, Piece, PlayerAction, Position};
+use crate::{foreign, Action, Color, InvalidAction, Outcome, Piece, Position};
 use derivative::Derivative;
 
 #[cfg(test)]
@@ -17,14 +17,14 @@ pub struct Game {
 
 impl Game {
     /// Executes a player action if valid, otherwise returns the reason why not.
-    pub fn execute(&mut self, action: PlayerAction) -> Result<(), InvalidPlayerAction> {
-        use InvalidPlayerAction::*;
+    pub fn execute(&mut self, action: Action) -> Result<(), InvalidAction> {
+        use InvalidAction::*;
 
         if let Some(result) = self.outcome() {
             return Err(GameHasEnded(result));
         }
 
-        use PlayerAction::*;
+        use Action::*;
         match action {
             MakeMove(m) => {
                 if !self.rules.make_move(m.into()) {
@@ -86,10 +86,10 @@ mod tests {
 
     proptest! {
         #[test]
-        fn any_player_action_after_the_game_has_ended_is_invalid(a: PlayerAction, o: Outcome) {
+        fn any_player_action_after_the_game_has_ended_is_invalid(a: Action, o: Outcome) {
             let mut rules = Rules::new();
             rules.expect_result().times(1).return_const(Some(o.into()));
-            assert_eq!(Game { rules }.execute(a), Err(InvalidPlayerAction::GameHasEnded(o)));
+            assert_eq!(Game { rules }.execute(a), Err(InvalidAction::GameHasEnded(o)));
         }
 
         #[test]
@@ -120,8 +120,8 @@ mod tests {
                 .times(1)
                 .return_const(false);
 
-            use PlayerAction::*;
-            use InvalidPlayerAction::*;
+            use Action::*;
+            use InvalidAction::*;
             assert_eq!(Game { rules }.execute(MakeMove(m)), Err(IllegalMove(p, f, m)));
         }
 
@@ -148,8 +148,8 @@ mod tests {
                 .times(1)
                 .return_const(false);
 
-            use PlayerAction::*;
-            use InvalidPlayerAction::*;
+            use Action::*;
+            use InvalidAction::*;
             assert_eq!(Game { rules }.execute(MakeMove(m)), Err(InvalidMove(p, m)));
         }
 
@@ -166,7 +166,7 @@ mod tests {
 
             rules.expect_can_declare_draw().times(1).return_const(false);
 
-            use PlayerAction::*;
+            use Action::*;
             assert_eq!(Game { rules }.execute(MakeMove(m)), Ok(()));
         }
 
@@ -184,13 +184,13 @@ mod tests {
 
             rules.expect_can_declare_draw().times(1).return_const(false);
 
-            use PlayerAction::*;
+            use Action::*;
             assert_eq!(Game { rules }.execute(Resign), Ok(()));
         }
 
 
         #[test]
-        fn draw_is_declared_if_the_criteria_is_met(p: Color, a: PlayerAction) {
+        fn draw_is_declared_if_the_criteria_is_met(p: Color, a: Action) {
             let mut rules = Rules::new();
 
             rules.expect_result().return_const(None);
