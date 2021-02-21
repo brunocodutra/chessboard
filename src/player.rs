@@ -1,4 +1,4 @@
-use crate::{PlayerAction, Position, Remote};
+use crate::{Action, Position, Remote};
 use async_trait::async_trait;
 
 mod cli;
@@ -15,7 +15,7 @@ pub trait Player {
     type Error;
 
     /// Play the next turn.
-    async fn play(&mut self, pos: Position) -> Result<PlayerAction, Self::Error>;
+    async fn act(&mut self, pos: Position) -> Result<Action, Self::Error>;
 }
 
 pub enum PlayerDispatcher<R>
@@ -55,11 +55,11 @@ where
 {
     type Error = R::Error;
 
-    async fn play(&mut self, pos: Position) -> Result<PlayerAction, Self::Error> {
+    async fn act(&mut self, pos: Position) -> Result<Action, Self::Error> {
         use PlayerDispatcher::*;
         let action = match self {
-            Cli(p) => p.play(pos).await?,
-            Uci(p) => p.play(pos).await?,
+            Cli(p) => p.act(pos).await?,
+            Uci(p) => p.act(pos).await?,
         };
 
         Ok(action)

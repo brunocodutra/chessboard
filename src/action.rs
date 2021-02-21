@@ -4,7 +4,7 @@ use derive_more::{Display, Error, From};
 /// The possible actions a player can take.
 #[derive(Debug, Display, Copy, Clone, Eq, PartialEq, Hash, From)]
 #[cfg_attr(test, derive(proptest_derive::Arbitrary))]
-pub enum PlayerAction {
+pub enum Action {
     /// Move a piece on the board.
     #[display(fmt = "move {}", _0)]
     MakeMove(Move),
@@ -17,7 +17,7 @@ pub enum PlayerAction {
 /// The reason why a player action was rejected.
 #[derive(Debug, Display, Copy, Clone, Eq, PartialEq, Hash, Error)]
 #[error(ignore)]
-pub enum InvalidPlayerAction {
+pub enum InvalidAction {
     #[display(fmt = "the game has ended in a {}", _0)]
     GameHasEnded(Outcome),
 
@@ -49,7 +49,7 @@ mod tests {
     proptest! {
         #[test]
         fn move_can_be_converted_into_action(m: Move) {
-            assert_eq!(PlayerAction::from(m), PlayerAction::MakeMove(m));
+            assert_eq!(Action::from(m), Action::MakeMove(m));
         }
     }
 }
