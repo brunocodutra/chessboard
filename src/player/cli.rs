@@ -88,7 +88,7 @@ where
 
         match spec {
             CliSpec::Resign => Ok(Action::Resign),
-            CliSpec::Move { descriptor } => Ok(Action::MakeMove(descriptor)),
+            CliSpec::Move { descriptor } => Ok(Action::Move(descriptor)),
         }
     }
 }
@@ -157,7 +157,7 @@ mod tests {
                 .returning(move || Ok(format!("{} {}", cmd, m)));
 
             let mut cli = Cli::new(remote);
-            assert_eq!(block_on(cli.act(pos)).unwrap(), Action::MakeMove(m));
+            assert_eq!(block_on(cli.act(pos)).unwrap(), Action::Move(m));
         }
 
         #[test]

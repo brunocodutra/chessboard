@@ -7,7 +7,7 @@ use derive_more::{Display, Error, From};
 pub enum Action {
     /// Move a piece on the board.
     #[display(fmt = "move {}", _0)]
-    MakeMove(Move),
+    Move(Move),
 
     /// Resign the match in favor of the opponent.
     #[display(fmt = "resign")]
@@ -49,7 +49,7 @@ mod tests {
     proptest! {
         #[test]
         fn move_can_be_converted_into_action(m: Move) {
-            assert_eq!(Action::from(m), Action::MakeMove(m));
+            assert_eq!(Action::from(m), Action::Move(m));
         }
     }
 }
