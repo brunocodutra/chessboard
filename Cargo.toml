@@ -31,5 +31,5 @@ vampirc-uci = { version = "0.11.0", features = ["chess"] }
 [dev-dependencies]
 mockall = "0.9.0"
 port_check = "0.1.5"
-proptest = "0.10.1"
+proptest = "1.0.0"
 proptest-derive = "0.2.0"
