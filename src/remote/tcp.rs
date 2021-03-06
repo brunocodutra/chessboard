@@ -52,11 +52,10 @@ impl Drop for Tcp {
 }
 
 #[async_trait]
-#[allow(clippy::unit_arg)]
 impl Remote for Tcp {
     type Error = TcpIoError;
 
-    #[instrument(skip(self), err)]
+    #[instrument(skip(self), /*err*/)]
     async fn recv(&mut self) -> Result<String, Self::Error> {
         let next = self.reader.next().await;
         let line = next.ok_or(io::ErrorKind::UnexpectedEof)??;
@@ -64,7 +63,7 @@ impl Remote for Tcp {
         Ok(line)
     }
 
-    #[instrument(skip(self, msg), err)]
+    #[instrument(skip(self, msg), /*err*/)]
     async fn send<D: Display + Send + 'static>(&mut self, msg: D) -> Result<(), Self::Error> {
         let line = format!("{}\n", msg);
         trace!(%line);
@@ -72,7 +71,7 @@ impl Remote for Tcp {
         Ok(())
     }
 
-    #[instrument(skip(self), err)]
+    #[instrument(skip(self), /*err*/)]
     async fn flush(&mut self) -> Result<(), Self::Error> {
         self.writer.flush().await?;
         Ok(())

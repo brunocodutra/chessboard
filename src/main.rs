@@ -36,7 +36,6 @@ async fn new_player(color: Color, url: &Url) -> Result<PlayerDispatcher<RemoteDi
 }
 
 #[instrument(err)]
-#[allow(clippy::unit_arg)]
 async fn chessboard<U: Borrow<Url> + Debug>(white: U, black: U) -> Result<Outcome, Anyhow> {
     let mut game = Game::new();
 

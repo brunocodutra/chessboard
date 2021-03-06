@@ -92,7 +92,7 @@ where
 {
     type Error = R::Error;
 
-    #[instrument(skip(self, pos), err)]
+    #[instrument(skip(self, pos), /*err*/)]
     async fn act(&mut self, pos: Position) -> Result<Action, Self::Error> {
         let setpos = UciMessage::Position {
             startpos: false,
