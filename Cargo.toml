@@ -10,26 +10,26 @@ readme = "README.md"
 keywords = ["chess", "cli"]
 
 [dependencies]
-anyhow = "1.0.33"
-async-trait = "0.1.41"
+anyhow = "1.0.38"
+async-trait = "0.1.45"
 chess = "3.1.1"
 clap = "2.33.3"
-derivative = "2.1.1"
+derivative = "2.2.0"
 derive_more = "0.99.11"
 futures = "0.3.13"
 indicatif = "0.15.0"
 rustyline = "7.1.0"
-smol = "1.2.4"
-structopt = "0.3.20"
+smol = "1.2.5"
+structopt = "0.3.21"
 tracing = { version = "0.1.25", features = ["log"] }
-tracing-appender = "0.1.1"
-tracing-futures = { version = "0.2.4", features = ["std", "std-future"], default-features = false }
-tracing-subscriber = "0.2.14"
-url = "2.2.0"
+tracing-appender = "0.1.2"
+tracing-futures = { version = "0.2.5", features = ["std", "std-future"], default-features = false }
+tracing-subscriber = "0.2.16"
+url = "2.2.1"
 vampirc-uci = { version = "0.11.0", features = ["chess"] }
 
 [dev-dependencies]
-mockall = "0.9.0"
+mockall = "0.9.1"
 port_check = "0.1.5"
 proptest = "1.0.0"
 proptest-derive = "0.3.0"

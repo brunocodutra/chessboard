@@ -75,11 +75,10 @@ impl Drop for Process {
 }
 
 #[async_trait]
-#[allow(clippy::unit_arg)]
 impl Remote for Process {
     type Error = ProcessIoError;
 
-    #[instrument(skip(self), err)]
+    #[instrument(skip(self), /*err*/)]
     async fn recv(&mut self) -> Result<String, Self::Error> {
         let next = self.reader.lock().await.next().await;
         let line = next.ok_or(io::ErrorKind::UnexpectedEof)??;
@@ -87,7 +86,7 @@ impl Remote for Process {
         Ok(line)
     }
 
-    #[instrument(skip(self, msg), err)]
+    #[instrument(skip(self, msg), /*err*/)]
     async fn send<D: Display + Send + 'static>(&mut self, msg: D) -> Result<(), Self::Error> {
         let line = format!("{}\n", msg);
         trace!(%line);
@@ -95,7 +94,7 @@ impl Remote for Process {
         Ok(())
     }
 
-    #[instrument(skip(self), err)]
+    #[instrument(skip(self), /*err*/)]
     async fn flush(&mut self) -> Result<(), Self::Error> {
         self.writer.lock().await.flush().await?;
         Ok(())

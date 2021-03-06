@@ -1,5 +1,3 @@
-#![allow(clippy::unused_unit)]
-
 pub use chess::*;
 
 #[cfg(test)]
