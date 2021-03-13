@@ -1,9 +1,9 @@
-use crate::*;
+use crate::{Action, Color, File, Move, Placement, Player, Position, Rank, Remote, Square};
 use anyhow::Error as Anyhow;
 use async_trait::async_trait;
 use clap::AppSettings::*;
-use derive_more::{Constructor, Display, From};
-use std::{error::Error, str::FromStr};
+use derive_more::{Constructor, Deref, Display, From};
+use std::{error::Error, fmt, str::FromStr};
 use structopt::StructOpt;
 use tracing::instrument;
 
@@ -75,7 +75,7 @@ where
 
     #[instrument(skip(self), err)]
     async fn act(&mut self, pos: &Position) -> Result<Action, Self::Error> {
-        self.remote.send(pos.placement()).await?;
+        self.remote.send(Board(pos.placement())).await?;
 
         loop {
             self.remote.flush().await?;
@@ -86,6 +86,43 @@ where
                 Err(e) => self.remote.send(e).await?,
             };
         }
+    }
+}
+
+#[derive(Debug, Clone, Eq, PartialEq, Hash, Deref)]
+struct Board(Placement);
+
+impl fmt::Display for Board {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "   ")?;
+
+        for &file in File::VARIANTS {
+            write!(f, "  {} ", file)?;
+        }
+
+        writeln!(f)?;
+        writeln!(f, "   +---+---+---+---+---+---+---+---+")?;
+
+        for &rank in Rank::VARIANTS.iter().rev() {
+            write!(f, " {} |", rank)?;
+
+            for &file in File::VARIANTS {
+                match self[Square { file, rank }] {
+                    Some(piece) => write!(f, " {:#} |", piece)?,
+                    None => write!(f, "   |")?,
+                }
+            }
+
+            writeln!(f, " {}", rank)?;
+            writeln!(f, "   +---+---+---+---+---+---+---+---+")?;
+        }
+
+        write!(f, "   ")?;
+        for &file in File::VARIANTS {
+            write!(f, "  {} ", file)?;
+        }
+
+        Ok(())
     }
 }
 
@@ -115,7 +152,7 @@ mod tests {
             let mut seq = Sequence::new();
 
             remote.expect_send().times(1).in_sequence(&mut seq)
-                .with(eq(pos.placement()))
+                .with(eq(Board(pos.placement())))
                 .returning(|_| Ok(()));
 
             remote.expect_flush().times(1).in_sequence(&mut seq)
@@ -134,7 +171,7 @@ mod tests {
             let mut seq = Sequence::new();
 
             remote.expect_send().times(1).in_sequence(&mut seq)
-                .with(eq(pos.placement()))
+                .with(eq(Board(pos.placement())))
                 .returning(|_| Ok(()));
 
             remote.expect_flush().times(1).in_sequence(&mut seq)
@@ -153,7 +190,7 @@ mod tests {
             let mut seq = Sequence::new();
 
             remote.expect_send().times(1).in_sequence(&mut seq)
-                .with(eq(pos.placement()))
+                .with(eq(Board(pos.placement())))
                 .returning(|_| Ok(()));
 
             remote.expect_flush().times(1).in_sequence(&mut seq)
@@ -171,7 +208,7 @@ mod tests {
             let mut remote = MockRemote::new();
 
             remote.expect_send().times(1)
-                .with(eq(pos.placement()))
+                .with(eq(Board(pos.placement())))
                 .returning(|_| Ok(()));
 
             remote.expect_send().times(1)
@@ -195,7 +232,7 @@ mod tests {
             let mut remote = MockRemote::new();
 
             remote.expect_send().times(1)
-                .with(eq(pos.placement()))
+                .with(eq(Board(pos.placement())))
                 .returning(|_| Ok(()));
 
             remote.expect_send().times(1)
@@ -219,7 +256,7 @@ mod tests {
             let mut remote = MockRemote::new();
 
             remote.expect_send().times(1)
-                .with(eq(pos.placement()))
+                .with(eq(Board(pos.placement())))
                 .returning(|_| Ok(()));
 
             remote.expect_send().times(1)
@@ -244,7 +281,7 @@ mod tests {
             let mut remote = MockRemote::new();
 
             remote.expect_send().times(1)
-                .with(eq(pos.placement()))
+                .with(eq(Board(pos.placement())))
                 .returning(|_| Ok(()));
 
             remote.expect_send().times(cmds.len())
@@ -265,7 +302,7 @@ mod tests {
             let mut remote = MockRemote::new();
 
             let kind = e.kind();
-            remote.expect_send().return_once(move |_: Placement| Err(e));
+            remote.expect_send().return_once(move |_: Board| Err(e));
 
             let mut cli = Cli::new(remote);
             assert_eq!(block_on(cli.act(&pos)).unwrap_err().kind(), kind);
@@ -275,7 +312,7 @@ mod tests {
         fn play_can_fail_flushing_the_remote(pos: Position, e: io::Error) {
             let mut remote = MockRemote::new();
 
-            remote.expect_send().returning(|_: Placement| Ok(()));
+            remote.expect_send().returning(|_: Board| Ok(()));
 
             let kind = e.kind();
             remote.expect_flush().return_once(move || Err(e));
@@ -288,7 +325,7 @@ mod tests {
         fn play_can_fail_reading_from_remote(pos: Position, e: io::Error) {
             let mut remote = MockRemote::new();
 
-            remote.expect_send().returning(|_: Placement| Ok(()));
+            remote.expect_send().returning(|_: Board| Ok(()));
             remote.expect_flush().returning(|| Ok(()));
 
             let kind = e.kind();
