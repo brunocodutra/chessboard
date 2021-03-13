@@ -1,5 +1,5 @@
 use crate::foreign;
-use derive_more::{Display, Error, From};
+use derive_more::{Display, Error};
 use std::str::FromStr;
 use tracing::instrument;
 
@@ -39,15 +39,13 @@ impl Rank {
 }
 
 /// The reason why parsing [`Rank`] failed.
-#[derive(Debug, Display, Clone, Eq, PartialEq, Hash, Error, From)]
+#[derive(Debug, Display, Copy, Clone, Eq, PartialEq, Hash, Error)]
 #[display(
-    fmt = "unable to parse rank from `{}`; expected digit in the range `[{}-{}]`",
-    _0,
+    fmt = "unable to parse rank; expected digit in the range `[{}-{}]`",
     Rank::First,
     Rank::Eighth
 )]
-#[from(forward)]
-pub struct ParseRankError(#[error(not(source))] pub String);
+pub struct ParseRankError;
 
 impl FromStr for Rank {
     type Err = ParseRankError;
@@ -63,7 +61,7 @@ impl FromStr for Rank {
             "6" => Ok(Rank::Sixth),
             "7" => Ok(Rank::Seventh),
             "8" => Ok(Rank::Eighth),
-            _ => Err(s.into()),
+            _ => Err(ParseRankError),
         }
     }
 }
@@ -102,11 +100,6 @@ mod tests {
 
     proptest! {
         #[test]
-        fn every_rank_has_an_associated_character(r: Rank) {
-            assert_eq!(char::from(r).to_string(), r.to_string());
-        }
-
-        #[test]
         fn parsing_printed_rank_is_an_identity(r: Rank) {
             assert_eq!(r.to_string().parse(), Ok(r));
         }
@@ -118,7 +111,7 @@ mod tests {
 
         #[test]
         fn parsing_rank_fails_except_for_digit_between_1_and_8(s in "[^1-8]*|[1-8]{2,}") {
-            assert_eq!(s.parse::<Rank>(), Err(ParseRankError(s)));
+            assert_eq!(s.parse::<Rank>(), Err(ParseRankError));
         }
     }
 }

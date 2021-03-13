@@ -1,5 +1,5 @@
 use crate::{foreign, Role};
-use derive_more::{Display, Error, From};
+use derive_more::{Display, Error};
 use std::str::FromStr;
 use tracing::instrument;
 
@@ -20,17 +20,15 @@ pub enum Promotion {
 }
 
 /// The reason parsing [`Promotion`] failed.
-#[derive(Debug, Display, Clone, Eq, PartialEq, Hash, Error, From)]
+#[derive(Debug, Display, Copy, Clone, Eq, PartialEq, Hash, Error)]
 #[display(
-    fmt = "unable to parse promotion from `{}`; expected either one of four characters `[{}{}{}{}]` or the empty string",
-    _0,
+    fmt = "unable to parse promotion; expected either one of four characters `[{}{}{}{}]` or the empty string",
     Promotion::Knight,
     Promotion::Bishop,
     Promotion::Rook,
     Promotion::Queen
 )]
-#[from(forward)]
-pub struct ParsePromotionError(#[error(not(source))] pub String);
+pub struct ParsePromotionError;
 
 impl FromStr for Promotion {
     type Err = ParsePromotionError;
@@ -43,7 +41,7 @@ impl FromStr for Promotion {
             "r" => Ok(Promotion::Rook),
             "q" => Ok(Promotion::Queen),
             "" => Ok(Promotion::None),
-            _ => Err(s.into()),
+            _ => Err(ParsePromotionError),
         }
     }
 }
@@ -91,18 +89,18 @@ mod tests {
 
     proptest! {
         #[test]
-        fn every_promotion_has_an_associated_static_str(p: Promotion) {
-            assert_eq!(<&str>::from(p), p.to_string());
-        }
-
-        #[test]
         fn parsing_printed_promotion_is_an_identity(p: Promotion) {
             assert_eq!(p.to_string().parse(), Ok(p));
         }
 
         #[test]
+        fn parsing_promotion_fails_for_upper_case_letter(s in "[A-Z]") {
+            assert_eq!(s.parse::<Promotion>(), Err(ParsePromotionError));
+        }
+
+        #[test]
         fn parsing_promotion_fails_except_for_one_of_four_letters(s in "[^nbrq]+") {
-            assert_eq!(s.parse::<Promotion>(), Err(ParsePromotionError(s)));
+            assert_eq!(s.parse::<Promotion>(), Err(ParsePromotionError));
         }
     }
 }

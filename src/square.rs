@@ -13,12 +13,13 @@ pub struct Square {
 }
 
 /// The reason why parsing [`Square`] failed.
-#[derive(Debug, Display, Clone, Eq, PartialEq, Hash, Error, From)]
+#[derive(Debug, Display, Copy, Clone, Eq, PartialEq, Hash, Error, From)]
+#[display(fmt = "unable to parse square; {}")]
 pub enum ParseSquareError {
-    #[display(fmt = "unable to parse square from `{}`; invalid file", _0)]
-    InvalidFile(#[from(forward)] String, #[error(source)] ParseFileError),
-    #[display(fmt = "unable to parse square from `{}`; invalid rank", _0)]
-    InvalidRank(#[from(forward)] String, #[error(source)] ParseRankError),
+    #[display(fmt = "invalid file")]
+    InvalidFile(ParseFileError),
+    #[display(fmt = "invalid rank")]
+    InvalidRank(ParseRankError),
 }
 
 impl FromStr for Square {
@@ -29,8 +30,8 @@ impl FromStr for Square {
         let i = s.char_indices().nth(1).map_or_else(|| s.len(), |(i, _)| i);
 
         Ok(Square {
-            file: s[..i].parse().map_err(|e| (s, e))?,
-            rank: s[i..].parse().map_err(|e| (s, e))?,
+            file: s[..i].parse()?,
+            rank: s[i..].parse()?,
         })
     }
 }
@@ -62,15 +63,15 @@ mod tests {
         }
 
         #[test]
-        fn parsing_square_fails_if_file_is_invalid(f in "[^a-h]", r: Rank) {
-            let s = [f.clone(), r.to_string()].concat();
-            assert_eq!(s.parse::<Square>(), Err((s, ParseFileError(f)).into()));
+        fn parsing_square_fails_if_file_is_invalid(f in "[^a-h]+", r: Rank) {
+            let s = [f, r.to_string()].concat();
+            assert_eq!(s.parse::<Square>(), Err(ParseFileError.into()));
         }
 
         #[test]
         fn parsing_square_fails_if_rank_is_invalid(f: File, r in "[^1-8]*") {
-            let s = [f.to_string(), r.clone()].concat();
-            assert_eq!(s.parse::<Square>(), Err((s, ParseRankError(r)).into()));
+            let s = [f.to_string(), r].concat();
+            assert_eq!(s.parse::<Square>(), Err(ParseRankError.into()));
         }
     }
 }
