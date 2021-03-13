@@ -1,5 +1,6 @@
 use crate::foreign;
 use derive_more::Display;
+use std::ops::Not;
 
 /// The color of a chess piece.
 #[derive(Debug, Display, Copy, Clone, Eq, PartialEq, Hash)]
@@ -9,6 +10,17 @@ pub enum Color {
     White,
     #[display(fmt = "black")]
     Black,
+}
+
+impl Not for Color {
+    type Output = Color;
+
+    fn not(self) -> Color {
+        match self {
+            Color::White => Color::Black,
+            Color::Black => Color::White,
+        }
+    }
 }
 
 impl From<Color> for &'static str {
@@ -45,6 +57,10 @@ mod tests {
 
     proptest! {
         #[test]
+        fn color_implements_not_operator(c: Color) {
+            assert_eq!(!!c, c);
+        }
+
         fn every_color_has_an_associated_static_str(c: Color) {
             assert_eq!(<&str>::from(c), c.to_string());
         }
