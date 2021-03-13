@@ -1,4 +1,4 @@
-use crate::{foreign, ParsePromotionError, ParseSquareError, Promotion, Square};
+use crate::{foreign, ParsePromotionError, ParseSquareError, Position, Promotion, Square};
 use derive_more::{Display, Error};
 use std::str::{self, FromStr};
 use tracing::instrument;
@@ -12,6 +12,12 @@ pub struct Move {
     pub to: Square,
     pub promotion: Promotion,
 }
+
+/// Represents an illegal [`Move`] in a given [`Position`].
+#[derive(Debug, Display, Clone, /*Eq,*/ PartialEq, Hash)]
+#[cfg_attr(test, derive(proptest_derive::Arbitrary))]
+#[display(fmt = "move `{}` is illegal in position `{}`", _0, _1)]
+pub struct IllegalMove(pub Move, pub Position);
 
 /// The reason why parsing [`Move`] failed.
 #[derive(Debug, Display, Clone, Eq, PartialEq, Hash, Error)]

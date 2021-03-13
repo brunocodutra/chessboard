@@ -1,4 +1,4 @@
-use crate::{foreign, Piece, Placement};
+use crate::{foreign, Color, Piece, Placement};
 use derivative::Derivative;
 use derive_more::{Display, Error, From};
 use std::{hash::*, str::FromStr};
@@ -13,6 +13,7 @@ pub struct Position {
 }
 
 impl Position {
+    /// The current arrangement of [`crate::Piece`]s on the board.
     pub fn placement(&self) -> Placement {
         let mut placement = Placement::default();
 
@@ -25,6 +26,11 @@ impl Position {
         }
 
         placement
+    }
+
+    /// The side to move.
+    pub fn turn(&self) -> Color {
+        self.board.side_to_move().into()
     }
 }
 
@@ -184,6 +190,11 @@ mod tests {
                     assert_eq!(color, pos.board.color_on(square.into()).map(Into::into));
                 }
             }
+        }
+
+        #[test]
+        fn turn_returns_the_current_side_to_play(pos: Position) {
+            assert_eq!(pos.turn(), pos.board.side_to_move().into());
         }
 
         #[test]
