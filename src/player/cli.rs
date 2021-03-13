@@ -2,7 +2,6 @@ use crate::*;
 use anyhow::Error as Anyhow;
 use async_trait::async_trait;
 use clap::AppSettings::*;
-use derivative::Derivative;
 use derive_more::{Constructor, From};
 use std::{error::Error, str::FromStr};
 use structopt::StructOpt;
@@ -44,14 +43,12 @@ where
     s.parse().map_err(|e| format!("{:?}", Anyhow::from(e)))
 }
 
-#[derive(From, Constructor, Derivative)]
-#[derivative(Debug)]
+#[derive(Debug, From, Constructor)]
 pub struct Cli<R>
 where
     R: Remote,
     R::Error: Error + Send + Sync + 'static,
 {
-    #[derivative(Debug = "ignore")]
     remote: R,
 }
 

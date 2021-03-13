@@ -39,7 +39,8 @@ pub enum RemoteDispatcherError {
     Terminal(TerminalIoError),
 }
 
-#[derive(From)]
+/// A static dispatcher for [`Remote`].
+#[derive(Debug, From)]
 pub enum RemoteDispatcher {
     Tcp(Tcp),
     Process(Process),

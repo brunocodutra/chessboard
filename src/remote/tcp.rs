@@ -17,6 +17,7 @@ pub struct TcpConnectionError(#[from(forward)] io::Error);
 pub struct TcpIoError(#[from(forward)] io::Error);
 
 /// An implementation of trait [`Remote`] as a tcp stream.
+#[derive(Debug)]
 pub struct Tcp {
     reader: io::Lines<io::BufReader<TcpStream>>,
     writer: io::BufWriter<TcpStream>,
