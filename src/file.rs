@@ -1,5 +1,5 @@
 use crate::foreign;
-use derive_more::{Display, Error, From};
+use derive_more::{Display, Error};
 use std::str::FromStr;
 use tracing::instrument;
 
@@ -39,15 +39,13 @@ impl File {
 }
 
 /// The reason why parsing [`File`] failed.
-#[derive(Debug, Display, Clone, Eq, PartialEq, Hash, Error, From)]
+#[derive(Debug, Display, Copy, Clone, Eq, PartialEq, Hash, Error)]
 #[display(
-    fmt = "unable to parse file from `{}`; expected lower case letter in the range `[{}-{}]`",
-    _0,
+    fmt = "unable to parse file; expected lower case letter in the range `[{}-{}]`",
     File::A,
     File::H
 )]
-#[from(forward)]
-pub struct ParseFileError(#[error(not(source))] pub String);
+pub struct ParseFileError;
 
 impl FromStr for File {
     type Err = ParseFileError;
@@ -63,7 +61,7 @@ impl FromStr for File {
             "f" => Ok(File::F),
             "g" => Ok(File::G),
             "h" => Ok(File::H),
-            _ => Err(s.into()),
+            _ => Err(ParseFileError),
         }
     }
 }
@@ -116,15 +114,14 @@ mod tests {
             assert_eq!(char::from(c).to_string().parse::<File>(), Ok(File::VARIANTS[usize::from(c - b'a')]));
         }
 
-
         #[test]
         fn parsing_file_fails_for_upper_case_letter(s in "[A-Z]") {
-            assert_eq!(s.parse::<File>(), Err(ParseFileError(s)));
+            assert_eq!(s.parse::<File>(), Err(ParseFileError));
         }
 
         #[test]
         fn parsing_file_fails_except_for_lower_case_letter_between_a_and_h(s in "[^a-h]*|[a-h]{2,}") {
-            assert_eq!(s.parse::<File>(), Err(ParseFileError(s)));
+            assert_eq!(s.parse::<File>(), Err(ParseFileError));
         }
     }
 }
