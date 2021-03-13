@@ -52,12 +52,12 @@ async fn chessboard<U: Borrow<Url> + Debug>(white: U, black: U) -> Result<Outcom
                 let position = game.position();
                 info!(%position);
 
-                let action = match game.player() {
+                let action = match position.turn() {
                     Color::Black => black.act(&position).await?,
                     Color::White => white.act(&position).await?,
                 };
 
-                info!(player = %game.player(), %action);
+                info!(player = %position.turn(), ?action);
 
                 if let Err(e) = game.execute(action).context("invalid player action") {
                     warn!("{:?}", e);
