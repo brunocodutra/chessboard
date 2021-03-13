@@ -123,6 +123,7 @@ macro_rules! echo {
     })
 }
 
+#[instrument(err)]
 fn main() -> Result<(), Box<dyn Error + Send + Sync + 'static>> {
     let spec = AppSpec::from_args();
 

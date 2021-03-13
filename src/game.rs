@@ -1,5 +1,6 @@
 use crate::{foreign, Action, Color, IllegalMove, InvalidAction, Outcome, Position};
 use derivative::Derivative;
+use tracing::instrument;
 
 #[cfg(test)]
 use foreign::MockGame as Rules;
@@ -17,6 +18,7 @@ pub struct Game {
 
 impl Game {
     /// Executes a player action if valid, otherwise returns the reason why not.
+    #[instrument(skip(self), err)]
     pub fn execute(&mut self, action: Action) -> Result<(), InvalidAction> {
         use InvalidAction::*;
 

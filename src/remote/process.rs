@@ -5,7 +5,7 @@ use derive_more::{Display, Error, From};
 use smol::io::{self, BufReader, Lines};
 use smol::{block_on, lock::Mutex, prelude::*, process::*};
 use std::{ffi::OsStr, fmt::Display};
-use tracing::*;
+use tracing::{error, info, instrument, trace};
 
 /// The reason why spawning the remote process failed.
 #[derive(Debug, Display, Error, From)]
@@ -60,7 +60,7 @@ impl Process {
 
 /// Waits for the child process to exit.
 impl Drop for Process {
-    #[instrument(skip(self))]
+    #[instrument]
     fn drop(&mut self) {
         let status = block_on(self.child.status());
         if let Err(e) = status.context("the child process exited with an error") {
@@ -73,7 +73,7 @@ impl Drop for Process {
 impl Remote for Process {
     type Error = ProcessIoError;
 
-    #[instrument(skip(self), /*err*/)]
+    #[instrument(err)]
     async fn recv(&mut self) -> Result<String, Self::Error> {
         let next = self.reader.lock().await.next().await;
         let line = next.ok_or(io::ErrorKind::UnexpectedEof)??;
@@ -81,7 +81,7 @@ impl Remote for Process {
         Ok(line)
     }
 
-    #[instrument(skip(self, msg), /*err*/)]
+    #[instrument(skip(msg), err)]
     async fn send<D: Display + Send + 'static>(&mut self, msg: D) -> Result<(), Self::Error> {
         let line = format!("{}\n", msg);
         trace!(%line);
@@ -89,7 +89,7 @@ impl Remote for Process {
         Ok(())
     }
 
-    #[instrument(skip(self), /*err*/)]
+    #[instrument(err)]
     async fn flush(&mut self) -> Result<(), Self::Error> {
         self.writer.lock().await.flush().await?;
         Ok(())

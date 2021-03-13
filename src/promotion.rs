@@ -1,6 +1,7 @@
 use crate::{foreign, Role};
 use derive_more::{Display, Error, From};
 use std::str::FromStr;
+use tracing::instrument;
 
 /// A promotion specifier.
 #[derive(Debug, Display, Copy, Clone, Eq, PartialEq, Hash)]
@@ -34,6 +35,7 @@ pub struct ParsePromotionError(#[error(not(source))] pub String);
 impl FromStr for Promotion {
     type Err = ParsePromotionError;
 
+    #[instrument(err)]
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
             "n" => Ok(Promotion::Knight),

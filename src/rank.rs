@@ -1,6 +1,7 @@
 use crate::foreign;
 use derive_more::{Display, Error, From};
 use std::str::FromStr;
+use tracing::instrument;
 
 /// A row of the board.
 #[derive(Debug, Display, Copy, Clone, Eq, PartialEq, Hash)]
@@ -51,6 +52,7 @@ pub struct ParseRankError(#[error(not(source))] pub String);
 impl FromStr for Rank {
     type Err = ParseRankError;
 
+    #[instrument(err)]
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
             "1" => Ok(Rank::First),

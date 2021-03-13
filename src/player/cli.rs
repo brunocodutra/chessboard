@@ -5,7 +5,7 @@ use clap::AppSettings::*;
 use derive_more::{Constructor, From};
 use std::{error::Error, str::FromStr};
 use structopt::StructOpt;
-use tracing::*;
+use tracing::instrument;
 
 #[derive(Debug, StructOpt)]
 #[structopt(
@@ -35,6 +35,7 @@ enum CliSpec {
     },
 }
 
+#[instrument(err)]
 fn try_parse<T>(s: &str) -> Result<T, String>
 where
     T: FromStr,
@@ -60,7 +61,7 @@ where
 {
     type Error = R::Error;
 
-    #[instrument(skip(self, pos), /*err*/)]
+    #[instrument(skip(self), err)]
     async fn act(&mut self, pos: Position) -> Result<Action, Self::Error> {
         self.remote.send(pos.placement()).await?;
 
