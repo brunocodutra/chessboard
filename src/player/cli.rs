@@ -62,7 +62,7 @@ where
     type Error = R::Error;
 
     #[instrument(skip(self), err)]
-    async fn act(&mut self, pos: Position) -> Result<Action, Self::Error> {
+    async fn act(&mut self, pos: &Position) -> Result<Action, Self::Error> {
         self.remote.send(pos.placement()).await?;
 
         let spec = loop {
@@ -108,7 +108,7 @@ mod tests {
                 .returning(move || Ok(a.to_string()));
 
             let mut cli = Cli::new(remote);
-            assert_eq!(block_on(cli.act(pos)).unwrap(), a);
+            assert_eq!(block_on(cli.act(&pos)).unwrap(), a);
         }
 
         #[test]
@@ -127,7 +127,7 @@ mod tests {
                 .return_once(move || Ok(cmd));
 
             let mut cli = Cli::new(remote);
-            assert_eq!(block_on(cli.act(pos)).unwrap(), Action::Resign);
+            assert_eq!(block_on(cli.act(&pos)).unwrap(), Action::Resign);
         }
 
         #[test]
@@ -146,7 +146,7 @@ mod tests {
                 .returning(move || Ok(format!("{} {}", cmd, m)));
 
             let mut cli = Cli::new(remote);
-            assert_eq!(block_on(cli.act(pos)).unwrap(), Action::Move(m));
+            assert_eq!(block_on(cli.act(&pos)).unwrap(), Action::Move(m));
         }
 
         #[test]
@@ -168,7 +168,7 @@ mod tests {
                 .returning(move || Ok(cmd.take().unwrap_or_else(|| a.to_string())));
 
             let mut cli = Cli::new(remote);
-            assert_eq!(block_on(cli.act(pos)).unwrap(), a);
+            assert_eq!(block_on(cli.act(&pos)).unwrap(), a);
         }
 
         #[test]
@@ -190,7 +190,7 @@ mod tests {
                 .returning(move || Ok(cmd.take().unwrap_or_else(|| a.to_string())));
 
             let mut cli = Cli::new(remote);
-            assert_eq!(block_on(cli.act(pos)).unwrap(), a);
+            assert_eq!(block_on(cli.act(&pos)).unwrap(), a);
         }
 
         #[test]
@@ -213,7 +213,7 @@ mod tests {
                 .returning(move || Ok(help.take().unwrap_or_else(|| a.to_string())));
 
             let mut cli = Cli::new(remote);
-            assert_eq!(block_on(cli.act(pos)).unwrap(), a);
+            assert_eq!(block_on(cli.act(&pos)).unwrap(), a);
         }
 
         #[test]
@@ -235,7 +235,7 @@ mod tests {
                 .returning(move || Ok(cmds.pop().unwrap_or_else(|| a.to_string())));
 
             let mut cli = Cli::new(remote);
-            assert_eq!(block_on(cli.act(pos)).unwrap(), a);
+            assert_eq!(block_on(cli.act(&pos)).unwrap(), a);
         }
 
         #[test]
@@ -246,7 +246,7 @@ mod tests {
             remote.expect_send().return_once(move |_: Placement| Err(e));
 
             let mut cli = Cli::new(remote);
-            assert_eq!(block_on(cli.act(pos)).unwrap_err().kind(), kind);
+            assert_eq!(block_on(cli.act(&pos)).unwrap_err().kind(), kind);
         }
 
         #[test]
@@ -259,7 +259,7 @@ mod tests {
             remote.expect_flush().return_once(move || Err(e));
 
             let mut cli = Cli::new(remote);
-            assert_eq!(block_on(cli.act(pos)).unwrap_err().kind(), kind);
+            assert_eq!(block_on(cli.act(&pos)).unwrap_err().kind(), kind);
         }
 
         #[test]
@@ -273,7 +273,7 @@ mod tests {
             remote.expect_recv().return_once(move || Err(e));
 
             let mut cli = Cli::new(remote);
-            assert_eq!(block_on(cli.act(pos)).unwrap_err().kind(), kind);
+            assert_eq!(block_on(cli.act(&pos)).unwrap_err().kind(), kind);
         }
     }
 }

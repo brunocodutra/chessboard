@@ -17,7 +17,7 @@ pub trait Player {
     type Error;
 
     /// Play the next turn.
-    async fn act(&mut self, pos: Position) -> Result<Action, Self::Error>;
+    async fn act(&mut self, pos: &Position) -> Result<Action, Self::Error>;
 }
 
 /// A static dispatcher for [`Player`].
@@ -40,7 +40,7 @@ where
     type Error = R::Error;
 
     #[instrument(skip(self), err)]
-    async fn act(&mut self, pos: Position) -> Result<Action, Self::Error> {
+    async fn act(&mut self, pos: &Position) -> Result<Action, Self::Error> {
         use PlayerDispatcher::*;
         let action = match self {
             Cli(p) => p.act(pos).await?,

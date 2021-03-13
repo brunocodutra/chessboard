@@ -90,7 +90,7 @@ where
     type Error = R::Error;
 
     #[instrument(skip(self), err)]
-    async fn act(&mut self, pos: Position) -> Result<Action, Self::Error> {
+    async fn act(&mut self, pos: &Position) -> Result<Action, Self::Error> {
         let setpos = UciMessage::Position {
             startpos: false,
             fen: Some(UciFen(pos.to_string())),
@@ -222,7 +222,7 @@ mod tests {
                 .returning(|_| Ok(()));
 
             let mut uci = Uci { remote };
-            assert_eq!(block_on(uci.act(pos)).unwrap(), Action::Move(m));
+            assert_eq!(block_on(uci.act(&pos)).unwrap(), Action::Move(m));
         }
 
         #[test]
@@ -237,7 +237,7 @@ mod tests {
                 .returning(move || Ok(cmd.take().unwrap_or_else(|| format!("bestmove {}", m))));
 
             let mut uci = Uci { remote };
-            assert_eq!(block_on(uci.act(pos)).unwrap(), Action::Move(m));
+            assert_eq!(block_on(uci.act(&pos)).unwrap(), Action::Move(m));
         }
 
         #[test]
@@ -252,7 +252,7 @@ mod tests {
                 .returning(move || Ok(cmd.take().unwrap_or_else(|| format!("bestmove {}", m))));
 
             let mut uci = Uci { remote };
-            assert_eq!(block_on(uci.act(pos)).unwrap(), Action::Move(m));
+            assert_eq!(block_on(uci.act(&pos)).unwrap(), Action::Move(m));
         }
 
         #[test]
@@ -264,7 +264,7 @@ mod tests {
             remote.expect_send().returning(|_: UciMessage| Ok(()));
 
             let mut uci = Uci { remote };
-            assert_eq!(block_on(uci.act(pos)).unwrap_err().kind(), kind);
+            assert_eq!(block_on(uci.act(&pos)).unwrap_err().kind(), kind);
         }
 
         #[test]
@@ -277,7 +277,7 @@ mod tests {
             remote.expect_flush().times(1).return_once(move || Err(e));
 
             let mut uci = Uci { remote };
-            assert_eq!(block_on(uci.act(pos)).unwrap_err().kind(), kind);
+            assert_eq!(block_on(uci.act(&pos)).unwrap_err().kind(), kind);
         }
 
         #[test]
@@ -291,7 +291,7 @@ mod tests {
             remote.expect_recv().times(1).return_once(move || Err(e));
 
             let mut uci = Uci { remote };
-            assert_eq!(block_on(uci.act(pos)).unwrap_err().kind(), kind);
+            assert_eq!(block_on(uci.act(&pos)).unwrap_err().kind(), kind);
         }
     }
 }
