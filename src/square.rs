@@ -1,6 +1,7 @@
 use crate::{foreign, File, ParseFileError, ParseRankError, Rank};
 use derive_more::{Display, Error, From};
 use std::str::{self, FromStr};
+use tracing::instrument;
 
 /// A square of the board.
 #[derive(Debug, Display, Copy, Clone, Eq, PartialEq, Hash)]
@@ -23,6 +24,7 @@ pub enum ParseSquareError {
 impl FromStr for Square {
     type Err = ParseSquareError;
 
+    #[instrument(err)]
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let i = s.char_indices().nth(1).map_or_else(|| s.len(), |(i, _)| i);
 

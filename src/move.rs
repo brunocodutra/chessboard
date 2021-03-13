@@ -1,6 +1,7 @@
 use crate::{foreign, ParsePromotionError, ParseSquareError, Promotion, Square};
 use derive_more::{Display, Error};
 use std::str::{self, FromStr};
+use tracing::instrument;
 
 /// The move of a piece on the board.
 #[derive(Debug, Display, Copy, Clone, Eq, PartialEq, Hash)]
@@ -28,6 +29,7 @@ pub enum ParseMoveError {
 impl FromStr for Move {
     type Err = ParseMoveError;
 
+    #[instrument(err)]
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         use ParseMoveError::*;
 

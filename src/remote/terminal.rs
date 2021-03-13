@@ -4,7 +4,7 @@ use derive_more::{Display, Error, From};
 use rustyline::{error::ReadlineError, Config, Editor};
 use smol::{io, lock::Mutex, prelude::*, unblock, Unblock};
 use std::{fmt::Display, io::stdout, io::Stdout, sync::Arc};
-use tracing::*;
+use tracing::instrument;
 
 /// The reason why reading from the terminal failed.
 #[derive(Debug, Display, Error, From)]
@@ -81,7 +81,7 @@ impl Terminal {
 impl Remote for Terminal {
     type Error = TerminalIoError;
 
-    #[instrument(skip(self), /*err*/)]
+    #[instrument(err)]
     async fn recv(&mut self) -> Result<String, Self::Error> {
         let mut reader = self.reader.lock_arc().await;
         let prompt = self.prompt.clone();
@@ -91,7 +91,7 @@ impl Remote for Terminal {
         Ok(line)
     }
 
-    #[instrument(skip(self, msg), /*err*/)]
+    #[instrument(skip(msg), err)]
     async fn send<D: Display + Send + 'static>(&mut self, msg: D) -> Result<(), Self::Error> {
         self.writer
             .write_all(format!("{}\n", msg).as_bytes())
@@ -101,7 +101,7 @@ impl Remote for Terminal {
         Ok(())
     }
 
-    #[instrument(skip(self), /*err*/)]
+    #[instrument(err)]
     async fn flush(&mut self) -> Result<(), Self::Error> {
         self.writer
             .flush()

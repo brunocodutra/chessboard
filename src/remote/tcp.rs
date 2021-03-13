@@ -4,7 +4,7 @@ use async_trait::async_trait;
 use derive_more::{Display, Error, From};
 use smol::{block_on, io, net::*, prelude::*};
 use std::fmt::Display;
-use tracing::*;
+use tracing::{error, info, instrument, trace};
 
 /// The reason why connecting to remote TCP server failed.
 #[derive(Debug, Display, Error, From)]
@@ -38,7 +38,7 @@ impl Tcp {
 
 /// Flushes the outbound buffer.
 impl Drop for Tcp {
-    #[instrument(skip(self))]
+    #[instrument]
     fn drop(&mut self) {
         if let Err(e) = block_on(self.flush()).context("failed to flush the buffer") {
             error!("{:?}", e);
@@ -50,7 +50,7 @@ impl Drop for Tcp {
 impl Remote for Tcp {
     type Error = TcpIoError;
 
-    #[instrument(skip(self), /*err*/)]
+    #[instrument(err)]
     async fn recv(&mut self) -> Result<String, Self::Error> {
         let next = self.reader.next().await;
         let line = next.ok_or(io::ErrorKind::UnexpectedEof)??;
@@ -58,7 +58,7 @@ impl Remote for Tcp {
         Ok(line)
     }
 
-    #[instrument(skip(self, msg), /*err*/)]
+    #[instrument(skip(msg), err)]
     async fn send<D: Display + Send + 'static>(&mut self, msg: D) -> Result<(), Self::Error> {
         let line = format!("{}\n", msg);
         trace!(%line);
@@ -66,7 +66,7 @@ impl Remote for Tcp {
         Ok(())
     }
 
-    #[instrument(skip(self), /*err*/)]
+    #[instrument(err)]
     async fn flush(&mut self) -> Result<(), Self::Error> {
         self.writer.flush().await?;
         Ok(())

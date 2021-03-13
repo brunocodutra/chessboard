@@ -2,6 +2,7 @@ use crate::{foreign, Piece, Placement};
 use derivative::Derivative;
 use derive_more::{Display, Error, From};
 use std::{hash::*, str::FromStr};
+use tracing::instrument;
 
 /// The current board.
 #[derive(Debug, Display, Copy, Clone, Derivative, From)]
@@ -151,6 +152,7 @@ pub enum ParsePositionError {
 impl FromStr for Position {
     type Err = ParsePositionError;
 
+    #[instrument(err)]
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         foreign::Board::from_str(s)
             .map(Position::from)

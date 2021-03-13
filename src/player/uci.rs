@@ -3,7 +3,7 @@ use anyhow::{anyhow, Context, Error as Anyhow};
 use async_trait::async_trait;
 use smol::block_on;
 use std::error::Error;
-use tracing::*;
+use tracing::{debug, error, info, instrument, warn};
 use vampirc_uci::{parse_one, UciFen, UciMessage};
 
 #[derive(Debug)]
@@ -89,7 +89,7 @@ where
 {
     type Error = R::Error;
 
-    #[instrument(skip(self, pos), /*err*/)]
+    #[instrument(skip(self), err)]
     async fn act(&mut self, pos: Position) -> Result<Action, Self::Error> {
         let setpos = UciMessage::Position {
             startpos: false,

@@ -2,6 +2,7 @@ use crate::{Action, Position, Remote};
 use async_trait::async_trait;
 use derive_more::From;
 use std::error::Error;
+use tracing::instrument;
 
 mod cli;
 mod uci;
@@ -38,6 +39,7 @@ where
 {
     type Error = R::Error;
 
+    #[instrument(skip(self), err)]
     async fn act(&mut self, pos: Position) -> Result<Action, Self::Error> {
         use PlayerDispatcher::*;
         let action = match self {

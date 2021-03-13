@@ -1,6 +1,7 @@
 use crate::foreign;
 use derive_more::{Display, Error, From};
 use std::str::FromStr;
+use tracing::instrument;
 
 /// A column of the board.
 #[derive(Debug, Display, Copy, Clone, Eq, PartialEq, Hash)]
@@ -51,6 +52,7 @@ pub struct ParseFileError(#[error(not(source))] pub String);
 impl FromStr for File {
     type Err = ParseFileError;
 
+    #[instrument(err)]
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
             "a" => Ok(File::A),

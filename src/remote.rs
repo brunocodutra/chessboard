@@ -1,6 +1,7 @@
 use async_trait::async_trait;
 use derive_more::{Display, Error, From};
 use std::fmt::Display;
+use tracing::instrument;
 
 mod process;
 mod tcp;
@@ -51,6 +52,7 @@ pub enum RemoteDispatcher {
 impl Remote for RemoteDispatcher {
     type Error = RemoteDispatcherError;
 
+    #[instrument(err)]
     async fn recv(&mut self) -> Result<String, Self::Error> {
         use RemoteDispatcher::*;
         let line = match self {
@@ -62,6 +64,7 @@ impl Remote for RemoteDispatcher {
         Ok(line)
     }
 
+    #[instrument(skip(msg), err)]
     async fn send<D: Display + Send + 'static>(&mut self, msg: D) -> Result<(), Self::Error> {
         use RemoteDispatcher::*;
         match self {
@@ -73,6 +76,7 @@ impl Remote for RemoteDispatcher {
         Ok(())
     }
 
+    #[instrument(err)]
     async fn flush(&mut self) -> Result<(), Self::Error> {
         use RemoteDispatcher::*;
         match self {
