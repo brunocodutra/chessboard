@@ -8,7 +8,7 @@ use tracing::*;
 
 /// The reason why reading from the terminal failed.
 #[derive(Debug, Display, Error, From)]
-pub struct TerminalReadError(#[error(not(source))] io::Error);
+pub struct TerminalReadError(io::Error);
 
 impl From<io::ErrorKind> for TerminalReadError {
     fn from(k: io::ErrorKind) -> Self {
@@ -36,11 +36,11 @@ impl From<ReadlineError> for TerminalReadError {
 
 /// The reason why writing to the terminal failed.
 #[derive(Debug, Display, Error, From)]
-pub struct TerminalWriteError(#[error(not(source))] io::Error);
+pub struct TerminalWriteError(#[from(forward)] io::Error);
 
 /// The reason why flushing the internal buffers failed.
 #[derive(Debug, Display, Error, From)]
-pub struct TerminalFlushError(#[error(not(source))] io::Error);
+pub struct TerminalFlushError(#[from(forward)] io::Error);
 
 /// The reason why writing to or reading from the terminal failed.
 #[derive(Debug, Display, Error, From)]

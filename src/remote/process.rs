@@ -21,13 +21,7 @@ impl From<Anyhow> for ProcessSpawnError {
 /// The reason why writing to or reading from the remote process failed.
 #[derive(Debug, Display, Error, From)]
 #[display(fmt = "the remote process failed during IO")]
-pub struct ProcessIoError(io::Error);
-
-impl From<io::ErrorKind> for ProcessIoError {
-    fn from(k: io::ErrorKind) -> Self {
-        io::Error::from(k).into()
-    }
-}
+pub struct ProcessIoError(#[from(forward)] io::Error);
 
 /// An implementation of trait [`Remote`] as a child process.
 ///
