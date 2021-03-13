@@ -53,8 +53,8 @@ async fn chessboard<U: Borrow<Url> + Debug>(white: U, black: U) -> Result<Outcom
                 info!(%position);
 
                 let action = match game.player() {
-                    Color::Black => black.act(position).await?,
-                    Color::White => white.act(position).await?,
+                    Color::Black => black.act(&position).await?,
+                    Color::White => white.act(&position).await?,
                 };
 
                 info!(player = %game.player(), %action);
