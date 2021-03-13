@@ -1,14 +1,16 @@
 use crate::foreign;
 use derive_more::{Display, Error};
+use std::convert::{TryFrom, TryInto};
 use std::str::FromStr;
 use tracing::instrument;
 
-/// A row of the board.
+/// Denotes a row on the chess board.
 #[derive(Debug, Display, Copy, Clone, Eq, PartialEq, Hash)]
 #[cfg_attr(test, derive(proptest_derive::Arbitrary))]
+#[repr(u8)]
 pub enum Rank {
     #[display(fmt = "1")]
-    First,
+    First = 1,
     #[display(fmt = "2")]
     Second,
     #[display(fmt = "3")]
@@ -52,32 +54,32 @@ impl FromStr for Rank {
 
     #[instrument(err)]
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s {
-            "1" => Ok(Rank::First),
-            "2" => Ok(Rank::Second),
-            "3" => Ok(Rank::Third),
-            "4" => Ok(Rank::Fourth),
-            "5" => Ok(Rank::Fifth),
-            "6" => Ok(Rank::Sixth),
-            "7" => Ok(Rank::Seventh),
-            "8" => Ok(Rank::Eighth),
+        s.parse::<u32>().map_err(|_| ParseRankError)?.try_into()
+    }
+}
+
+impl TryFrom<u32> for Rank {
+    type Error = ParseRankError;
+
+    #[instrument(err)]
+    fn try_from(n: u32) -> Result<Self, Self::Error> {
+        match n {
+            1 => Ok(Rank::First),
+            2 => Ok(Rank::Second),
+            3 => Ok(Rank::Third),
+            4 => Ok(Rank::Fourth),
+            5 => Ok(Rank::Fifth),
+            6 => Ok(Rank::Sixth),
+            7 => Ok(Rank::Seventh),
+            8 => Ok(Rank::Eighth),
             _ => Err(ParseRankError),
         }
     }
 }
 
-impl From<Rank> for char {
-    fn from(r: Rank) -> char {
-        match r {
-            Rank::First => '1',
-            Rank::Second => '2',
-            Rank::Third => '3',
-            Rank::Fourth => '4',
-            Rank::Fifth => '5',
-            Rank::Sixth => '6',
-            Rank::Seventh => '7',
-            Rank::Eighth => '8',
-        }
+impl From<Rank> for u32 {
+    fn from(r: Rank) -> Self {
+        r as u32
     }
 }
 
@@ -89,7 +91,7 @@ impl From<foreign::Rank> for Rank {
 
 impl Into<foreign::Rank> for Rank {
     fn into(self) -> foreign::Rank {
-        foreign::Rank::from_index(self as usize)
+        foreign::Rank::from_index(self as usize - Self::First as usize)
     }
 }
 
@@ -105,13 +107,18 @@ mod tests {
         }
 
         #[test]
-        fn parsing_rank_succeeds_for_digit_between_1_and_8(c in b'1'..=b'8') {
-            assert_eq!(char::from(c).to_string().parse::<Rank>(), Ok(Rank::VARIANTS[usize::from(c - b'1')]));
+        fn parsing_rank_succeeds_for_digit_between_1_and_8(n in 1..=8u32) {
+            assert_eq!(n.to_string().parse::<Rank>(), n.try_into());
         }
 
         #[test]
         fn parsing_rank_fails_except_for_digit_between_1_and_8(s in "[^1-8]*|[1-8]{2,}") {
             assert_eq!(s.parse::<Rank>(), Err(ParseRankError));
+        }
+
+        #[test]
+        fn rank_can_be_converted_into_u32(r: Rank) {
+            assert_eq!(u32::from(r).try_into(), Ok(r));
         }
     }
 }

@@ -41,13 +41,14 @@ impl Index<Square> for Placement {
     type Output = Option<Piece>;
 
     fn index(&self, s: Square) -> &Self::Output {
-        &self.squares[s.rank as usize][s.file as usize]
+        &self.squares[s.rank as usize - Rank::First as usize][s.file as usize - File::A as usize]
     }
 }
 
 impl IndexMut<Square> for Placement {
     fn index_mut(&mut self, s: Square) -> &mut Self::Output {
-        &mut self.squares[s.rank as usize][s.file as usize]
+        &mut self.squares[s.rank as usize - Rank::First as usize]
+            [s.file as usize - File::A as usize]
     }
 }
 

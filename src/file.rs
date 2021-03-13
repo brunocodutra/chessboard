@@ -1,14 +1,16 @@
 use crate::foreign;
 use derive_more::{Display, Error};
+use std::convert::{TryFrom, TryInto};
 use std::str::FromStr;
 use tracing::instrument;
 
-/// A column of the board.
+/// Denotes a column on the chess board.
 #[derive(Debug, Display, Copy, Clone, Eq, PartialEq, Hash)]
 #[cfg_attr(test, derive(proptest_derive::Arbitrary))]
+#[repr(u8)]
 pub enum File {
     #[display(fmt = "a")]
-    A,
+    A = b'a',
     #[display(fmt = "b")]
     B,
     #[display(fmt = "c")]
@@ -52,15 +54,24 @@ impl FromStr for File {
 
     #[instrument(err)]
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s {
-            "a" => Ok(File::A),
-            "b" => Ok(File::B),
-            "c" => Ok(File::C),
-            "d" => Ok(File::D),
-            "e" => Ok(File::E),
-            "f" => Ok(File::F),
-            "g" => Ok(File::G),
-            "h" => Ok(File::H),
+        s.parse::<char>().map_err(|_| ParseFileError)?.try_into()
+    }
+}
+
+impl TryFrom<char> for File {
+    type Error = ParseFileError;
+
+    #[instrument(err)]
+    fn try_from(c: char) -> Result<Self, Self::Error> {
+        match c {
+            'a' => Ok(File::A),
+            'b' => Ok(File::B),
+            'c' => Ok(File::C),
+            'd' => Ok(File::D),
+            'e' => Ok(File::E),
+            'f' => Ok(File::F),
+            'g' => Ok(File::G),
+            'h' => Ok(File::H),
             _ => Err(ParseFileError),
         }
     }
@@ -68,16 +79,7 @@ impl FromStr for File {
 
 impl From<File> for char {
     fn from(f: File) -> char {
-        match f {
-            File::A => 'a',
-            File::B => 'b',
-            File::C => 'c',
-            File::D => 'd',
-            File::E => 'e',
-            File::F => 'f',
-            File::G => 'g',
-            File::H => 'h',
-        }
+        (f as u8).into()
     }
 }
 
@@ -89,7 +91,7 @@ impl From<foreign::File> for File {
 
 impl Into<foreign::File> for File {
     fn into(self) -> foreign::File {
-        foreign::File::from_index(self as usize)
+        foreign::File::from_index(self as usize - Self::A as usize)
     }
 }
 
@@ -100,18 +102,13 @@ mod tests {
 
     proptest! {
         #[test]
-        fn every_file_has_an_associated_character(f: File) {
-            assert_eq!(char::from(f).to_string(), f.to_string());
-        }
-
-        #[test]
         fn parsing_printed_file_is_an_identity(f: File) {
             assert_eq!(f.to_string().parse(), Ok(f));
         }
 
         #[test]
         fn parsing_file_succeeds_for_lower_case_letter_between_a_and_h(c in b'a'..=b'h') {
-            assert_eq!(char::from(c).to_string().parse::<File>(), Ok(File::VARIANTS[usize::from(c - b'a')]));
+            assert_eq!(char::from(c).to_string().parse::<File>(), char::from(c).try_into());
         }
 
         #[test]
@@ -122,6 +119,11 @@ mod tests {
         #[test]
         fn parsing_file_fails_except_for_lower_case_letter_between_a_and_h(s in "[^a-h]*|[a-h]{2,}") {
             assert_eq!(s.parse::<File>(), Err(ParseFileError));
+        }
+
+        #[test]
+        fn file_can_be_converted_into_char(f: File) {
+            assert_eq!(char::from(f).try_into(), Ok(f));
         }
     }
 }
