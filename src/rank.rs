@@ -5,7 +5,7 @@ use std::str::FromStr;
 use tracing::instrument;
 
 /// Denotes a row on the chess board.
-#[derive(Debug, Display, Copy, Clone, Eq, PartialEq, Hash)]
+#[derive(Debug, Display, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
 #[cfg_attr(test, derive(proptest_derive::Arbitrary))]
 #[repr(u8)]
 pub enum Rank {
