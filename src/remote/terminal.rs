@@ -56,6 +56,7 @@ pub enum TerminalIoError {
 /// An implementation of trait [`Remote`] as a terminal based on [rustyline].
 ///
 /// [rustyline]: https://crates.io/crates/rustyline
+#[derive(Debug)]
 pub struct Terminal {
     prompt: String,
     reader: Arc<Mutex<rustyline::Editor<()>>>,

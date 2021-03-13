@@ -27,6 +27,7 @@ pub struct ProcessIoError(#[from(forward)] io::Error);
 ///
 /// # Warning
 /// Dropping this type blocks until the child process exits.
+#[derive(Debug)]
 pub struct Process {
     child: Child,
     reader: Mutex<Lines<BufReader<ChildStdout>>>,

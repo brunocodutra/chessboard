@@ -1,20 +1,17 @@
 use crate::*;
 use anyhow::{anyhow, Context, Error as Anyhow};
 use async_trait::async_trait;
-use derivative::Derivative;
 use smol::block_on;
 use std::error::Error;
 use tracing::*;
 use vampirc_uci::{parse_one, UciFen, UciMessage};
 
-#[derive(Derivative)]
-#[derivative(Debug)]
+#[derive(Debug)]
 pub struct Uci<R>
 where
     R: Remote,
     R::Error: Error + Send + Sync + 'static,
 {
-    #[derivative(Debug = "ignore")]
     remote: R,
 }
 
@@ -191,7 +188,7 @@ mod tests {
             remote.expect_send().times(1).return_once(move |_: UciMessage| Err(e));
             remote.expect_send().returning(|_: UciMessage| Ok(()));
 
-            assert_eq!(block_on(Uci::init(remote)).unwrap_err().kind(), kind);
+            assert_eq!(block_on(Uci::init(remote)).err().unwrap().kind(), kind);
         }
 
         #[test]

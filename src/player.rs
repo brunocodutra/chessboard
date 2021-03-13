@@ -20,7 +20,7 @@ pub trait Player {
 }
 
 /// A static dispatcher for [`Player`].
-#[derive(From)]
+#[derive(Debug, From)]
 pub enum PlayerDispatcher<R>
 where
     R: Remote,
