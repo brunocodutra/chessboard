@@ -73,12 +73,13 @@ fn main() -> Result<(), Box<dyn Error + Send + Sync + 'static>> {
     } = Opts::from_args();
 
     let (writer, _guard) = tracing_appender::non_blocking(io::stderr());
-
     let filter = format!("{},chessboard={}", min(Level::WARN, verbosity), verbosity);
 
     tracing_subscriber::fmt()
-        .with_writer(writer)
+        .pretty()
+        .with_thread_ids(true)
         .with_env_filter(filter)
+        .with_writer(writer)
         .try_init()?;
 
     block_on(async {
