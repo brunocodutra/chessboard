@@ -4,7 +4,7 @@ use clap::AppSettings::*;
 use future::ok;
 use futures::{prelude::*, stream::iter, try_join};
 use indicatif::{ProgressBar, ProgressStyle};
-use smol::{block_on, spawn, Unblock};
+use smol::{block_on, Unblock};
 use std::{borrow::*, cmp::min, collections::*, error::Error, fmt::Debug, io, num::*};
 use structopt::StructOpt;
 use tracing::*;
@@ -101,9 +101,6 @@ struct Opts {
     )]
     best_of: NonZeroUsize,
 
-    #[structopt(short = "j", long, help = "Runs matches in parallel")]
-    parallel: bool,
-
     #[structopt(
         short,
         long,
@@ -158,13 +155,7 @@ fn main() -> Result<(), Box<dyn Error + Send + Sync + 'static>> {
         pb.enable_steady_tick(100);
 
         let matches: Vec<_> = (0..best_of)
-            .map(|_| {
-                if opts.parallel {
-                    spawn(chessboard(opts.white.clone(), opts.black.clone())).boxed()
-                } else {
-                    chessboard(&opts.white, &opts.black).boxed()
-                }
-            })
+            .map(|_| chessboard(&opts.white, &opts.black))
             .collect();
 
         let stats = iter(matches)
