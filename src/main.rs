@@ -3,7 +3,6 @@ use chessboard::*;
 use clap::AppSettings::*;
 use future::ok;
 use futures::{prelude::*, stream::iter, try_join};
-use indicatif::{ProgressBar, ProgressStyle};
 use smol::{block_on, Unblock};
 use std::{borrow::*, cmp::min, collections::*, error::Error, fmt::Debug, io, num::*};
 use structopt::StructOpt;
@@ -109,9 +108,6 @@ struct Opts {
         parse(try_from_str)
     )]
     verbosity: Level,
-
-    #[structopt(short, long, help = "Displays progress bar")]
-    progress: bool,
 }
 
 macro_rules! echo {
@@ -140,20 +136,6 @@ fn main() -> Result<(), Box<dyn Error + Send + Sync + 'static>> {
     block_on(async {
         let best_of = opts.best_of.get();
 
-        let pb = if opts.progress {
-            ProgressBar::new(best_of as u64).with_style(
-                ProgressStyle::default_bar()
-                    .tick_chars("⠉⠙⠹⠸⠼⠴⠤⠦⠧⠇⠏⠋")
-                    .template("{spinner} [{bar:30}] {pos}/{len} (-{eta})")
-                    .progress_chars("=> "),
-            )
-        } else {
-            ProgressBar::hidden()
-        };
-
-        pb.tick();
-        pb.enable_steady_tick(100);
-
         let matches: Vec<_> = (0..best_of)
             .map(|_| chessboard(&opts.white, &opts.black))
             .collect();
@@ -163,13 +145,10 @@ fn main() -> Result<(), Box<dyn Error + Send + Sync + 'static>> {
             .and_then(|o| o)
             .try_fold(BTreeMap::<_, usize>::new(), |mut acc, o| {
                 *acc.entry(o.to_string()).or_default() += 1;
-                pb.inc(1);
                 ok(acc)
             })
             .await
             .context("the game was interrupted")?;
-
-        pb.finish_and_clear();
 
         let digits = (opts.best_of.get() as f64).log10().ceil() as usize + 1;
 
