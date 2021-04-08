@@ -1,200 +1,506 @@
-use crate::{foreign, Color, Piece, Placement};
-use derivative::Derivative;
-use derive_more::{Display, Error, From};
-use std::{hash::*, str::FromStr};
+use crate::{Color, IllegalMove, Move, Placement, Square};
+use derive_more::{DebugCustom, Display, Error, From};
+use shakmaty as sm;
+use std::hash::{Hash, Hasher};
+use std::{num::NonZeroU32, str::FromStr};
 use tracing::instrument;
 
-/// The current board.
-#[derive(Debug, Display, Copy, Clone, Derivative, From)]
-#[derivative(Default(new = "true"))]
-#[display(fmt = "{}", board)]
+#[cfg(test)]
+use proptest::prelude::*;
+
+/// The current position on the chess board.
+///
+/// This type guarantees that it only holds valid positions.
+#[derive(DebugCustom, Display, Default, Clone /*, Hash*/)]
+#[cfg_attr(test, derive(proptest_derive::Arbitrary))]
+#[debug(fmt = "Position(\"{}\")", self)]
+#[display(fmt = "{}", "sm::fen::FenOpts::new().promoted(true).fen(setup)")]
 pub struct Position {
-    board: foreign::Board,
+    #[cfg_attr(test, proptest(strategy = "tests::any_setup()"))]
+    setup: sm::Chess,
 }
 
+#[cfg(test)]
+#[derive(Debug, derive_more::Deref, derive_more::Into, proptest_derive::Arbitrary)]
+pub struct Checkmate(#[proptest(strategy = "tests::checkmate_setup().prop_map_into()")] Position);
+
+#[cfg(test)]
+#[derive(Debug, derive_more::Deref, derive_more::Into, proptest_derive::Arbitrary)]
+pub struct Stalemate(#[proptest(strategy = "tests::stalemate_setup().prop_map_into()")] Position);
+
+#[cfg(test)]
+#[derive(Debug, derive_more::Deref, derive_more::Into, proptest_derive::Arbitrary)]
+pub struct Draw(#[proptest(strategy = "tests::draw_setup().prop_map_into()")] Position);
+
 impl Position {
-    /// The current arrangement of [`crate::Piece`]s on the board.
+    /// The current arrangement of [`Piece`](crate::Piece)s on the board.
     pub fn placement(&self) -> Placement {
-        let mut placement = Placement::default();
-
-        for &s in foreign::ALL_SQUARES.iter() {
-            placement[s.into()] = self.board.piece_on(s).and_then(|p| {
-                self.board
-                    .color_on(s)
-                    .map(move |c| Piece::new(c.into(), p.into()))
-            });
-        }
-
-        placement
+        sm::Setup::board(&self.setup).clone().into()
     }
 
     /// The side to move.
     pub fn turn(&self) -> Color {
-        self.board.side_to_move().into()
+        sm::Setup::turn(&self.setup).into()
+    }
+
+    /// The en passant target square, if any.
+    pub fn en_passant_square(&self) -> Option<Square> {
+        sm::Setup::ep_square(&self.setup).map(Into::into)
+    }
+
+    /// The number of halfmoves since the last capture or pawn advance.
+    pub fn halfmove_clock(&self) -> u32 {
+        sm::Setup::halfmoves(&self.setup)
+    }
+
+    /// The current move number.
+    ///
+    /// It starts at 1, and is incremented after every Black's move.
+    pub fn fullmoves(&self) -> NonZeroU32 {
+        sm::Setup::fullmoves(&self.setup)
+    }
+
+    /// Whether this position is a [checkmate].
+    ///
+    /// [checkmate]: https://en.wikipedia.org/wiki/Checkmate
+    pub fn is_checkmate(&self) -> bool {
+        sm::Position::is_checkmate(&self.setup)
+    }
+
+    /// Whether this position is a [stalemate].
+    ///
+    /// [stalemate]: https://en.wikipedia.org/wiki/Stalemate
+    pub fn is_stalemate(&self) -> bool {
+        sm::Position::is_stalemate(&self.setup)
+    }
+
+    /// Whether this position is a [draw] by insufficient material.
+    ///
+    /// [draw]: https://en.wikipedia.org/wiki/Draw_(chess)
+    pub fn is_draw(&self) -> bool {
+        sm::Position::is_insufficient_material(&self.setup)
+    }
+
+    /// Play a [`Move`] if legal in this position.
+    #[instrument(err)]
+    pub fn play(&mut self, m: Move) -> Result<(), IllegalMove> {
+        match sm::uci::Uci::to_move(&m.into(), &self.setup) {
+            Ok(vm) if sm::Position::is_legal(&self.setup, &vm) => {
+                sm::Position::play_unchecked(&mut self.setup, &vm);
+                Ok(())
+            }
+
+            _ => Err(IllegalMove(m, self.clone())),
+        }
     }
 }
+
+impl Eq for Position {}
 
 impl PartialEq for Position {
     fn eq(&self, other: &Self) -> bool {
-        self.board.get_hash() == other.board.get_hash()
+        sm::fen::Fen::from_setup(&self.setup) == sm::fen::Fen::from_setup(&other.setup)
     }
 }
 
+// FIXME: merged upstream
 impl Hash for Position {
     fn hash<H: Hasher>(&self, state: &mut H) {
-        state.write_u64(self.board.get_hash());
+        let fen = sm::fen::Fen::from_setup(&self.setup);
+
+        fen.board.hash(state);
+        fen.turn.hash(state);
+        fen.castling_rights.hash(state);
+        fen.ep_square.hash(state);
+        fen.halfmoves.hash(state);
+        fen.fullmoves.hash(state);
     }
 }
 
-#[cfg(test)]
-impl proptest::arbitrary::Arbitrary for Position {
-    type Parameters = ();
-    type Strategy = proptest::strategy::BoxedStrategy<Position>;
+/// The reason why a FEN string is invalid.
+#[derive(Debug, Display, Copy, Clone, Eq, PartialEq, Hash, Error)]
+pub enum InvalidFen {
+    #[display(fmt = "syntax error at the piece placement field")]
+    InvalidPlacement,
+    #[display(fmt = "syntax error at the side to move field")]
+    InvalidTurn,
+    #[display(fmt = "syntax error at the castling rights field")]
+    InvalidCastlingRights,
+    #[display(fmt = "syntax error at the en passant square field")]
+    InvalidEnPassantSquare,
+    #[display(fmt = "syntax error at the halfmove clock field")]
+    InvalidHalfmoveClock,
+    #[display(fmt = "syntax error at the fullmove counter field")]
+    InvalidFullmoves,
+    #[display(fmt = "unspecified syntax error")]
+    InvalidSyntax,
+}
 
-    fn arbitrary_with(_: Self::Parameters) -> Self::Strategy {
-        use proptest::prelude::*;
+#[doc(hidden)]
+impl From<sm::fen::ParseFenError> for InvalidFen {
+    fn from(e: sm::fen::ParseFenError) -> Self {
+        use InvalidFen::*;
+        match e {
+            sm::fen::ParseFenError::InvalidBoard => InvalidPlacement,
+            sm::fen::ParseFenError::InvalidTurn => InvalidTurn,
+            sm::fen::ParseFenError::InvalidCastling => InvalidCastlingRights,
+            sm::fen::ParseFenError::InvalidEpSquare => InvalidEnPassantSquare,
+            sm::fen::ParseFenError::InvalidHalfmoveClock => InvalidHalfmoveClock,
+            sm::fen::ParseFenError::InvalidFullmoves => InvalidFullmoves,
+            _ => InvalidSyntax,
+        }
+    }
+}
 
-        // https://en.wikipedia.org/wiki/The_Game_of_the_Century_(chess)
-        prop_oneof![
-            "rnbqkbnr/pppppppp/8/8/8/5N2/PPPPPPPP/RNBQKB1R b KQkq - 1 1",
-            "rnbqkb1r/pppppppp/5n2/8/8/5N2/PPPPPPPP/RNBQKB1R w KQkq - 2 2",
-            "rnbqkb1r/pppppppp/5n2/8/2P5/5N2/PP1PPPPP/RNBQKB1R b KQkq c3 0 2",
-            "rnbqkb1r/pppppp1p/5np1/8/2P5/5N2/PP1PPPPP/RNBQKB1R w KQkq - 0 3",
-            "rnbqkb1r/pppppp1p/5np1/8/2P5/2N2N2/PP1PPPPP/R1BQKB1R b KQkq - 1 3",
-            "rnbqk2r/ppppppbp/5np1/8/2P5/2N2N2/PP1PPPPP/R1BQKB1R w KQkq - 2 4",
-            "rnbqk2r/ppppppbp/5np1/8/2PP4/2N2N2/PP2PPPP/R1BQKB1R b KQkq d3 0 4",
-            "rnbq1rk1/ppppppbp/5np1/8/2PP4/2N2N2/PP2PPPP/R1BQKB1R w KQ - 1 5",
-            "rnbq1rk1/ppppppbp/5np1/8/2PP1B2/2N2N2/PP2PPPP/R2QKB1R b KQ - 2 5",
-            "rnbq1rk1/ppp1ppbp/5np1/3p4/2PP1B2/2N2N2/PP2PPPP/R2QKB1R w KQ d6 0 6",
-            "rnbq1rk1/ppp1ppbp/5np1/3p4/2PP1B2/1QN2N2/PP2PPPP/R3KB1R b KQ - 1 6",
-            "rnbq1rk1/ppp1ppbp/5np1/8/2pP1B2/1QN2N2/PP2PPPP/R3KB1R w KQ - 0 7",
-            "rnbq1rk1/ppp1ppbp/5np1/8/2QP1B2/2N2N2/PP2PPPP/R3KB1R b KQ - 0 7",
-            "rnbq1rk1/pp2ppbp/2p2np1/8/2QP1B2/2N2N2/PP2PPPP/R3KB1R w KQ - 0 8",
-            "rnbq1rk1/pp2ppbp/2p2np1/8/2QPPB2/2N2N2/PP3PPP/R3KB1R b KQ e3 0 8",
-            "r1bq1rk1/pp1nppbp/2p2np1/8/2QPPB2/2N2N2/PP3PPP/R3KB1R w KQ - 1 9",
-            "r1bq1rk1/pp1nppbp/2p2np1/8/2QPPB2/2N2N2/PP3PPP/3RKB1R b K - 2 9",
-            "r1bq1rk1/pp2ppbp/1np2np1/8/2QPPB2/2N2N2/PP3PPP/3RKB1R w K - 3 10",
-            "r1bq1rk1/pp2ppbp/1np2np1/2Q5/3PPB2/2N2N2/PP3PPP/3RKB1R b K - 4 10",
-            "r2q1rk1/pp2ppbp/1np2np1/2Q5/3PPBb1/2N2N2/PP3PPP/3RKB1R w K - 5 11",
-            "r2q1rk1/pp2ppbp/1np2np1/2Q3B1/3PP1b1/2N2N2/PP3PPP/3RKB1R b K - 6 11",
-            "r2q1rk1/pp2ppbp/2p2np1/2Q3B1/n2PP1b1/2N2N2/PP3PPP/3RKB1R w K - 7 12",
-            "r2q1rk1/pp2ppbp/2p2np1/6B1/n2PP1b1/Q1N2N2/PP3PPP/3RKB1R b K - 8 12",
-            "r2q1rk1/pp2ppbp/2p2np1/6B1/3PP1b1/Q1n2N2/PP3PPP/3RKB1R w K - 0 13",
-            "r2q1rk1/pp2ppbp/2p2np1/6B1/3PP1b1/Q1P2N2/P4PPP/3RKB1R b K - 0 13",
-            "r2q1rk1/pp2ppbp/2p3p1/6B1/3Pn1b1/Q1P2N2/P4PPP/3RKB1R w K - 0 14",
-            "r2q1rk1/pp2Bpbp/2p3p1/8/3Pn1b1/Q1P2N2/P4PPP/3RKB1R b K - 0 14",
-            "r4rk1/pp2Bpbp/1qp3p1/8/3Pn1b1/Q1P2N2/P4PPP/3RKB1R w K - 1 15",
-            "r4rk1/pp2Bpbp/1qp3p1/8/2BPn1b1/Q1P2N2/P4PPP/3RK2R b K - 2 15",
-            "r4rk1/pp2Bpbp/1qp3p1/8/2BP2b1/Q1n2N2/P4PPP/3RK2R w K - 0 16",
-            "r4rk1/pp3pbp/1qp3p1/2B5/2BP2b1/Q1n2N2/P4PPP/3RK2R b K - 1 16",
-            "r3r1k1/pp3pbp/1qp3p1/2B5/2BP2b1/Q1n2N2/P4PPP/3RK2R w K - 2 17",
-            "r3r1k1/pp3pbp/1qp3p1/2B5/2BP2b1/Q1n2N2/P4PPP/3R1K1R b - - 3 17",
-            "r3r1k1/pp3pbp/1qp1b1p1/2B5/2BP4/Q1n2N2/P4PPP/3R1K1R w - - 4 18",
-            "r3r1k1/pp3pbp/1Bp1b1p1/8/2BP4/Q1n2N2/P4PPP/3R1K1R b - - 0 18",
-            "r3r1k1/pp3pbp/1Bp3p1/8/2bP4/Q1n2N2/P4PPP/3R1K1R w - - 0 19",
-            "r3r1k1/pp3pbp/1Bp3p1/8/2bP4/Q1n2N2/P4PPP/3R2KR b - - 1 19",
-            "r3r1k1/pp3pbp/1Bp3p1/8/2bP4/Q4N2/P3nPPP/3R2KR w - - 2 20",
-            "r3r1k1/pp3pbp/1Bp3p1/8/2bP4/Q4N2/P3nPPP/3R1K1R b - - 3 20",
-            "r3r1k1/pp3pbp/1Bp3p1/8/2bn4/Q4N2/P4PPP/3R1K1R w - - 0 21",
-            "r3r1k1/pp3pbp/1Bp3p1/8/2bn4/Q4N2/P4PPP/3R2KR b - - 1 21",
-            "r3r1k1/pp3pbp/1Bp3p1/8/2b5/Q4N2/P3nPPP/3R2KR w - - 2 22",
-            "r3r1k1/pp3pbp/1Bp3p1/8/2b5/Q4N2/P3nPPP/3R1K1R b - - 3 22",
-            "r3r1k1/pp3pbp/1Bp3p1/8/2b5/Q1n2N2/P4PPP/3R1K1R w - - 4 23",
-            "r3r1k1/pp3pbp/1Bp3p1/8/2b5/Q1n2N2/P4PPP/3R2KR b - - 5 23",
-            "r3r1k1/1p3pbp/1pp3p1/8/2b5/Q1n2N2/P4PPP/3R2KR w - - 0 24",
-            "r3r1k1/1p3pbp/1pp3p1/8/1Qb5/2n2N2/P4PPP/3R2KR b - - 1 24",
-            "4r1k1/1p3pbp/1pp3p1/8/rQb5/2n2N2/P4PPP/3R2KR w - - 2 25",
-            "4r1k1/1p3pbp/1Qp3p1/8/r1b5/2n2N2/P4PPP/3R2KR b - - 0 25",
-            "4r1k1/1p3pbp/1Qp3p1/8/r1b5/5N2/P4PPP/3n2KR w - - 0 26",
-            "4r1k1/1p3pbp/1Qp3p1/8/r1b5/5N1P/P4PP1/3n2KR b - - 0 26",
-            "4r1k1/1p3pbp/1Qp3p1/8/2b5/5N1P/r4PP1/3n2KR w - - 0 27",
-            "4r1k1/1p3pbp/1Qp3p1/8/2b5/5N1P/r4PPK/3n3R b - - 1 27",
-            "4r1k1/1p3pbp/1Qp3p1/8/2b5/5N1P/r4nPK/7R w - - 0 28",
-            "4r1k1/1p3pbp/1Qp3p1/8/2b5/5N1P/r4nPK/4R3 b - - 1 28",
-            "6k1/1p3pbp/1Qp3p1/8/2b5/5N1P/r4nPK/4r3 w - - 0 29",
-            "3Q2k1/1p3pbp/2p3p1/8/2b5/5N1P/r4nPK/4r3 b - - 1 29",
-            "3Q1bk1/1p3p1p/2p3p1/8/2b5/5N1P/r4nPK/4r3 w - - 2 30",
-            "3Q1bk1/1p3p1p/2p3p1/8/2b5/7P/r4nPK/4N3 b - - 0 30",
-            "3Q1bk1/1p3p1p/2p3p1/3b4/8/7P/r4nPK/4N3 w - - 1 31",
-            "3Q1bk1/1p3p1p/2p3p1/3b4/8/5N1P/r4nPK/8 b - - 2 31",
-            "3Q1bk1/1p3p1p/2p3p1/3b4/4n3/5N1P/r5PK/8 w - - 3 32",
-            "1Q3bk1/1p3p1p/2p3p1/3b4/4n3/5N1P/r5PK/8 b - - 4 32",
-            "1Q3bk1/5p1p/2p3p1/1p1b4/4n3/5N1P/r5PK/8 w - b6 0 33",
-            "1Q3bk1/5p1p/2p3p1/1p1b4/4n2P/5N2/r5PK/8 b - - 0 33",
-            "1Q3bk1/5p2/2p3p1/1p1b3p/4n2P/5N2/r5PK/8 w - h6 0 34",
-            "1Q3bk1/5p2/2p3p1/1p1bN2p/4n2P/8/r5PK/8 b - - 1 34",
-            "1Q3b2/5pk1/2p3p1/1p1bN2p/4n2P/8/r5PK/8 w - - 2 35",
-            "1Q3b2/5pk1/2p3p1/1p1bN2p/4n2P/8/r5P1/6K1 b - - 3 35",
-            "1Q6/5pk1/2p3p1/1pbbN2p/4n2P/8/r5P1/6K1 w - - 4 36",
-            "1Q6/5pk1/2p3p1/1pbbN2p/4n2P/8/r5P1/5K2 b - - 5 36",
-            "1Q6/5pk1/2p3p1/1pbbN2p/7P/6n1/r5P1/5K2 w - - 6 37",
-            "1Q6/5pk1/2p3p1/1pbbN2p/7P/6n1/r5P1/4K3 b - - 7 37",
-            "1Q6/5pk1/2p3p1/1p1bN2p/1b5P/6n1/r5P1/4K3 w - - 8 38",
-            "1Q6/5pk1/2p3p1/1p1bN2p/1b5P/6n1/r5P1/3K4 b - - 9 38",
-            "1Q6/5pk1/2p3p1/1p2N2p/1b5P/1b4n1/r5P1/3K4 w - - 10 39",
-            "1Q6/5pk1/2p3p1/1p2N2p/1b5P/1b4n1/r5P1/2K5 b - - 11 39",
-            "1Q6/5pk1/2p3p1/1p2N2p/1b5P/1b6/r3n1P1/2K5 w - - 12 40",
-            "1Q6/5pk1/2p3p1/1p2N2p/1b5P/1b6/r3n1P1/1K6 b - - 13 40",
-            "1Q6/5pk1/2p3p1/1p2N2p/1b5P/1bn5/r5P1/1K6 w - - 14 41",
-            "1Q6/5pk1/2p3p1/1p2N2p/1b5P/1bn5/r5P1/2K5 b - - 15 41",
-            "1Q6/5pk1/2p3p1/1p2N2p/1b5P/1bn5/2r3P1/2K5 w - - 16 42",
-        ]
-        .prop_map(|fen| Position::from_str(&fen).unwrap())
-        .boxed()
+/// The reason why the position represented by a FEN string is illegal.
+#[derive(Debug, Display, Copy, Clone, Eq, PartialEq, Hash, Error)]
+pub enum IllegalPosition {
+    #[display(fmt = "at least one side has no king")]
+    MissingKing,
+    #[display(fmt = "at least one side has multiple kings")]
+    TooManyKings,
+    #[display(fmt = "there are pawns on the backrank")]
+    PawnsOnBackrank,
+    #[display(fmt = "the player in check is not to move")]
+    OppositeCheck,
+    #[display(fmt = "invalid en passant square; wrong rank, occupied, or missing pushed pawn")]
+    InvalidEnPassantSquare,
+    #[display(fmt = "invalid castling rights")]
+    InvalidCastlingRights,
+    #[display(fmt = "no sequence of legal moves can reach this position")]
+    Other,
+}
+
+#[doc(hidden)]
+impl From<sm::PositionError<sm::Chess>> for IllegalPosition {
+    fn from(e: sm::PositionError<sm::Chess>) -> Self {
+        let kinds = e.kinds();
+
+        if kinds.contains(sm::PositionErrorKinds::MISSING_KING) {
+            IllegalPosition::MissingKing
+        } else if kinds.contains(sm::PositionErrorKinds::TOO_MANY_KINGS) {
+            IllegalPosition::TooManyKings
+        } else if kinds.contains(sm::PositionErrorKinds::PAWNS_ON_BACKRANK) {
+            IllegalPosition::PawnsOnBackrank
+        } else if kinds.contains(sm::PositionErrorKinds::OPPOSITE_CHECK) {
+            IllegalPosition::OppositeCheck
+        } else if kinds.contains(sm::PositionErrorKinds::INVALID_EP_SQUARE) {
+            IllegalPosition::InvalidEnPassantSquare
+        } else if kinds.contains(sm::PositionErrorKinds::INVALID_CASTLING_RIGHTS) {
+            IllegalPosition::InvalidCastlingRights
+        } else {
+            IllegalPosition::Other
+        }
     }
 }
 
 /// The reason why parsing [`Position`] from a FEN string failed.
-#[derive(Debug, Display, Clone, Eq, PartialEq, Hash, Error)]
+#[derive(Debug, Display, Copy, Clone, Eq, PartialEq, Hash, Error, From)]
 pub enum ParsePositionError {
-    #[display(fmt = "invalid FEN string")]
-    InvalidFen,
+    #[display(fmt = "unable to parse FEN")]
+    InvalidFen(InvalidFen),
 
-    #[display(fmt = "the FEN string represents an invalid position")]
-    InvalidPosition,
+    #[display(fmt = "FEN represents an illegal position")]
+    IllegalPosition(IllegalPosition),
 }
 
-/// Parses a position from a FEN string.
+/// Parses a [`Position`] from a FEN string.
 impl FromStr for Position {
     type Err = ParsePositionError;
 
     #[instrument(err)]
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        foreign::Board::from_str(s)
-            .map(Position::from)
-            .map_err(|e| match e {
-                foreign::Error::InvalidFen { fen: _ } => ParsePositionError::InvalidFen,
-                foreign::Error::InvalidBoard => ParsePositionError::InvalidPosition,
-            })
+        use ParsePositionError::*;
+
+        let fen: sm::fen::Fen = s
+            .parse()
+            .map_err(|e: sm::fen::ParseFenError| InvalidFen(e.into()))?;
+
+        let setup: sm::Chess = fen
+            .position(sm::CastlingMode::Standard)
+            .map_err(|e| IllegalPosition(e.into()))?;
+
+        Ok(Position { setup })
+    }
+}
+
+#[doc(hidden)]
+impl From<sm::Chess> for Position {
+    fn from(setup: sm::Chess) -> Self {
+        Position { setup }
+    }
+}
+
+#[doc(hidden)]
+impl From<Position> for sm::Chess {
+    fn from(pos: Position) -> Self {
+        pos.setup
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{File, Rank, Square};
-    use proptest::prelude::*;
+    use crate::Square;
+    use proptest::collection::hash_set;
+    use proptest::sample::{select, Selector};
+    use std::num::NonZeroU32;
+
+    pub(super) fn any_setup() -> impl Strategy<Value = sm::Chess> {
+        prop_oneof![
+            checkmate_setup(),
+            stalemate_setup(),
+            draw_setup(),
+            Just(sm::Chess::default())
+                .prop_recursive(32, 1048576, 1, |inner| {
+                    (inner, any::<Selector>()).prop_map(|(setup, selector)| {
+                        if let Some(m) = selector.try_select(sm::Position::legal_moves(&setup)) {
+                            sm::Position::play(setup, &m).unwrap()
+                        } else {
+                            setup
+                        }
+                    })
+                })
+                .no_shrink()
+        ]
+    }
+
+    pub(super) fn checkmate_setup() -> impl Strategy<Value = sm::Chess> {
+        let positions = vec![
+            "8/4N1pk/8/7R/8/8/8/4K3 b - - 0 1",
+            "6kR/6P1/5K2/8/8/8/8/8 b - - 0 1",
+            "7k/7R/5N2/8/8/8/8/4K3 b - - 0 1",
+            "3R2k1/5ppp/8/8/8/8/8/4K3 b - - 0 1",
+            "7k/8/5BKN/8/8/8/8/8 b - - 0 1",
+            "5rk1/7B/8/6N1/8/8/1B6/4K3 b - - 0 1",
+            "7k/5B2/8/6N1/8/8/1B6/4K3 b - - 0 1",
+            "5rk1/6RR/8/8/8/8/8/4K3 b - - 0 1",
+            "2kr4/3p4/B7/8/5B2/8/8/4K3 b - - 0 1",
+            "R2k4/8/3K4/8/8/8/8/8 b - - 0 1",
+            "7k/5N1p/8/8/8/8/8/4K1R1 b - - 0 1",
+            "8/8/8/8/6p1/5qk1/7Q/6K1 b - - 0 1",
+            "5k2/5Q2/6B1/8/8/8/8/4K3 b - - 0 1",
+            "5rk1/6pQ/6P1/8/8/8/8/4K3 b - - 0 1",
+            "8/8/8/7R/pkp5/Pn6/1P6/4K3 b - - 0 1",
+            "7k/7p/8/3B4/8/2B5/8/4K3 b - - 0 1",
+            "3rkr2/1p6/2p1Q3/8/8/8/8/4K3 b - - 0 1",
+            "7k/6p1/8/7Q/2B5/8/8/4K3 b - - 0 1",
+            "4R3/4kp2/5N2/4P3/8/8/8/4K3 b - - 0 1",
+            "8/8/R7/k7/2Q5/8/8/4K3 b - - 0 1",
+            "7k/8/4BB1K/8/8/8/8/8 b - - 0 1",
+            "7k/8/5NNK/8/8/8/8/8 b - - 0 1",
+            "R6k/1R6/8/8/8/8/8/4K3 b - - 0 1",
+            "Q~6k/1R6/8/8/8/8/8/4K3 b - - 0 1",
+            "3q1b2/4kB2/3p4/3NN3/8/8/8/4K3 b - - 0 1",
+            "3q1b2/4kB2/3p4/4N1B1/8/8/8/4K3 b - - 0 1",
+            "5k2/4pQ2/4Pp2/8/8/8/8/4K3 b - - 0 1",
+            "6Q1/5Bpk/7p/8/8/8/8/4K3 b - - 0 1",
+            "6kR/5p2/8/8/8/8/1B6/4K3 b - - 0 1",
+            "7k/7p/5B2/8/8/8/8/4K1R1 b - - 0 1",
+            "3Rk3/5p2/8/6B1/8/8/8/4K3 b - - 0 1",
+            "5rk1/5p1p/5B2/8/8/8/8/4K1R1 b - - 0 1",
+            "3k4/3Q4/3K4/8/8/8/8/8 b - - 0 1",
+            "1nbB4/1pk5/2p5/8/8/8/8/3RK3 b - - 0 1",
+            "6rk/5Npp/8/8/8/8/8/4K3 b - - 0 1",
+            "5rk1/4Np1p/8/8/8/2B5/8/4K3 b - - 0 1",
+            "3r1r2/4k2p/R3Q3/8/8/8/8/4K3 b - - 0 1",
+        ];
+
+        select(positions)
+            .prop_filter_map("invalid fen", |s| s.parse().ok())
+            .prop_filter_map("illegal position", |fen: sm::fen::Fen| {
+                fen.position(sm::CastlingMode::Standard).ok()
+            })
+    }
+
+    pub(super) fn stalemate_setup() -> impl Strategy<Value = sm::Chess> {
+        let positions = vec![
+            "rn2k1nr/pp4pp/3p4/q1pP4/P1P2p1b/1b2pPRP/1P1NP1PQ/2B1KBNR w Kkq - 0 1",
+            "5bnr/4p1pq/4Qpkr/7p/7P/4P3/PPPP1PP1/RNB1KBNR b KQ - 0 1",
+            "NBk5/PpP1p3/1P2P3/8/8/3p1p2/3PpPpp/4Kbrq w - - 0 1",
+            "NBk5/PpP1p3/1P2P3/8/8/3p1p2/3PpPpp/4Kbrq b - - 0 1",
+            "8/8/8/2p2p1p/2P2P1k/4pP1P/4P1KP/5BNR w - - 0 1",
+            "8/8/8/2p2p1p/2P2P1k/4pP1P/4P1KP/5BNR b - - 0 1",
+            "8/8/8/8/pp6/kp6/1p6/1K6 w - - 0 1",
+            "8/8/8/8/pp6/kp6/1p6/1K6 b - - 0 1",
+            "5k2/5P2/5K2/8/8/8/8/8 b - - 0 1",
+            "kb5R/8/1K6/8/8/8/8/8 b - - 0 1",
+            "8/8/8/8/8/2K5/1R6/k7 b - - 0 1",
+            "8/8/8/6K1/8/1Q6/p7/k7 b - - 0 1",
+            "k7/P7/K7/8/5B2/8/8/8 b - - 0 1",
+        ];
+
+        select(positions)
+            .prop_filter_map("invalid fen", |s| s.parse().ok())
+            .prop_filter_map("illegal position", |fen: sm::fen::Fen| {
+                fen.position(sm::CastlingMode::Standard).ok()
+            })
+    }
+
+    pub(super) fn draw_setup() -> impl Strategy<Value = sm::Chess> {
+        (
+            vec![any::<Square>().prop_map_into(); 3],
+            select([sm::Role::Knight, sm::Role::Bishop].as_ref()),
+            any::<Color>().prop_map_into(),
+            any::<u32>(),
+            any::<u32>().prop_filter_map("zero", NonZeroU32::new),
+        )
+            .prop_map(|(s, r, t, hm, fm)| {
+                let k = sm::Role::King;
+
+                let pieces = vec![
+                    sm::Piece { color: t, role: r },
+                    sm::Piece { color: t, role: k },
+                    sm::Piece { color: !t, role: k },
+                ];
+
+                sm::fen::Fen {
+                    board: s.into_iter().zip(pieces).collect(),
+                    turn: !t,
+                    castling_rights: sm::Bitboard::EMPTY,
+                    halfmoves: hm,
+                    fullmoves: fm,
+                    ..Default::default()
+                }
+            })
+            .prop_filter_map("illegal position", |fen| {
+                fen.position(sm::CastlingMode::Standard).ok()
+            })
+            .prop_filter("stalemate", |setup: &sm::Chess| {
+                !sm::Position::is_stalemate(setup)
+            })
+    }
+
+    fn any_fen() -> impl Strategy<Value = sm::fen::Fen> {
+        const CORNERS: &[sm::Square] = &[
+            sm::Square::A1,
+            sm::Square::A8,
+            sm::Square::H1,
+            sm::Square::H8,
+        ];
+
+        (
+            any::<Placement>().prop_map_into(),
+            any::<Color>().prop_map_into(),
+            hash_set(select(CORNERS), 0..=4).prop_map(|b| b.into_iter().collect()),
+            any::<Option<Square>>().prop_map(|s| s.map(sm::Square::from)),
+            any::<u32>(),
+            any::<u32>().prop_filter_map("zero", NonZeroU32::new),
+        )
+            .prop_map(|(b, t, cr, eps, hm, fm)| sm::fen::Fen {
+                board: b,
+                turn: t,
+                castling_rights: cr,
+                ep_square: eps,
+                halfmoves: hm,
+                fullmoves: fm,
+                ..Default::default()
+            })
+    }
+
+    fn invalid_fen() -> impl Strategy<Value = (String, sm::fen::ParseFenError)> {
+        any_fen()
+            .prop_map(|fen| fen.to_string())
+            .prop_flat_map(|fen: String| (0..fen.len(), Just(fen), ".+"))
+            .prop_map(|(r, fen, s)| [&fen[..r], &s, &fen[r..]].concat())
+            .prop_filter_map("valid fen", |s| {
+                s.parse::<sm::fen::Fen>().err().map(|e| (s, e))
+            })
+    }
+
+    fn illegal_fen() -> impl Strategy<Value = (sm::fen::Fen, sm::PositionError<sm::Chess>)> {
+        any_fen()
+            .prop_filter_map("invalid fen", |fen| fen.to_string().parse().ok())
+            .prop_filter_map("legal position", |fen: sm::fen::Fen| {
+                fen.position(sm::CastlingMode::Standard)
+                    .err()
+                    .map(|e| (fen, e))
+            })
+    }
+
+    fn legal_move(
+        setup: impl Strategy<Value = sm::Chess>,
+    ) -> impl Strategy<Value = (sm::Chess, sm::uci::Uci)> {
+        (setup, any::<Selector>()).prop_filter_map("end position", |(s, selector)| {
+            let mvs = sm::Position::legal_moves(&s);
+            selector
+                .try_select(&mvs)
+                .map(sm::uci::Uci::from_standard)
+                .map(move |m| (s, m))
+        })
+    }
+
+    fn illegal_move(
+        setup: impl Strategy<Value = sm::Chess>,
+    ) -> impl Strategy<Value = (sm::Chess, sm::uci::Uci)> {
+        (setup, any::<Move>().prop_map_into()).prop_filter_map("legal move", move |(s, m)| {
+            match sm::uci::Uci::to_move(&m, &s) {
+                Ok(mv) if !sm::Position::is_legal(&s, &mv) => Some((s, m)),
+                Err(_) => Some((s, m)),
+                _ => None,
+            }
+        })
+    }
 
     proptest! {
         #[test]
-        fn placement_returns_current_piece_arrangement(pos: Position) {
-            let placement = pos.placement();
-
-            for &file in File::VARIANTS {
-                for &rank in Rank::VARIANTS {
-                    let square = Square { file, rank };
-                    let role = placement[square].map(|f| f.role());
-                    let color = placement[square].map(|f| f.color());
-
-                    assert_eq!(role, pos.board.piece_on(square.into()).map(Into::into));
-                    assert_eq!(color, pos.board.color_on(square.into()).map(Into::into));
-                }
-            }
+        fn placement_returns_the_piece_arrangement(pos: Position) {
+            let b = sm::fen::Fen::from_setup(&pos.setup).board;
+            assert_eq!(pos.placement(), b.into());
         }
 
         #[test]
         fn turn_returns_the_current_side_to_play(pos: Position) {
-            assert_eq!(pos.turn(), pos.board.side_to_move().into());
+            let t = sm::fen::Fen::from_setup(&pos.setup).turn;
+            assert_eq!(pos.turn(), t.into());
+        }
+
+        #[test]
+        fn en_passant_square_returns_the_current_pushed_pawn_skipped_square(pos: Position) {
+            let eps = sm::fen::Fen::from_setup(&pos.setup).ep_square;
+            assert_eq!(pos.en_passant_square(), eps.map(Into::into));
+        }
+
+        #[test]
+        fn halfmove_clock_returns_the_number_of_halfmoves_since_last_irreversible_move(pos: Position) {
+            let hm = sm::fen::Fen::from_setup(&pos.setup).halfmoves;
+            assert_eq!(pos.halfmove_clock(), hm);
+        }
+
+        #[test]
+        fn fullmoves_returns_the_current_move_number(pos: Position) {
+            let fm = sm::fen::Fen::from_setup(&pos.setup).fullmoves;
+            assert_eq!(pos.fullmoves(), fm);
+        }
+
+        #[test]
+        fn is_checkmate_returns_whether_the_position_is_a_checkmate(pos: Checkmate) {
+            assert!(pos.is_checkmate());
+        }
+
+        #[test]
+        fn is_stalemate_returns_whether_the_position_is_a_stalemate(pos: Stalemate) {
+            assert!(pos.is_stalemate());
+        }
+
+        #[test]
+        fn is_draw_returns_whether_the_position_has_insufficient_material(pos: Draw) {
+            assert!(pos.is_draw());
+        }
+
+        #[test]
+        fn playing_legal_move_updates_position((s, m) in legal_move(any_setup())) {
+            let mut pos = Position::from(s.clone());
+            let mv = sm::uci::Uci::to_move(&m, &s).unwrap();
+            assert_eq!(pos.play(m.into()), Ok(()));
+            assert_eq!(pos, sm::Position::play(s, &mv).unwrap().into());
+        }
+
+        #[test]
+        fn playing_illegal_move_fails((s, m) in illegal_move(any_setup())) {
+            let mut pos: Position = s.clone().into();
+            assert_eq!(pos.play(m.clone().into()), Err(IllegalMove(m.into(), s.clone().into())));
+            assert_eq!(pos, s.into());
         }
 
         #[test]
@@ -203,13 +509,18 @@ mod tests {
         }
 
         #[test]
-        fn parsing_invalid_fen_string_fails(r in "[^/]*") {
-            assert_eq!(r.parse::<Position>(), Err(ParsePositionError::InvalidFen));
+        fn parsing_invalid_fen_string_fails((s, e) in invalid_fen()) {
+            assert_eq!(s.parse::<Position>(), Err(ParsePositionError::InvalidFen(e.into())));
         }
 
         #[test]
-        fn parsing_invalid_position_fails(r in "([rnbqkpRNBQKP]{8}/){7}[rnbqkpRNBQKP]{8} [wb] - [a-h][1-8] [0-9]+ [0-9]+") {
-            assert_eq!(r.parse::<Position>(), Err(ParsePositionError::InvalidPosition));
+        fn parsing_illegal_fen_fails((fen, e) in illegal_fen()) {
+            assert_eq!(fen.to_string().parse::<Position>(), Err(ParsePositionError::IllegalPosition(e.into())));
+        }
+
+        #[test]
+        fn position_has_an_equivalent_shakmaty_representation(pos: Position) {
+            assert_eq!(Position::from(sm::Chess::from(pos.clone())), pos);
         }
     }
 }

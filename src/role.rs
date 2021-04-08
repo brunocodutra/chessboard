@@ -1,7 +1,7 @@
-use crate::foreign;
 use derive_more::Display;
+use shakmaty as sm;
 
-/// The chess piece type.
+/// Denotes the type of a chess [`Piece`][`crate::Piece`].
 #[derive(Debug, Display, Copy, Clone, Eq, PartialEq, Hash)]
 #[cfg_attr(test, derive(proptest_derive::Arbitrary))]
 pub enum Role {
@@ -19,43 +19,30 @@ pub enum Role {
     King,
 }
 
-impl From<Role> for &'static str {
+#[doc(hidden)]
+impl From<Role> for sm::Role {
     fn from(r: Role) -> Self {
         match r {
-            Role::Pawn => "pawn",
-            Role::Knight => "knight",
-            Role::Bishop => "bishop",
-            Role::Rook => "rook",
-            Role::Queen => "queen",
-            Role::King => "king",
+            Role::Pawn => sm::Role::Pawn,
+            Role::Knight => sm::Role::Knight,
+            Role::Bishop => sm::Role::Bishop,
+            Role::Rook => sm::Role::Rook,
+            Role::Queen => sm::Role::Queen,
+            Role::King => sm::Role::King,
         }
     }
 }
 
-impl From<foreign::Piece> for Role {
-    fn from(p: foreign::Piece) -> Self {
-        use Role::*;
-        match p {
-            foreign::Piece::Pawn => Pawn,
-            foreign::Piece::Knight => Knight,
-            foreign::Piece::Bishop => Bishop,
-            foreign::Piece::Rook => Rook,
-            foreign::Piece::Queen => Queen,
-            foreign::Piece::King => King,
-        }
-    }
-}
-
-impl Into<foreign::Piece> for Role {
-    fn into(self) -> foreign::Piece {
-        use Role::*;
-        match self {
-            Pawn => foreign::Piece::Pawn,
-            Knight => foreign::Piece::Knight,
-            Bishop => foreign::Piece::Bishop,
-            Rook => foreign::Piece::Rook,
-            Queen => foreign::Piece::Queen,
-            King => foreign::Piece::King,
+#[doc(hidden)]
+impl From<sm::Role> for Role {
+    fn from(r: sm::Role) -> Self {
+        match r {
+            sm::Role::Pawn => Role::Pawn,
+            sm::Role::Knight => Role::Knight,
+            sm::Role::Bishop => Role::Bishop,
+            sm::Role::Rook => Role::Rook,
+            sm::Role::Queen => Role::Queen,
+            sm::Role::King => Role::King,
         }
     }
 }
@@ -67,8 +54,8 @@ mod tests {
 
     proptest! {
         #[test]
-        fn every_role_has_an_associated_static_str(r: Role) {
-            assert_eq!(<&str>::from(r), r.to_string());
+        fn role_has_an_equivalent_shakmaty_representation(r: Role) {
+            assert_eq!(Role::from(sm::Role::from(r)), r);
         }
     }
 }

@@ -1,7 +1,8 @@
-use crate::{foreign, Role};
 use derive_more::{Display, Error};
+use shakmaty as sm;
 use std::str::FromStr;
 use tracing::instrument;
+use vampirc_uci::UciPiece;
 
 /// A promotion specifier.
 #[derive(Debug, Display, Copy, Clone, Eq, PartialEq, Hash)]
@@ -36,48 +37,66 @@ impl FromStr for Promotion {
     #[instrument(err)]
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
+            "" => Ok(Promotion::None),
             "n" => Ok(Promotion::Knight),
             "b" => Ok(Promotion::Bishop),
             "r" => Ok(Promotion::Rook),
             "q" => Ok(Promotion::Queen),
-            "" => Ok(Promotion::None),
             _ => Err(ParsePromotionError),
         }
     }
 }
 
-impl From<Promotion> for &'static str {
+#[doc(hidden)]
+impl From<Promotion> for Option<UciPiece> {
     fn from(p: Promotion) -> Self {
         match p {
-            Promotion::Knight => "n",
-            Promotion::Bishop => "b",
-            Promotion::Rook => "r",
-            Promotion::Queen => "q",
-            Promotion::None => "",
+            Promotion::None => None,
+            Promotion::Knight => Some(UciPiece::Knight),
+            Promotion::Bishop => Some(UciPiece::Bishop),
+            Promotion::Rook => Some(UciPiece::Rook),
+            Promotion::Queen => Some(UciPiece::Queen),
         }
     }
 }
 
-impl From<Promotion> for Option<Role> {
-    fn from(p: Promotion) -> Self {
+#[doc(hidden)]
+impl From<Option<UciPiece>> for Promotion {
+    fn from(p: Option<UciPiece>) -> Self {
         match p {
-            Promotion::Knight => Some(Role::Knight),
-            Promotion::Bishop => Some(Role::Bishop),
-            Promotion::Rook => Some(Role::Rook),
-            Promotion::Queen => Some(Role::Queen),
-            Promotion::None => None,
+            None => Promotion::None,
+            Some(UciPiece::Knight) => Promotion::Knight,
+            Some(UciPiece::Bishop) => Promotion::Bishop,
+            Some(UciPiece::Rook) => Promotion::Rook,
+            Some(UciPiece::Queen) => Promotion::Queen,
+            Some(v) => panic!("unexpected {:?}", v),
         }
     }
 }
 
-impl From<Promotion> for Option<foreign::Piece> {
+#[doc(hidden)]
+impl From<Option<sm::Role>> for Promotion {
+    fn from(p: Option<sm::Role>) -> Self {
+        match p {
+            None => Promotion::None,
+            Some(sm::Role::Knight) => Promotion::Knight,
+            Some(sm::Role::Bishop) => Promotion::Bishop,
+            Some(sm::Role::Rook) => Promotion::Rook,
+            Some(sm::Role::Queen) => Promotion::Queen,
+            Some(v) => panic!("unexpected {:?}", v),
+        }
+    }
+}
+
+#[doc(hidden)]
+impl From<Promotion> for Option<sm::Role> {
     fn from(p: Promotion) -> Self {
         match p {
-            Promotion::Knight => Some(foreign::Piece::Knight),
-            Promotion::Bishop => Some(foreign::Piece::Bishop),
-            Promotion::Rook => Some(foreign::Piece::Rook),
-            Promotion::Queen => Some(foreign::Piece::Queen),
             Promotion::None => None,
+            Promotion::Knight => Some(sm::Role::Knight),
+            Promotion::Bishop => Some(sm::Role::Bishop),
+            Promotion::Rook => Some(sm::Role::Rook),
+            Promotion::Queen => Some(sm::Role::Queen),
         }
     }
 }
@@ -101,6 +120,16 @@ mod tests {
         #[test]
         fn parsing_promotion_fails_except_for_one_of_four_letters(s in "[^nbrq]+") {
             assert_eq!(s.parse::<Promotion>(), Err(ParsePromotionError));
+        }
+
+        #[test]
+        fn promotion_has_an_equivalent_vampirc_uci_representation(p: Promotion) {
+            assert_eq!(Promotion::from(Option::<UciPiece>::from(p)), p);
+        }
+
+        #[test]
+        fn promotion_has_an_equivalent_shakmaty_representation(p: Promotion) {
+            assert_eq!(Promotion::from(Option::<sm::Role>::from(p)), p);
         }
     }
 }

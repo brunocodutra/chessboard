@@ -107,7 +107,7 @@ impl fmt::Display for Board {
             write!(f, " {} |", rank)?;
 
             for &file in File::VARIANTS {
-                match self[Square { file, rank }] {
+                match self[Square(file, rank)] {
                     Some(piece) => write!(f, " {:#} |", piece)?,
                     None => write!(f, "   |")?,
                 }

@@ -37,7 +37,7 @@ async fn new_player(color: Color, url: &Url) -> Result<PlayerDispatcher<RemoteDi
 
 #[instrument(err)]
 async fn chessboard<U: Borrow<Url> + Debug>(white: U, black: U) -> Result<Outcome, Anyhow> {
-    let mut game = Game::new();
+    let mut game = Game::default();
 
     let (mut white, mut black) = try_join!(
         new_player(Color::White, white.borrow()),
@@ -53,8 +53,8 @@ async fn chessboard<U: Borrow<Url> + Debug>(white: U, black: U) -> Result<Outcom
                 info!(%position);
 
                 let action = match position.turn() {
-                    Color::Black => black.act(&position).await?,
-                    Color::White => white.act(&position).await?,
+                    Color::Black => black.act(position).await?,
+                    Color::White => white.act(position).await?,
                 };
 
                 info!(player = %position.turn(), ?action);
@@ -73,7 +73,7 @@ async fn chessboard<U: Borrow<Url> + Debug>(white: U, black: U) -> Result<Outcom
 
 #[derive(StructOpt)]
 #[structopt(author, name = "Chessboard", setting = DeriveDisplayOrder)]
-struct AppSpec {
+struct Opts {
     #[structopt(
         short,
         long,
@@ -125,14 +125,14 @@ macro_rules! echo {
 
 #[instrument(err)]
 fn main() -> Result<(), Box<dyn Error + Send + Sync + 'static>> {
-    let spec = AppSpec::from_args();
+    let opts = Opts::from_args();
 
     let (writer, _guard) = tracing_appender::non_blocking(io::stderr());
 
     let filter = format!(
         "{},chessboard={}",
-        min(Level::WARN, spec.verbosity),
-        spec.verbosity
+        min(Level::WARN, opts.verbosity),
+        opts.verbosity
     );
 
     tracing_subscriber::fmt()
@@ -141,9 +141,9 @@ fn main() -> Result<(), Box<dyn Error + Send + Sync + 'static>> {
         .try_init()?;
 
     block_on(async {
-        let best_of = spec.best_of.get();
+        let best_of = opts.best_of.get();
 
-        let pb = if spec.progress {
+        let pb = if opts.progress {
             ProgressBar::new(best_of as u64).with_style(
                 ProgressStyle::default_bar()
                     .tick_chars("⠉⠙⠹⠸⠼⠴⠤⠦⠧⠇⠏⠋")
@@ -159,10 +159,10 @@ fn main() -> Result<(), Box<dyn Error + Send + Sync + 'static>> {
 
         let matches: Vec<_> = (0..best_of)
             .map(|_| {
-                if spec.parallel {
-                    spawn(chessboard(spec.white.clone(), spec.black.clone())).boxed()
+                if opts.parallel {
+                    spawn(chessboard(opts.white.clone(), opts.black.clone())).boxed()
                 } else {
-                    chessboard(&spec.white, &spec.black).boxed()
+                    chessboard(&opts.white, &opts.black).boxed()
                 }
             })
             .collect();
@@ -176,11 +176,11 @@ fn main() -> Result<(), Box<dyn Error + Send + Sync + 'static>> {
                 ok(acc)
             })
             .await
-            .context("the match was interrupted")?;
+            .context("the game was interrupted")?;
 
         pb.finish_and_clear();
 
-        let digits = (spec.best_of.get() as f64).log10().ceil() as usize + 1;
+        let digits = (opts.best_of.get() as f64).log10().ceil() as usize + 1;
 
         echo!("+{:-<w$}+\n", "", w = digits + 44)?;
         echo!("|{:<w$}|\n", " Statistics ", w = digits + 44)?;

@@ -1,20 +1,35 @@
-use crate::{foreign, ParsePromotionError, ParseSquareError, Position, Promotion, Square};
+use crate::{ParsePromotionError, ParseSquareError, Position, Promotion, Square};
 use derive_more::{Display, Error, From};
-use std::str::{self, FromStr};
+use shakmaty as sm;
+use std::str::FromStr;
 use tracing::instrument;
+use vampirc_uci::UciMove;
 
-/// The move of a piece on the board.
+/// A chess move.
 #[derive(Debug, Display, Copy, Clone, Eq, PartialEq, Hash)]
 #[cfg_attr(test, derive(proptest_derive::Arbitrary))]
-#[display(fmt = "{}{}{}", from, to, promotion)]
-pub struct Move {
-    pub from: Square,
-    pub to: Square,
-    pub promotion: Promotion,
+#[display(fmt = "{}{}{}", _0, _1, _2)]
+pub struct Move(Square, Square, Promotion);
+
+impl Move {
+    /// The source [`Square`].
+    pub fn whence(&self) -> Square {
+        self.0
+    }
+
+    /// The destination [`Square`].
+    pub fn whither(&self) -> Square {
+        self.1
+    }
+
+    /// The [`Promotion`] specifier.
+    pub fn promotion(&self) -> Promotion {
+        self.2
+    }
 }
 
 /// Represents an illegal [`Move`] in a given [`Position`].
-#[derive(Debug, Display, Clone, /*Eq,*/ PartialEq, Hash)]
+#[derive(Debug, Display, Clone, Eq, PartialEq, Hash)]
 #[cfg_attr(test, derive(proptest_derive::Arbitrary))]
 #[display(fmt = "move `{}` is illegal in position `{}`", _0, _1)]
 pub struct IllegalMove(pub Move, pub Position);
@@ -45,33 +60,55 @@ impl FromStr for Move {
         let i = s.char_indices().nth(2).map_or_else(|| s.len(), |(i, _)| i);
         let j = s.char_indices().nth(4).map_or_else(|| s.len(), |(i, _)| i);
 
-        Ok(Move {
-            from: s[..i].parse().map_err(InvalidFromSquare)?,
-            to: s[i..j].parse().map_err(InvalidToSquare)?,
-            promotion: s[j..].parse()?,
-        })
+        Ok(Move(
+            s[..i].parse().map_err(InvalidFromSquare)?,
+            s[i..j].parse().map_err(InvalidToSquare)?,
+            s[j..].parse()?,
+        ))
     }
 }
 
-impl From<foreign::ChessMove> for Move {
-    fn from(m: foreign::ChessMove) -> Self {
-        Move {
-            from: m.get_source().into(),
-            to: m.get_dest().into(),
-            promotion: match m.get_promotion() {
-                Some(foreign::Piece::Knight) => Promotion::Knight,
-                Some(foreign::Piece::Bishop) => Promotion::Bishop,
-                Some(foreign::Piece::Rook) => Promotion::Rook,
-                Some(foreign::Piece::Queen) => Promotion::Queen,
-                _ => Promotion::None,
-            },
+#[doc(hidden)]
+impl From<Move> for UciMove {
+    fn from(m: Move) -> Self {
+        UciMove {
+            from: m.whence().into(),
+            to: m.whither().into(),
+            promotion: m.promotion().into(),
         }
     }
 }
 
-impl Into<foreign::ChessMove> for Move {
-    fn into(self) -> foreign::ChessMove {
-        foreign::ChessMove::new(self.from.into(), self.to.into(), self.promotion.into())
+#[doc(hidden)]
+impl From<UciMove> for Move {
+    fn from(m: UciMove) -> Self {
+        Move(m.from.into(), m.to.into(), m.promotion.into())
+    }
+}
+
+#[doc(hidden)]
+impl From<sm::uci::Uci> for Move {
+    fn from(m: sm::uci::Uci) -> Self {
+        match m {
+            sm::uci::Uci::Normal {
+                from,
+                to,
+                promotion,
+            } => Move(from.into(), to.into(), promotion.into()),
+
+            v => panic!("unexpected {:?}", v),
+        }
+    }
+}
+
+#[doc(hidden)]
+impl From<Move> for sm::uci::Uci {
+    fn from(m: Move) -> Self {
+        sm::uci::Uci::Normal {
+            from: m.whence().into(),
+            to: m.whither().into(),
+            promotion: m.promotion().into(),
+        }
     }
 }
 
@@ -81,6 +118,11 @@ mod tests {
     use proptest::prelude::*;
 
     proptest! {
+        #[test]
+        fn move_serializes_to_pure_coordinate_notation(m: Move) {
+            assert_eq!(m.to_string(), UciMove::from(m).to_string());
+        }
+
         #[test]
         fn parsing_printed_move_is_an_identity(m: Move) {
             assert_eq!(m.to_string().parse(), Ok(m));
@@ -105,6 +147,16 @@ mod tests {
             use ParseMoveError::*;
             let s = [f.to_string(), t.to_string(), p.clone()].concat();
             assert_eq!(s.parse::<Move>(), Err(InvalidPromotion(p.parse::<Promotion>().unwrap_err())));
+        }
+
+        #[test]
+        fn move_has_an_equivalent_vampirc_uci_representation(m: Move) {
+            assert_eq!(Move::from(UciMove::from(m)), m);
+        }
+
+        #[test]
+        fn move_has_an_equivalent_shakmaty_representation(m: Move) {
+            assert_eq!(Move::from(sm::uci::Uci::from(m)), m);
         }
     }
 }

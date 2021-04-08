@@ -1,15 +1,27 @@
-use crate::{foreign, File, ParseFileError, ParseRankError, Rank};
+use crate::{File, ParseFileError, ParseRankError, Rank};
 use derive_more::{Display, Error, From};
-use std::str::{self, FromStr};
+use shakmaty as sm;
+use std::convert::TryInto;
+use std::str::FromStr;
 use tracing::instrument;
+use vampirc_uci::UciSquare;
 
-/// A square of the board.
+/// Denotes a square on the chess board.
 #[derive(Debug, Display, Copy, Clone, Eq, PartialEq, Hash)]
 #[cfg_attr(test, derive(proptest_derive::Arbitrary))]
-#[display(fmt = "{}{}", file, rank)]
-pub struct Square {
-    pub file: File,
-    pub rank: Rank,
+#[display(fmt = "{}{}", _0, _1)]
+pub struct Square(pub File, pub Rank);
+
+impl Square {
+    /// This square's [`File`].
+    pub fn file(&self) -> File {
+        self.0
+    }
+
+    /// This square's [`Rank`].
+    pub fn rank(&self) -> Rank {
+        self.1
+    }
 }
 
 /// The reason why parsing [`Square`] failed.
@@ -28,26 +40,41 @@ impl FromStr for Square {
     #[instrument(err)]
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let i = s.char_indices().nth(1).map_or_else(|| s.len(), |(i, _)| i);
-
-        Ok(Square {
-            file: s[..i].parse()?,
-            rank: s[i..].parse()?,
-        })
+        Ok(Square(s[..i].parse()?, s[i..].parse()?))
     }
 }
 
-impl From<foreign::Square> for Square {
-    fn from(s: foreign::Square) -> Self {
-        Square {
-            file: s.get_file().into(),
-            rank: s.get_rank().into(),
+#[doc(hidden)]
+impl From<Square> for UciSquare {
+    fn from(s: Square) -> Self {
+        UciSquare {
+            file: s.file().into(),
+            rank: s.rank() as u8,
         }
     }
 }
 
-impl Into<foreign::Square> for Square {
-    fn into(self) -> foreign::Square {
-        foreign::Square::make_square(self.rank.into(), self.file.into())
+#[doc(hidden)]
+impl From<UciSquare> for Square {
+    fn from(s: UciSquare) -> Self {
+        Square(
+            s.file.try_into().unwrap(),
+            (s.rank as u32).try_into().unwrap(),
+        )
+    }
+}
+
+#[doc(hidden)]
+impl From<Square> for sm::Square {
+    fn from(s: Square) -> Self {
+        sm::Square::from_coords(s.file().into(), s.rank().into())
+    }
+}
+
+#[doc(hidden)]
+impl From<sm::Square> for Square {
+    fn from(s: sm::Square) -> Self {
+        Square(s.file().into(), s.rank().into())
     }
 }
 
@@ -72,6 +99,16 @@ mod tests {
         fn parsing_square_fails_if_rank_is_invalid(f: File, r in "[^1-8]*") {
             let s = [f.to_string(), r].concat();
             assert_eq!(s.parse::<Square>(), Err(ParseRankError.into()));
+        }
+
+        #[test]
+        fn square_has_an_equivalent_vampirc_uci_representation(s: Square) {
+            assert_eq!(Square::from(<UciSquare as From<Square>>::from(s)), s);
+        }
+
+        #[test]
+        fn square_has_an_equivalent_shakmaty_representation(s: Square) {
+            assert_eq!(Square::from(sm::Square::from(s)), s);
         }
     }
 }

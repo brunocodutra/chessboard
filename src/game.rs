@@ -1,169 +1,141 @@
-use crate::{foreign, Action, IllegalMove, InvalidAction, Outcome, Position};
-use derivative::Derivative;
+use crate::{Action, Color, InvalidAction, Outcome, Position};
 use tracing::instrument;
 
-#[cfg(test)]
-use foreign::MockGame as Rules;
-
-#[cfg(not(test))]
-use foreign::Game as Rules;
-
-/// Standard chess rules.
-#[derive(Derivative)]
-#[derivative(Default(new = "true"))]
+/// Holds the state of a game of chess.
+#[derive(Debug, Default, Clone, Eq, PartialEq, Hash)]
+#[cfg_attr(test, derive(proptest_derive::Arbitrary))]
 pub struct Game {
-    #[derivative(Default(value = "Rules::new()"))]
-    rules: Rules,
+    position: Position,
+    resigned: Option<Color>,
 }
 
 impl Game {
-    /// Executes a player action if valid, otherwise returns the reason why not.
-    #[instrument(skip(self), err)]
-    pub fn execute(&mut self, action: Action) -> Result<(), InvalidAction> {
-        use InvalidAction::*;
+    /// The current [`Position`].
+    pub fn position(&self) -> &Position {
+        &self.position
+    }
 
+    // The [`Outcome`] of the game if it has already ended.
+    pub fn outcome(&self) -> Option<Outcome> {
+        if let Some(p) = self.resigned {
+            Outcome::Resignation(p).into()
+        } else if self.position().is_checkmate() {
+            Outcome::Checkmate(!self.position().turn()).into()
+        } else if self.position().is_stalemate() {
+            Outcome::Stalemate.into()
+        } else if self.position().is_draw() {
+            Outcome::Draw.into()
+        } else {
+            None
+        }
+    }
+
+    /// Executes a player action if valid, otherwise returns the reason why not.
+    #[instrument(err)]
+    pub fn execute(&mut self, action: Action) -> Result<(), InvalidAction> {
         if let Some(result) = self.outcome() {
-            return Err(GameHasEnded(result));
+            return Err(InvalidAction::GameHasEnded(result));
         }
 
         match action {
-            Action::Move(m) => {
-                if !self.rules.make_move(m.into()) {
-                    return Err(PlayerAttemptedIllegalMove(IllegalMove(m, self.position())));
-                }
-            }
+            Action::Move(m) => self.position.play(m)?,
 
             Action::Resign(p) => {
-                assert!(self.rules.resign(p.into()));
-
-                #[cfg(not(test))]
-                debug_assert_eq!(self.outcome(), Some(Outcome::Resignation(p)));
+                self.resigned.replace(p);
             }
-        }
-
-        if self.rules.can_declare_draw() {
-            assert!(self.rules.declare_draw());
-
-            #[cfg(not(test))]
-            debug_assert_eq!(self.outcome(), Some(Outcome::Draw));
         }
 
         Ok(())
-    }
-
-    // The result of the game if it has ended.
-    pub fn outcome(&self) -> Option<Outcome> {
-        self.rules.result().map(Into::into)
-    }
-
-    /// The current position on the board.
-    pub fn position(&self) -> Position {
-        self.rules.current_position().into()
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{Color, Move};
-    use mockall::predicate::*;
+    use crate::{Checkmate, Draw, Move, Stalemate};
     use proptest::prelude::*;
 
     proptest! {
         #[test]
-        fn any_player_action_after_the_game_has_ended_is_invalid(a: Action, o: Outcome) {
-            let mut rules = Rules::new();
-            rules.expect_result().times(1).return_const(Some(o.into()));
-            use InvalidAction::*;
-            assert_eq!(Game { rules }.execute(a), Err(GameHasEnded(o)));
+        fn position_borrows_the_current_game_state(game: Game) {
+            assert_eq!(game.position(), &game.position);
         }
 
         #[test]
-        fn players_can_only_play_legal_moves(m: Move, pos: Position) {
-            let mut board = foreign::MockBoard::new();
-            board.expect_into::<Position>().times(1).return_const(pos);
-
-            let mut rules = Rules::new();
-
-            rules.expect_result().return_const(None);
-            rules.expect_current_position().return_once(move || board);
-
-            rules.expect_make_move()
-                .with(eq(Into::<foreign::ChessMove>::into(m)))
-                .times(1)
-                .return_const(false);
-
-            use Action::*;
-            use InvalidAction::*;
-            assert_eq!(Game { rules }.execute(Move(m)), Err(PlayerAttemptedIllegalMove(IllegalMove(m, pos))));
+        fn outcome_returns_some_result_if_a_player_has_resigned(pos: Position, p: Color) {
+            let game = Game { position: pos, resigned: Some(p) };
+            assert_eq!(game.outcome(), Some(Outcome::Resignation(p)));
         }
 
         #[test]
-        fn players_can_make_valid_and_legal_moves(p: Color, m: Move) {
-            let mut rules = Rules::new();
-
-            rules.expect_result().return_const(None);
-
-            rules.expect_make_move()
-                .with(eq(Into::<foreign::ChessMove>::into(m)))
-                .times(1)
-                .return_const(true);
-
-            rules.expect_can_declare_draw().times(1).return_const(false);
-
-            use Action::*;
-            assert_eq!(Game { rules }.execute(Move(m)), Ok(()));
+        fn outcome_returns_some_result_on_a_checkmate_position(pos: Checkmate) {
+            let game = Game { position: pos.into(), resigned: None };
+            assert_eq!(game.outcome(), Some(Outcome::Checkmate(!game.position().turn())));
         }
 
         #[test]
-        fn players_can_resign(p: Color) {
-            let mut rules = Rules::new();
-
-            rules.expect_result().return_const(None);
-
-            rules.expect_resign()
-                .with(eq(Into::<foreign::Color>::into(p)))
-                .times(1)
-                .return_const(true);
-
-            rules.expect_can_declare_draw().times(1).return_const(false);
-
-            use Action::*;
-            assert_eq!(Game { rules }.execute(Resign(p)), Ok(()));
-        }
-
-
-        #[test]
-        fn draw_is_declared_if_the_criteria_is_met(p: Color, a: Action) {
-            let mut rules = Rules::new();
-
-            rules.expect_result().return_const(None);
-            rules.expect_side_to_move().return_const(p);
-            rules.expect_make_move().times(0..=1).return_const(true);
-            rules.expect_resign().times(0..=1).return_const(true);
-
-            rules.expect_can_declare_draw().times(1).return_const(true);
-            rules.expect_declare_draw().times(1).return_const(true);
-
-            assert_eq!(Game { rules }.execute(a), Ok(()));
+        fn outcome_returns_some_result_on_a_stalemate_position(pos: Stalemate) {
+            let game = Game { position: pos.into(), resigned: None };
+            assert_eq!(game.outcome(), Some(Outcome::Stalemate));
         }
 
         #[test]
-        fn outcome_returns_the_result_of_the_game_if_it_has_ended(o: Option<Outcome>) {
-            let mut rules = Rules::new();
-            rules.expect_result().times(1).return_const(o.map(Into::into));
-            assert_eq!(Game { rules }.outcome(), o);
+        fn outcome_returns_some_result_on_a_draw_position(pos: Draw) {
+            let game = Game { position: pos.into(), resigned: None };
+            assert_eq!(game.outcome(), Some(Outcome::Draw));
         }
 
         #[test]
-        fn position_returns_the_current_board(pos: Position) {
-            let mut board = foreign::MockBoard::new();
-            board.expect_into::<Position>().times(1).return_const(pos);
+        fn any_player_action_after_one_side_has_resigned_is_invalid(pos: Position, p: Color, a: Action) {
+            let mut game = Game { position: pos, resigned: Some(p) };
+            assert_eq!(game.execute(a), Err(game.outcome().unwrap().into()));
+        }
 
-            let mut rules = Rules::new();
-            rules.expect_current_position().times(1).return_once(move || board);
+        #[test]
+        fn any_player_action_on_a_checkmate_position_is_invalid(pos: Checkmate, a: Action) {
+            let mut game = Game { position: pos.into(), resigned: None };
+            assert_eq!(game.execute(a), Err(game.outcome().unwrap().into()));
+        }
 
-            assert_eq!(Game { rules }.position(), pos);
+        #[test]
+        fn any_player_action_on_a_stalemate_position_is_invalid(pos: Stalemate, a: Action) {
+            let mut game = Game { position: pos.into(), resigned: None };
+            assert_eq!(game.execute(a), Err(game.outcome().unwrap().into()));
+        }
+
+        #[test]
+        fn any_player_action_on_a_draw_position_is_invalid(pos: Draw, a: Action) {
+            let mut game = Game { position: pos.into(), resigned: None };
+            assert_eq!(game.execute(a), Err(game.outcome().unwrap().into()));
+        }
+
+        #[test]
+        fn game_state_does_not_change_after_an_invalid_action(mut game: Game, a: Action) {
+            let before = game.clone();
+            prop_assume!(game.execute(a).is_err());
+            assert_eq!(game, before);
+        }
+
+        #[test]
+        fn players_can_resign(mut pos: Position, p: Color) {
+            prop_assume!(!pos.is_checkmate());
+            prop_assume!(!pos.is_stalemate());
+            prop_assume!(!pos.is_draw());
+
+            let mut game = Game { position: pos.clone(), resigned: None };
+            assert_eq!(game.execute(Action::Resign(p)), Ok(()));
+            assert_eq!(game, Game { position: pos, resigned: Some(p) });
+        }
+
+        #[test]
+        fn players_can_make_a_move(mut pos: Position, m: Move) {
+            prop_assume!(!pos.is_checkmate());
+            prop_assume!(!pos.is_stalemate());
+            prop_assume!(!pos.is_draw());
+
+            let mut game = Game { position: pos.clone(), resigned: None };
+            assert_eq!(game.execute(Action::Move(m)), pos.play(m).map_err(Into::into));
+            assert_eq!(game, Game { position: pos, resigned: None });
         }
     }
 }

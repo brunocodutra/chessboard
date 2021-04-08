@@ -12,13 +12,12 @@ keywords = ["chess", "cli"]
 [dependencies]
 anyhow = "1.0.38"
 async-trait = "0.1.48"
-chess = "3.1.1"
 clap = "2.33.3"
-derivative = "2.2.0"
 derive_more = "0.99.11"
 futures = "0.3.13"
 indicatif = "0.15.0"
 rustyline = "8.0.0"
+shakmaty = "0.18.0"
 smol = "1.2.5"
 structopt = "0.3.21"
 tracing = { version = "0.1.25", features = ["log"] }
@@ -26,7 +25,7 @@ tracing-appender = "0.1.2"
 tracing-futures = { version = "0.2.5", features = ["std", "std-future"], default-features = false }
 tracing-subscriber = "0.2.17"
 url = "2.2.1"
-vampirc-uci = { version = "0.11.0", features = ["chess"] }
+vampirc-uci = "0.11.0"
 
 [dev-dependencies]
 mockall = "0.9.1"

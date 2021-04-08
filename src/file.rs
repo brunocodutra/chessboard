@@ -1,5 +1,5 @@
-use crate::foreign;
 use derive_more::{Display, Error};
+use shakmaty as sm;
 use std::convert::{TryFrom, TryInto};
 use std::str::FromStr;
 use tracing::instrument;
@@ -83,15 +83,17 @@ impl From<File> for char {
     }
 }
 
-impl From<foreign::File> for File {
-    fn from(f: foreign::File) -> Self {
-        File::VARIANTS[f.to_index()]
+#[doc(hidden)]
+impl From<sm::File> for File {
+    fn from(c: sm::File) -> Self {
+        c.char().try_into().unwrap()
     }
 }
 
-impl Into<foreign::File> for File {
-    fn into(self) -> foreign::File {
-        foreign::File::from_index(self as usize - Self::A as usize)
+#[doc(hidden)]
+impl From<File> for sm::File {
+    fn from(f: File) -> Self {
+        sm::File::new(f as u32 - File::A as u32)
     }
 }
 
@@ -124,6 +126,11 @@ mod tests {
         #[test]
         fn file_can_be_converted_into_char(f: File) {
             assert_eq!(char::from(f).try_into(), Ok(f));
+        }
+
+        #[test]
+        fn file_has_an_equivalent_shakmaty_representation(f: File) {
+            assert_eq!(File::from(sm::File::from(f)), f);
         }
     }
 }

@@ -1,5 +1,5 @@
-use crate::foreign;
 use derive_more::{Display, Error};
+use shakmaty as sm;
 use std::convert::{TryFrom, TryInto};
 use std::str::FromStr;
 use tracing::instrument;
@@ -83,15 +83,17 @@ impl From<Rank> for u32 {
     }
 }
 
-impl From<foreign::Rank> for Rank {
-    fn from(r: foreign::Rank) -> Self {
-        Rank::VARIANTS[r.to_index()]
+#[doc(hidden)]
+impl From<sm::Rank> for Rank {
+    fn from(r: sm::Rank) -> Self {
+        (r as u32 + 1).try_into().unwrap()
     }
 }
 
-impl Into<foreign::Rank> for Rank {
-    fn into(self) -> foreign::Rank {
-        foreign::Rank::from_index(self as usize - Self::First as usize)
+#[doc(hidden)]
+impl From<Rank> for sm::Rank {
+    fn from(r: Rank) -> Self {
+        sm::Rank::new(r as u32 - Rank::First as u32)
     }
 }
 
@@ -119,6 +121,11 @@ mod tests {
         #[test]
         fn rank_can_be_converted_into_u32(r: Rank) {
             assert_eq!(u32::from(r).try_into(), Ok(r));
+        }
+
+        #[test]
+        fn rank_has_an_equivalent_shakmaty_representation(r: Rank) {
+            assert_eq!(Rank::from(sm::Rank::from(r)), r);
         }
     }
 }
