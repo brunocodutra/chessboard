@@ -1,4 +1,4 @@
-use crate::*;
+use crate::{Action, Player, Position, Remote};
 use anyhow::{anyhow, Context, Error as Anyhow};
 use async_trait::async_trait;
 use smol::block_on;
@@ -48,14 +48,14 @@ where
     fn ignore(msg: UciMessage) {
         let e = match msg {
             UciMessage::Unknown(m, cause) => {
-                let error = anyhow!("ignoring invalid UCI command '{}'", m);
+                let error = anyhow!("ignoring invalid UCI message '{}'", m);
                 match cause {
                     Some(cause) => Anyhow::from(cause).context(error),
                     None => error,
                 }
             }
 
-            msg => anyhow!("ignoring unexpected UCI command '{}'", msg),
+            msg => anyhow!("ignoring unexpected UCI message '{}'", msg),
         };
 
         warn!("{:?}", e);
@@ -97,13 +97,8 @@ where
             moves: Vec::new(),
         };
 
-        let go = UciMessage::Go {
-            time_control: None,
-            search_control: None,
-        };
-
         self.remote.send(setpos).await?;
-        self.remote.send(go).await?;
+        self.remote.send(UciMessage::go()).await?;
         self.remote.flush().await?;
 
         let m = loop {
@@ -122,14 +117,19 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::remote::MockRemote;
+    use crate::{remote::MockRemote, Move};
     use mockall::{predicate::*, Sequence};
     use proptest::prelude::*;
     use std::io;
 
-    fn unexpected_uci_command() -> impl Strategy<Value = UciMessage> {
+    fn invalid_uci_message() -> impl Strategy<Value = String> {
+        any::<String>().prop_filter("valid uci message", |s| {
+            matches!(parse_one(s), UciMessage::Unknown(_, _))
+        })
+    }
+
+    fn unexpected_uci_message() -> impl Strategy<Value = String> {
         prop_oneof![
-            Just(UciMessage::UciOk),
             Just(UciMessage::UciNewGame),
             Just(UciMessage::ReadyOk),
             Just(UciMessage::Stop),
@@ -143,6 +143,7 @@ mod tests {
             any::<(String, Option<String>)>()
                 .prop_map(|(name, value)| UciMessage::SetOption { name, value }),
         ]
+        .prop_map(|msg| msg.to_string())
     }
 
     proptest! {
@@ -181,6 +182,38 @@ mod tests {
         }
 
         #[test]
+        fn init_ignores_invalid_uci_messages(msg in invalid_uci_message()) {
+            let mut remote = MockRemote::new();
+
+            remote.expect_send().returning(|_: UciMessage| Ok(()));
+            remote.expect_flush().returning(|| Ok(()));
+
+            remote.expect_recv().times(1)
+                .returning(move || Ok(msg.clone()));
+
+            remote.expect_recv().times(1)
+                .returning(move || Ok(UciMessage::UciOk.to_string()));
+
+            assert!(block_on(Uci::init(remote)).is_ok());
+        }
+
+        #[test]
+        fn init_ingnores_unexpected_uci_messages(msg in unexpected_uci_message()) {
+            let mut remote = MockRemote::new();
+
+            remote.expect_send().returning(|_: UciMessage| Ok(()));
+            remote.expect_flush().returning(|| Ok(()));
+
+            remote.expect_recv().times(1)
+                .returning(move || Ok(msg.clone()));
+
+            remote.expect_recv().times(1)
+                .returning(move || Ok(UciMessage::UciOk.to_string()));
+
+            assert!(block_on(Uci::init(remote)).is_ok());
+        }
+
+        #[test]
         fn init_can_fail(e: io::Error) {
             let mut remote = MockRemote::new();
 
@@ -196,20 +229,19 @@ mod tests {
             let mut remote = MockRemote::new();
             let mut seq = Sequence::new();
 
-            let fen = pos.to_string();
             remote.expect_send().times(1).in_sequence(&mut seq)
-                .with(function(move |msg: &UciMessage| msg.to_string().contains(&fen)))
+                .with(function(|msg: &UciMessage| matches!(msg, UciMessage::Position { .. })))
                 .returning(|_| Ok(()));
 
             remote.expect_send().times(1).in_sequence(&mut seq)
-                .with(function(move |msg: &UciMessage| msg.to_string().starts_with("go")))
+                .with(function(move |msg: &UciMessage| matches!(msg, UciMessage::Go { .. })))
                 .returning(|_| Ok(()));
 
             remote.expect_flush().times(1).in_sequence(&mut seq)
                 .returning(|| Ok(()));
 
             remote.expect_recv().times(1).in_sequence(&mut seq)
-                .returning(move || Ok(format!("bestmove {}", m)));
+                .returning(move || Ok(UciMessage::best_move(m.into()).to_string()));
 
             let mut seq = Sequence::new();
 
@@ -226,30 +258,34 @@ mod tests {
         }
 
         #[test]
-        fn play_ignores_invalid_uci_commands(pos: Position, m: Move, cmd in "[^bestmove]+") {
+        fn play_ignores_invalid_uci_messages(pos: Position, m: Move, msg in invalid_uci_message()) {
             let mut remote = MockRemote::new();
 
             remote.expect_send().returning(|_: UciMessage| Ok(()));
             remote.expect_flush().returning(|| Ok(()));
 
-            let mut cmd = Some(cmd);
-            remote.expect_recv().times(2)
-                .returning(move || Ok(cmd.take().unwrap_or_else(|| format!("bestmove {}", m))));
+            remote.expect_recv().times(1)
+                .returning(move || Ok(msg.clone()));
+
+            remote.expect_recv().times(1)
+                .returning(move || Ok(UciMessage::best_move(m.into()).to_string()));
 
             let mut uci = Uci { remote };
             assert_eq!(block_on(uci.act(&pos)).unwrap(), Action::Move(m));
         }
 
         #[test]
-        fn play_ingnores_unexpected_uci_commands(pos: Position, m: Move, cmd in unexpected_uci_command()) {
+        fn play_ingnores_unexpected_uci_messages(pos: Position, m: Move, msg in unexpected_uci_message()) {
             let mut remote = MockRemote::new();
 
             remote.expect_send().returning(|_: UciMessage| Ok(()));
             remote.expect_flush().returning(|| Ok(()));
 
-            let mut cmd = Some(cmd.to_string());
-            remote.expect_recv().times(2)
-                .returning(move || Ok(cmd.take().unwrap_or_else(|| format!("bestmove {}", m))));
+            remote.expect_recv().times(1)
+                .returning(move || Ok(msg.to_string()));
+
+            remote.expect_recv().times(1)
+                .returning(move || Ok(UciMessage::best_move(m.into()).to_string()));
 
             let mut uci = Uci { remote };
             assert_eq!(block_on(uci.act(&pos)).unwrap(), Action::Move(m));

@@ -1,26 +1,96 @@
-use crate::{File, Piece, Rank, Square};
-use std::ops::{Index, IndexMut};
+use crate::{Color, Piece, Role, Square};
+use derive_more::{DebugCustom, Display};
+use shakmaty as sm;
+use std::ops::Index;
 
-/// The piece placement on the board.
+/// The arrangement of [`Piece`]s on the chess board.
 ///
-/// This type does not validate whether the placement it holds is valid
-/// according to any set of chess rules.
-#[derive(Debug, Default, Copy, Clone, Eq, PartialEq, Hash)]
+/// This type does not guarantee it holds a valid arrangement of pieces.
+#[derive(DebugCustom, Display, Clone, Eq, PartialEq, Hash)]
+#[cfg_attr(test, derive(proptest_derive::Arbitrary))]
+#[debug(fmt = "Placement(\"{}\")", self)]
+#[display(fmt = "{}", "sm::fen::FenOpts::new().promoted(true).board_fen(board)")]
 pub struct Placement {
-    pub squares: [[Option<Piece>; 8]; 8],
+    #[cfg_attr(test, proptest(strategy = "tests::any_board()"))]
+    board: sm::Board,
 }
 
+/// Initializes an empty [`Placement`].
+impl Default for Placement {
+    fn default() -> Self {
+        Placement {
+            board: sm::Board::empty(),
+        }
+    }
+}
+
+/// Retrieves the [`Piece`] at a given [`Square`], if any.
 impl Index<Square> for Placement {
     type Output = Option<Piece>;
 
     fn index(&self, s: Square) -> &Self::Output {
-        &self.squares[s.rank as usize - Rank::First as usize][s.file as usize - File::A as usize]
+        use Color::*;
+        use Role::*;
+        match self.board.piece_at(s.into()).map(Into::into) {
+            Some(Piece(White, Pawn)) => &Some(Piece(White, Pawn)),
+            Some(Piece(White, Knight)) => &Some(Piece(White, Knight)),
+            Some(Piece(White, Bishop)) => &Some(Piece(White, Bishop)),
+            Some(Piece(White, Rook)) => &Some(Piece(White, Rook)),
+            Some(Piece(White, Queen)) => &Some(Piece(White, Queen)),
+            Some(Piece(White, King)) => &Some(Piece(White, King)),
+            Some(Piece(Black, Pawn)) => &Some(Piece(Black, Pawn)),
+            Some(Piece(Black, Knight)) => &Some(Piece(Black, Knight)),
+            Some(Piece(Black, Bishop)) => &Some(Piece(Black, Bishop)),
+            Some(Piece(Black, Rook)) => &Some(Piece(Black, Rook)),
+            Some(Piece(Black, Queen)) => &Some(Piece(Black, Queen)),
+            Some(Piece(Black, King)) => &Some(Piece(Black, King)),
+            None => &None,
+        }
     }
 }
 
-impl IndexMut<Square> for Placement {
-    fn index_mut(&mut self, s: Square) -> &mut Self::Output {
-        &mut self.squares[s.rank as usize - Rank::First as usize]
-            [s.file as usize - File::A as usize]
+#[doc(hidden)]
+impl From<sm::Board> for Placement {
+    fn from(board: sm::Board) -> Self {
+        Placement { board }
+    }
+}
+
+#[doc(hidden)]
+impl From<Placement> for sm::Board {
+    fn from(p: Placement) -> Self {
+        p.board
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use proptest::{collection::hash_map, prelude::*};
+
+    pub(super) fn any_board() -> impl Strategy<Value = sm::Board> {
+        hash_map(
+            any::<Square>().prop_map_into(),
+            any::<Piece>().prop_map_into(),
+            0..=64,
+        )
+        .prop_map(|b| b.into_iter().collect())
+    }
+
+    proptest! {
+        #[test]
+        fn placement_implements_index_operator(p: Placement, s: Square) {
+            assert_eq!(p[s], p.board.piece_at(s.into()).map(Into::into));
+        }
+
+        #[test]
+        fn placement_is_empty_by_default(s: Square) {
+            assert_eq!(Placement::default()[s], None);
+        }
+
+        #[test]
+        fn placement_has_an_equivalent_shakmaty_representation(p: Placement) {
+            assert_eq!(Placement::from(sm::Board::from(p.clone())), p);
+        }
     }
 }

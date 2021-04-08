@@ -1,52 +1,37 @@
 use crate::{Color, Role};
+use shakmaty as sm;
 use std::fmt::{self, Write};
 
 /// A chess [piece][`Role`] of a certain [`Color`].
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
 #[cfg_attr(test, derive(proptest_derive::Arbitrary))]
-pub enum Piece {
-    White(Role),
-    Black(Role),
-}
+pub struct Piece(pub Color, pub Role);
 
 impl Piece {
-    pub fn new(color: Color, role: Role) -> Self {
-        use Piece::*;
-        match color {
-            Color::White => White(role),
-            Color::Black => Black(role),
-        }
-    }
-
+    /// This piece's [`Color`].
     pub fn color(&self) -> Color {
-        use Piece::*;
-        match *self {
-            White(_) => Color::White,
-            Black(_) => Color::Black,
-        }
+        self.0
     }
 
+    /// This piece's [`Role`].
     pub fn role(&self) -> Role {
-        use Piece::*;
-        match *self {
-            White(p) | Black(p) => p,
-        }
+        self.1
     }
 
     fn figurine(&self) -> char {
         match self {
-            Piece::White(Role::Pawn) => '♙',
-            Piece::White(Role::Knight) => '♘',
-            Piece::White(Role::Bishop) => '♗',
-            Piece::White(Role::Rook) => '♖',
-            Piece::White(Role::Queen) => '♕',
-            Piece::White(Role::King) => '♔',
-            Piece::Black(Role::Pawn) => '♟',
-            Piece::Black(Role::Knight) => '♞',
-            Piece::Black(Role::Bishop) => '♝',
-            Piece::Black(Role::Rook) => '♜',
-            Piece::Black(Role::Queen) => '♛',
-            Piece::Black(Role::King) => '♚',
+            Piece(Color::White, Role::Pawn) => '♙',
+            Piece(Color::White, Role::Knight) => '♘',
+            Piece(Color::White, Role::Bishop) => '♗',
+            Piece(Color::White, Role::Rook) => '♖',
+            Piece(Color::White, Role::Queen) => '♕',
+            Piece(Color::White, Role::King) => '♔',
+            Piece(Color::Black, Role::Pawn) => '♟',
+            Piece(Color::Black, Role::Knight) => '♞',
+            Piece(Color::Black, Role::Bishop) => '♝',
+            Piece(Color::Black, Role::Rook) => '♜',
+            Piece(Color::Black, Role::Queen) => '♛',
+            Piece(Color::Black, Role::King) => '♚',
         }
     }
 }
@@ -54,18 +39,18 @@ impl Piece {
 impl From<Piece> for char {
     fn from(p: Piece) -> char {
         match p {
-            Piece::White(Role::Pawn) => 'P',
-            Piece::White(Role::Knight) => 'N',
-            Piece::White(Role::Bishop) => 'B',
-            Piece::White(Role::Rook) => 'R',
-            Piece::White(Role::Queen) => 'Q',
-            Piece::White(Role::King) => 'K',
-            Piece::Black(Role::Pawn) => 'p',
-            Piece::Black(Role::Knight) => 'n',
-            Piece::Black(Role::Bishop) => 'b',
-            Piece::Black(Role::Rook) => 'r',
-            Piece::Black(Role::Queen) => 'q',
-            Piece::Black(Role::King) => 'k',
+            Piece(Color::White, Role::Pawn) => 'P',
+            Piece(Color::White, Role::Knight) => 'N',
+            Piece(Color::White, Role::Bishop) => 'B',
+            Piece(Color::White, Role::Rook) => 'R',
+            Piece(Color::White, Role::Queen) => 'Q',
+            Piece(Color::White, Role::King) => 'K',
+            Piece(Color::Black, Role::Pawn) => 'p',
+            Piece(Color::Black, Role::Knight) => 'n',
+            Piece(Color::Black, Role::Bishop) => 'b',
+            Piece(Color::Black, Role::Rook) => 'r',
+            Piece(Color::Black, Role::Queen) => 'q',
+            Piece(Color::Black, Role::King) => 'k',
         }
     }
 }
@@ -82,6 +67,23 @@ impl fmt::Display for Piece {
     }
 }
 
+#[doc(hidden)]
+impl From<sm::Piece> for Piece {
+    fn from(p: sm::Piece) -> Self {
+        Piece(p.color.into(), p.role.into())
+    }
+}
+
+#[doc(hidden)]
+impl From<Piece> for sm::Piece {
+    fn from(p: Piece) -> Self {
+        sm::Piece {
+            color: p.color().into(),
+            role: p.role().into(),
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -89,8 +91,18 @@ mod tests {
 
     proptest! {
         #[test]
-        fn every_file_has_an_associated_character(p: Piece) {
-            assert_eq!(char::from(p).to_string(), p.to_string());
+        fn piece_has_a_color(c: Color, r: Role) {
+            assert_eq!(Piece(c, r).color(), c);
+        }
+
+        #[test]
+        fn piece_has_a_role(c: Color, r: Role) {
+            assert_eq!(Piece(c, r).role(), r);
+        }
+
+        #[test]
+        fn file_can_be_converted_into_char(p: Piece) {
+            assert_eq!(char::from(p), sm::Piece::from(p).char());
         }
 
         #[test]
@@ -104,8 +116,8 @@ mod tests {
         }
 
         #[test]
-        fn every_piece_has_a_role(c: Color, r: Role) {
-            assert_eq!(Piece::new(c, r).role(), r);
+        fn piece_has_an_equivalent_shakmaty_representation(p: Piece) {
+            assert_eq!(Piece::from(sm::Piece::from(p)), p);
         }
     }
 }

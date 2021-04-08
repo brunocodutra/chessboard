@@ -3,7 +3,6 @@
 mod action;
 mod color;
 mod file;
-mod foreign;
 mod game;
 mod r#move;
 mod outcome;

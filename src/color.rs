@@ -1,8 +1,8 @@
-use crate::foreign;
 use derive_more::Display;
+use shakmaty as sm;
 use std::ops::Not;
 
-/// The color of a chess piece.
+/// Denotes the color of a chess [`Piece`][`crate::Piece`].
 #[derive(Debug, Display, Copy, Clone, Eq, PartialEq, Hash)]
 #[cfg_attr(test, derive(proptest_derive::Arbitrary))]
 pub enum Color {
@@ -23,29 +23,22 @@ impl Not for Color {
     }
 }
 
-impl From<Color> for &'static str {
+#[doc(hidden)]
+impl From<sm::Color> for Color {
+    fn from(c: sm::Color) -> Self {
+        match c {
+            sm::Color::White => Color::White,
+            sm::Color::Black => Color::Black,
+        }
+    }
+}
+
+#[doc(hidden)]
+impl From<Color> for sm::Color {
     fn from(c: Color) -> Self {
         match c {
-            Color::White => "white",
-            Color::Black => "black",
-        }
-    }
-}
-
-impl From<foreign::Color> for Color {
-    fn from(c: foreign::Color) -> Self {
-        match c {
-            foreign::Color::White => Color::White,
-            foreign::Color::Black => Color::Black,
-        }
-    }
-}
-
-impl Into<foreign::Color> for Color {
-    fn into(self) -> foreign::Color {
-        match self {
-            Color::White => foreign::Color::White,
-            Color::Black => foreign::Color::Black,
+            Color::White => sm::Color::White,
+            Color::Black => sm::Color::Black,
         }
     }
 }
@@ -61,8 +54,9 @@ mod tests {
             assert_eq!(!!c, c);
         }
 
-        fn every_color_has_an_associated_static_str(c: Color) {
-            assert_eq!(<&str>::from(c), c.to_string());
+        #[test]
+        fn color_has_an_equivalent_shakmaty_representation(c: Color) {
+            assert_eq!(Color::from(sm::Color::from(c)), c);
         }
     }
 }
