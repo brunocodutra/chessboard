@@ -4,7 +4,7 @@ use async_trait::async_trait;
 use smol::block_on;
 use std::error::Error;
 use tracing::{debug, error, info, instrument, warn};
-use vampirc_uci::{parse_one, UciFen, UciMessage};
+use vampirc_uci::{parse_one, Duration, UciFen, UciMessage, UciSearchControl, UciTimeControl};
 
 #[derive(Debug)]
 pub struct Uci<R>
@@ -97,8 +97,13 @@ where
             moves: Vec::new(),
         };
 
+        let go = UciMessage::Go {
+            time_control: Some(UciTimeControl::MoveTime(Duration::milliseconds(100))),
+            search_control: Some(UciSearchControl::depth(13)),
+        };
+
         self.remote.send(setpos).await?;
-        self.remote.send(UciMessage::go()).await?;
+        self.remote.send(go).await?;
         self.remote.flush().await?;
 
         let m = loop {
