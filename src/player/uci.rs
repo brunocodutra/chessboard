@@ -21,7 +21,7 @@ where
     R::Error: Error + Send + Sync + 'static,
 {
     /// Establishes communication with a remote UCI server.
-    #[instrument(err)]
+    #[instrument(level = "trace", err)]
     pub async fn init(mut remote: R) -> Result<Self, R::Error> {
         remote.send(UciMessage::Uci).await?;
         remote.flush().await?;
@@ -68,7 +68,7 @@ where
     R: Remote + Debug,
     R::Error: Error + Send + Sync + 'static,
 {
-    #[instrument]
+    #[instrument(level = "trace")]
     fn drop(&mut self) {
         let result: Result<(), R::Error> = block_on(async {
             self.remote.send(UciMessage::Stop).await?;
@@ -91,7 +91,7 @@ where
 {
     type Error = R::Error;
 
-    #[instrument(err)]
+    #[instrument(level = "trace", err)]
     async fn act(&mut self, pos: &Position) -> Result<Action, Self::Error> {
         let setpos = UciMessage::Position {
             startpos: false,

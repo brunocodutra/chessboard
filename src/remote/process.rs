@@ -40,7 +40,7 @@ pub struct Process {
 
 impl Process {
     /// Spawns a child process.
-    #[instrument(skip(program), err, fields(program = ?program.as_ref()))]
+    #[instrument(level = "trace", skip(program), err, fields(program = ?program.as_ref()))]
     pub async fn spawn<S: AsRef<OsStr>>(program: S) -> Result<Self, ProcessSpawnError> {
         let mut child = Command::new(program)
             .stdin(Stdio::piped())
@@ -62,7 +62,7 @@ impl Process {
 
 /// Flushes the outbound buffer and waits for the child process to exit.
 impl Drop for Process {
-    #[instrument]
+    #[instrument(level = "trace")]
     fn drop(&mut self) {
         if let Err(e) = block_on(self.writer.flush()).context("failed to flush the buffer") {
             error!("{:?}", e);
@@ -79,19 +79,19 @@ impl Drop for Process {
 impl Remote for Process {
     type Error = ProcessIoError;
 
-    #[instrument(err)]
+    #[instrument(level = "trace", err)]
     async fn recv(&mut self) -> Result<String, Self::Error> {
         use IoErrorKind::UnexpectedEof;
         Ok(self.reader.next().await.ok_or(UnexpectedEof)??)
     }
 
-    #[instrument(skip(item), err, fields(%item))]
+    #[instrument(level = "trace", skip(item), err, fields(%item))]
     async fn send<D: Display + Send + 'static>(&mut self, item: D) -> Result<(), Self::Error> {
         let line = format!("{}\n", item);
         Ok(self.writer.write_all(line.as_bytes()).await?)
     }
 
-    #[instrument(err)]
+    #[instrument(level = "trace", err)]
     async fn flush(&mut self) -> Result<(), Self::Error> {
         Ok(self.writer.flush().await?)
     }

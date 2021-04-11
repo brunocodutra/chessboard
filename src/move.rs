@@ -53,7 +53,7 @@ pub enum ParseMoveError {
 impl FromStr for Move {
     type Err = ParseMoveError;
 
-    #[instrument(err)]
+    #[instrument(level = "trace", err)]
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         use ParseMoveError::*;
 

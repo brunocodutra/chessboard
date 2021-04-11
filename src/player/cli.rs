@@ -48,7 +48,7 @@ impl Cmd {
     }
 }
 
-#[instrument(err)]
+#[instrument(level = "trace", err)]
 fn try_parse<T>(s: &str) -> Result<T, String>
 where
     T: FromStr,
@@ -74,7 +74,7 @@ where
 {
     type Error = R::Error;
 
-    #[instrument(err)]
+    #[instrument(level = "trace", err)]
     async fn act(&mut self, pos: &Position) -> Result<Action, Self::Error> {
         self.remote.send(Board(pos.placement())).await?;
 

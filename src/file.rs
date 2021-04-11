@@ -52,7 +52,7 @@ pub struct ParseFileError;
 impl FromStr for File {
     type Err = ParseFileError;
 
-    #[instrument(err)]
+    #[instrument(level = "trace", err)]
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         s.parse::<char>().map_err(|_| ParseFileError)?.try_into()
     }
@@ -61,7 +61,7 @@ impl FromStr for File {
 impl TryFrom<char> for File {
     type Error = ParseFileError;
 
-    #[instrument(err)]
+    #[instrument(level = "trace", err)]
     fn try_from(c: char) -> Result<Self, Self::Error> {
         match c {
             'a' => Ok(File::A),

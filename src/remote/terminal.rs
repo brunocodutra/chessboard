@@ -49,7 +49,7 @@ pub struct Terminal {
 
 impl Terminal {
     /// Opens a terminal interface with the given prompt.
-    #[instrument(skip(prompt), fields(%prompt))]
+    #[instrument(level = "trace", skip(prompt), fields(%prompt))]
     pub fn new<P: Display>(prompt: P) -> Self {
         Terminal {
             prompt: prompt.to_string(),
@@ -65,20 +65,20 @@ impl Terminal {
 impl Remote for Terminal {
     type Error = TerminalIoError;
 
-    #[instrument(err)]
+    #[instrument(level = "trace", err)]
     async fn recv(&mut self) -> Result<String, Self::Error> {
         let mut reader = self.reader.lock_arc().await;
         let prompt = format!("{} > ", self.prompt);
         Ok(unblock(move || reader.readline(&prompt)).await?)
     }
 
-    #[instrument(skip(item), err, fields(%item))]
+    #[instrument(level = "trace", skip(item), err, fields(%item))]
     async fn send<D: Display + Send + 'static>(&mut self, item: D) -> Result<(), Self::Error> {
         let line = format!("{}\n", item);
         Ok(self.writer.write_all(line.as_bytes()).await?)
     }
 
-    #[instrument(err)]
+    #[instrument(level = "trace", err)]
     async fn flush(&mut self) -> Result<(), Self::Error> {
         Ok(self.writer.flush().await?)
     }

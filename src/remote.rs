@@ -62,7 +62,7 @@ pub enum RemoteDispatcher {
 impl Remote for RemoteDispatcher {
     type Error = RemoteDispatcherError;
 
-    #[instrument(err)]
+    #[instrument(level = "trace", err)]
     async fn recv(&mut self) -> Result<String, Self::Error> {
         use RemoteDispatcher::*;
         let line = match self {
@@ -74,7 +74,7 @@ impl Remote for RemoteDispatcher {
         Ok(line)
     }
 
-    #[instrument(skip(item), err, fields(%item))]
+    #[instrument(level = "trace", skip(item), err, fields(%item))]
     async fn send<D: Display + Send + 'static>(&mut self, item: D) -> Result<(), Self::Error> {
         use RemoteDispatcher::*;
         match self {
@@ -86,7 +86,7 @@ impl Remote for RemoteDispatcher {
         Ok(())
     }
 
-    #[instrument(err)]
+    #[instrument(level = "trace", err)]
     async fn flush(&mut self) -> Result<(), Self::Error> {
         use RemoteDispatcher::*;
         match self {

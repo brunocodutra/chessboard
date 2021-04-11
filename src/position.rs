@@ -82,7 +82,7 @@ impl Position {
     }
 
     /// Play a [`Move`] if legal in this position.
-    #[instrument(err)]
+    #[instrument(level = "trace", err)]
     pub fn play(&mut self, m: Move) -> Result<(), IllegalMove> {
         match sm::uci::Uci::to_move(&m.into(), &self.setup) {
             Ok(vm) if sm::Position::is_legal(&self.setup, &vm) => {
@@ -208,7 +208,7 @@ pub enum ParsePositionError {
 impl FromStr for Position {
     type Err = ParsePositionError;
 
-    #[instrument(err)]
+    #[instrument(level = "trace", err)]
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         use ParsePositionError::*;
 
