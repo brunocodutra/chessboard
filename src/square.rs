@@ -37,7 +37,7 @@ pub enum ParseSquareError {
 impl FromStr for Square {
     type Err = ParseSquareError;
 
-    #[instrument(err)]
+    #[instrument(level = "trace", err)]
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let i = s.char_indices().nth(1).map_or_else(|| s.len(), |(i, _)| i);
         Ok(Square(s[..i].parse()?, s[i..].parse()?))

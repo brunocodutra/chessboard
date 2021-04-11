@@ -41,7 +41,7 @@ where
 {
     type Error = R::Error;
 
-    #[instrument(err)]
+    #[instrument(level = "trace", err)]
     async fn act(&mut self, pos: &Position) -> Result<Action, Self::Error> {
         use PlayerDispatcher::*;
         let action = match self {

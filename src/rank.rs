@@ -52,7 +52,7 @@ pub struct ParseRankError;
 impl FromStr for Rank {
     type Err = ParseRankError;
 
-    #[instrument(err)]
+    #[instrument(level = "trace", err)]
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         s.parse::<u32>().map_err(|_| ParseRankError)?.try_into()
     }
@@ -61,7 +61,7 @@ impl FromStr for Rank {
 impl TryFrom<u32> for Rank {
     type Error = ParseRankError;
 
-    #[instrument(err)]
+    #[instrument(level = "trace", err)]
     fn try_from(n: u32) -> Result<Self, Self::Error> {
         match n {
             1 => Ok(Rank::First),

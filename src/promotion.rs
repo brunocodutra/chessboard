@@ -34,7 +34,7 @@ pub struct ParsePromotionError;
 impl FromStr for Promotion {
     type Err = ParsePromotionError;
 
-    #[instrument(err)]
+    #[instrument(level = "trace", err)]
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
             "" => Ok(Promotion::None),

@@ -32,7 +32,7 @@ pub struct Tcp {
 
 impl Tcp {
     /// Connects to a remote TCP server.
-    #[instrument(err)]
+    #[instrument(level = "trace", err)]
     pub async fn connect<A>(address: A) -> Result<Self, TcpConnectionError>
     where
         A: AsyncToSocketAddrs + Debug,
@@ -50,7 +50,7 @@ impl Tcp {
 
 /// Flushes the outbound buffer.
 impl Drop for Tcp {
-    #[instrument]
+    #[instrument(level = "trace")]
     fn drop(&mut self) {
         if let Err(e) = block_on(self.writer.flush()).context("failed to flush the buffer") {
             error!("{:?}", e);
@@ -62,19 +62,19 @@ impl Drop for Tcp {
 impl Remote for Tcp {
     type Error = TcpIoError;
 
-    #[instrument(err)]
+    #[instrument(level = "trace", err)]
     async fn recv(&mut self) -> Result<String, Self::Error> {
         use IoErrorKind::UnexpectedEof;
         Ok(self.reader.next().await.ok_or(UnexpectedEof)??)
     }
 
-    #[instrument(skip(item), err, fields(%item))]
+    #[instrument(level = "trace", skip(item), err, fields(%item))]
     async fn send<D: Display + Send + 'static>(&mut self, item: D) -> Result<(), Self::Error> {
         let line = format!("{}\n", item);
         Ok(self.writer.write_all(line.as_bytes()).await?)
     }
 
-    #[instrument(err)]
+    #[instrument(level = "trace", err)]
     async fn flush(&mut self) -> Result<(), Self::Error> {
         Ok(self.writer.flush().await?)
     }

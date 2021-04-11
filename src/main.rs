@@ -8,9 +8,10 @@ use smol::block_on;
 use std::{cmp::min, error::Error, io::stderr};
 use structopt::StructOpt;
 use tracing::{info, instrument, warn, Level};
+use tracing_subscriber::fmt::format::FmtSpan;
 use url::Url;
 
-#[instrument(err)]
+#[instrument(level = "trace", err)]
 async fn new_player(color: Color, url: Url) -> Result<PlayerDispatcher<RemoteDispatcher>, Anyhow> {
     let remote = match (url.host_str(), url.path()) {
         (None, "") => Terminal::new(color).into(),
@@ -64,7 +65,7 @@ struct Opts {
     verbosity: Level,
 }
 
-#[instrument(err)]
+#[instrument(level = "trace", err)]
 fn main() -> Result<(), Box<dyn Error + Send + Sync + 'static>> {
     let Opts {
         white,
@@ -80,6 +81,7 @@ fn main() -> Result<(), Box<dyn Error + Send + Sync + 'static>> {
         .with_thread_ids(true)
         .with_env_filter(filter)
         .with_writer(writer)
+        .with_span_events(FmtSpan::FULL)
         .try_init()?;
 
     block_on(async {
