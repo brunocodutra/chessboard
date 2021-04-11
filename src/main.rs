@@ -55,13 +55,9 @@ struct Opts {
     )]
     black: Url,
 
-    #[structopt(
-        short,
-        long,
-        value_name = "level",
-        default_value = "info",
-        parse(try_from_str)
-    )]
+    #[structopt(short, long, value_name = "level", parse(try_from_str))]
+    #[cfg_attr(not(debug_assertions), structopt(default_value = "info"))]
+    #[cfg_attr(debug_assertions, structopt(default_value = "debug"))]
     verbosity: Level,
 }
 
