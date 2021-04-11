@@ -22,22 +22,29 @@ pub trait Remote {
     async fn recv(&mut self) -> Result<String, Self::Error>;
 
     /// Send a message to the remote endpoint.
-    async fn send<D: Display + Send + 'static>(&mut self, msg: D) -> Result<(), Self::Error>;
+    async fn send<D: Display + Send + 'static>(&mut self, item: D) -> Result<(), Self::Error>;
 
     /// Flush the internal buffers.
     async fn flush(&mut self) -> Result<(), Self::Error>;
 }
 
+#[cfg(test)]
+impl std::fmt::Debug for MockRemote {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("MockRemote")
+    }
+}
+
 /// The reason why the underlying remote failed.
 #[derive(Debug, Display, Error, From)]
-#[display(fmt = "the remote {} encountered an error")]
+#[display(fmt = "failed to communicate with the remote {}")]
 pub enum RemoteDispatcherError {
-    #[display(fmt = "TCP connection")]
+    #[display(fmt = "TCP endpoint")]
     TcpIoError(TcpIoError),
     #[display(fmt = "process")]
     ProcessIoError(ProcessIoError),
     #[display(fmt = "terminal")]
-    Terminal(TerminalIoError),
+    TerminalIoError(TerminalIoError),
 }
 
 /// A static dispatcher for [`Remote`].
@@ -64,13 +71,13 @@ impl Remote for RemoteDispatcher {
         Ok(line)
     }
 
-    #[instrument(skip(msg), err)]
-    async fn send<D: Display + Send + 'static>(&mut self, msg: D) -> Result<(), Self::Error> {
+    #[instrument(skip(item), err, fields(%item))]
+    async fn send<D: Display + Send + 'static>(&mut self, item: D) -> Result<(), Self::Error> {
         use RemoteDispatcher::*;
         match self {
-            Tcp(r) => r.send(msg).await?,
-            Process(r) => r.send(msg).await?,
-            Terminal(r) => r.send(msg).await?,
+            Tcp(r) => r.send(item).await?,
+            Process(r) => r.send(item).await?,
+            Terminal(r) => r.send(item).await?,
         }
 
         Ok(())

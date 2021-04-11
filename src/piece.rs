@@ -1,6 +1,6 @@
 use crate::{Color, Role};
 use shakmaty as sm;
-use std::fmt::{self, Write};
+use std::fmt::{Display, Error as FmtError, Formatter, Write};
 
 /// A chess [piece][`Role`] of a certain [`Color`].
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
@@ -55,8 +55,8 @@ impl From<Piece> for char {
     }
 }
 
-impl fmt::Display for Piece {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+impl Display for Piece {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
         let c = if f.alternate() {
             self.figurine()
         } else {

@@ -1,37 +1,49 @@
 use crate::Remote;
 use anyhow::Context;
 use async_trait::async_trait;
-use derive_more::{Display, Error, From};
-use smol::{block_on, io, net::*, prelude::*};
-use std::fmt::Display;
-use tracing::{error, info, instrument, trace};
+use derive_more::{DebugCustom, Display, Error, From};
+use futures::io::{BufReader, BufWriter, Lines};
+use futures::{AsyncBufReadExt, AsyncWriteExt, StreamExt};
+use smol::block_on;
+use smol::io::{Error as IoError, ErrorKind as IoErrorKind};
+use smol::net::{AsyncToSocketAddrs, TcpStream};
+use std::fmt::{Debug, Display};
+use std::net::SocketAddr;
+use tracing::{error, instrument};
 
 /// The reason why connecting to remote TCP server failed.
 #[derive(Debug, Display, Error, From)]
 #[display(fmt = "failed to connect to remote TCP server")]
-pub struct TcpConnectionError(#[from(forward)] io::Error);
+pub struct TcpConnectionError(#[from(forward)] IoError);
 
 /// The reason why writing to or reading from the tcp stream failed.
 #[derive(Debug, Display, Error, From)]
-#[display(fmt = "the remote TCP connection was terminated")]
-pub struct TcpIoError(#[from(forward)] io::Error);
+#[display(fmt = "the remote TCP connection was interrupted")]
+pub struct TcpIoError(#[from(forward)] IoError);
 
 /// An implementation of trait [`Remote`] as a tcp stream.
-#[derive(Debug)]
+#[derive(DebugCustom)]
+#[debug(fmt = "Tcp({})", address)]
 pub struct Tcp {
-    reader: io::Lines<io::BufReader<TcpStream>>,
-    writer: io::BufWriter<TcpStream>,
+    address: SocketAddr,
+    reader: Lines<BufReader<TcpStream>>,
+    writer: BufWriter<TcpStream>,
 }
 
 impl Tcp {
-    #[instrument(skip(addrs), err)]
-    pub async fn connect<A: AsyncToSocketAddrs>(addrs: A) -> Result<Self, TcpConnectionError> {
-        let socket = TcpStream::connect(addrs).await?;
-        info!(local_addr = %socket.local_addr()?, peer_addr = %socket.peer_addr()?);
+    /// Connects to a remote TCP server.
+    #[instrument(err)]
+    pub async fn connect<A>(address: A) -> Result<Self, TcpConnectionError>
+    where
+        A: AsyncToSocketAddrs + Debug,
+    {
+        let socket = TcpStream::connect(address).await?;
+        let address = socket.peer_addr()?;
 
         Ok(Tcp {
-            reader: io::BufReader::new(socket.clone()).lines(),
-            writer: io::BufWriter::new(socket),
+            address,
+            reader: BufReader::new(socket.clone()).lines(),
+            writer: BufWriter::new(socket),
         })
     }
 }
@@ -40,7 +52,7 @@ impl Tcp {
 impl Drop for Tcp {
     #[instrument]
     fn drop(&mut self) {
-        if let Err(e) = block_on(self.flush()).context("failed to flush the buffer") {
+        if let Err(e) = block_on(self.writer.flush()).context("failed to flush the buffer") {
             error!("{:?}", e);
         }
     }
@@ -52,24 +64,19 @@ impl Remote for Tcp {
 
     #[instrument(err)]
     async fn recv(&mut self) -> Result<String, Self::Error> {
-        let next = self.reader.next().await;
-        let line = next.ok_or(io::ErrorKind::UnexpectedEof)??;
-        trace!(%line);
-        Ok(line)
+        use IoErrorKind::UnexpectedEof;
+        Ok(self.reader.next().await.ok_or(UnexpectedEof)??)
     }
 
-    #[instrument(skip(msg), err)]
-    async fn send<D: Display + Send + 'static>(&mut self, msg: D) -> Result<(), Self::Error> {
-        let line = format!("{}\n", msg);
-        trace!(%line);
-        self.writer.write_all(line.as_bytes()).await?;
-        Ok(())
+    #[instrument(skip(item), err, fields(%item))]
+    async fn send<D: Display + Send + 'static>(&mut self, item: D) -> Result<(), Self::Error> {
+        let line = format!("{}\n", item);
+        Ok(self.writer.write_all(line.as_bytes()).await?)
     }
 
     #[instrument(err)]
     async fn flush(&mut self) -> Result<(), Self::Error> {
-        self.writer.flush().await?;
-        Ok(())
+        Ok(self.writer.flush().await?)
     }
 }
 
@@ -77,9 +84,10 @@ impl Remote for Tcp {
 mod tests {
     use super::*;
     use anyhow::{Context, Error as Anyhow};
-    use futures::join;
+    use futures::{join, AsyncReadExt};
     use port_check::free_local_port;
     use proptest::{collection::vec, prelude::*};
+    use smol::net::TcpListener;
 
     async fn connect() -> Result<(Tcp, TcpStream), Anyhow> {
         let port = free_local_port().context("no free port")?;

@@ -1,9 +1,11 @@
 use anyhow::{bail, Context, Error as Anyhow};
-use chessboard::{player, remote, Color, Game, Player, PlayerDispatcher, RemoteDispatcher};
+use chessboard::player::{Cli, Uci};
+use chessboard::remote::{Process, Tcp, Terminal};
+use chessboard::{Color, Game, Player, PlayerDispatcher, RemoteDispatcher};
 use clap::AppSettings::DeriveDisplayOrder;
 use futures::try_join;
 use smol::block_on;
-use std::{cmp::min, error::Error, io};
+use std::{cmp::min, error::Error, io::stderr};
 use structopt::StructOpt;
 use tracing::{info, instrument, warn, Level};
 use url::Url;
@@ -11,22 +13,20 @@ use url::Url;
 #[instrument(err)]
 async fn new_player(color: Color, url: Url) -> Result<PlayerDispatcher<RemoteDispatcher>, Anyhow> {
     let remote = match (url.host_str(), url.path()) {
-        (None, "") => remote::Terminal::new(color).into(),
+        (None, "") => Terminal::new(color).into(),
+        (None, path) => Process::spawn(path.to_string()).await?.into(),
+
         (Some(host), "") => match url.port() {
-            Some(port) => {
-                let addr = format!("{}:{}", host, port);
-                remote::Tcp::connect(addr).await?.into()
-            }
-            None => remote::Tcp::connect(host).await?.into(),
+            Some(port) => Tcp::connect(format!("{}:{}", host, port)).await?.into(),
+            None => Tcp::connect(host).await?.into(),
         },
 
-        (None, path) => remote::Process::spawn(path.to_string()).await?.into(),
-        (Some(_), _) => bail!("remote webservices are not supported yet"),
+        _ => bail!("remote webservices are not supported yet"),
     };
 
     let player = match url.scheme() {
-        "cli" => player::Cli::new(remote).into(),
-        "uci" => player::Uci::init(remote).await?.into(),
+        "cli" => Cli::new(remote).into(),
+        "uci" => Uci::init(remote).await?.into(),
         scheme => bail!("unknown protocol '{}'", scheme),
     };
 
@@ -72,7 +72,7 @@ fn main() -> Result<(), Box<dyn Error + Send + Sync + 'static>> {
         verbosity,
     } = Opts::from_args();
 
-    let (writer, _guard) = tracing_appender::non_blocking(io::stderr());
+    let (writer, _guard) = tracing_appender::non_blocking(stderr());
     let filter = format!("{},chessboard={}", min(Level::WARN, verbosity), verbosity);
 
     tracing_subscriber::fmt()

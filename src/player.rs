@@ -1,7 +1,7 @@
 use crate::{Action, Position, Remote};
 use async_trait::async_trait;
 use derive_more::From;
-use std::error::Error;
+use std::{error::Error, fmt::Debug};
 use tracing::instrument;
 
 mod cli;
@@ -24,7 +24,7 @@ pub trait Player {
 #[derive(Debug, From)]
 pub enum PlayerDispatcher<R>
 where
-    R: Remote,
+    R: Remote + Debug,
     R::Error: Error + Send + Sync + 'static,
 {
     Cli(Cli<R>),
@@ -34,12 +34,12 @@ where
 #[async_trait]
 impl<R> Player for PlayerDispatcher<R>
 where
-    R: Remote + Send + Sync,
+    R: Remote + Debug + Send,
     R::Error: Error + Send + Sync + 'static,
 {
     type Error = R::Error;
 
-    #[instrument(skip(self), err)]
+    #[instrument(err)]
     async fn act(&mut self, pos: &Position) -> Result<Action, Self::Error> {
         use PlayerDispatcher::*;
         let action = match self {
