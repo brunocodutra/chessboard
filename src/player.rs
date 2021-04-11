@@ -1,6 +1,6 @@
 use crate::{Action, Position, Remote};
 use async_trait::async_trait;
-use derive_more::From;
+use derive_more::{DebugCustom, From};
 use std::{error::Error, fmt::Debug};
 use tracing::instrument;
 
@@ -21,13 +21,15 @@ pub trait Player {
 }
 
 /// A static dispatcher for [`Player`].
-#[derive(Debug, From)]
+#[derive(DebugCustom, From)]
 pub enum PlayerDispatcher<R>
 where
     R: Remote + Debug,
     R::Error: Error + Send + Sync + 'static,
 {
+    #[debug(fmt = "{:?}", _0)]
     Cli(Cli<R>),
+    #[debug(fmt = "{:?}", _0)]
     Uci(Uci<R>),
 }
 

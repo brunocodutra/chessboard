@@ -1,5 +1,5 @@
 use async_trait::async_trait;
-use derive_more::{Display, Error, From};
+use derive_more::{DebugCustom, Display, Error, From};
 use std::fmt::Display;
 use tracing::instrument;
 
@@ -48,10 +48,13 @@ pub enum RemoteDispatcherError {
 }
 
 /// A static dispatcher for [`Remote`].
-#[derive(Debug, From)]
+#[derive(DebugCustom, From)]
 pub enum RemoteDispatcher {
+    #[debug(fmt = "{:?}", _0)]
     Tcp(Tcp),
+    #[debug(fmt = "{:?}", _0)]
     Process(Process),
+    #[debug(fmt = "{:?}", _0)]
     Terminal(Terminal),
 }
 
