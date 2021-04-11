@@ -1,11 +1,11 @@
 use crate::Remote;
 use async_trait::async_trait;
-use derive_more::{Display, Error, From};
-use futures::{AsyncWriteExt, StreamExt};
+use derive_more::{DebugCustom, Display, Error, From};
+use futures::AsyncWriteExt;
 use rustyline::{error::ReadlineError, Config, Editor};
 use smol::io::{Error as IoError, ErrorKind as IoErrorKind};
-use smol::Unblock;
-use std::{fmt::Display, io::stdout, io::Stdout};
+use smol::{lock::Mutex, unblock, Unblock};
+use std::{fmt::Display, io::stdout, io::Stdout, sync::Arc};
 use tracing::instrument;
 
 /// The reason why writing to or reading from the terminal failed.
@@ -36,27 +36,14 @@ impl From<ReadlineError> for TerminalIoError {
     }
 }
 
-#[derive(Debug)]
-struct Prompter {
-    prompt: String,
-    editor: Editor<()>,
-}
-
-impl Iterator for Prompter {
-    type Item = Result<String, ReadlineError>;
-
-    #[instrument]
-    fn next(&mut self) -> Option<Self::Item> {
-        Some(self.editor.readline(&self.prompt))
-    }
-}
-
 /// A prompt interface based on [rustyline].
 ///
 /// [rustyline]: https://crates.io/crates/rustyline
-#[derive(Debug)]
+#[derive(DebugCustom)]
+#[debug(fmt = "Terminal({})", prompt)]
 pub struct Terminal {
-    reader: Unblock<Prompter>,
+    prompt: String,
+    reader: Arc<Mutex<Editor<()>>>,
     writer: Unblock<Stdout>,
 }
 
@@ -65,11 +52,10 @@ impl Terminal {
     #[instrument(skip(prompt), fields(%prompt))]
     pub fn new<P: Display>(prompt: P) -> Self {
         Terminal {
-            reader: Unblock::new(Prompter {
-                prompt: format!("{} > ", prompt),
-                editor: Editor::with_config(Config::builder().auto_add_history(true).build()),
-            }),
-
+            prompt: prompt.to_string(),
+            reader: Arc::new(Mutex::new(Editor::with_config(
+                Config::builder().auto_add_history(true).build(),
+            ))),
             writer: Unblock::new(stdout()),
         }
     }
@@ -81,8 +67,9 @@ impl Remote for Terminal {
 
     #[instrument(err)]
     async fn recv(&mut self) -> Result<String, Self::Error> {
-        use IoErrorKind::UnexpectedEof;
-        Ok(self.reader.next().await.ok_or(UnexpectedEof)??)
+        let mut reader = self.reader.lock_arc().await;
+        let prompt = format!("{} > ", self.prompt);
+        Ok(unblock(move || reader.readline(&prompt)).await?)
     }
 
     #[instrument(skip(item), err, fields(%item))]
