@@ -1,9 +1,10 @@
 use crate::{Action, Color, File, Move, Placement, Player, Position, Rank, Remote, Square};
 use anyhow::Error as Anyhow;
 use async_trait::async_trait;
-use clap::AppSettings::*;
+use clap::AppSettings::{DisableHelpFlags, DisableVersion, NoBinaryName};
 use derive_more::{Constructor, Deref, Display, From};
-use std::{error::Error, fmt, str::FromStr};
+use std::fmt::{Debug, Display, Error as FmtError, Formatter};
+use std::{error::Error, str::FromStr};
 use structopt::StructOpt;
 use tracing::instrument;
 
@@ -59,7 +60,7 @@ where
 #[derive(Debug, From, Constructor)]
 pub struct Cli<R>
 where
-    R: Remote,
+    R: Remote + Debug,
     R::Error: Error + Send + Sync + 'static,
 {
     remote: R,
@@ -68,12 +69,12 @@ where
 #[async_trait]
 impl<R> Player for Cli<R>
 where
-    R: Remote + Send + Sync,
+    R: Remote + Debug + Send,
     R::Error: Error + Send + Sync + 'static,
 {
     type Error = R::Error;
 
-    #[instrument(skip(self), err)]
+    #[instrument(err)]
     async fn act(&mut self, pos: &Position) -> Result<Action, Self::Error> {
         self.remote.send(Board(pos.placement())).await?;
 
@@ -92,8 +93,8 @@ where
 #[derive(Debug, Clone, Eq, PartialEq, Hash, Deref)]
 struct Board(Placement);
 
-impl fmt::Display for Board {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+impl Display for Board {
+    fn fmt(&self, f: &mut Formatter) -> Result<(), FmtError> {
         write!(f, "   ")?;
 
         for &file in File::VARIANTS {
@@ -133,7 +134,7 @@ mod tests {
     use mockall::{predicate::*, Sequence};
     use proptest::{collection::vec, prelude::*};
     use smol::block_on;
-    use std::io;
+    use std::io::Error as IoError;
 
     fn invalid_move() -> impl Strategy<Value = String> {
         any::<String>().prop_filter("valid move", |s| s.parse::<Move>().is_err())
@@ -298,7 +299,7 @@ mod tests {
         }
 
         #[test]
-        fn play_can_fail_writing_to_the_remote(pos: Position, e: io::Error) {
+        fn play_can_fail_writing(pos: Position, e: IoError) {
             let mut remote = MockRemote::new();
 
             let kind = e.kind();
@@ -309,7 +310,7 @@ mod tests {
         }
 
         #[test]
-        fn play_can_fail_flushing_the_remote(pos: Position, e: io::Error) {
+        fn play_can_fail_flushing(pos: Position, e: IoError) {
             let mut remote = MockRemote::new();
 
             remote.expect_send().returning(|_: Board| Ok(()));
@@ -322,7 +323,7 @@ mod tests {
         }
 
         #[test]
-        fn play_can_fail_reading_from_remote(pos: Position, e: io::Error) {
+        fn play_can_fail_reading(pos: Position, e: IoError) {
             let mut remote = MockRemote::new();
 
             remote.expect_send().returning(|_: Board| Ok(()));

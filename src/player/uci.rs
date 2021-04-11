@@ -2,14 +2,14 @@ use crate::{Action, Player, Position, Remote};
 use anyhow::{anyhow, Context, Error as Anyhow};
 use async_trait::async_trait;
 use smol::block_on;
-use std::error::Error;
+use std::{error::Error, fmt::Debug};
 use tracing::{debug, error, info, instrument, warn};
 use vampirc_uci::{parse_one, Duration, UciFen, UciMessage, UciSearchControl, UciTimeControl};
 
 #[derive(Debug)]
 pub struct Uci<R>
 where
-    R: Remote,
+    R: Remote + Debug,
     R::Error: Error + Send + Sync + 'static,
 {
     remote: R,
@@ -17,10 +17,11 @@ where
 
 impl<R> Uci<R>
 where
-    R: Remote,
+    R: Remote + Debug,
     R::Error: Error + Send + Sync + 'static,
 {
-    #[instrument(skip(remote), err)]
+    /// Establishes communication with a remote UCI server.
+    #[instrument(err)]
     pub async fn init(mut remote: R) -> Result<Self, R::Error> {
         remote.send(UciMessage::Uci).await?;
         remote.flush().await?;
@@ -64,14 +65,15 @@ where
 
 impl<R> Drop for Uci<R>
 where
-    R: Remote,
+    R: Remote + Debug,
     R::Error: Error + Send + Sync + 'static,
 {
-    #[instrument(skip(self))]
+    #[instrument]
     fn drop(&mut self) {
-        let result: Result<(), Anyhow> = block_on(async {
+        let result: Result<(), R::Error> = block_on(async {
             self.remote.send(UciMessage::Stop).await?;
             self.remote.send(UciMessage::Quit).await?;
+            self.remote.flush().await?;
             Ok(())
         });
 
@@ -84,12 +86,12 @@ where
 #[async_trait]
 impl<R> Player for Uci<R>
 where
-    R: Remote + Send + Sync,
+    R: Remote + Debug + Send,
     R::Error: Error + Send + Sync + 'static,
 {
     type Error = R::Error;
 
-    #[instrument(skip(self), err)]
+    #[instrument(err)]
     async fn act(&mut self, pos: &Position) -> Result<Action, Self::Error> {
         let setpos = UciMessage::Position {
             startpos: false,
@@ -125,7 +127,7 @@ mod tests {
     use crate::{remote::MockRemote, Move};
     use mockall::{predicate::*, Sequence};
     use proptest::prelude::*;
-    use std::io;
+    use std::io::Error as IoError;
 
     fn invalid_uci_message() -> impl Strategy<Value = String> {
         any::<String>().prop_filter("valid uci message", |s| {
@@ -183,6 +185,9 @@ mod tests {
                 .with(eq(UciMessage::Quit))
                 .returning(|_| Ok(()));
 
+            remote.expect_flush().times(1).in_sequence(&mut seq)
+                .returning(|| Ok(()));
+
             assert!(block_on(Uci::init(remote)).is_ok());
         }
 
@@ -219,7 +224,7 @@ mod tests {
         }
 
         #[test]
-        fn init_can_fail(e: io::Error) {
+        fn init_can_fail(e: IoError) {
             let mut remote = MockRemote::new();
 
             let kind = e.kind();
@@ -227,6 +232,13 @@ mod tests {
             remote.expect_send().returning(|_: UciMessage| Ok(()));
 
             assert_eq!(block_on(Uci::init(remote)).err().unwrap().kind(), kind);
+        }
+
+        #[test]
+        fn drop_recovers_from_errors(e: IoError) {
+            let mut remote = MockRemote::new();
+            remote.expect_send().times(1).return_once(move |_: UciMessage| Err(e));
+            drop(block_on(Uci::init(remote)));
         }
 
         #[test]
@@ -257,6 +269,9 @@ mod tests {
             remote.expect_send().times(1).in_sequence(&mut seq)
                 .with(eq(UciMessage::Quit))
                 .returning(|_| Ok(()));
+
+            remote.expect_flush().times(1).in_sequence(&mut seq)
+                .returning(|| Ok(()));
 
             let mut uci = Uci { remote };
             assert_eq!(block_on(uci.act(&pos)).unwrap(), Action::Move(m));
@@ -297,32 +312,34 @@ mod tests {
         }
 
         #[test]
-        fn play_can_fail_writing_to_remote(pos: Position, e: io::Error) {
+        fn play_can_fail_writing(pos: Position, e: IoError) {
             let mut remote = MockRemote::new();
 
             let kind = e.kind();
             remote.expect_send().times(1).return_once(move |_: UciMessage| Err(e));
             remote.expect_send().returning(|_: UciMessage| Ok(()));
+            remote.expect_flush().returning(|| Ok(()));
 
             let mut uci = Uci { remote };
             assert_eq!(block_on(uci.act(&pos)).unwrap_err().kind(), kind);
         }
 
         #[test]
-        fn play_can_fail_flushing_the_remote(pos: Position, e: io::Error) {
+        fn play_can_fail_flushing(pos: Position, e: IoError) {
             let mut remote = MockRemote::new();
 
             remote.expect_send().returning(|_: UciMessage| Ok(()));
 
             let kind = e.kind();
             remote.expect_flush().times(1).return_once(move || Err(e));
+            remote.expect_flush().returning(|| Ok(()));
 
             let mut uci = Uci { remote };
             assert_eq!(block_on(uci.act(&pos)).unwrap_err().kind(), kind);
         }
 
         #[test]
-        fn play_can_fail_reading_from_remote(pos: Position, e: io::Error) {
+        fn play_can_fail_reading(pos: Position, e: IoError) {
             let mut remote = MockRemote::new();
 
             remote.expect_send().returning(|_: UciMessage| Ok(()));

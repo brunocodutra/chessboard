@@ -1,76 +1,74 @@
 use crate::Remote;
 use async_trait::async_trait;
 use derive_more::{Display, Error, From};
+use futures::{AsyncWriteExt, StreamExt};
 use rustyline::{error::ReadlineError, Config, Editor};
-use smol::{io, lock::Mutex, prelude::*, unblock, Unblock};
-use std::{fmt::Display, io::stdout, io::Stdout, sync::Arc};
+use smol::io::{Error as IoError, ErrorKind as IoErrorKind};
+use smol::Unblock;
+use std::{fmt::Display, io::stdout, io::Stdout};
 use tracing::instrument;
 
-/// The reason why reading from the terminal failed.
+/// The reason why writing to or reading from the terminal failed.
 #[derive(Debug, Display, Error, From)]
-pub struct TerminalReadError(io::Error);
+pub struct TerminalIoError(IoError);
 
-impl From<io::ErrorKind> for TerminalReadError {
-    fn from(k: io::ErrorKind) -> Self {
-        io::Error::from(k).into()
+impl From<IoErrorKind> for TerminalIoError {
+    fn from(k: IoErrorKind) -> Self {
+        IoError::from(k).into()
     }
 }
 
-impl From<ReadlineError> for TerminalReadError {
+impl From<ReadlineError> for TerminalIoError {
     fn from(e: ReadlineError) -> Self {
         match e {
             ReadlineError::Io(e) => e.into(),
-            ReadlineError::Eof => io::ErrorKind::UnexpectedEof.into(),
-            ReadlineError::Interrupted => io::ErrorKind::Interrupted.into(),
+            ReadlineError::Eof => IoErrorKind::UnexpectedEof.into(),
+            ReadlineError::Interrupted => IoErrorKind::Interrupted.into(),
 
             #[cfg(unix)]
-            ReadlineError::Utf8Error => io::ErrorKind::InvalidData.into(),
+            ReadlineError::Utf8Error => IoErrorKind::InvalidData.into(),
 
             #[cfg(windows)]
-            ReadlineError::Decode(e) => io::Error::new(io::ErrorKind::InvalidData, e).into(),
+            ReadlineError::Decode(e) => IoError::new(IoErrorKind::InvalidData, e).into(),
 
-            e => io::Error::new(io::ErrorKind::Other, e).into(),
+            e => IoError::new(IoErrorKind::Other, e).into(),
         }
     }
 }
 
-/// The reason why writing to the terminal failed.
-#[derive(Debug, Display, Error, From)]
-pub struct TerminalWriteError(#[from(forward)] io::Error);
-
-/// The reason why flushing the internal buffers failed.
-#[derive(Debug, Display, Error, From)]
-pub struct TerminalFlushError(#[from(forward)] io::Error);
-
-/// The reason why writing to or reading from the terminal failed.
-#[derive(Debug, Display, Error, From)]
-pub enum TerminalIoError {
-    #[display(fmt = "failed to read from the standard input")]
-    Read(TerminalReadError),
-    #[display(fmt = "failed to write to the standard output")]
-    Write(TerminalWriteError),
-    #[display(fmt = "failed to flush internal buffers")]
-    Flueh(TerminalFlushError),
+#[derive(Debug)]
+struct Prompter {
+    prompt: String,
+    editor: Editor<()>,
 }
 
-/// An implementation of trait [`Remote`] as a terminal based on [rustyline].
+impl Iterator for Prompter {
+    type Item = Result<String, ReadlineError>;
+
+    #[instrument]
+    fn next(&mut self) -> Option<Self::Item> {
+        Some(self.editor.readline(&self.prompt))
+    }
+}
+
+/// A prompt interface based on [rustyline].
 ///
 /// [rustyline]: https://crates.io/crates/rustyline
 #[derive(Debug)]
 pub struct Terminal {
-    prompt: String,
-    reader: Arc<Mutex<rustyline::Editor<()>>>,
+    reader: Unblock<Prompter>,
     writer: Unblock<Stdout>,
 }
 
 impl Terminal {
-    pub fn new<D: Display>(context: D) -> Self {
+    /// Opens a terminal interface with the given prompt.
+    #[instrument(skip(prompt), fields(%prompt))]
+    pub fn new<P: Display>(prompt: P) -> Self {
         Terminal {
-            prompt: format!("{} > ", context),
-
-            reader: Arc::new(Mutex::new(Editor::<()>::with_config(
-                Config::builder().auto_add_history(true).build(),
-            ))),
+            reader: Unblock::new(Prompter {
+                prompt: format!("{} > ", prompt),
+                editor: Editor::with_config(Config::builder().auto_add_history(true).build()),
+            }),
 
             writer: Unblock::new(stdout()),
         }
@@ -83,31 +81,18 @@ impl Remote for Terminal {
 
     #[instrument(err)]
     async fn recv(&mut self) -> Result<String, Self::Error> {
-        let mut reader = self.reader.lock_arc().await;
-        let prompt = self.prompt.clone();
-        let result = unblock(move || reader.readline(&prompt)).await;
-        let line = result.map_err(TerminalReadError::from)?;
-
-        Ok(line)
+        use IoErrorKind::UnexpectedEof;
+        Ok(self.reader.next().await.ok_or(UnexpectedEof)??)
     }
 
-    #[instrument(skip(msg), err)]
-    async fn send<D: Display + Send + 'static>(&mut self, msg: D) -> Result<(), Self::Error> {
-        self.writer
-            .write_all(format!("{}\n", msg).as_bytes())
-            .await
-            .map_err(TerminalWriteError::from)?;
-
-        Ok(())
+    #[instrument(skip(item), err, fields(%item))]
+    async fn send<D: Display + Send + 'static>(&mut self, item: D) -> Result<(), Self::Error> {
+        let line = format!("{}\n", item);
+        Ok(self.writer.write_all(line.as_bytes()).await?)
     }
 
     #[instrument(err)]
     async fn flush(&mut self) -> Result<(), Self::Error> {
-        self.writer
-            .flush()
-            .await
-            .map_err(TerminalFlushError::from)?;
-
-        Ok(())
+        Ok(self.writer.flush().await?)
     }
 }
