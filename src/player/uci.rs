@@ -157,7 +157,7 @@ mod tests {
 
     proptest! {
         #[test]
-        fn init_shakes_hand_with_engine(name: String, author: String) {
+        fn init_shakes_hand_with_engine(_: ()) {
             let mut remote = MockRemote::new();
             let mut seq = Sequence::new();
 
@@ -244,7 +244,7 @@ mod tests {
         }
 
         #[test]
-        fn drop_gracefully_stops_the_remote_engine(e: IoError) {
+        fn drop_gracefully_stops_the_remote_engine(_: ()) {
             let mut remote = MockRemote::new();
 
             let mut seq = Sequence::new();
