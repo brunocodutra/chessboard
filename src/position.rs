@@ -81,6 +81,13 @@ impl Position {
         sm::Position::is_insufficient_material(&self.setup)
     }
 
+    /// Legal [`Move`]s that can be played in this position
+    pub fn moves(&self) -> impl IntoIterator<Item = Move> {
+        sm::Position::legal_moves(&self.setup)
+            .into_iter()
+            .map(|m| sm::uci::Uci::from_standard(&m).into())
+    }
+
     /// Play a [`Move`] if legal in this position.
     #[instrument(level = "trace", err)]
     pub fn play(&mut self, m: Move) -> Result<(), IllegalMove> {
@@ -478,6 +485,17 @@ mod tests {
         #[test]
         fn is_draw_returns_whether_the_position_has_insufficient_material(pos: Draw) {
             assert!(pos.is_draw());
+        }
+
+        #[test]
+        fn moves_returns_the_legal_moves_from_this_position(pos: Position) {
+            let mvs: Vec<Move> = sm::Position::legal_moves(&pos.setup)
+                .iter()
+                .map(sm::uci::Uci::from_standard)
+                .map(Into::into)
+                .collect();
+
+            assert_eq!(pos.moves().into_iter().collect::<Vec<_>>(), mvs);
         }
 
         #[test]
