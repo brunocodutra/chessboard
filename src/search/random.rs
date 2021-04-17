@@ -1,24 +1,14 @@
 use crate::{Move, Position, Search};
 use async_trait::async_trait;
-use rand::{rngs::StdRng, seq::IteratorRandom, SeedableRng};
+use tracing::instrument;
 
-#[derive(Debug)]
-pub struct Random {
-    rng: StdRng,
-}
+pub use crate::random::Random;
 
 #[async_trait]
 impl Search for Random {
+    #[instrument(level = "trace")]
     async fn search(&mut self, pos: &Position) -> Option<Move> {
-        pos.moves().into_iter().choose(&mut self.rng)
-    }
-}
-
-impl Default for Random {
-    fn default() -> Self {
-        Random {
-            rng: StdRng::from_entropy(),
-        }
+        pos.moves().into_iter().nth(self.gen::<u8>().into())
     }
 }
 
@@ -26,19 +16,14 @@ impl Default for Random {
 mod tests {
     use super::*;
     use proptest::prelude::*;
+    use rand::rngs::mock::StepRng;
     use smol::block_on;
-    use std::collections::HashSet;
 
     proptest! {
         #[test]
-        fn search_returns_a_valid_move(pos: Position) {
-            let mvs: HashSet<_> = pos.moves().into_iter().collect();
-
-            if let Some(mv) = block_on(Random::default().search(&pos)) {
-                assert_eq!(Some(&mv), mvs.get(&mv));
-            } else {
-                assert_eq!(HashSet::default(), mvs);
-            }
+        fn search_randomly_samples_valid_move(pos: Position, n: u8) {
+            let mv = block_on(Random::new(StepRng::new(n.into(), 0)).search(&pos));
+            assert_eq!(mv, pos.moves().into_iter().nth(n.into()));
         }
     }
 }
