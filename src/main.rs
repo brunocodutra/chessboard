@@ -1,7 +1,8 @@
 use anyhow::{bail, Context, Error as Anyhow};
-use chessboard::player::{Cli, Uci};
+use chessboard::player::{Ai, Cli, Uci};
 use chessboard::remote::{Process, Tcp, Terminal};
-use chessboard::{Color, Game, Player, PlayerDispatcher, RemoteDispatcher};
+use chessboard::search::Random;
+use chessboard::{Color, Game, Player, PlayerDispatcher};
 use clap::AppSettings::DeriveDisplayOrder;
 use futures::try_join;
 use smol::block_on;
@@ -13,26 +14,35 @@ use tracing_subscriber::fmt::format::FmtSpan;
 use url::Url;
 
 #[instrument(level = "trace", err)]
-async fn new_player(color: Color, url: Url) -> Result<PlayerDispatcher<RemoteDispatcher>, Anyhow> {
-    let remote = match (url.host_str(), url.path()) {
-        (None, "") => Terminal::new(color).into(),
-        (None, path) => Process::spawn(path.to_string()).await?.into(),
+async fn player(color: Color, url: Url) -> Result<PlayerDispatcher, Anyhow> {
+    if let "ai" = url.scheme() {
+        let strategy = match url.path() {
+            "random" => Random::default().into(),
+            search => bail!("unsupported strategy '{}'", search),
+        };
 
-        (Some(host), "") => match url.port() {
-            Some(port) => Tcp::connect(format!("{}:{}", host, port)).await?.into(),
-            None => Tcp::connect(host).await?.into(),
-        },
+        Ok(Ai::new(strategy).into())
+    } else {
+        let remote = match (url.host_str(), url.path()) {
+            (None, "") => Terminal::new(color).into(),
+            (None, path) => Process::spawn(path.to_string()).await?.into(),
 
-        _ => bail!("remote webservices are not supported yet"),
-    };
+            (Some(host), "") => match url.port() {
+                Some(port) => Tcp::connect(format!("{}:{}", host, port)).await?.into(),
+                None => Tcp::connect(host).await?.into(),
+            },
 
-    let player = match url.scheme() {
-        "cli" => Cli::new(remote).into(),
-        "uci" => Uci::init(remote).await?.into(),
-        scheme => bail!("unknown protocol '{}'", scheme),
-    };
+            _ => bail!("remote webservices are not supported yet"),
+        };
 
-    Ok(player)
+        let player = match url.scheme() {
+            "cli" => Cli::new(remote).into(),
+            "uci" => Uci::init(remote).await?.into(),
+            scheme => bail!("unsupported protocol '{}'", scheme),
+        };
+
+        Ok(player)
+    }
 }
 
 #[derive(StructOpt)]
@@ -81,12 +91,10 @@ fn main() -> Result<(), Box<dyn Error + Send + Sync + 'static>> {
         .try_init()?;
 
     block_on(async {
-        let mut game = Game::default();
+        use Color::*;
 
-        let (mut white, mut black) = try_join!(
-            new_player(Color::White, white),
-            new_player(Color::Black, black)
-        )?;
+        let mut game = Game::default();
+        let (mut white, mut black) = try_join!(player(White, white), player(Black, black))?;
 
         let outcome = loop {
             match game.outcome() {
@@ -97,8 +105,8 @@ fn main() -> Result<(), Box<dyn Error + Send + Sync + 'static>> {
                     info!(%position);
 
                     let action = match position.turn() {
-                        Color::Black => black.act(position).await?,
-                        Color::White => white.act(position).await?,
+                        Black => black.act(position).await?,
+                        White => white.act(position).await?,
                     };
 
                     info!(player = %position.turn(), ?action);
