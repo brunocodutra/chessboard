@@ -280,6 +280,7 @@ dependencies = [
  "port_check",
  "proptest",
  "proptest-derive",
+ "rand",
  "rustyline",
  "shakmaty",
  "smol",
