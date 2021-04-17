@@ -11,7 +11,7 @@ use proptest::prelude::*;
 /// The current position on the chess board.
 ///
 /// This type guarantees that it only holds valid positions.
-#[derive(DebugCustom, Display, Default, Clone /*, Hash*/)]
+#[derive(DebugCustom, Display, Default, Clone)]
 #[cfg_attr(test, derive(proptest_derive::Arbitrary))]
 #[debug(fmt = "Position(\"{}\")", self)]
 #[display(fmt = "{}", "sm::fen::FenOpts::new().promoted(true).fen(setup)")]
@@ -103,17 +103,9 @@ impl PartialEq for Position {
     }
 }
 
-// FIXME: merged upstream
 impl Hash for Position {
     fn hash<H: Hasher>(&self, state: &mut H) {
-        let fen = sm::fen::Fen::from_setup(&self.setup);
-
-        fen.board.hash(state);
-        fen.turn.hash(state);
-        fen.castling_rights.hash(state);
-        fen.ep_square.hash(state);
-        fen.halfmoves.hash(state);
-        fen.fullmoves.hash(state);
+        sm::fen::Fen::from_setup(&self.setup).hash(state);
     }
 }
 
