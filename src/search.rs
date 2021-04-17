@@ -2,6 +2,10 @@ use crate::{Move, Position};
 use async_trait::async_trait;
 use derive_more::{DebugCustom, From};
 
+mod random;
+
+pub use random::Random;
+
 /// Trait for types that implement adversarial search algorithms.
 #[cfg_attr(test, mockall::automock)]
 #[async_trait]
@@ -12,11 +16,17 @@ pub trait Search {
 
 /// A static dispatcher for [`Search`].
 #[derive(DebugCustom, From)]
-pub enum SearchDispatcher {}
+pub enum SearchDispatcher {
+    #[debug(fmt = "{:?}", _0)]
+    Random(Random),
+}
 
 #[async_trait]
 impl Search for SearchDispatcher {
-    async fn search(&mut self, _: &Position) -> Option<Move> {
-        None
+    async fn search(&mut self, pos: &Position) -> Option<Move> {
+        use SearchDispatcher::*;
+        match self {
+            Random(s) => s.search(pos).await,
+        }
     }
 }
