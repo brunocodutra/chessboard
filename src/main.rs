@@ -5,7 +5,8 @@ use chessboard::{Color, Game, Player, PlayerDispatcher, RemoteDispatcher};
 use clap::AppSettings::DeriveDisplayOrder;
 use futures::try_join;
 use smol::block_on;
-use std::{cmp::min, error::Error, io::stderr};
+use std::io::{stderr, BufWriter};
+use std::{cmp::min, error::Error};
 use structopt::StructOpt;
 use tracing::{info, instrument, warn, Level};
 use tracing_subscriber::fmt::format::FmtSpan;
@@ -69,14 +70,13 @@ fn main() -> Result<(), Box<dyn Error + Send + Sync + 'static>> {
         verbosity,
     } = Opts::from_args();
 
-    let (writer, _guard) = tracing_appender::non_blocking(stderr());
     let filter = format!("{},chessboard={}", min(Level::WARN, verbosity), verbosity);
 
     tracing_subscriber::fmt()
         .pretty()
         .with_thread_ids(true)
         .with_env_filter(filter)
-        .with_writer(writer)
+        .with_writer(|| BufWriter::new(stderr()))
         .with_span_events(FmtSpan::FULL)
         .try_init()?;
 
