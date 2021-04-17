@@ -2,6 +2,10 @@ use crate::Position;
 use derive_more::{DebugCustom, From};
 use tracing::instrument;
 
+mod random;
+
+pub use random::Random;
+
 /// Trait for types that implement adversarial search algorithms.
 #[cfg_attr(test, mockall::automock)]
 pub trait Engine {
@@ -21,11 +25,17 @@ impl std::fmt::Debug for MockEngine {
 
 /// A static dispatcher for [`Engine`].
 #[derive(DebugCustom, From)]
-pub enum EngineDispatcher {}
+pub enum EngineDispatcher {
+    #[debug(fmt = "{:?}", _0)]
+    Random(Random),
+}
 
 impl Engine for EngineDispatcher {
     #[instrument(level = "trace")]
-    fn evaluate(&self, _: &Position) -> i32 {
-        todo!()
+    fn evaluate(&self, pos: &Position) -> i32 {
+        use EngineDispatcher::*;
+        match self {
+            Random(e) => e.evaluate(pos),
+        }
     }
 }

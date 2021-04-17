@@ -10,6 +10,7 @@ mod piece;
 mod placement;
 mod position;
 mod promotion;
+mod random;
 mod rank;
 mod role;
 mod square;
