@@ -30,6 +30,8 @@ pub use crate::square::*;
 
 pub mod player;
 pub mod remote;
+pub mod search;
 
 pub use crate::player::{Player, PlayerDispatcher};
 pub use crate::remote::{Remote, RemoteDispatcher, RemoteDispatcherError};
+pub use crate::search::Search;
