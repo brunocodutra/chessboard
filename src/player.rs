@@ -1,12 +1,14 @@
-use crate::{Action, Position, Remote};
+use crate::{Action, Position, RemoteDispatcher, SearchDispatcher};
 use async_trait::async_trait;
-use derive_more::{DebugCustom, From};
-use std::{error::Error, fmt::Debug};
+use derive_more::{DebugCustom, Display, Error, From};
+use std::fmt::Debug;
 use tracing::instrument;
 
+mod ai;
 mod cli;
 mod uci;
 
+pub use ai::*;
 pub use cli::*;
 pub use uci::*;
 
@@ -20,35 +22,36 @@ pub trait Player {
     async fn act(&mut self, pos: &Position) -> Result<Action, Self::Error>;
 }
 
+/// The reason why the underlying [`Player`] failed.
+#[derive(Debug, Display, Error)]
+pub enum PlayerDispatcherError {
+    Ai(<Ai<SearchDispatcher> as Player>::Error),
+    Cli(<Cli<RemoteDispatcher> as Player>::Error),
+    Uci(<Uci<RemoteDispatcher> as Player>::Error),
+}
+
 /// A static dispatcher for [`Player`].
 #[derive(DebugCustom, From)]
-pub enum PlayerDispatcher<R>
-where
-    R: Remote + Debug,
-    R::Error: Error + Send + Sync + 'static,
-{
+pub enum PlayerDispatcher {
     #[debug(fmt = "{:?}", _0)]
-    Cli(Cli<R>),
+    Ai(Ai<SearchDispatcher>),
     #[debug(fmt = "{:?}", _0)]
-    Uci(Uci<R>),
+    Cli(Cli<RemoteDispatcher>),
+    #[debug(fmt = "{:?}", _0)]
+    Uci(Uci<RemoteDispatcher>),
 }
 
 #[async_trait]
-impl<R> Player for PlayerDispatcher<R>
-where
-    R: Remote + Debug + Send,
-    R::Error: Error + Send + Sync + 'static,
-{
-    type Error = R::Error;
+impl Player for PlayerDispatcher {
+    type Error = PlayerDispatcherError;
 
     #[instrument(level = "trace", err)]
     async fn act(&mut self, pos: &Position) -> Result<Action, Self::Error> {
         use PlayerDispatcher::*;
-        let action = match self {
-            Cli(p) => p.act(pos).await?,
-            Uci(p) => p.act(pos).await?,
-        };
-
-        Ok(action)
+        match self {
+            Ai(p) => p.act(pos).await.map_err(PlayerDispatcherError::Ai),
+            Cli(p) => p.act(pos).await.map_err(PlayerDispatcherError::Cli),
+            Uci(p) => p.act(pos).await.map_err(PlayerDispatcherError::Uci),
+        }
     }
 }

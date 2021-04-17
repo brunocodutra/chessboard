@@ -244,7 +244,7 @@ mod tests {
         }
 
         #[test]
-        fn drop_gracefully_stops_the_remote_engine(_: ()) {
+        fn drop_gracefully_stops_engine(_: ()) {
             let mut remote = MockRemote::new();
 
             let mut seq = Sequence::new();
@@ -271,7 +271,7 @@ mod tests {
         }
 
         #[test]
-        fn engine_can_make_a_move(pos: Position, m: Move) {
+        fn play_instructs_engine_to_make_move(pos: Position, m: Move) {
             let mut remote = MockRemote::new();
             let mut seq = Sequence::new();
 

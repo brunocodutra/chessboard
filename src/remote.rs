@@ -35,7 +35,7 @@ impl std::fmt::Debug for MockRemote {
     }
 }
 
-/// The reason why the underlying remote failed.
+/// The reason why the underlying [`Remote`] failed.
 #[derive(Debug, Display, Error, From)]
 #[display(fmt = "failed to communicate with the remote {}")]
 pub enum RemoteDispatcherError {
