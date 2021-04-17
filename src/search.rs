@@ -1,6 +1,7 @@
 use crate::{Move, Position};
 use async_trait::async_trait;
 use derive_more::{DebugCustom, From};
+use tracing::instrument;
 
 mod random;
 
@@ -30,6 +31,7 @@ pub enum SearchDispatcher {
 
 #[async_trait]
 impl Search for SearchDispatcher {
+    #[instrument(level = "trace")]
     async fn search(&mut self, pos: &Position) -> Option<Move> {
         use SearchDispatcher::*;
         match self {

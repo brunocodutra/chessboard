@@ -28,10 +28,12 @@ pub use crate::rank::*;
 pub use crate::role::*;
 pub use crate::square::*;
 
+pub mod engine;
 pub mod player;
 pub mod remote;
 pub mod search;
 
+pub use crate::engine::{Engine, EngineDispatcher};
 pub use crate::player::{Player, PlayerDispatcher};
 pub use crate::remote::{Remote, RemoteDispatcher, RemoteDispatcherError};
 pub use crate::search::{Search, SearchDispatcher};
