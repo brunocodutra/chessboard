@@ -35,7 +35,7 @@ impl Move {
 pub struct IllegalMove(pub Move, pub Position);
 
 /// The reason why parsing [`Move`] failed.
-#[derive(Debug, Display, Copy, Clone, Eq, PartialEq, Hash, Error, From)]
+#[derive(Debug, Display, Clone, Eq, PartialEq, Error, From)]
 #[display(fmt = "unable to parse move; {}")]
 pub enum ParseMoveError {
     #[display(fmt = "invalid 'from' square")]
