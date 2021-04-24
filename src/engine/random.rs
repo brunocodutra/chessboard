@@ -1,12 +1,18 @@
 use crate::{Engine, Position};
+use std::collections::hash_map::DefaultHasher;
+use std::hash::{Hash, Hasher};
 use tracing::instrument;
 
-pub use crate::random::Random;
+/// A trivial [`Engine`] that evaluates positions to random, but stable, scores.
+#[derive(Debug, Default, Clone)]
+pub struct Random;
 
 impl Engine for Random {
     #[instrument(level = "trace")]
-    fn evaluate(&self, _: &Position) -> i32 {
-        self.gen()
+    fn evaluate(&self, pos: &Position) -> i32 {
+        let mut hashser = DefaultHasher::new();
+        pos.hash(&mut hashser);
+        hashser.finish() as i32
     }
 }
 
@@ -14,13 +20,11 @@ impl Engine for Random {
 mod tests {
     use super::*;
     use proptest::prelude::*;
-    use rand::rngs::mock::StepRng;
 
     proptest! {
         #[test]
-        fn evaluate_returns_random_number(pos: Position, val: i32) {
-            let engine = Random::new(StepRng::new(val as u64, 0));
-            assert_eq!(engine.evaluate(&pos), val);
+        fn evaluate_returns_stable_score(pos: Position) {
+            assert_eq!(Random.evaluate(&pos), Random.evaluate(&pos.clone()));
         }
     }
 }

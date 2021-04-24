@@ -1,8 +1,7 @@
 use anyhow::{bail, Context, Error as Anyhow};
 use chessboard::player::{Ai, Cli, Uci};
 use chessboard::remote::{Process, Tcp, Terminal};
-use chessboard::search::Negamax;
-use chessboard::{random::Random, Color, Game, Player, PlayerDispatcher};
+use chessboard::{engine::Random, search::Negamax, Color, Game, Player, PlayerDispatcher};
 use clap::AppSettings::DeriveDisplayOrder;
 use futures::try_join;
 use smol::block_on;

@@ -123,7 +123,7 @@ mod tests {
 
         #[test]
         fn search_runs_negamax(pos: Position) {
-            if let Some(mv) = block_on(Negamax::new(Random::default()).search(&pos)) {
+            if let Some(mv) = block_on(Negamax::new(Random).search(&pos)) {
                 assert!(pos.moves().any(|m| m == mv));
             } else {
                 assert_eq!(pos.moves().len(), 0);

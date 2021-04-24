@@ -30,7 +30,6 @@ pub use crate::square::*;
 
 pub mod engine;
 pub mod player;
-pub mod random;
 pub mod remote;
 pub mod search;
 
