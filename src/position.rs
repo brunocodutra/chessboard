@@ -82,7 +82,7 @@ impl Position {
     }
 
     /// Legal [`Move`]s that can be played in this position
-    pub fn moves(&self) -> impl IntoIterator<Item = Move> {
+    pub fn moves(&self) -> impl ExactSizeIterator<Item = Move> + Clone {
         sm::Position::legal_moves(&self.setup)
             .into_iter()
             .map(|m| sm::uci::Uci::from_standard(&m).into())
@@ -495,7 +495,7 @@ mod tests {
                 .map(Into::into)
                 .collect();
 
-            assert_eq!(pos.moves().into_iter().collect::<Vec<_>>(), mvs);
+            assert_eq!(pos.moves().collect::<Vec<_>>(), mvs);
         }
 
         #[test]

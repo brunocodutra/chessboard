@@ -1,8 +1,8 @@
 use anyhow::{bail, Context, Error as Anyhow};
 use chessboard::player::{Ai, Cli, Uci};
 use chessboard::remote::{Process, Tcp, Terminal};
-use chessboard::search::Random;
-use chessboard::{Color, Game, Player, PlayerDispatcher};
+use chessboard::search::Negamax;
+use chessboard::{random::Random, Color, Game, Player, PlayerDispatcher};
 use clap::AppSettings::DeriveDisplayOrder;
 use futures::try_join;
 use smol::block_on;
@@ -16,9 +16,16 @@ use url::Url;
 #[instrument(level = "trace", err)]
 async fn player(color: Color, url: Url) -> Result<PlayerDispatcher, Anyhow> {
     if let "ai" = url.scheme() {
-        let strategy = match url.path() {
-            "random" => Random::default().into(),
-            search => bail!("unsupported strategy '{}'", search),
+        let engine = match url.fragment() {
+            None => None,
+            Some("random") => Some(Random::default().into()),
+            Some(fragment) => bail!("unknown engine '{}'", fragment),
+        };
+
+        let strategy = match (url.path(), engine) {
+            ("random", _) => Random::default().into(),
+            ("negamax", Some(e)) => Negamax::new(e).into(),
+            (path, _) => bail!("unknwon strategy '{}'", path),
         };
 
         Ok(Ai::new(strategy).into())
@@ -38,7 +45,7 @@ async fn player(color: Color, url: Url) -> Result<PlayerDispatcher, Anyhow> {
         let player = match url.scheme() {
             "cli" => Cli::new(remote).into(),
             "uci" => Uci::init(remote).await?.into(),
-            scheme => bail!("unsupported protocol '{}'", scheme),
+            scheme => bail!("unknown protocol '{}'", scheme),
         };
 
         Ok(player)

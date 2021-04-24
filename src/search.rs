@@ -1,10 +1,12 @@
-use crate::{Move, Position};
+use crate::{EngineDispatcher, Move, Position};
 use async_trait::async_trait;
 use derive_more::{DebugCustom, From};
 use tracing::instrument;
 
+mod negamax;
 mod random;
 
+pub use negamax::Negamax;
 pub use random::Random;
 
 /// Trait for types that implement adversarial search algorithms.
@@ -27,6 +29,8 @@ impl std::fmt::Debug for MockSearch {
 pub enum SearchDispatcher {
     #[debug(fmt = "{:?}", _0)]
     Random(Random),
+    #[debug(fmt = "{:?}", _0)]
+    Negamax(Negamax<EngineDispatcher>),
 }
 
 #[async_trait]
@@ -36,6 +40,7 @@ impl Search for SearchDispatcher {
         use SearchDispatcher::*;
         match self {
             Random(s) => s.search(pos).await,
+            Negamax(s) => s.search(pos).await,
         }
     }
 }
