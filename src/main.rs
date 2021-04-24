@@ -17,15 +17,14 @@ use url::Url;
 async fn player(color: Color, url: Url) -> Result<PlayerDispatcher, Anyhow> {
     if let "ai" = url.scheme() {
         let engine = match url.fragment() {
-            None => None,
-            Some("random") => Some(Random::default().into()),
+            Some("random") => Random::default().into(),
             Some(fragment) => bail!("unknown engine '{}'", fragment),
+            None => bail!("expected engine as url fragment"),
         };
 
-        let strategy = match (url.path(), engine) {
-            ("random", _) => Random::default().into(),
-            ("negamax", Some(e)) => Negamax::new(e).into(),
-            (path, _) => bail!("unknwon strategy '{}'", path),
+        let strategy = match url.path() {
+            "negamax" => Negamax::new(engine).into(),
+            path => bail!("unknwon strategy '{}'", path),
         };
 
         Ok(Ai::new(strategy).into())
