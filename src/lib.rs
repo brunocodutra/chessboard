@@ -10,7 +10,6 @@ mod piece;
 mod placement;
 mod position;
 mod promotion;
-mod random;
 mod rank;
 mod role;
 mod square;
@@ -31,6 +30,7 @@ pub use crate::square::*;
 
 pub mod engine;
 pub mod player;
+pub mod random;
 pub mod remote;
 pub mod search;
 

@@ -11,8 +11,7 @@ pub use random::Random;
 pub trait Engine {
     /// Evaluates a position.
     ///
-    /// Positive values favor [`Color::White`][crate::Color::White],
-    /// while negative values favor [`Color::Black`][crate::Color::Black].
+    /// Positive values favor the current side to play.
     fn evaluate(&self, pos: &Position) -> i32;
 }
 
@@ -24,7 +23,7 @@ impl std::fmt::Debug for MockEngine {
 }
 
 /// A static dispatcher for [`Engine`].
-#[derive(DebugCustom, From)]
+#[derive(DebugCustom, Clone, From)]
 pub enum EngineDispatcher {
     #[debug(fmt = "{:?}", _0)]
     Random(Random),
