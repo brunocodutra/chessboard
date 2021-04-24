@@ -21,9 +21,9 @@ pub enum Promotion {
 }
 
 /// The reason parsing [`Promotion`] failed.
-#[derive(Debug, Display, Copy, Clone, Eq, PartialEq, Hash, Error)]
+#[derive(Debug, Display, Clone, Eq, PartialEq, Error)]
 #[display(
-    fmt = "unable to parse promotion; expected either one of four characters `[{}{}{}{}]` or the empty string",
+    fmt = "expected either one of four characters `[{}{}{}{}]` or the empty string",
     Promotion::Knight,
     Promotion::Bishop,
     Promotion::Rook,

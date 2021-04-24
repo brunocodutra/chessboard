@@ -1,7 +1,7 @@
-use derive_more::{Display, Error};
+use derive_more::{Display, Error, From};
 use shakmaty as sm;
 use std::convert::{TryFrom, TryInto};
-use std::str::FromStr;
+use std::{char::ParseCharError, str::FromStr};
 use tracing::instrument;
 
 /// Denotes a column on the chess board.
@@ -38,28 +38,41 @@ impl File {
         File::G,
         File::H,
     ];
+
+    /// This files's index in the range (0..=7).
+    pub fn index(&self) -> usize {
+        (*self).into()
+    }
 }
 
 /// The reason why parsing [`File`] failed.
-#[derive(Debug, Display, Copy, Clone, Eq, PartialEq, Hash, Error)]
-#[display(
-    fmt = "unable to parse file; expected lower case letter in the range `[{}-{}]`",
-    File::A,
-    File::H
-)]
-pub struct ParseFileError;
+#[derive(Debug, Display, Clone, Eq, PartialEq, Error, From)]
+#[display(fmt = "unable to parse file")]
+pub enum ParseFileError {
+    ParseCharError(ParseCharError),
+    OutOfRange(FileOutOfRange),
+}
 
 impl FromStr for File {
     type Err = ParseFileError;
 
     #[instrument(level = "trace", err)]
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        s.parse::<char>().map_err(|_| ParseFileError)?.try_into()
+        Ok(s.parse::<char>()?.try_into()?)
     }
 }
 
+/// The reason why converting [`File`] from index failed.
+#[derive(Debug, Display, Clone, Eq, PartialEq, Error)]
+#[display(
+    fmt = "expected lower case letter in the range `({}..={})`",
+    File::A,
+    File::H
+)]
+pub struct FileOutOfRange;
+
 impl TryFrom<char> for File {
-    type Error = ParseFileError;
+    type Error = FileOutOfRange;
 
     #[instrument(level = "trace", err)]
     fn try_from(c: char) -> Result<Self, Self::Error> {
@@ -72,7 +85,7 @@ impl TryFrom<char> for File {
             'f' => Ok(File::F),
             'g' => Ok(File::G),
             'h' => Ok(File::H),
-            _ => Err(ParseFileError),
+            _ => Err(FileOutOfRange),
         }
     }
 }
@@ -83,17 +96,37 @@ impl From<File> for char {
     }
 }
 
+/// The reason why converting [`File`] from index failed.
+#[derive(Debug, Display, Clone, Eq, PartialEq, Error)]
+#[display(fmt = "expected integer in the range `(0..=7)`")]
+pub struct FileIndexOutOfRange;
+
+impl TryFrom<usize> for File {
+    type Error = FileIndexOutOfRange;
+
+    #[instrument(level = "trace", err)]
+    fn try_from(i: usize) -> Result<Self, Self::Error> {
+        Self::VARIANTS.get(i).copied().ok_or(FileIndexOutOfRange)
+    }
+}
+
+impl From<File> for usize {
+    fn from(f: File) -> usize {
+        f as usize - File::A as usize
+    }
+}
+
 #[doc(hidden)]
 impl From<sm::File> for File {
-    fn from(c: sm::File) -> Self {
-        c.char().try_into().unwrap()
+    fn from(f: sm::File) -> Self {
+        usize::from(f).try_into().unwrap()
     }
 }
 
 #[doc(hidden)]
 impl From<File> for sm::File {
     fn from(f: File) -> Self {
-        sm::File::new(f as u32 - File::A as u32)
+        sm::File::new(f.index() as u32)
     }
 }
 
@@ -110,22 +143,51 @@ mod tests {
 
         #[test]
         fn parsing_file_succeeds_for_lower_case_letter_between_a_and_h(c in b'a'..=b'h') {
-            assert_eq!(char::from(c).to_string().parse::<File>(), char::from(c).try_into());
+            let c = char::from(c);
+            assert_eq!(c.to_string().parse::<File>(), Ok(c.try_into().unwrap()));
         }
 
         #[test]
         fn parsing_file_fails_for_upper_case_letter(s in "[A-Z]") {
-            assert_eq!(s.parse::<File>(), Err(ParseFileError));
+            assert_eq!(s.parse::<File>(), Err(ParseFileError::OutOfRange(FileOutOfRange)));
         }
 
         #[test]
-        fn parsing_file_fails_except_for_lower_case_letter_between_a_and_h(s in "[^a-h]*|[a-h]{2,}") {
-            assert_eq!(s.parse::<File>(), Err(ParseFileError));
+        fn parsing_file_fails_for_strings_of_length_not_one(s in ".{2,}?") {
+            use ParseFileError::*;
+            assert_eq!(s.parse::<File>(), Err(ParseCharError(s.parse::<char>().unwrap_err())));
+        }
+
+        #[test]
+        fn parsing_file_fails_for_char_other_than_lower_case_letter_between_a_and_h(c: char) {
+            prop_assume!(!('a'..='h').contains(&c));
+            use ParseFileError::*;
+            assert_eq!(c.to_string().parse::<File>(), Err(OutOfRange(File::try_from(c).unwrap_err())));
         }
 
         #[test]
         fn file_can_be_converted_into_char(f: File) {
             assert_eq!(char::from(f).try_into(), Ok(f));
+        }
+
+        #[test]
+        fn converting_file_from_char_out_of_range_fails(c in b'i'..) {
+            assert_eq!(File::try_from(char::from(c)), Err(FileOutOfRange));
+        }
+
+        #[test]
+        fn file_has_an_index(f: File) {
+            assert_eq!(f.index().try_into(), Ok(f));
+        }
+
+        #[test]
+        fn converting_file_from_index_out_of_range_fails(i in 8usize..) {
+            assert_eq!(File::try_from(i), Err(FileIndexOutOfRange));
+        }
+
+        #[test]
+        fn file_is_ordered_by_index(a: File, b: File) {
+            assert_eq!(a < b, a.index() < b.index());
         }
 
         #[test]

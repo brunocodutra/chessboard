@@ -117,7 +117,7 @@ impl Hash for Position {
 }
 
 /// The reason why a FEN string is invalid.
-#[derive(Debug, Display, Copy, Clone, Eq, PartialEq, Hash, Error)]
+#[derive(Debug, Display, Clone, Eq, PartialEq, Error)]
 pub enum InvalidFen {
     #[display(fmt = "syntax error at the piece placement field")]
     InvalidPlacement,
@@ -152,7 +152,7 @@ impl From<sm::fen::ParseFenError> for InvalidFen {
 }
 
 /// The reason why the position represented by a FEN string is illegal.
-#[derive(Debug, Display, Copy, Clone, Eq, PartialEq, Hash, Error)]
+#[derive(Debug, Display, Clone, Eq, PartialEq, Error)]
 pub enum IllegalPosition {
     #[display(fmt = "at least one side has no king")]
     MissingKing,
@@ -194,7 +194,7 @@ impl From<sm::PositionError<sm::Chess>> for IllegalPosition {
 }
 
 /// The reason why parsing [`Position`] from a FEN string failed.
-#[derive(Debug, Display, Copy, Clone, Eq, PartialEq, Hash, Error, From)]
+#[derive(Debug, Display, Clone, Eq, PartialEq, Error, From)]
 pub enum ParsePositionError {
     #[display(fmt = "unable to parse FEN")]
     InvalidFen(InvalidFen),

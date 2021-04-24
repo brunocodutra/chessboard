@@ -1,7 +1,7 @@
-use derive_more::{Display, Error};
+use derive_more::{Display, Error, From};
 use shakmaty as sm;
 use std::convert::{TryFrom, TryInto};
-use std::str::FromStr;
+use std::{num::ParseIntError, str::FromStr};
 use tracing::instrument;
 
 /// Denotes a row on the chess board.
@@ -38,28 +38,41 @@ impl Rank {
         Rank::Seventh,
         Rank::Eighth,
     ];
+
+    /// This rank's index in the range (0..=7).
+    pub fn index(&self) -> usize {
+        (*self).into()
+    }
 }
 
 /// The reason why parsing [`Rank`] failed.
-#[derive(Debug, Display, Copy, Clone, Eq, PartialEq, Hash, Error)]
-#[display(
-    fmt = "unable to parse rank; expected digit in the range `[{}-{}]`",
-    Rank::First,
-    Rank::Eighth
-)]
-pub struct ParseRankError;
+#[derive(Debug, Display, Clone, Eq, PartialEq, Error, From)]
+#[display(fmt = "unable to parse rank")]
+pub enum ParseRankError {
+    ParseIntError(ParseIntError),
+    OutOfRange(RankOutOfRange),
+}
 
 impl FromStr for Rank {
     type Err = ParseRankError;
 
     #[instrument(level = "trace", err)]
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        s.parse::<u32>().map_err(|_| ParseRankError)?.try_into()
+        Ok(s.parse::<u32>()?.try_into()?)
     }
 }
 
+/// The reason why converting [`Rank`] from index failed.
+#[derive(Debug, Display, Clone, Eq, PartialEq, Error)]
+#[display(
+    fmt = "expected digit in the range `({}..={})`",
+    Rank::First,
+    Rank::Eighth
+)]
+pub struct RankOutOfRange;
+
 impl TryFrom<u32> for Rank {
-    type Error = ParseRankError;
+    type Error = RankOutOfRange;
 
     #[instrument(level = "trace", err)]
     fn try_from(n: u32) -> Result<Self, Self::Error> {
@@ -72,7 +85,7 @@ impl TryFrom<u32> for Rank {
             6 => Ok(Rank::Sixth),
             7 => Ok(Rank::Seventh),
             8 => Ok(Rank::Eighth),
-            _ => Err(ParseRankError),
+            _ => Err(RankOutOfRange),
         }
     }
 }
@@ -83,17 +96,37 @@ impl From<Rank> for u32 {
     }
 }
 
+/// The reason why converting [`Rank`] from index failed.
+#[derive(Debug, Display, Clone, Eq, PartialEq, Error)]
+#[display(fmt = "expected integer in the range `(0..=7)`")]
+pub struct RankIndexOutOfRange;
+
+impl TryFrom<usize> for Rank {
+    type Error = RankIndexOutOfRange;
+
+    #[instrument(level = "trace", err)]
+    fn try_from(i: usize) -> Result<Self, Self::Error> {
+        Self::VARIANTS.get(i).copied().ok_or(RankIndexOutOfRange)
+    }
+}
+
+impl From<Rank> for usize {
+    fn from(f: Rank) -> usize {
+        f as usize - Rank::First as usize
+    }
+}
+
 #[doc(hidden)]
 impl From<sm::Rank> for Rank {
     fn from(r: sm::Rank) -> Self {
-        (r as u32 + 1).try_into().unwrap()
+        usize::from(r).try_into().unwrap()
     }
 }
 
 #[doc(hidden)]
 impl From<Rank> for sm::Rank {
     fn from(r: Rank) -> Self {
-        sm::Rank::new(r as u32 - Rank::First as u32)
+        sm::Rank::new(r.index() as u32)
     }
 }
 
@@ -110,17 +143,40 @@ mod tests {
 
         #[test]
         fn parsing_rank_succeeds_for_digit_between_1_and_8(n in 1..=8u32) {
-            assert_eq!(n.to_string().parse::<Rank>(), n.try_into());
+            assert_eq!(n.to_string().parse::<Rank>(), Ok(n.try_into().unwrap()));
         }
 
         #[test]
-        fn parsing_rank_fails_except_for_digit_between_1_and_8(s in "[^1-8]*|[1-8]{2,}") {
-            assert_eq!(s.parse::<Rank>(), Err(ParseRankError));
+        fn parsing_rank_fails_for_strings_representing_invalid_integers(s in "[^0-9]*") {
+            use ParseRankError::*;
+            assert_eq!(s.parse::<Rank>(), Err(ParseIntError(s.parse::<u32>().unwrap_err())));
+        }
+
+        #[test]
+        fn parsing_rank_fails_for_integers_out_of_range(n: u32) {
+            prop_assume!(!(1..=8).contains(&n));
+            use ParseRankError::*;
+            assert_eq!(n.to_string().parse::<Rank>(), Err(OutOfRange(Rank::try_from(n).unwrap_err())));
         }
 
         #[test]
         fn rank_can_be_converted_into_u32(r: Rank) {
             assert_eq!(u32::from(r).try_into(), Ok(r));
+        }
+
+        #[test]
+        fn rank_has_an_index(f: Rank) {
+            assert_eq!(f.index().try_into(), Ok(f));
+        }
+
+        #[test]
+        fn converting_rank_from_index_out_of_range_fails(i in 8usize..) {
+            assert_eq!(Rank::try_from(i), Err(RankIndexOutOfRange));
+        }
+
+        #[test]
+        fn rank_is_ordered_by_index(a: Rank, b: Rank) {
+            assert_eq!(a < b, a.index() < b.index());
         }
 
         #[test]

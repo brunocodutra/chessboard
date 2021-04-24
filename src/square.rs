@@ -1,8 +1,8 @@
 use crate::{File, ParseFileError, ParseRankError, Rank};
 use derive_more::{Display, Error, From};
 use shakmaty as sm;
-use std::convert::TryInto;
-use std::str::FromStr;
+use std::convert::{TryFrom, TryInto};
+use std::{cmp::Ordering, str::FromStr};
 use tracing::instrument;
 use vampirc_uci::UciSquare;
 
@@ -22,15 +22,55 @@ impl Square {
     pub fn rank(&self) -> Rank {
         self.1
     }
+
+    /// This squares's index in the range (0..=63).
+    ///
+    /// Squares are ordered from a1 = 0 to h8 = 63, files then ranks, so b1 = 2 and a2 = 8.
+    pub fn index(&self) -> usize {
+        (*self).into()
+    }
+}
+
+impl Ord for Square {
+    fn cmp(&self, other: &Self) -> Ordering {
+        self.index().cmp(&other.index())
+    }
+}
+
+impl PartialOrd for Square {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        self.index().partial_cmp(&other.index())
+    }
+}
+
+/// The reason why converting [`Square`] from index failed.
+#[derive(Debug, Display, Clone, Eq, PartialEq, Error)]
+#[display(fmt = "expected integer in the range `(0..=63)`")]
+pub struct SquareIndexOutOfRange;
+
+impl TryFrom<usize> for Square {
+    type Error = SquareIndexOutOfRange;
+
+    #[instrument(level = "trace", err)]
+    fn try_from(i: usize) -> Result<Self, Self::Error> {
+        Ok(Square(
+            (i % 8).try_into().map_err(|_| SquareIndexOutOfRange)?,
+            (i / 8).try_into().map_err(|_| SquareIndexOutOfRange)?,
+        ))
+    }
+}
+
+impl From<Square> for usize {
+    fn from(f: Square) -> usize {
+        usize::from(f.rank()) * 8 + f.file().index()
+    }
 }
 
 /// The reason why parsing [`Square`] failed.
-#[derive(Debug, Display, Copy, Clone, Eq, PartialEq, Hash, Error, From)]
-#[display(fmt = "unable to parse square; {}")]
+#[derive(Debug, Display, Clone, Eq, PartialEq, Error, From)]
+#[display(fmt = "unable to parse square")]
 pub enum ParseSquareError {
-    #[display(fmt = "invalid file")]
     InvalidFile(ParseFileError),
-    #[display(fmt = "invalid rank")]
     InvalidRank(ParseRankError),
 }
 
@@ -65,16 +105,16 @@ impl From<UciSquare> for Square {
 }
 
 #[doc(hidden)]
-impl From<Square> for sm::Square {
-    fn from(s: Square) -> Self {
-        sm::Square::from_coords(s.file().into(), s.rank().into())
+impl From<sm::Square> for Square {
+    fn from(s: sm::Square) -> Self {
+        usize::from(s).try_into().unwrap()
     }
 }
 
 #[doc(hidden)]
-impl From<sm::Square> for Square {
-    fn from(s: sm::Square) -> Self {
-        Square(s.file().into(), s.rank().into())
+impl From<Square> for sm::Square {
+    fn from(s: Square) -> Self {
+        sm::Square::new(s.index() as u32)
     }
 }
 
@@ -90,15 +130,30 @@ mod tests {
         }
 
         #[test]
-        fn parsing_square_fails_if_file_is_invalid(f in "[^a-h]+", r: Rank) {
-            let s = [f, r.to_string()].concat();
-            assert_eq!(s.parse::<Square>(), Err(ParseFileError.into()));
+        fn parsing_square_fails_if_file_is_invalid(f in "[^a-h]", r: Rank) {
+            let s = [f.clone(), r.to_string()].concat();
+            assert_eq!(s.parse::<Square>(), Err(f.parse::<File>().unwrap_err().into()));
         }
 
         #[test]
         fn parsing_square_fails_if_rank_is_invalid(f: File, r in "[^1-8]*") {
-            let s = [f.to_string(), r].concat();
-            assert_eq!(s.parse::<Square>(), Err(ParseRankError.into()));
+            let s = [f.to_string(), r.clone()].concat();
+            assert_eq!(s.parse::<Square>(), Err(r.parse::<Rank>().unwrap_err().into()));
+        }
+
+        #[test]
+        fn square_has_an_index(s: Square) {
+            assert_eq!(s.index().try_into(), Ok(s));
+        }
+
+        #[test]
+        fn converting_square_from_index_out_of_range_fails(i in 64usize..) {
+            assert_eq!(Square::try_from(i), Err(SquareIndexOutOfRange));
+        }
+
+        #[test]
+        fn square_is_ordered_by_index(a: Square, b: Square) {
+            assert_eq!(a < b, a.index() < b.index());
         }
 
         #[test]
