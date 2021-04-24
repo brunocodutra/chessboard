@@ -4,10 +4,8 @@ use derive_more::{DebugCustom, From};
 use tracing::instrument;
 
 mod negamax;
-mod random;
 
 pub use negamax::Negamax;
-pub use random::Random;
 
 /// Trait for types that implement adversarial search algorithms.
 #[cfg_attr(test, mockall::automock)]
@@ -28,8 +26,6 @@ impl std::fmt::Debug for MockSearch {
 #[derive(DebugCustom, From)]
 pub enum SearchDispatcher {
     #[debug(fmt = "{:?}", _0)]
-    Random(Random),
-    #[debug(fmt = "{:?}", _0)]
     Negamax(Negamax<EngineDispatcher>),
 }
 
@@ -39,7 +35,6 @@ impl Search for SearchDispatcher {
     async fn search(&mut self, pos: &Position) -> Option<Move> {
         use SearchDispatcher::*;
         match self {
-            Random(s) => s.search(pos).await,
             Negamax(s) => s.search(pos).await,
         }
     }
