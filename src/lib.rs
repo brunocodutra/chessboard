@@ -1,6 +1,7 @@
 #![cfg_attr(test, allow(clippy::unit_arg))]
 
 mod action;
+mod bitboard;
 mod color;
 mod file;
 mod game;
@@ -15,6 +16,7 @@ mod role;
 mod square;
 
 pub use crate::action::*;
+pub use crate::bitboard::*;
 pub use crate::color::*;
 pub use crate::file::*;
 pub use crate::game::*;
