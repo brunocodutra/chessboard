@@ -1,7 +1,7 @@
 use derive_more::{Display, Error, From};
 use shakmaty as sm;
 use std::convert::{TryFrom, TryInto};
-use std::{num::ParseIntError, str::FromStr};
+use std::{iter::FusedIterator, num::ParseIntError, str::FromStr};
 use tracing::instrument;
 
 /// Denotes a row on the chess board.
@@ -28,16 +28,10 @@ pub enum Rank {
 }
 
 impl Rank {
-    pub const VARIANTS: &'static [Rank] = &[
-        Rank::First,
-        Rank::Second,
-        Rank::Third,
-        Rank::Fourth,
-        Rank::Fifth,
-        Rank::Sixth,
-        Rank::Seventh,
-        Rank::Eighth,
-    ];
+    /// Returns an iterator over [`Rank`]s ordered by [index][`Rank::index`].
+    pub fn iter() -> impl DoubleEndedIterator<Item = Self> + ExactSizeIterator + FusedIterator {
+        (0usize..8).map(|i| i.try_into().unwrap())
+    }
 
     /// This rank's index in the range (0..=7).
     pub fn index(&self) -> usize {
@@ -76,17 +70,9 @@ impl TryFrom<u32> for Rank {
 
     #[instrument(level = "trace", err)]
     fn try_from(n: u32) -> Result<Self, Self::Error> {
-        match n {
-            1 => Ok(Rank::First),
-            2 => Ok(Rank::Second),
-            3 => Ok(Rank::Third),
-            4 => Ok(Rank::Fourth),
-            5 => Ok(Rank::Fifth),
-            6 => Ok(Rank::Sixth),
-            7 => Ok(Rank::Seventh),
-            8 => Ok(Rank::Eighth),
-            _ => Err(RankOutOfRange),
-        }
+        Self::iter()
+            .find(|&f| u32::from(f) == n)
+            .ok_or(RankOutOfRange)
     }
 }
 
@@ -106,7 +92,12 @@ impl TryFrom<usize> for Rank {
 
     #[instrument(level = "trace", err)]
     fn try_from(i: usize) -> Result<Self, Self::Error> {
-        Self::VARIANTS.get(i).copied().ok_or(RankIndexOutOfRange)
+        use Rank::*;
+
+        [First, Second, Third, Fourth, Fifth, Sixth, Seventh, Eighth]
+            .get(i)
+            .copied()
+            .ok_or(RankIndexOutOfRange)
     }
 }
 
@@ -136,6 +127,29 @@ mod tests {
     use proptest::prelude::*;
 
     proptest! {
+        #[test]
+        fn iter_returns_iterator_over_ranks_in_order(_: ()) {
+            use Rank::*;
+            assert_eq!(
+                Rank::iter().collect::<Vec<_>>(),
+                vec![First, Second, Third, Fourth, Fifth, Sixth, Seventh, Eighth]
+            );
+        }
+
+        #[test]
+        fn iter_returns_double_ended_iterator(_: ()) {
+            use Rank::*;
+            assert_eq!(
+                Rank::iter().rev().collect::<Vec<_>>(),
+                vec![Eighth, Seventh, Sixth, Fifth, Fourth, Third, Second, First]
+            );
+        }
+
+        #[test]
+        fn iter_returns_iterator_of_exact_size(_: ()) {
+            assert_eq!(Rank::iter().len(), 8);
+        }
+
         #[test]
         fn parsing_printed_rank_is_an_identity(r: Rank) {
             assert_eq!(r.to_string().parse(), Ok(r));

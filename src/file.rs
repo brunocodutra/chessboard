@@ -1,7 +1,7 @@
 use derive_more::{Display, Error, From};
 use shakmaty as sm;
 use std::convert::{TryFrom, TryInto};
-use std::{char::ParseCharError, str::FromStr};
+use std::{char::ParseCharError, iter::FusedIterator, str::FromStr};
 use tracing::instrument;
 
 /// Denotes a column on the chess board.
@@ -28,16 +28,10 @@ pub enum File {
 }
 
 impl File {
-    pub const VARIANTS: &'static [File] = &[
-        File::A,
-        File::B,
-        File::C,
-        File::D,
-        File::E,
-        File::F,
-        File::G,
-        File::H,
-    ];
+    /// Returns an iterator over [`File`]s ordered by [index][`File::index`].
+    pub fn iter() -> impl DoubleEndedIterator<Item = Self> + ExactSizeIterator + FusedIterator {
+        (0usize..8).map(|i| i.try_into().unwrap())
+    }
 
     /// This files's index in the range (0..=7).
     pub fn index(&self) -> usize {
@@ -76,17 +70,9 @@ impl TryFrom<char> for File {
 
     #[instrument(level = "trace", err)]
     fn try_from(c: char) -> Result<Self, Self::Error> {
-        match c {
-            'a' => Ok(File::A),
-            'b' => Ok(File::B),
-            'c' => Ok(File::C),
-            'd' => Ok(File::D),
-            'e' => Ok(File::E),
-            'f' => Ok(File::F),
-            'g' => Ok(File::G),
-            'h' => Ok(File::H),
-            _ => Err(FileOutOfRange),
-        }
+        Self::iter()
+            .find(|&f| char::from(f) == c)
+            .ok_or(FileOutOfRange)
     }
 }
 
@@ -106,7 +92,12 @@ impl TryFrom<usize> for File {
 
     #[instrument(level = "trace", err)]
     fn try_from(i: usize) -> Result<Self, Self::Error> {
-        Self::VARIANTS.get(i).copied().ok_or(FileIndexOutOfRange)
+        use File::*;
+
+        [A, B, C, D, E, F, G, H]
+            .get(i)
+            .copied()
+            .ok_or(FileIndexOutOfRange)
     }
 }
 
@@ -136,6 +127,29 @@ mod tests {
     use proptest::prelude::*;
 
     proptest! {
+        #[test]
+        fn iter_returns_iterator_over_files_in_order(_: ()) {
+            use File::*;
+            assert_eq!(
+                File::iter().collect::<Vec<_>>(),
+                vec![A, B, C, D, E, F, G, H]
+            );
+        }
+
+        #[test]
+        fn iter_returns_double_ended_iterator(_: ()) {
+            use File::*;
+            assert_eq!(
+                File::iter().rev().collect::<Vec<_>>(),
+                vec![H, G, F, E, D, C, B, A]
+            );
+        }
+
+        #[test]
+        fn iter_returns_iterator_of_exact_size(_: ()) {
+            assert_eq!(File::iter().len(), 8);
+        }
+
         #[test]
         fn parsing_printed_file_is_an_identity(f: File) {
             assert_eq!(f.to_string().parse(), Ok(f));

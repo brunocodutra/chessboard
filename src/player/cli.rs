@@ -95,19 +95,18 @@ struct Board(Placement);
 
 impl Display for Board {
     fn fmt(&self, f: &mut Formatter) -> Result<(), FmtError> {
-        write!(f, "   ")?;
-
-        for &file in File::VARIANTS {
-            write!(f, "  {} ", file)?;
+        write!(f, "  ")?;
+        for file in File::iter() {
+            write!(f, "   {}", file)?;
         }
 
         writeln!(f)?;
         writeln!(f, "   +---+---+---+---+---+---+---+---+")?;
 
-        for &rank in Rank::VARIANTS.iter().rev() {
+        for rank in Rank::iter().rev() {
             write!(f, " {} |", rank)?;
 
-            for &file in File::VARIANTS {
+            for file in File::iter() {
                 match self[Square(file, rank)] {
                     Some(piece) => write!(f, " {:#} |", piece)?,
                     None => write!(f, "   |")?,
@@ -118,9 +117,9 @@ impl Display for Board {
             writeln!(f, "   +---+---+---+---+---+---+---+---+")?;
         }
 
-        write!(f, "   ")?;
-        for &file in File::VARIANTS {
-            write!(f, "  {} ", file)?;
+        write!(f, "  ")?;
+        for file in File::iter() {
+            write!(f, "   {}", file)?;
         }
 
         Ok(())
