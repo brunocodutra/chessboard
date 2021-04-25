@@ -2,7 +2,7 @@ use crate::{File, ParseFileError, ParseRankError, Rank};
 use derive_more::{Display, Error, From};
 use shakmaty as sm;
 use std::convert::{TryFrom, TryInto};
-use std::{cmp::Ordering, str::FromStr};
+use std::{cmp::Ordering, iter::FusedIterator, str::FromStr};
 use tracing::instrument;
 use vampirc_uci::UciSquare;
 
@@ -13,6 +13,11 @@ use vampirc_uci::UciSquare;
 pub struct Square(pub File, pub Rank);
 
 impl Square {
+    /// Returns an iterator over [`Square`]s ordered by [index][`Square::index`].
+    pub fn iter() -> impl DoubleEndedIterator<Item = Self> + ExactSizeIterator + FusedIterator {
+        (0usize..64).map(|i| i.try_into().unwrap())
+    }
+
     /// This square's [`File`].
     pub fn file(&self) -> File {
         self.0
@@ -124,6 +129,30 @@ mod tests {
     use proptest::prelude::*;
 
     proptest! {
+        #[test]
+        fn iter_returns_iterator_over_files_in_order(_: ()) {
+            let squares: Vec<_> = Rank::iter()
+                .flat_map(|r| File::iter().map(move |f| Square(f, r)))
+                .collect();
+
+            assert_eq!(Square::iter().collect::<Vec<_>>(), squares);
+        }
+
+        #[test]
+        fn iter_returns_double_ended_iterator(_: ()) {
+            let squares: Vec<_> = Rank::iter()
+                .flat_map(|r| File::iter().map(move |f| Square(f, r)))
+                .rev()
+                .collect();
+
+            assert_eq!(Square::iter().rev().collect::<Vec<_>>(), squares);
+        }
+
+        #[test]
+        fn iter_returns_iterator_of_exact_size(_: ()) {
+            assert_eq!(Square::iter().len(), 64);
+        }
+
         #[test]
         fn parsing_printed_square_is_an_identity(s: Square) {
             assert_eq!(s.to_string().parse(), Ok(s));
