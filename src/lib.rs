@@ -1,4 +1,5 @@
 mod action;
+mod bitboard;
 mod color;
 mod eval;
 mod file;
@@ -18,6 +19,7 @@ mod setup;
 mod square;
 
 pub use crate::action::*;
+pub use crate::bitboard::*;
 pub use crate::color::*;
 pub use crate::eval::*;
 pub use crate::file::*;
