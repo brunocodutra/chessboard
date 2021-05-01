@@ -28,14 +28,23 @@ pub enum Rank {
 }
 
 impl Rank {
-    /// Returns an iterator over [`Rank`]s ordered by [index][`Rank::index`].
-    pub fn iter() -> impl DoubleEndedIterator<Item = Self> + ExactSizeIterator + FusedIterator {
-        (0usize..8).map(|i| i.try_into().unwrap())
+    /// Constructs [`Rank`] from index.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `i` is not in the range (0..=7).
+    pub fn new(i: usize) -> Self {
+        i.try_into().unwrap()
     }
 
     /// This rank's index in the range (0..=7).
     pub fn index(&self) -> usize {
         (*self).into()
+    }
+
+    /// Returns an iterator over [`Rank`]s ordered by [index][`Rank::index`].
+    pub fn iter() -> impl DoubleEndedIterator<Item = Self> + ExactSizeIterator + FusedIterator {
+        (0usize..8).map(Rank::new)
     }
 }
 
@@ -110,7 +119,7 @@ impl From<Rank> for usize {
 #[doc(hidden)]
 impl From<sm::Rank> for Rank {
     fn from(r: sm::Rank) -> Self {
-        usize::from(r).try_into().unwrap()
+        Rank::new(usize::from(r))
     }
 }
 
@@ -181,6 +190,17 @@ mod tests {
         #[test]
         fn rank_has_an_index(f: Rank) {
             assert_eq!(f.index().try_into(), Ok(f));
+        }
+
+        #[test]
+        fn new_constructs_rank_by_index(i in (0usize..=7)) {
+            assert_eq!(Rank::new(i).index(), i);
+        }
+
+        #[test]
+        #[should_panic]
+        fn new_panics_if_index_out_of_range(i in (8usize..)) {
+            Rank::new(i);
         }
 
         #[test]
