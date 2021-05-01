@@ -13,9 +13,25 @@ use vampirc_uci::UciSquare;
 pub struct Square(pub File, pub Rank);
 
 impl Square {
+    /// Constructs [`Square`] from index.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `i` is not in the range (0..=63).
+    pub fn new(i: usize) -> Self {
+        i.try_into().unwrap()
+    }
+
+    /// This squares's index in the range (0..=63).
+    ///
+    /// Squares are ordered from a1 = 0 to h8 = 63, files then ranks, so b1 = 2 and a2 = 8.
+    pub fn index(&self) -> usize {
+        (*self).into()
+    }
+
     /// Returns an iterator over [`Square`]s ordered by [index][`Square::index`].
     pub fn iter() -> impl DoubleEndedIterator<Item = Self> + ExactSizeIterator + FusedIterator {
-        (0usize..64).map(|i| i.try_into().unwrap())
+        (0usize..64).map(Square::new)
     }
 
     /// This square's [`File`].
@@ -26,13 +42,6 @@ impl Square {
     /// This square's [`Rank`].
     pub fn rank(&self) -> Rank {
         self.1
-    }
-
-    /// This squares's index in the range (0..=63).
-    ///
-    /// Squares are ordered from a1 = 0 to h8 = 63, files then ranks, so b1 = 2 and a2 = 8.
-    pub fn index(&self) -> usize {
-        (*self).into()
     }
 }
 
@@ -67,7 +76,7 @@ impl TryFrom<usize> for Square {
 
 impl From<Square> for usize {
     fn from(f: Square) -> usize {
-        usize::from(f.rank()) * 8 + f.file().index()
+        f.rank().index() * 8 + f.file().index()
     }
 }
 
@@ -112,7 +121,7 @@ impl From<UciSquare> for Square {
 #[doc(hidden)]
 impl From<sm::Square> for Square {
     fn from(s: sm::Square) -> Self {
-        usize::from(s).try_into().unwrap()
+        Square::new(usize::from(s))
     }
 }
 
@@ -173,6 +182,17 @@ mod tests {
         #[test]
         fn square_has_an_index(s: Square) {
             assert_eq!(s.index().try_into(), Ok(s));
+        }
+
+        #[test]
+        fn new_constructs_square_by_index(i in (0usize..=63)) {
+            assert_eq!(Square::new(i).index(), i);
+        }
+
+        #[test]
+        #[should_panic]
+        fn new_panics_if_index_out_of_range(i in (64usize..)) {
+            Square::new(i);
         }
 
         #[test]

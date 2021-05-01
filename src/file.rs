@@ -28,14 +28,23 @@ pub enum File {
 }
 
 impl File {
-    /// Returns an iterator over [`File`]s ordered by [index][`File::index`].
-    pub fn iter() -> impl DoubleEndedIterator<Item = Self> + ExactSizeIterator + FusedIterator {
-        (0usize..8).map(|i| i.try_into().unwrap())
+    /// Constructs [`File`] from index.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `i` is not in the range (0..=7).
+    pub fn new(i: usize) -> Self {
+        i.try_into().unwrap()
     }
 
     /// This files's index in the range (0..=7).
     pub fn index(&self) -> usize {
         (*self).into()
+    }
+
+    /// Returns an iterator over [`File`]s ordered by [index][`File::index`].
+    pub fn iter() -> impl DoubleEndedIterator<Item = Self> + ExactSizeIterator + FusedIterator {
+        (0usize..8).map(File::new)
     }
 }
 
@@ -110,7 +119,7 @@ impl From<File> for usize {
 #[doc(hidden)]
 impl From<sm::File> for File {
     fn from(f: sm::File) -> Self {
-        usize::from(f).try_into().unwrap()
+        File::new(usize::from(f))
     }
 }
 
@@ -192,6 +201,17 @@ mod tests {
         #[test]
         fn file_has_an_index(f: File) {
             assert_eq!(f.index().try_into(), Ok(f));
+        }
+
+        #[test]
+        fn new_constructs_file_by_index(i in (0usize..=7)) {
+            assert_eq!(File::new(i).index(), i);
+        }
+
+        #[test]
+        #[should_panic]
+        fn new_panics_if_index_out_of_range(i in (8usize..)) {
+            File::new(i);
         }
 
         #[test]
