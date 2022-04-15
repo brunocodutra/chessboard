@@ -30,7 +30,7 @@ async fn player(color: Color, url: Url) -> Result<PlayerDispatcher, Anyhow> {
     } else {
         let remote = match (url.host_str(), url.path()) {
             (None, "") => Terminal::new(color).into(),
-            (None, path) => Process::spawn(path.to_string()).await?.into(),
+            (None, path) => Process::spawn(path).await?.into(),
 
             (Some(host), "") => match url.port() {
                 Some(port) => Tcp::connect(format!("{}:{}", host, port)).await?.into(),
