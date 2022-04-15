@@ -15,40 +15,53 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@master
-    - uses: hecrj/setup-rust-action@master
+    - uses: actions-rs/toolchain@v1
       with:
-        rust-version: stable
+        override: true
+        profile: minimal
+        toolchain: stable
         components: rustfmt
-    - run: cargo +stable fmt --all -- --check
+    - uses: actions-rs/cargo@v1
+      with:
+        command: fmt
+        args: --all -- --check
 
   clippy:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@master
-    - uses: hecrj/setup-rust-action@master
+    - uses: actions-rs/toolchain@v1
       with:
-        rust-version: stable
+        override: true
+        profile: minimal
+        toolchain: stable
         components: clippy
-    - run: cargo +stable clippy --all-targets -- -D warnings
+    - uses: actions-rs/clippy-check@v1
+      with:
+        token: ${{ secrets.GITHUB_TOKEN }}
+        args: --all-targets -- -D warnings
 
   audit:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@master
-    - uses: hecrj/setup-rust-action@master
+    - uses: actions-rs/audit-check@v1
       with:
-        rust-version: stable
-    - run: cargo +stable install cargo-audit
-    - run: cargo +stable audit
+        token: ${{ secrets.GITHUB_TOKEN }}
 
   doc:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@master
-    - uses: hecrj/setup-rust-action@master
+    - uses: actions-rs/toolchain@v1
       with:
-        rust-version: stable
-    - run: cargo +stable doc --all-features --no-deps
+        override: true
+        profile: minimal
+        toolchain: stable
+    - uses: actions-rs/cargo@v1
+      with:
+        command: doc
+        args: --all-features --no-deps
 
   test:
     needs: [fmt, clippy, audit, doc]
@@ -60,12 +73,14 @@ jobs:
         rust: [stable, nightly]
     steps:
     - uses: actions/checkout@master
-    - uses: hecrj/setup-rust-action@master
+    - uses: actions-rs/toolchain@v1
       with:
-        rust-version: ${{ matrix.rust }}
-    - run: cargo +${{ matrix.rust }} test
-    - run: cargo +${{ matrix.rust }} test --no-default-features --tests
-    - run: cargo +${{ matrix.rust }} test --all-features
+        override: true
+        profile: minimal
+        toolchain: ${{ matrix.rust }}
+    - uses: actions-rs/cargo@v1
+      with:
+        command: test
 
   sanitize:
     needs: [test]
@@ -76,21 +91,32 @@ jobs:
         sanitizer: [address, leak]
     steps:
     - uses: actions/checkout@master
-    - uses: hecrj/setup-rust-action@master
+    - uses: actions-rs/toolchain@v1
       with:
-        rust-version: nightly
-    - run: RUSTFLAGS="-Z sanitizer=${{ matrix.sanitizer }}" cargo +nightly test --all-features --target x86_64-unknown-linux-gnu
+        override: true
+        profile: minimal
+        toolchain: nightly
+    - uses: actions-rs/cargo@v1
+      with:
+        command: test
+        args: --tests --lib --all-features --target x86_64-unknown-linux-gnu
+      env:
+        RUSTFLAGS: "-Z sanitizer=${{ matrix.sanitizer }}"
 
   coverage:
     needs: [test]
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@master
-    - uses: hecrj/setup-rust-action@master
+    - uses: actions-rs/toolchain@v1
       with:
-        rust-version: nightly
-    - run: cargo +nightly install cargo-tarpaulin
-    - run: for i in 0 1 2; do cargo +nightly tarpaulin --all-features --out Xml && break; done
-    - run: bash <(curl -s https://codecov.io/bash) -C $GITHUB_SHA -B ${GITHUB_REF#refs/heads/} -Z
-      env:
-        CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+        override: true
+        profile: minimal
+        toolchain: stable
+    - uses: actions-rs/tarpaulin@v0.1
+      with:
+        args: --all-features --avoid-cfg-tarpaulin
+    - uses: codecov/codecov-action@v2
+      with:
+        token: ${{secrets.CODECOV_TOKEN}}
+        fail_ci_if_error: true
