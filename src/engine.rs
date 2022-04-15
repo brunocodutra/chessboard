@@ -15,13 +15,6 @@ pub trait Engine {
     fn evaluate(&self, pos: &Position) -> i32;
 }
 
-#[cfg(test)]
-impl std::fmt::Debug for MockEngine {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str("MockEngine")
-    }
-}
-
 /// A static dispatcher for [`Engine`].
 #[derive(DebugCustom, Clone, From)]
 pub enum EngineDispatcher {

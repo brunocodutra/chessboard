@@ -28,13 +28,6 @@ pub trait Remote {
     async fn flush(&mut self) -> Result<(), Self::Error>;
 }
 
-#[cfg(test)]
-impl std::fmt::Debug for MockRemote {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str("MockRemote")
-    }
-}
-
 /// The reason why the underlying [`Remote`] failed.
 #[derive(Debug, Display, Error, From)]
 #[display(fmt = "failed to communicate with the remote {}")]
