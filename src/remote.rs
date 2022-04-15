@@ -48,6 +48,7 @@ pub enum RemoteDispatcherError {
 }
 
 /// A static dispatcher for [`Remote`].
+#[allow(clippy::large_enum_variant)]
 #[derive(DebugCustom, From)]
 pub enum RemoteDispatcher {
     #[debug(fmt = "{:?}", _0)]
