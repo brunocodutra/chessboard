@@ -1,40 +1,44 @@
 use crate::{Action, Color, File, Move, Placement, Player, Position, Rank, Remote, Square};
 use anyhow::Error as Anyhow;
 use async_trait::async_trait;
-use clap::AppSettings::{DisableHelpFlags, DisableVersion, NoBinaryName};
+use clap::Parser;
 use derive_more::{Constructor, Deref, Display, From};
 use std::fmt::{Debug, Display, Error as FmtError, Formatter};
 use std::{error::Error, str::FromStr};
-use structopt::StructOpt;
 use tracing::instrument;
 
-#[derive(Debug, Display, Copy, Clone, Eq, PartialEq, Hash, StructOpt)]
+/// Command Line Interface
+#[derive(Debug, Display, Copy, Clone, Eq, PartialEq, Hash, Parser)]
 #[cfg_attr(test, derive(proptest_derive::Arbitrary))]
-#[structopt(
-    author,
-    name = "Chessboard",
-    usage = "<SUBCOMMAND> [ARGS]",
-    after_help = "See 'help <SUBCOMMAND>' for more information on a specific command.",
-    global_settings = &[NoBinaryName, DisableVersion, DisableHelpFlags],
+#[clap(
+    name = "",
+    subcommand_value_name = "COMMAND",
+    subcommand_help_heading = "COMMANDS",
+    no_binary_name = true,
+    disable_help_flag = true,
+    disable_version_flag = true,
+    allow_hyphen_values = true
 )]
 enum Cmd {
+    /// Resign the game in favor of the opponent.
     #[display(fmt = "resign")]
-    #[structopt(about = "Resign the game in favor of the opponent", no_version)]
+    #[clap(allow_hyphen_values = true)]
     Resign,
 
+    /// Move a piece on the board.
     #[display(fmt = "move {}", descriptor)]
-    #[structopt(
-        about = "Move a piece on the board",
+    #[clap(
+        allow_hyphen_values = true,
         after_help = r#"SYNTAX:
-    <descriptor>    ::= <square:from><square:to>[<promotion>]
-    <square>        ::= <file><rank>
-    <file>          ::= a|b|c|d|e|f|g|h
-    <rank>          ::= 1|2|3|4|5|6|7|8
-    <promotion>     ::= q|r|b|n"#,
-        no_version
+    <DESCRIPTOR>    ::= <SQUARE:from><SQUARE:to>[<PROMOTION>]
+    <SQUARE>        ::= <FILE><RANK>
+    <FILE>          ::= a|b|c|d|e|f|g|h
+    <RANK>          ::= 1|2|3|4|5|6|7|8
+    <PROMOTION>     ::= q|r|b|n"#
     )]
     Move {
-        #[structopt(help = "A chess move in pure coordinate notation", parse(try_from_str = try_parse))]
+        /// A chess move in pure coordinate notation.
+        #[clap(parse(try_from_str = try_parse_descriptor))]
         descriptor: Move,
     },
 }
@@ -49,7 +53,7 @@ impl Cmd {
 }
 
 #[instrument(level = "trace", err)]
-fn try_parse<T>(s: &str) -> Result<T, String>
+fn try_parse_descriptor<T>(s: &str) -> Result<T, String>
 where
     T: FromStr,
     Anyhow: From<T::Err>,
@@ -82,7 +86,7 @@ where
             self.remote.flush().await?;
             let line = self.remote.recv().await?;
 
-            match Cmd::from_iter_safe(line.split_whitespace()) {
+            match Cmd::try_parse_from(line.split_whitespace()) {
                 Ok(s) => break Ok(s.into_action(pos.turn())),
                 Err(e) => self.remote.send(e).await?,
             };
@@ -130,6 +134,7 @@ impl Display for Board {
 mod tests {
     use super::*;
     use crate::remote::MockRemote;
+    use clap::{Error as ClapError, ErrorKind as ClapErrorKind};
     use mockall::{predicate::*, Sequence};
     use proptest::{collection::vec, prelude::*};
     use smol::block_on;
@@ -141,7 +146,7 @@ mod tests {
 
     fn invalid_command() -> impl Strategy<Value = String> {
         any::<String>().prop_filter("valid command", |s| {
-            Cmd::from_iter_safe(s.split_whitespace()).is_err()
+            Cmd::try_parse_from(s.split_whitespace()).is_err()
         })
     }
 
@@ -212,7 +217,7 @@ mod tests {
                 .returning(|_| Ok(()));
 
             remote.expect_send().times(1)
-                .returning(|_: clap::Error| Ok(()));
+                .returning(|_: ClapError| Ok(()));
 
             remote.expect_flush().times(2)
                 .returning(|| Ok(()));
@@ -236,7 +241,7 @@ mod tests {
                 .returning(|_| Ok(()));
 
             remote.expect_send().times(1)
-                .returning(|_: clap::Error| Ok(()));
+                .returning(|_: ClapError| Ok(()));
 
             remote.expect_flush().times(2)
                 .returning(|| Ok(()));
@@ -260,7 +265,7 @@ mod tests {
                 .returning(|_| Ok(()));
 
             remote.expect_send().times(1)
-                .with(function(|&clap::Error { kind, .. }| kind == clap::ErrorKind::HelpDisplayed))
+                .with(function(|e: &ClapError| e.kind() == ClapErrorKind::DisplayHelp))
                 .returning(|_| Ok(()));
 
             remote.expect_flush().times(2)
@@ -285,7 +290,7 @@ mod tests {
                 .returning(|_| Ok(()));
 
             remote.expect_send().times(cmds.len())
-                .returning(|_: clap::Error| Ok(()));
+                .returning(|_: ClapError| Ok(()));
 
             remote.expect_flush().times(cmds.len() + 1)
                 .returning(|| Ok(()));
