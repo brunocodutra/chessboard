@@ -15,13 +15,6 @@ pub trait Search {
     async fn search(&mut self, pos: &Position) -> Option<Move>;
 }
 
-#[cfg(test)]
-impl std::fmt::Debug for MockSearch {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str("MockSearch")
-    }
-}
-
 /// A static dispatcher for [`Search`].
 #[derive(DebugCustom, From)]
 pub enum SearchDispatcher {
