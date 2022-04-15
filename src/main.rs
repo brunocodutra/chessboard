@@ -2,12 +2,11 @@ use anyhow::{bail, Context, Error as Anyhow};
 use chessboard::player::{Ai, Cli, Uci};
 use chessboard::remote::{Process, Tcp, Terminal};
 use chessboard::{engine::Random, search::Negamax, Color, Game, Player, PlayerDispatcher};
-use clap::AppSettings::DeriveDisplayOrder;
+use clap::{AppSettings::DeriveDisplayOrder, Parser};
 use futures::try_join;
 use smol::block_on;
 use std::io::{stderr, BufWriter};
 use std::{cmp::min, error::Error};
-use structopt::StructOpt;
 use tracing::{info, instrument, warn, Level};
 use tracing_subscriber::fmt::format::FmtSpan;
 use url::Url;
@@ -50,10 +49,11 @@ async fn player(color: Color, url: Url) -> Result<PlayerDispatcher, Anyhow> {
     }
 }
 
-#[derive(StructOpt)]
-#[structopt(author, name = "Chessboard", setting = DeriveDisplayOrder)]
+#[derive(Parser)]
+#[clap(author, version, about, name = "Chessboard", setting = DeriveDisplayOrder)]
 struct Opts {
-    #[structopt(
+    /// White pieces player.
+    #[clap(
         short,
         long,
         value_name = "url",
@@ -62,7 +62,8 @@ struct Opts {
     )]
     white: Url,
 
-    #[structopt(
+    /// Black pieces player.
+    #[clap(
         short,
         long,
         value_name = "url",
@@ -71,9 +72,10 @@ struct Opts {
     )]
     black: Url,
 
-    #[structopt(short, long, value_name = "level", parse(try_from_str))]
-    #[cfg_attr(not(debug_assertions), structopt(default_value = "info"))]
-    #[cfg_attr(debug_assertions, structopt(default_value = "debug"))]
+    /// Verbosity level.
+    #[clap(short, long, value_name = "level", parse(try_from_str))]
+    #[cfg_attr(not(debug_assertions), clap(default_value = "info"))]
+    #[cfg_attr(debug_assertions, clap(default_value = "debug"))]
     verbosity: Level,
 }
 
@@ -83,7 +85,7 @@ fn main() -> Result<(), Box<dyn Error + Send + Sync + 'static>> {
         white,
         black,
         verbosity,
-    } = Opts::from_args();
+    } = Opts::parse();
 
     let filter = format!("{},chessboard={}", min(Level::WARN, verbosity), verbosity);
 
