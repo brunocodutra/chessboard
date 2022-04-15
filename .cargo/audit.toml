@@ -1,0 +1,5 @@
+[advisories]
+ignore = [
+    "RUSTSEC-2020-0159", # Potential segfault in `localtime_r` invocations
+    "RUSTSEC-2020-0071" # Potential segfault in the time crate
+]
