@@ -9,7 +9,7 @@ use std::ops::Index;
 #[derive(DebugCustom, Display, Clone, Eq, PartialEq, Hash)]
 #[cfg_attr(test, derive(proptest_derive::Arbitrary))]
 #[debug(fmt = "Placement(\"{}\")", self)]
-#[display(fmt = "{}", "sm::fen::FenOpts::new().promoted(true).board_fen(board)")]
+#[display(fmt = "{}", "board")]
 pub struct Placement {
     #[cfg_attr(test, proptest(strategy = "tests::any_board()"))]
     board: sm::Board,

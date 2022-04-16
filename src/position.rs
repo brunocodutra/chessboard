@@ -1,7 +1,6 @@
 use crate::{Color, IllegalMove, Move, Placement, Square};
 use derive_more::{DebugCustom, Display, Error, From};
 use shakmaty as sm;
-use std::hash::{Hash, Hasher};
 use std::{num::NonZeroU32, str::FromStr};
 use tracing::instrument;
 
@@ -11,10 +10,13 @@ use proptest::prelude::*;
 /// The current position on the chess board.
 ///
 /// This type guarantees that it only holds valid positions.
-#[derive(DebugCustom, Display, Default, Clone)]
+#[derive(DebugCustom, Display, Default, Clone, Eq, PartialEq, Hash)]
 #[cfg_attr(test, derive(proptest_derive::Arbitrary))]
 #[debug(fmt = "Position(\"{}\")", self)]
-#[display(fmt = "{}", "sm::fen::FenOpts::new().promoted(true).fen(setup)")]
+#[display(
+    fmt = "{}",
+    "sm::fen::Fen::from_position(setup.clone(), sm::EnPassantMode::Always)"
+)]
 pub struct Position {
     #[cfg_attr(test, proptest(strategy = "tests::any_setup()"))]
     setup: sm::Chess,
@@ -35,29 +37,32 @@ pub struct Draw(#[proptest(strategy = "tests::draw_setup().prop_map_into()")] Po
 impl Position {
     /// The current arrangement of [`Piece`](crate::Piece)s on the board.
     pub fn placement(&self) -> Placement {
-        sm::Setup::board(&self.setup).clone().into()
+        sm::Position::board(&self.setup).clone().into()
     }
 
     /// The side to move.
     pub fn turn(&self) -> Color {
-        sm::Setup::turn(&self.setup).into()
+        sm::Position::turn(&self.setup).into()
     }
 
     /// The en passant target square, if any.
+    ///
+    /// The existence of an en passant square does not imply that the pushed pawn can be captured,
+    /// but simply that a pawn has been pushed two squares forward.
     pub fn en_passant_square(&self) -> Option<Square> {
-        sm::Setup::ep_square(&self.setup).map(Into::into)
+        sm::Position::maybe_ep_square(&self.setup).map(Into::into)
     }
 
     /// The number of halfmoves since the last capture or pawn advance.
     pub fn halfmove_clock(&self) -> u32 {
-        sm::Setup::halfmoves(&self.setup)
+        sm::Position::halfmoves(&self.setup)
     }
 
     /// The current move number.
     ///
     /// It starts at 1, and is incremented after every Black's move.
     pub fn fullmoves(&self) -> NonZeroU32 {
-        sm::Setup::fullmoves(&self.setup)
+        sm::Position::fullmoves(&self.setup)
     }
 
     /// Whether this position is a [checkmate].
@@ -99,20 +104,6 @@ impl Position {
 
             _ => Err(IllegalMove(m, self.clone())),
         }
-    }
-}
-
-impl Eq for Position {}
-
-impl PartialEq for Position {
-    fn eq(&self, other: &Self) -> bool {
-        sm::fen::Fen::from_setup(&self.setup) == sm::fen::Fen::from_setup(&other.setup)
-    }
-}
-
-impl Hash for Position {
-    fn hash<H: Hasher>(&self, state: &mut H) {
-        sm::fen::Fen::from_setup(&self.setup).hash(state);
     }
 }
 
@@ -216,7 +207,7 @@ impl FromStr for Position {
             .map_err(|e: sm::fen::ParseFenError| InvalidFen(e.into()))?;
 
         let setup: sm::Chess = fen
-            .position(sm::CastlingMode::Standard)
+            .into_position(sm::CastlingMode::Standard)
             .map_err(|e| IllegalPosition(e.into()))?;
 
         Ok(Position { setup })
@@ -308,7 +299,7 @@ mod tests {
         select(positions)
             .prop_filter_map("invalid fen", |s| s.parse().ok())
             .prop_filter_map("illegal position", |fen: sm::fen::Fen| {
-                fen.position(sm::CastlingMode::Standard).ok()
+                fen.into_position(sm::CastlingMode::Standard).ok()
             })
     }
 
@@ -332,7 +323,7 @@ mod tests {
         select(positions)
             .prop_filter_map("invalid fen", |s| s.parse().ok())
             .prop_filter_map("illegal position", |fen: sm::fen::Fen| {
-                fen.position(sm::CastlingMode::Standard).ok()
+                fen.into_position(sm::CastlingMode::Standard).ok()
             })
     }
 
@@ -353,7 +344,7 @@ mod tests {
                     sm::Piece { color: !t, role: k },
                 ];
 
-                sm::fen::Fen {
+                sm::Setup {
                     board: s.into_iter().zip(pieces).collect(),
                     turn: !t,
                     castling_rights: sm::Bitboard::EMPTY,
@@ -362,8 +353,8 @@ mod tests {
                     ..Default::default()
                 }
             })
-            .prop_filter_map("illegal position", |fen| {
-                fen.position(sm::CastlingMode::Standard).ok()
+            .prop_filter_map("illegal position", |setup| {
+                setup.position(sm::CastlingMode::Standard).ok()
             })
             .prop_filter("stalemate", |setup: &sm::Chess| {
                 !sm::Position::is_stalemate(setup)
@@ -386,7 +377,7 @@ mod tests {
             any::<u32>(),
             any::<u32>().prop_filter_map("zero", NonZeroU32::new),
         )
-            .prop_map(|(b, t, cr, eps, hm, fm)| sm::fen::Fen {
+            .prop_map(|(b, t, cr, eps, hm, fm)| sm::Setup {
                 board: b,
                 turn: t,
                 castling_rights: cr,
@@ -395,6 +386,7 @@ mod tests {
                 fullmoves: fm,
                 ..Default::default()
             })
+            .prop_map_into()
     }
 
     fn invalid_fen() -> impl Strategy<Value = (String, sm::fen::ParseFenError)> {
@@ -409,9 +401,11 @@ mod tests {
 
     fn illegal_fen() -> impl Strategy<Value = (sm::fen::Fen, sm::PositionError<sm::Chess>)> {
         any_fen()
-            .prop_filter_map("invalid fen", |fen| fen.to_string().parse().ok())
+            .prop_map(|fen| fen.to_string())
+            .prop_filter_map("invalid fen", |s| s.parse().ok())
             .prop_filter_map("legal position", |fen: sm::fen::Fen| {
-                fen.position(sm::CastlingMode::Standard)
+                fen.clone()
+                    .into_position(sm::CastlingMode::Standard)
                     .err()
                     .map(|e| (fen, e))
             })
@@ -444,31 +438,31 @@ mod tests {
     proptest! {
         #[test]
         fn placement_returns_the_piece_arrangement(pos: Position) {
-            let b = sm::fen::Fen::from_setup(&pos.setup).board;
+            let b = sm::Position::into_setup(pos.clone().setup, sm::EnPassantMode::Always).board;
             assert_eq!(pos.placement(), b.into());
         }
 
         #[test]
         fn turn_returns_the_current_side_to_play(pos: Position) {
-            let t = sm::fen::Fen::from_setup(&pos.setup).turn;
+            let t = sm::Position::into_setup(pos.clone().setup, sm::EnPassantMode::Always).turn;
             assert_eq!(pos.turn(), t.into());
         }
 
         #[test]
         fn en_passant_square_returns_the_current_pushed_pawn_skipped_square(pos: Position) {
-            let eps = sm::fen::Fen::from_setup(&pos.setup).ep_square;
+            let eps = sm::Position::into_setup(pos.clone().setup, sm::EnPassantMode::Always).ep_square;
             assert_eq!(pos.en_passant_square(), eps.map(Into::into));
         }
 
         #[test]
         fn halfmove_clock_returns_the_number_of_halfmoves_since_last_irreversible_move(pos: Position) {
-            let hm = sm::fen::Fen::from_setup(&pos.setup).halfmoves;
+            let hm = sm::Position::into_setup(pos.clone().setup, sm::EnPassantMode::Always).halfmoves;
             assert_eq!(pos.halfmove_clock(), hm);
         }
 
         #[test]
         fn fullmoves_returns_the_current_move_number(pos: Position) {
-            let fm = sm::fen::Fen::from_setup(&pos.setup).fullmoves;
+            let fm = sm::Position::into_setup(pos.clone().setup, sm::EnPassantMode::Always).fullmoves;
             assert_eq!(pos.fullmoves(), fm);
         }
 
