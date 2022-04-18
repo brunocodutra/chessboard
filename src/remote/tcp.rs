@@ -86,8 +86,8 @@ mod tests {
     use anyhow::{Context, Error as Anyhow};
     use futures::{join, AsyncReadExt};
     use port_check::free_local_port;
-    use proptest::{collection::vec, prelude::*};
     use smol::net::TcpListener;
+    use test_strategy::proptest;
 
     async fn connect() -> Result<(Tcp, TcpStream), Anyhow> {
         let port = free_local_port().context("no free port")?;
@@ -101,38 +101,36 @@ mod tests {
         Ok((tcp, peer))
     }
 
-    proptest! {
-        #[test]
-        fn send_appends_new_line_to_message(msg: String) {
-            block_on(async {
-                let (mut tcp, mut peer) = connect().await.unwrap();
+    #[proptest]
+    fn send_appends_new_line_to_message(msg: String) {
+        block_on(async {
+            let (mut tcp, mut peer) = connect().await.unwrap();
 
-                tcp.send(msg.clone()).await.unwrap();
-                drop(tcp);
+            tcp.send(msg.clone()).await.unwrap();
+            drop(tcp);
 
-                let mut received = String::new();
-                peer.read_to_string(&mut received).await.unwrap();
+            let mut received = String::new();
+            peer.read_to_string(&mut received).await.unwrap();
 
-                assert_eq!(received, format!("{}\n", msg));
-            });
-        }
+            assert_eq!(received, format!("{}\n", msg));
+        });
+    }
 
-        #[test]
-        fn recv_splits_by_new_line(msgs in vec("[^\r\n]*\n", 0..=10)) {
-            block_on(async {
-                let (mut tcp, mut peer) = connect().await.unwrap();
+    #[proptest]
+    fn recv_splits_by_new_line(#[any(((0..=10).into(), "[^\r\n]*\n".into()))] msgs: Vec<String>) {
+        block_on(async {
+            let (mut tcp, mut peer) = connect().await.unwrap();
 
-                peer.write_all(msgs.concat().as_bytes()).await.unwrap();
-                peer.flush().await.unwrap();
-                drop(peer);
+            peer.write_all(msgs.concat().as_bytes()).await.unwrap();
+            peer.flush().await.unwrap();
+            drop(peer);
 
-                let mut received = vec![];
-                while let Ok(msg) = tcp.recv().await {
-                    received.push(format!("{}\n", msg));
-                }
+            let mut received = vec![];
+            while let Ok(msg) = tcp.recv().await {
+                received.push(format!("{}\n", msg));
+            }
 
-                assert_eq!(received, msgs);
-            });
-        }
+            assert_eq!(received, msgs);
+        });
     }
 }

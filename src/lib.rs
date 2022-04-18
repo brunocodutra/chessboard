@@ -1,5 +1,3 @@
-#![cfg_attr(test, allow(clippy::unit_arg))]
-
 mod action;
 mod color;
 mod file;

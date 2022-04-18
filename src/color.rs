@@ -2,9 +2,12 @@ use derive_more::Display;
 use shakmaty as sm;
 use std::ops::Not;
 
+#[cfg(test)]
+use test_strategy::Arbitrary;
+
 /// Denotes the color of a chess [`Piece`][`crate::Piece`].
 #[derive(Debug, Display, Copy, Clone, Eq, PartialEq, Hash)]
-#[cfg_attr(test, derive(proptest_derive::Arbitrary))]
+#[cfg_attr(test, derive(Arbitrary))]
 pub enum Color {
     #[display(fmt = "white")]
     White,
@@ -46,17 +49,15 @@ impl From<Color> for sm::Color {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use proptest::prelude::*;
+    use test_strategy::proptest;
 
-    proptest! {
-        #[test]
-        fn color_implements_not_operator(c: Color) {
-            assert_eq!(!!c, c);
-        }
+    #[proptest]
+    fn color_implements_not_operator(c: Color) {
+        assert_eq!(!!c, c);
+    }
 
-        #[test]
-        fn color_has_an_equivalent_shakmaty_representation(c: Color) {
-            assert_eq!(Color::from(sm::Color::from(c)), c);
-        }
+    #[proptest]
+    fn color_has_an_equivalent_shakmaty_representation(c: Color) {
+        assert_eq!(Color::from(sm::Color::from(c)), c);
     }
 }

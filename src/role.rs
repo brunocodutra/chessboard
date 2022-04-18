@@ -1,9 +1,12 @@
 use derive_more::Display;
 use shakmaty as sm;
 
+#[cfg(test)]
+use test_strategy::Arbitrary;
+
 /// Denotes the type of a chess [`Piece`][`crate::Piece`].
 #[derive(Debug, Display, Copy, Clone, Eq, PartialEq, Hash)]
-#[cfg_attr(test, derive(proptest_derive::Arbitrary))]
+#[cfg_attr(test, derive(Arbitrary))]
 pub enum Role {
     #[display(fmt = "pawn")]
     Pawn,
@@ -50,12 +53,10 @@ impl From<sm::Role> for Role {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use proptest::prelude::*;
+    use test_strategy::proptest;
 
-    proptest! {
-        #[test]
-        fn role_has_an_equivalent_shakmaty_representation(r: Role) {
-            assert_eq!(Role::from(sm::Role::from(r)), r);
-        }
+    #[proptest]
+    fn role_has_an_equivalent_shakmaty_representation(r: Role) {
+        assert_eq!(Role::from(sm::Role::from(r)), r);
     }
 }

@@ -2,9 +2,12 @@ use crate::{Color, Role};
 use shakmaty as sm;
 use std::fmt::{Display, Error as FmtError, Formatter, Write};
 
+#[cfg(test)]
+use test_strategy::Arbitrary;
+
 /// A chess [piece][`Role`] of a certain [`Color`].
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
-#[cfg_attr(test, derive(proptest_derive::Arbitrary))]
+#[cfg_attr(test, derive(Arbitrary))]
 pub struct Piece(pub Color, pub Role);
 
 impl Piece {
@@ -87,37 +90,35 @@ impl From<Piece> for sm::Piece {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use proptest::prelude::*;
+    use test_strategy::proptest;
 
-    proptest! {
-        #[test]
-        fn piece_has_a_color(c: Color, r: Role) {
-            assert_eq!(Piece(c, r).color(), c);
-        }
+    #[proptest]
+    fn piece_has_a_color(c: Color, r: Role) {
+        assert_eq!(Piece(c, r).color(), c);
+    }
 
-        #[test]
-        fn piece_has_a_role(c: Color, r: Role) {
-            assert_eq!(Piece(c, r).role(), r);
-        }
+    #[proptest]
+    fn piece_has_a_role(c: Color, r: Role) {
+        assert_eq!(Piece(c, r).role(), r);
+    }
 
-        #[test]
-        fn file_can_be_converted_into_char(p: Piece) {
-            assert_eq!(char::from(p), sm::Piece::from(p).char());
-        }
+    #[proptest]
+    fn file_can_be_converted_into_char(p: Piece) {
+        assert_eq!(char::from(p), sm::Piece::from(p).char());
+    }
 
-        #[test]
-        fn piece_has_a_default_ascii_representation(p: Piece) {
-            assert_eq!(char::from(p).to_string(), format!("{}", p));
-        }
+    #[proptest]
+    fn piece_has_a_default_ascii_representation(p: Piece) {
+        assert_eq!(char::from(p).to_string(), format!("{}", p));
+    }
 
-        #[test]
-        fn piece_has_an_alternate_figurine_representation(p: Piece) {
-            assert_eq!(p.figurine().to_string(), format!("{:#}", p));
-        }
+    #[proptest]
+    fn piece_has_an_alternate_figurine_representation(p: Piece) {
+        assert_eq!(p.figurine().to_string(), format!("{:#}", p));
+    }
 
-        #[test]
-        fn piece_has_an_equivalent_shakmaty_representation(p: Piece) {
-            assert_eq!(Piece::from(sm::Piece::from(p)), p);
-        }
+    #[proptest]
+    fn piece_has_an_equivalent_shakmaty_representation(p: Piece) {
+        assert_eq!(Piece::from(sm::Piece::from(p)), p);
     }
 }

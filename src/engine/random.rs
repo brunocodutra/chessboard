@@ -19,12 +19,10 @@ impl Engine for Random {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use proptest::prelude::*;
+    use test_strategy::proptest;
 
-    proptest! {
-        #[test]
-        fn evaluate_returns_stable_score(pos: Position) {
-            assert_eq!(Random.evaluate(&pos), Random.evaluate(&pos.clone()));
-        }
+    #[proptest]
+    fn evaluate_returns_stable_score(pos: Position) {
+        assert_eq!(Random.evaluate(&pos), Random.evaluate(&pos.clone()));
     }
 }

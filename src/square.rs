@@ -6,9 +6,12 @@ use std::{cmp::Ordering, iter::FusedIterator, str::FromStr};
 use tracing::instrument;
 use vampirc_uci::UciSquare;
 
+#[cfg(test)]
+use test_strategy::Arbitrary;
+
 /// Denotes a square on the chess board.
 #[derive(Debug, Display, Copy, Clone, Eq, PartialEq, Hash)]
-#[cfg_attr(test, derive(proptest_derive::Arbitrary))]
+#[cfg_attr(test, derive(Arbitrary))]
 #[display(fmt = "{}{}", _0, _1)]
 pub struct Square(pub File, pub Rank);
 
@@ -135,84 +138,88 @@ impl From<Square> for sm::Square {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use proptest::prelude::*;
+    use test_strategy::proptest;
 
-    proptest! {
-        #[test]
-        fn iter_returns_iterator_over_files_in_order(_: ()) {
-            let squares: Vec<_> = Rank::iter()
-                .flat_map(|r| File::iter().map(move |f| Square(f, r)))
-                .collect();
+    #[proptest]
+    fn iter_returns_iterator_over_files_in_order() {
+        let squares: Vec<_> = Rank::iter()
+            .flat_map(|r| File::iter().map(move |f| Square(f, r)))
+            .collect();
 
-            assert_eq!(Square::iter().collect::<Vec<_>>(), squares);
-        }
+        assert_eq!(Square::iter().collect::<Vec<_>>(), squares);
+    }
 
-        #[test]
-        fn iter_returns_double_ended_iterator(_: ()) {
-            let squares: Vec<_> = Rank::iter()
-                .flat_map(|r| File::iter().map(move |f| Square(f, r)))
-                .rev()
-                .collect();
+    #[proptest]
+    fn iter_returns_double_ended_iterator() {
+        let squares: Vec<_> = Rank::iter()
+            .flat_map(|r| File::iter().map(move |f| Square(f, r)))
+            .rev()
+            .collect();
 
-            assert_eq!(Square::iter().rev().collect::<Vec<_>>(), squares);
-        }
+        assert_eq!(Square::iter().rev().collect::<Vec<_>>(), squares);
+    }
 
-        #[test]
-        fn iter_returns_iterator_of_exact_size(_: ()) {
-            assert_eq!(Square::iter().len(), 64);
-        }
+    #[proptest]
+    fn iter_returns_iterator_of_exact_size() {
+        assert_eq!(Square::iter().len(), 64);
+    }
 
-        #[test]
-        fn parsing_printed_square_is_an_identity(s: Square) {
-            assert_eq!(s.to_string().parse(), Ok(s));
-        }
+    #[proptest]
+    fn parsing_printed_square_is_an_identity(s: Square) {
+        assert_eq!(s.to_string().parse(), Ok(s));
+    }
 
-        #[test]
-        fn parsing_square_fails_if_file_is_invalid(f in "[^a-h]", r: Rank) {
-            let s = [f.clone(), r.to_string()].concat();
-            assert_eq!(s.parse::<Square>(), Err(f.parse::<File>().unwrap_err().into()));
-        }
+    #[proptest]
+    fn parsing_square_fails_if_file_is_invalid(#[strategy("[^a-h]")] f: String, r: Rank) {
+        let s = [f.clone(), r.to_string()].concat();
+        assert_eq!(
+            s.parse::<Square>(),
+            Err(f.parse::<File>().unwrap_err().into())
+        );
+    }
 
-        #[test]
-        fn parsing_square_fails_if_rank_is_invalid(f: File, r in "[^1-8]*") {
-            let s = [f.to_string(), r.clone()].concat();
-            assert_eq!(s.parse::<Square>(), Err(r.parse::<Rank>().unwrap_err().into()));
-        }
+    #[proptest]
+    fn parsing_square_fails_if_rank_is_invalid(f: File, #[strategy("[^1-8]*")] r: String) {
+        let s = [f.to_string(), r.clone()].concat();
+        assert_eq!(
+            s.parse::<Square>(),
+            Err(r.parse::<Rank>().unwrap_err().into())
+        );
+    }
 
-        #[test]
-        fn square_has_an_index(s: Square) {
-            assert_eq!(s.index().try_into(), Ok(s));
-        }
+    #[proptest]
+    fn square_has_an_index(s: Square) {
+        assert_eq!(s.index().try_into(), Ok(s));
+    }
 
-        #[test]
-        fn new_constructs_square_by_index(i in (0usize..=63)) {
-            assert_eq!(Square::new(i).index(), i);
-        }
+    #[proptest]
+    fn new_constructs_square_by_index(#[strategy(0usize..=63)] i: usize) {
+        assert_eq!(Square::new(i).index(), i);
+    }
 
-        #[test]
-        #[should_panic]
-        fn new_panics_if_index_out_of_range(i in (64usize..)) {
-            Square::new(i);
-        }
+    #[proptest]
+    #[should_panic]
+    fn new_panics_if_index_out_of_range(#[strategy(64usize..)] i: usize) {
+        Square::new(i);
+    }
 
-        #[test]
-        fn converting_square_from_index_out_of_range_fails(i in 64usize..) {
-            assert_eq!(Square::try_from(i), Err(SquareIndexOutOfRange));
-        }
+    #[proptest]
+    fn converting_square_from_index_out_of_range_fails(#[strategy(64usize..)] i: usize) {
+        assert_eq!(Square::try_from(i), Err(SquareIndexOutOfRange));
+    }
 
-        #[test]
-        fn square_is_ordered_by_index(a: Square, b: Square) {
-            assert_eq!(a < b, a.index() < b.index());
-        }
+    #[proptest]
+    fn square_is_ordered_by_index(a: Square, b: Square) {
+        assert_eq!(a < b, a.index() < b.index());
+    }
 
-        #[test]
-        fn square_has_an_equivalent_vampirc_uci_representation(s: Square) {
-            assert_eq!(Square::from(<UciSquare as From<Square>>::from(s)), s);
-        }
+    #[proptest]
+    fn square_has_an_equivalent_vampirc_uci_representation(s: Square) {
+        assert_eq!(Square::from(<UciSquare as From<Square>>::from(s)), s);
+    }
 
-        #[test]
-        fn square_has_an_equivalent_shakmaty_representation(s: Square) {
-            assert_eq!(Square::from(sm::Square::from(s)), s);
-        }
+    #[proptest]
+    fn square_has_an_equivalent_shakmaty_representation(s: Square) {
+        assert_eq!(Square::from(sm::Square::from(s)), s);
     }
 }

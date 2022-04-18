@@ -4,9 +4,12 @@ use std::convert::{TryFrom, TryInto};
 use std::{iter::FusedIterator, num::ParseIntError, str::FromStr};
 use tracing::instrument;
 
+#[cfg(test)]
+use test_strategy::Arbitrary;
+
 /// Denotes a row on the chess board.
 #[derive(Debug, Display, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
-#[cfg_attr(test, derive(proptest_derive::Arbitrary))]
+#[cfg_attr(test, derive(Arbitrary))]
 #[repr(u8)]
 pub enum Rank {
     #[display(fmt = "1")]
@@ -133,89 +136,94 @@ impl From<Rank> for sm::Rank {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use proptest::prelude::*;
+    use test_strategy::proptest;
 
-    proptest! {
-        #[test]
-        fn iter_returns_iterator_over_ranks_in_order(_: ()) {
-            use Rank::*;
-            assert_eq!(
-                Rank::iter().collect::<Vec<_>>(),
-                vec![First, Second, Third, Fourth, Fifth, Sixth, Seventh, Eighth]
-            );
-        }
+    #[proptest]
+    fn iter_returns_iterator_over_ranks_in_order() {
+        use Rank::*;
+        assert_eq!(
+            Rank::iter().collect::<Vec<_>>(),
+            vec![First, Second, Third, Fourth, Fifth, Sixth, Seventh, Eighth]
+        );
+    }
 
-        #[test]
-        fn iter_returns_double_ended_iterator(_: ()) {
-            use Rank::*;
-            assert_eq!(
-                Rank::iter().rev().collect::<Vec<_>>(),
-                vec![Eighth, Seventh, Sixth, Fifth, Fourth, Third, Second, First]
-            );
-        }
+    #[proptest]
+    fn iter_returns_double_ended_iterator() {
+        use Rank::*;
+        assert_eq!(
+            Rank::iter().rev().collect::<Vec<_>>(),
+            vec![Eighth, Seventh, Sixth, Fifth, Fourth, Third, Second, First]
+        );
+    }
 
-        #[test]
-        fn iter_returns_iterator_of_exact_size(_: ()) {
-            assert_eq!(Rank::iter().len(), 8);
-        }
+    #[proptest]
+    fn iter_returns_iterator_of_exact_size() {
+        assert_eq!(Rank::iter().len(), 8);
+    }
 
-        #[test]
-        fn parsing_printed_rank_is_an_identity(r: Rank) {
-            assert_eq!(r.to_string().parse(), Ok(r));
-        }
+    #[proptest]
+    fn parsing_printed_rank_is_an_identity(r: Rank) {
+        assert_eq!(r.to_string().parse(), Ok(r));
+    }
 
-        #[test]
-        fn parsing_rank_succeeds_for_digit_between_1_and_8(n in 1..=8u32) {
-            assert_eq!(n.to_string().parse::<Rank>(), Ok(n.try_into().unwrap()));
-        }
+    #[proptest]
+    fn parsing_rank_succeeds_for_digit_between_1_and_8(#[strategy(1u32..=8)] n: u32) {
+        assert_eq!(n.to_string().parse::<Rank>(), Ok(n.try_into()?));
+    }
 
-        #[test]
-        fn parsing_rank_fails_for_strings_representing_invalid_integers(s in "[^0-9]*") {
-            use ParseRankError::*;
-            assert_eq!(s.parse::<Rank>(), Err(ParseIntError(s.parse::<u32>().unwrap_err())));
-        }
+    #[proptest]
+    fn parsing_rank_fails_for_strings_representing_invalid_integers(
+        #[strategy("[^0-9]*")] s: String,
+    ) {
+        use ParseRankError::*;
+        assert_eq!(
+            s.parse::<Rank>(),
+            Err(ParseIntError(s.parse::<u32>().unwrap_err()))
+        );
+    }
 
-        #[test]
-        fn parsing_rank_fails_for_integers_out_of_range(n: u32) {
-            prop_assume!(!(1..=8).contains(&n));
-            use ParseRankError::*;
-            assert_eq!(n.to_string().parse::<Rank>(), Err(OutOfRange(Rank::try_from(n).unwrap_err())));
-        }
+    #[proptest]
+    fn parsing_rank_fails_for_integers_out_of_range(#[filter(!(1..=8).contains(&#n))] n: u32) {
+        use ParseRankError::*;
+        assert_eq!(
+            n.to_string().parse::<Rank>(),
+            Err(OutOfRange(Rank::try_from(n).unwrap_err()))
+        );
+    }
 
-        #[test]
-        fn rank_can_be_converted_into_u32(r: Rank) {
-            assert_eq!(u32::from(r).try_into(), Ok(r));
-        }
+    #[proptest]
+    fn rank_can_be_converted_into_u32(r: Rank) {
+        assert_eq!(u32::from(r).try_into(), Ok(r));
+    }
 
-        #[test]
-        fn rank_has_an_index(f: Rank) {
-            assert_eq!(f.index().try_into(), Ok(f));
-        }
+    #[proptest]
+    fn rank_has_an_index(f: Rank) {
+        assert_eq!(f.index().try_into(), Ok(f));
+    }
 
-        #[test]
-        fn new_constructs_rank_by_index(i in (0usize..=7)) {
-            assert_eq!(Rank::new(i).index(), i);
-        }
+    #[proptest]
+    fn new_constructs_rank_by_index(#[strategy(0usize..=7)] i: usize) {
+        assert_eq!(Rank::new(i).index(), i);
+    }
 
-        #[test]
-        #[should_panic]
-        fn new_panics_if_index_out_of_range(i in (8usize..)) {
-            Rank::new(i);
-        }
+    #[proptest]
+    #[should_panic]
+    fn new_panics_if_index_out_of_range(#[strategy(8usize..)] i: usize) {
+        Rank::new(i);
+    }
 
-        #[test]
-        fn converting_rank_from_index_out_of_range_fails(i in 8usize..) {
-            assert_eq!(Rank::try_from(i), Err(RankIndexOutOfRange));
-        }
+    #[proptest]
+    fn converting_rank_from_index_out_of_range_fails(#[strategy(8usize..)] i: usize) {
+        assert_eq!(Rank::try_from(i), Err(RankIndexOutOfRange));
+    }
 
-        #[test]
-        fn rank_is_ordered_by_index(a: Rank, b: Rank) {
-            assert_eq!(a < b, a.index() < b.index());
-        }
+    #[proptest]
+    fn rank_is_ordered_by_index(a: Rank, b: Rank) {
+        assert_eq!(a < b, a.index() < b.index());
+    }
 
-        #[test]
-        fn rank_has_an_equivalent_shakmaty_representation(r: Rank) {
-            assert_eq!(Rank::from(sm::Rank::from(r)), r);
-        }
+    #[proptest]
+    fn rank_has_an_equivalent_shakmaty_representation(r: Rank) {
+        assert_eq!(Rank::from(sm::Rank::from(r)), r);
     }
 }

@@ -5,9 +5,12 @@ use std::str::FromStr;
 use tracing::instrument;
 use vampirc_uci::UciMove;
 
+#[cfg(test)]
+use test_strategy::Arbitrary;
+
 /// A chess move.
 #[derive(Debug, Display, Copy, Clone, Eq, PartialEq, Hash)]
-#[cfg_attr(test, derive(proptest_derive::Arbitrary))]
+#[cfg_attr(test, derive(Arbitrary))]
 #[display(fmt = "{}{}{}", _0, _1, _2)]
 pub struct Move(Square, Square, Promotion);
 
@@ -30,7 +33,7 @@ impl Move {
 
 /// Represents an illegal [`Move`] in a given [`Position`].
 #[derive(Debug, Display, Clone, Eq, PartialEq, Hash)]
-#[cfg_attr(test, derive(proptest_derive::Arbitrary))]
+#[cfg_attr(test, derive(Arbitrary))]
 #[display(fmt = "move `{}` is illegal in position `{}`", _0, _1)]
 pub struct IllegalMove(pub Move, pub Position);
 
@@ -69,6 +72,13 @@ impl FromStr for Move {
 }
 
 #[doc(hidden)]
+impl From<UciMove> for Move {
+    fn from(m: UciMove) -> Self {
+        Move(m.from.into(), m.to.into(), m.promotion.into())
+    }
+}
+
+#[doc(hidden)]
 impl From<Move> for UciMove {
     fn from(m: Move) -> Self {
         UciMove {
@@ -76,13 +86,6 @@ impl From<Move> for UciMove {
             to: m.whither().into(),
             promotion: m.promotion().into(),
         }
-    }
-}
-
-#[doc(hidden)]
-impl From<UciMove> for Move {
-    fn from(m: UciMove) -> Self {
-        Move(m.from.into(), m.to.into(), m.promotion.into())
     }
 }
 
@@ -115,48 +118,67 @@ impl From<Move> for sm::uci::Uci {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use proptest::prelude::*;
+    use test_strategy::proptest;
 
-    proptest! {
-        #[test]
-        fn move_serializes_to_pure_coordinate_notation(m: Move) {
-            assert_eq!(m.to_string(), UciMove::from(m).to_string());
-        }
+    #[proptest]
+    fn move_serializes_to_pure_coordinate_notation(m: Move) {
+        assert_eq!(m.to_string(), UciMove::from(m).to_string());
+    }
 
-        #[test]
-        fn parsing_printed_move_is_an_identity(m: Move) {
-            assert_eq!(m.to_string().parse(), Ok(m));
-        }
+    #[proptest]
+    fn parsing_printed_move_is_an_identity(m: Move) {
+        assert_eq!(m.to_string().parse(), Ok(m));
+    }
 
-        #[test]
-        fn parsing_move_fails_if_from_square_is_invalid(f in "[^a-h]{2}|[^1-8]{2}", t: Square, p: Promotion) {
-            use ParseMoveError::*;
-            let s = [f.clone(), t.to_string(), p.to_string()].concat();
-            assert_eq!(s.parse::<Move>(), Err(InvalidFromSquare(f.parse::<Square>().unwrap_err())));
-        }
+    #[proptest]
+    fn parsing_move_fails_if_from_square_is_invalid(
+        #[strategy("[^a-h]{2}|[^1-8]{2}")] f: String,
+        t: Square,
+        p: Promotion,
+    ) {
+        use ParseMoveError::*;
+        let s = [f.clone(), t.to_string(), p.to_string()].concat();
+        assert_eq!(
+            s.parse::<Move>(),
+            Err(InvalidFromSquare(f.parse::<Square>().unwrap_err()))
+        );
+    }
 
-        #[test]
-        fn parsing_move_fails_if_to_square_is_invalid(f: Square, t in "[^a-h]{2}|[^1-8]{2}", p: Promotion) {
-            use ParseMoveError::*;
-            let s = [f.to_string(), t.clone(), p.to_string()].concat();
-            assert_eq!(s.parse::<Move>(), Err(InvalidToSquare(t.parse::<Square>().unwrap_err())));
-        }
+    #[proptest]
+    fn parsing_move_fails_if_to_square_is_invalid(
+        f: Square,
+        #[strategy("[^a-h]{2}|[^1-8]{2}")] t: String,
+        p: Promotion,
+    ) {
+        use ParseMoveError::*;
+        let s = [f.to_string(), t.clone(), p.to_string()].concat();
+        assert_eq!(
+            s.parse::<Move>(),
+            Err(InvalidToSquare(t.parse::<Square>().unwrap_err()))
+        );
+    }
 
-        #[test]
-        fn parsing_move_fails_if_promotion_is_invalid(f: Square, t: Square, p in "[^nbrq]+") {
-            use ParseMoveError::*;
-            let s = [f.to_string(), t.to_string(), p.clone()].concat();
-            assert_eq!(s.parse::<Move>(), Err(InvalidPromotion(p.parse::<Promotion>().unwrap_err())));
-        }
+    #[proptest]
+    fn parsing_move_fails_if_promotion_is_invalid(
+        f: Square,
+        t: Square,
+        #[strategy("[^nbrq]+")] p: String,
+    ) {
+        use ParseMoveError::*;
+        let s = [f.to_string(), t.to_string(), p.clone()].concat();
+        assert_eq!(
+            s.parse::<Move>(),
+            Err(InvalidPromotion(p.parse::<Promotion>().unwrap_err()))
+        );
+    }
 
-        #[test]
-        fn move_has_an_equivalent_vampirc_uci_representation(m: Move) {
-            assert_eq!(Move::from(UciMove::from(m)), m);
-        }
+    #[proptest]
+    fn move_has_an_equivalent_vampirc_uci_representation(m: Move) {
+        assert_eq!(Move::from(UciMove::from(m)), m);
+    }
 
-        #[test]
-        fn move_has_an_equivalent_shakmaty_representation(m: Move) {
-            assert_eq!(Move::from(sm::uci::Uci::from(m)), m);
-        }
+    #[proptest]
+    fn move_has_an_equivalent_shakmaty_representation(m: Move) {
+        assert_eq!(Move::from(sm::uci::Uci::from(m)), m);
     }
 }

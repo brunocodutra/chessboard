@@ -4,9 +4,12 @@ use std::str::FromStr;
 use tracing::instrument;
 use vampirc_uci::UciPiece;
 
+#[cfg(test)]
+use test_strategy::Arbitrary;
+
 /// A promotion specifier.
 #[derive(Debug, Display, Copy, Clone, Eq, PartialEq, Hash)]
-#[cfg_attr(test, derive(proptest_derive::Arbitrary))]
+#[cfg_attr(test, derive(Arbitrary))]
 pub enum Promotion {
     #[display(fmt = "n")]
     Knight,
@@ -104,32 +107,30 @@ impl From<Promotion> for Option<sm::Role> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use proptest::prelude::*;
+    use test_strategy::proptest;
 
-    proptest! {
-        #[test]
-        fn parsing_printed_promotion_is_an_identity(p: Promotion) {
-            assert_eq!(p.to_string().parse(), Ok(p));
-        }
+    #[proptest]
+    fn parsing_printed_promotion_is_an_identity(p: Promotion) {
+        assert_eq!(p.to_string().parse(), Ok(p));
+    }
 
-        #[test]
-        fn parsing_promotion_fails_for_upper_case_letter(s in "[A-Z]") {
-            assert_eq!(s.parse::<Promotion>(), Err(ParsePromotionError));
-        }
+    #[proptest]
+    fn parsing_promotion_fails_for_upper_case_letter(#[strategy("[A-Z]")] s: String) {
+        assert_eq!(s.parse::<Promotion>(), Err(ParsePromotionError));
+    }
 
-        #[test]
-        fn parsing_promotion_fails_except_for_one_of_four_letters(s in "[^nbrq]+") {
-            assert_eq!(s.parse::<Promotion>(), Err(ParsePromotionError));
-        }
+    #[proptest]
+    fn parsing_promotion_fails_except_for_one_of_four_letters(#[strategy("[^nbrq]+")] s: String) {
+        assert_eq!(s.parse::<Promotion>(), Err(ParsePromotionError));
+    }
 
-        #[test]
-        fn promotion_has_an_equivalent_vampirc_uci_representation(p: Promotion) {
-            assert_eq!(Promotion::from(Option::<UciPiece>::from(p)), p);
-        }
+    #[proptest]
+    fn promotion_has_an_equivalent_vampirc_uci_representation(p: Promotion) {
+        assert_eq!(Promotion::from(Option::<UciPiece>::from(p)), p);
+    }
 
-        #[test]
-        fn promotion_has_an_equivalent_shakmaty_representation(p: Promotion) {
-            assert_eq!(Promotion::from(Option::<sm::Role>::from(p)), p);
-        }
+    #[proptest]
+    fn promotion_has_an_equivalent_shakmaty_representation(p: Promotion) {
+        assert_eq!(Promotion::from(Option::<sm::Role>::from(p)), p);
     }
 }
