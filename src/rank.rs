@@ -2,7 +2,6 @@ use derive_more::{Display, Error, From};
 use shakmaty as sm;
 use std::convert::{TryFrom, TryInto};
 use std::{iter::FusedIterator, num::ParseIntError, str::FromStr};
-use tracing::instrument;
 
 #[cfg(test)]
 use test_strategy::Arbitrary;
@@ -62,7 +61,6 @@ pub enum ParseRankError {
 impl FromStr for Rank {
     type Err = ParseRankError;
 
-    #[instrument(level = "trace", err)]
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         Ok(s.parse::<u32>()?.try_into()?)
     }
@@ -80,7 +78,6 @@ pub struct RankOutOfRange;
 impl TryFrom<u32> for Rank {
     type Error = RankOutOfRange;
 
-    #[instrument(level = "trace", err)]
     fn try_from(n: u32) -> Result<Self, Self::Error> {
         Self::iter()
             .find(|&f| u32::from(f) == n)
@@ -102,7 +99,6 @@ pub struct RankIndexOutOfRange;
 impl TryFrom<usize> for Rank {
     type Error = RankIndexOutOfRange;
 
-    #[instrument(level = "trace", err)]
     fn try_from(i: usize) -> Result<Self, Self::Error> {
         use Rank::*;
 

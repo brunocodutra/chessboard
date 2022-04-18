@@ -3,7 +3,6 @@ use derive_more::{Display, Error, From};
 use shakmaty as sm;
 use std::convert::{TryFrom, TryInto};
 use std::{cmp::Ordering, iter::FusedIterator, str::FromStr};
-use tracing::instrument;
 use vampirc_uci::UciSquare;
 
 #[cfg(test)]
@@ -68,7 +67,6 @@ pub struct SquareIndexOutOfRange;
 impl TryFrom<usize> for Square {
     type Error = SquareIndexOutOfRange;
 
-    #[instrument(level = "trace", err)]
     fn try_from(i: usize) -> Result<Self, Self::Error> {
         Ok(Square(
             (i % 8).try_into().map_err(|_| SquareIndexOutOfRange)?,
@@ -94,7 +92,6 @@ pub enum ParseSquareError {
 impl FromStr for Square {
     type Err = ParseSquareError;
 
-    #[instrument(level = "trace", err)]
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let i = s.char_indices().nth(1).map_or_else(|| s.len(), |(i, _)| i);
         Ok(Square(s[..i].parse()?, s[i..].parse()?))

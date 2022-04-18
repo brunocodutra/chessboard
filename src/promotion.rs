@@ -1,7 +1,6 @@
 use derive_more::{Display, Error};
 use shakmaty as sm;
 use std::str::FromStr;
-use tracing::instrument;
 use vampirc_uci::UciPiece;
 
 #[cfg(test)]
@@ -37,7 +36,6 @@ pub struct ParsePromotionError;
 impl FromStr for Promotion {
     type Err = ParsePromotionError;
 
-    #[instrument(level = "trace", err)]
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
             "" => Ok(Promotion::None),

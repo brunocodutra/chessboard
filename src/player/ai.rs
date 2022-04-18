@@ -5,7 +5,7 @@ use std::{convert::Infallible, fmt::Debug};
 use tracing::instrument;
 
 #[derive(Debug, Constructor)]
-pub struct Ai<S: Search + Debug> {
+pub struct Ai<S: Search> {
     strategy: S,
 }
 

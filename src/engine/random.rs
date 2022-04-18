@@ -1,14 +1,12 @@
 use crate::{Engine, Position};
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
-use tracing::instrument;
 
 /// A trivial [`Engine`] that evaluates positions to random, but stable, scores.
 #[derive(Debug, Default, Clone)]
 pub struct Random;
 
 impl Engine for Random {
-    #[instrument(level = "trace")]
     fn evaluate(&self, pos: &Position) -> i32 {
         let mut hashser = DefaultHasher::new();
         pos.hash(&mut hashser);
