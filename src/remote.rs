@@ -4,11 +4,9 @@ use std::fmt::Display;
 use tracing::instrument;
 
 mod process;
-mod tcp;
 mod terminal;
 
 pub use process::*;
-pub use tcp::*;
 pub use terminal::*;
 
 /// Trait for types that communicate via message-passing.
@@ -32,8 +30,6 @@ pub trait Remote {
 #[derive(Debug, Display, Error, From)]
 #[display(fmt = "failed to communicate with the remote {}")]
 pub enum RemoteDispatcherError {
-    #[display(fmt = "TCP endpoint")]
-    TcpIoError(TcpIoError),
     #[display(fmt = "process")]
     ProcessIoError(ProcessIoError),
     #[display(fmt = "terminal")]
@@ -44,8 +40,6 @@ pub enum RemoteDispatcherError {
 #[allow(clippy::large_enum_variant)]
 #[derive(DebugCustom, From)]
 pub enum RemoteDispatcher {
-    #[debug(fmt = "{:?}", _0)]
-    Tcp(Tcp),
     #[debug(fmt = "{:?}", _0)]
     Process(Process),
     #[debug(fmt = "{:?}", _0)]
@@ -60,7 +54,6 @@ impl Remote for RemoteDispatcher {
     async fn recv(&mut self) -> Result<String, Self::Error> {
         use RemoteDispatcher::*;
         let line = match self {
-            Tcp(r) => r.recv().await?,
             Process(r) => r.recv().await?,
             Terminal(r) => r.recv().await?,
         };
@@ -72,7 +65,6 @@ impl Remote for RemoteDispatcher {
     async fn send<D: Display + Send + 'static>(&mut self, item: D) -> Result<(), Self::Error> {
         use RemoteDispatcher::*;
         match self {
-            Tcp(r) => r.send(item).await?,
             Process(r) => r.send(item).await?,
             Terminal(r) => r.send(item).await?,
         }
@@ -84,7 +76,6 @@ impl Remote for RemoteDispatcher {
     async fn flush(&mut self) -> Result<(), Self::Error> {
         use RemoteDispatcher::*;
         match self {
-            Tcp(r) => r.flush().await?,
             Process(r) => r.flush().await?,
             Terminal(r) => r.flush().await?,
         }

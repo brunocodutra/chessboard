@@ -1,6 +1,6 @@
 use anyhow::{bail, Context, Error as Anyhow};
 use chessboard::player::{Ai, Cli, Uci};
-use chessboard::remote::{Process, Tcp, Terminal};
+use chessboard::remote::{Process, Terminal};
 use chessboard::{engine::Random, search::Negamax, Color, Game, Player, PlayerDispatcher};
 use clap::{AppSettings::DeriveDisplayOrder, Parser};
 use futures::try_join;
@@ -13,6 +13,10 @@ use url::Url;
 
 #[instrument(level = "trace", err)]
 async fn player(color: Color, url: Url) -> Result<PlayerDispatcher, Anyhow> {
+    if url.has_authority() {
+        bail!("urls that have an authority component are not supported");
+    }
+
     if let "ai" = url.scheme() {
         let engine = match url.fragment() {
             Some("random") => Random::default().into(),
@@ -27,16 +31,9 @@ async fn player(color: Color, url: Url) -> Result<PlayerDispatcher, Anyhow> {
 
         Ok(Ai::new(strategy).into())
     } else {
-        let remote = match (url.host_str(), url.path()) {
-            (None, "") => Terminal::new(color).into(),
-            (None, path) => Process::spawn(path).await?.into(),
-
-            (Some(host), "") => match url.port() {
-                Some(port) => Tcp::connect(format!("{}:{}", host, port)).await?.into(),
-                None => Tcp::connect(host).await?.into(),
-            },
-
-            _ => bail!("remote web services are not supported yet"),
+        let remote = match url.path() {
+            "" => Terminal::new(color).into(),
+            path => Process::spawn(path).await?.into(),
         };
 
         let player = match url.scheme() {
