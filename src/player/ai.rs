@@ -24,26 +24,27 @@ impl<S: Search + Debug + Send> Player for Ai<S> {
 mod tests {
     use super::*;
     use crate::{search::MockSearch, Move};
-    use proptest::prelude::*;
     use smol::block_on;
+    use test_strategy::proptest;
 
-    proptest! {
-        #[test]
-        fn play_searches_for_move(pos: Position, m: Move) {
-            let mut strategy = MockSearch::new();
-            strategy.expect_search().times(1).returning(move |_| Some(m));
+    #[proptest]
+    fn play_searches_for_move(pos: Position, m: Move) {
+        let mut strategy = MockSearch::new();
+        strategy
+            .expect_search()
+            .times(1)
+            .returning(move |_| Some(m));
 
-            let mut ai = Ai::new(strategy);
-            assert_eq!(block_on(ai.act(&pos)).unwrap(), Action::Move(m));
-        }
+        let mut ai = Ai::new(strategy);
+        assert_eq!(block_on(ai.act(&pos))?, Action::Move(m));
+    }
 
-        #[test]
-        fn play_resigns_if_there_are_no_moves(pos: Position) {
-            let mut strategy = MockSearch::new();
-            strategy.expect_search().times(1).returning(|_| None);
+    #[proptest]
+    fn play_resigns_if_there_are_no_moves(pos: Position) {
+        let mut strategy = MockSearch::new();
+        strategy.expect_search().times(1).returning(|_| None);
 
-            let mut ai = Ai::new(strategy);
-            assert_eq!(block_on(ai.act(&pos)).unwrap(), Action::Resign(pos.turn()));
-        }
+        let mut ai = Ai::new(strategy);
+        assert_eq!(block_on(ai.act(&pos))?, Action::Resign(pos.turn()));
     }
 }

@@ -4,9 +4,12 @@ use std::convert::{TryFrom, TryInto};
 use std::{char::ParseCharError, iter::FusedIterator, str::FromStr};
 use tracing::instrument;
 
+#[cfg(test)]
+use test_strategy::Arbitrary;
+
 /// Denotes a column on the chess board.
 #[derive(Debug, Display, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
-#[cfg_attr(test, derive(proptest_derive::Arbitrary))]
+#[cfg_attr(test, derive(Arbitrary))]
 #[repr(u8)]
 pub enum File {
     #[display(fmt = "a")]
@@ -133,100 +136,108 @@ impl From<File> for sm::File {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use proptest::prelude::*;
+    use test_strategy::proptest;
 
-    proptest! {
-        #[test]
-        fn iter_returns_iterator_over_files_in_order(_: ()) {
-            use File::*;
-            assert_eq!(
-                File::iter().collect::<Vec<_>>(),
-                vec![A, B, C, D, E, F, G, H]
-            );
-        }
+    #[proptest]
+    fn iter_returns_iterator_over_files_in_order() {
+        use File::*;
+        assert_eq!(
+            File::iter().collect::<Vec<_>>(),
+            vec![A, B, C, D, E, F, G, H]
+        );
+    }
 
-        #[test]
-        fn iter_returns_double_ended_iterator(_: ()) {
-            use File::*;
-            assert_eq!(
-                File::iter().rev().collect::<Vec<_>>(),
-                vec![H, G, F, E, D, C, B, A]
-            );
-        }
+    #[proptest]
+    fn iter_returns_double_ended_iterator() {
+        use File::*;
+        assert_eq!(
+            File::iter().rev().collect::<Vec<_>>(),
+            vec![H, G, F, E, D, C, B, A]
+        );
+    }
 
-        #[test]
-        fn iter_returns_iterator_of_exact_size(_: ()) {
-            assert_eq!(File::iter().len(), 8);
-        }
+    #[proptest]
+    fn iter_returns_iterator_of_exact_size() {
+        assert_eq!(File::iter().len(), 8);
+    }
 
-        #[test]
-        fn parsing_printed_file_is_an_identity(f: File) {
-            assert_eq!(f.to_string().parse(), Ok(f));
-        }
+    #[proptest]
+    fn parsing_printed_file_is_an_identity(f: File) {
+        assert_eq!(f.to_string().parse(), Ok(f));
+    }
 
-        #[test]
-        fn parsing_file_succeeds_for_lower_case_letter_between_a_and_h(c in b'a'..=b'h') {
-            let c = char::from(c);
-            assert_eq!(c.to_string().parse::<File>(), Ok(c.try_into().unwrap()));
-        }
+    #[proptest]
+    fn parsing_file_succeeds_for_lower_case_letter_between_a_and_h(#[strategy(b'a'..=b'h')] c: u8) {
+        let c = char::from(c);
+        assert_eq!(c.to_string().parse::<File>(), Ok(c.try_into()?));
+    }
 
-        #[test]
-        fn parsing_file_fails_for_upper_case_letter(s in "[A-Z]") {
-            assert_eq!(s.parse::<File>(), Err(ParseFileError::OutOfRange(FileOutOfRange)));
-        }
+    #[proptest]
+    fn parsing_file_fails_for_upper_case_letter(#[strategy("[A-Z]")] s: String) {
+        assert_eq!(
+            s.parse::<File>(),
+            Err(ParseFileError::OutOfRange(FileOutOfRange))
+        );
+    }
 
-        #[test]
-        fn parsing_file_fails_for_strings_of_length_not_one(s in ".{2,}?") {
-            use ParseFileError::*;
-            assert_eq!(s.parse::<File>(), Err(ParseCharError(s.parse::<char>().unwrap_err())));
-        }
+    #[proptest]
+    fn parsing_file_fails_for_strings_of_length_not_one(#[strategy(".{2,}?")] s: String) {
+        use ParseFileError::*;
+        assert_eq!(
+            s.parse::<File>(),
+            Err(ParseCharError(s.parse::<char>().unwrap_err()))
+        );
+    }
 
-        #[test]
-        fn parsing_file_fails_for_char_other_than_lower_case_letter_between_a_and_h(c: char) {
-            prop_assume!(!('a'..='h').contains(&c));
-            use ParseFileError::*;
-            assert_eq!(c.to_string().parse::<File>(), Err(OutOfRange(File::try_from(c).unwrap_err())));
-        }
+    #[proptest]
+    fn parsing_file_fails_for_char_other_than_lower_case_letter_between_a_and_h(
+        #[filter(!('a'..='h').contains(&#c))] c: char,
+    ) {
+        use ParseFileError::*;
+        assert_eq!(
+            c.to_string().parse::<File>(),
+            Err(OutOfRange(File::try_from(c).unwrap_err()))
+        );
+    }
 
-        #[test]
-        fn file_can_be_converted_into_char(f: File) {
-            assert_eq!(char::from(f).try_into(), Ok(f));
-        }
+    #[proptest]
+    fn file_can_be_converted_into_char(f: File) {
+        assert_eq!(char::from(f).try_into(), Ok(f));
+    }
 
-        #[test]
-        fn converting_file_from_char_out_of_range_fails(c in b'i'..) {
-            assert_eq!(File::try_from(char::from(c)), Err(FileOutOfRange));
-        }
+    #[proptest]
+    fn converting_file_from_char_out_of_range_fails(#[strategy(b'i'..)] c: u8) {
+        assert_eq!(File::try_from(char::from(c)), Err(FileOutOfRange));
+    }
 
-        #[test]
-        fn file_has_an_index(f: File) {
-            assert_eq!(f.index().try_into(), Ok(f));
-        }
+    #[proptest]
+    fn file_has_an_index(f: File) {
+        assert_eq!(f.index().try_into(), Ok(f));
+    }
 
-        #[test]
-        fn new_constructs_file_by_index(i in (0usize..=7)) {
-            assert_eq!(File::new(i).index(), i);
-        }
+    #[proptest]
+    fn new_constructs_file_by_index(#[strategy(0usize..=7)] i: usize) {
+        assert_eq!(File::new(i).index(), i);
+    }
 
-        #[test]
-        #[should_panic]
-        fn new_panics_if_index_out_of_range(i in (8usize..)) {
-            File::new(i);
-        }
+    #[proptest]
+    #[should_panic]
+    fn new_panics_if_index_out_of_range(#[strategy(8usize..)] i: usize) {
+        File::new(i);
+    }
 
-        #[test]
-        fn converting_file_from_index_out_of_range_fails(i in 8usize..) {
-            assert_eq!(File::try_from(i), Err(FileIndexOutOfRange));
-        }
+    #[proptest]
+    fn converting_file_from_index_out_of_range_fails(#[strategy(8usize..)] i: usize) {
+        assert_eq!(File::try_from(i), Err(FileIndexOutOfRange));
+    }
 
-        #[test]
-        fn file_is_ordered_by_index(a: File, b: File) {
-            assert_eq!(a < b, a.index() < b.index());
-        }
+    #[proptest]
+    fn file_is_ordered_by_index(a: File, b: File) {
+        assert_eq!(a < b, a.index() < b.index());
+    }
 
-        #[test]
-        fn file_has_an_equivalent_shakmaty_representation(f: File) {
-            assert_eq!(File::from(sm::File::from(f)), f);
-        }
+    #[proptest]
+    fn file_has_an_equivalent_shakmaty_representation(f: File) {
+        assert_eq!(File::from(sm::File::from(f)), f);
     }
 }

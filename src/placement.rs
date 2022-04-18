@@ -3,15 +3,24 @@ use derive_more::{DebugCustom, Display};
 use shakmaty as sm;
 use std::ops::Index;
 
+#[cfg(test)]
+use proptest::{collection::hash_map, prelude::*};
+
+#[cfg(test)]
+use test_strategy::Arbitrary;
+
 /// The arrangement of [`Piece`]s on the chess board.
 ///
 /// This type does not guarantee it holds a valid arrangement of pieces.
 #[derive(DebugCustom, Display, Clone, Eq, PartialEq, Hash)]
-#[cfg_attr(test, derive(proptest_derive::Arbitrary))]
+#[cfg_attr(test, derive(Arbitrary))]
 #[debug(fmt = "Placement(\"{}\")", self)]
 #[display(fmt = "{}", "board")]
 pub struct Placement {
-    #[cfg_attr(test, proptest(strategy = "tests::any_board()"))]
+    #[cfg_attr(test, strategy(
+        hash_map(any::<Square>().prop_map_into(), any::<Piece>().prop_map_into(), 0..=64)
+            .prop_map(|b| b.into_iter().collect())
+    ))]
     board: sm::Board,
 }
 
@@ -66,31 +75,20 @@ impl From<Placement> for sm::Board {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use proptest::{collection::hash_map, prelude::*};
+    use test_strategy::proptest;
 
-    pub(super) fn any_board() -> impl Strategy<Value = sm::Board> {
-        hash_map(
-            any::<Square>().prop_map_into(),
-            any::<Piece>().prop_map_into(),
-            0..=64,
-        )
-        .prop_map(|b| b.into_iter().collect())
+    #[proptest]
+    fn placement_implements_index_operator(p: Placement, s: Square) {
+        assert_eq!(p[s], p.board.piece_at(s.into()).map(Into::into));
     }
 
-    proptest! {
-        #[test]
-        fn placement_implements_index_operator(p: Placement, s: Square) {
-            assert_eq!(p[s], p.board.piece_at(s.into()).map(Into::into));
-        }
+    #[proptest]
+    fn placement_is_empty_by_default(s: Square) {
+        assert_eq!(Placement::default()[s], None);
+    }
 
-        #[test]
-        fn placement_is_empty_by_default(s: Square) {
-            assert_eq!(Placement::default()[s], None);
-        }
-
-        #[test]
-        fn placement_has_an_equivalent_shakmaty_representation(p: Placement) {
-            assert_eq!(Placement::from(sm::Board::from(p.clone())), p);
-        }
+    #[proptest]
+    fn placement_has_an_equivalent_shakmaty_representation(p: Placement) {
+        assert_eq!(Placement::from(sm::Board::from(p.clone())), p);
     }
 }

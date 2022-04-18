@@ -21,24 +21,24 @@ impl<E: Engine> Negamax<E> {
     fn negamax(&self, pos: Position, depth: u32, mut a: i32, b: i32) -> (Option<Move>, i32) {
         debug_assert!(a < b);
 
-        let mvs = pos.moves();
+        let moves = pos.moves();
 
-        if depth == 0 || mvs.len() == 0 {
+        if depth == 0 || moves.len() == 0 {
             return (None, self.engine.evaluate(&pos));
         }
 
         let mut best = None;
         let mut score = i32::MIN;
 
-        for mv in mvs {
+        for m in moves {
             let mut next = pos.clone();
-            next.play(mv).expect("expected legal move");
+            next.play(m).expect("expected legal move");
 
             let (_, s) = self.negamax(next, depth - 1, b.saturating_neg(), a.saturating_neg());
 
             if score < s.saturating_neg() {
                 score = s.saturating_neg();
-                best = Some(mv);
+                best = Some(m);
                 a = a.max(score);
             }
 
@@ -72,62 +72,87 @@ impl<E: Engine + Debug + Clone + Send + 'static> Search for Negamax<E> {
 mod tests {
     use super::*;
     use crate::engine::{MockEngine, Random};
-    use crate::Checkmate;
+    use crate::PositionKind;
     use mockall::predicate::*;
-    use proptest::prelude::*;
     use smol::block_on;
+    use test_strategy::proptest;
 
-    proptest! {
-        #[test]
-        #[should_panic]
-        #[cfg(debug_assertions)]
-        fn negamax_panics_if_alpha_not_smaller_than_beta(pos: Position, a: i32, b: i32) {
-            Negamax::new(MockEngine::new()).negamax(pos, 0, a.max(b), a.min(b));
-        }
+    #[proptest]
+    #[should_panic]
+    #[cfg(debug_assertions)]
+    fn negamax_panics_if_alpha_not_smaller_than_beta(pos: Position, a: i32, b: i32) {
+        Negamax::new(MockEngine::new()).negamax(pos, 0, a.max(b), a.min(b));
+    }
 
-        #[test]
-        fn negamax_returns_none_if_depth_is_zero(pos: Position, s: i32) {
-            let mut engine = MockEngine::new();
-            engine.expect_evaluate().times(1).with(eq(pos.clone())).returning(move |_| s);
+    #[proptest]
+    fn negamax_returns_none_if_depth_is_zero(pos: Position, s: i32) {
+        let mut engine = MockEngine::new();
+        engine
+            .expect_evaluate()
+            .times(1)
+            .with(eq(pos.clone()))
+            .returning(move |_| s);
 
-            let strategy = Negamax::new(engine);
-            assert_eq!(strategy.negamax(pos, 0, i32::MIN, i32::MAX), (None, s));
-        }
+        let strategy = Negamax::new(engine);
+        assert_eq!(strategy.negamax(pos, 0, i32::MIN, i32::MAX), (None, s));
+    }
 
-        #[test]
-        fn negamax_returns_none_if_there_are_no_moves(pos: Checkmate, d: u32, s: i32) {
-            let mut engine = MockEngine::new();
-            engine.expect_evaluate().times(1).with(eq(pos.clone())).returning(move |_| s);
+    #[proptest]
+    fn negamax_returns_none_if_there_are_no_moves(
+        #[any(PositionKind::Checkmate)] pos: Position,
+        d: u32,
+        s: i32,
+    ) {
+        let mut engine = MockEngine::new();
+        engine
+            .expect_evaluate()
+            .times(1)
+            .with(eq(pos.clone()))
+            .returning(move |_| s);
 
-            let strategy = Negamax::new(engine);
-            assert_eq!(strategy.negamax(pos.into(), d, i32::MIN, i32::MAX), (None, s));
-        }
+        let strategy = Negamax::new(engine);
+        assert_eq!(strategy.negamax(pos, d, i32::MIN, i32::MAX), (None, s));
+    }
 
-        #[test]
-        fn negamax_returns_move_with_best_score(pos: Position, mut s: i8) {
-            let mvs = pos.moves();
-            prop_assume!(mvs.len() > 0);
+    #[proptest]
+    fn negamax_returns_move_with_best_score(
+        #[by_ref]
+        #[filter(#pos.moves().len() > 0)]
+        pos: Position,
+        #[strategy(-128..=128)] mut score: i32,
+    ) {
+        let moves = pos.moves();
+        let positions = moves.clone().map(|m| {
+            let mut pos = pos.clone();
+            pos.play(m).unwrap();
+            pos
+        });
 
-            let mut engine = MockEngine::new();
+        let mut engine = MockEngine::new();
 
-            let mut score: i32 = s.into();
-            let ps = mvs.clone().map(|m| { let mut p = pos.clone(); p.play(m).unwrap(); p } );
-            engine.expect_evaluate().times(mvs.len())
-                .with(in_hash(ps))
-                .returning(move |_| { score -= 1; score });
+        engine
+            .expect_evaluate()
+            .times(moves.len())
+            .with(in_hash(positions))
+            .returning(move |_| {
+                score -= 1;
+                score
+            });
 
-            let score: i32 = mvs.len() as i32 - score;
-            let strategy = Negamax::new(engine);
-            assert_eq!(strategy.negamax(pos, 1, i32::MIN, i32::MAX), (mvs.last(), score));
-        }
+        let score: i32 = moves.len() as i32 - score;
+        let strategy = Negamax::new(engine);
+        assert_eq!(
+            strategy.negamax(pos, 1, i32::MIN, i32::MAX),
+            (moves.last(), score)
+        );
+    }
 
-        #[test]
-        fn search_runs_negamax(pos: Position) {
-            if let Some(mv) = block_on(Negamax::new(Random).search(&pos)) {
-                assert!(pos.moves().any(|m| m == mv));
-            } else {
-                assert_eq!(pos.moves().len(), 0);
-            }
+    #[proptest]
+    fn search_runs_negamax(pos: Position) {
+        if let Some(m) = block_on(Negamax::new(Random).search(&pos)) {
+            assert!(pos.moves().any(|n| n == m));
+        } else {
+            assert_eq!(pos.moves().len(), 0);
         }
     }
 }
