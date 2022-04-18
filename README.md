@@ -1,6 +1,6 @@
 # Chessboard [![codecov.badge]][codecov.home]
 
-This crate provides a simple command line interface for playing chess.
+A sandbox for experimenting with chess engines.
 
 ## Contribution
 
