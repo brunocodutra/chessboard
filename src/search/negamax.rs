@@ -1,7 +1,5 @@
 use crate::{Engine, Move, Position, Search};
-use async_trait::async_trait;
 use derive_more::Constructor;
-use smol::unblock;
 use std::fmt::Debug;
 use tracing::instrument;
 
@@ -57,13 +55,10 @@ impl<E: Engine> Negamax<E> {
     }
 }
 
-#[async_trait]
-impl<E: Engine + Debug + Clone + Send + 'static> Search for Negamax<E> {
+impl<E: Engine + Debug> Search for Negamax<E> {
     #[instrument(level = "trace")]
-    async fn search(&mut self, pos: &Position) -> Option<Move> {
-        let pos = pos.clone();
-        let this = self.clone();
-        let (best, _) = unblock(move || this.negamax(pos, Self::DEPTH, i32::MIN, i32::MAX)).await;
+    fn search(&mut self, pos: &Position) -> Option<Move> {
+        let (best, _) = self.negamax(pos.clone(), Self::DEPTH, i32::MIN, i32::MAX);
         best
     }
 }
@@ -74,7 +69,6 @@ mod tests {
     use crate::engine::{MockEngine, Random};
     use crate::PositionKind;
     use mockall::predicate::*;
-    use smol::block_on;
     use test_strategy::proptest;
 
     #[proptest]
@@ -149,7 +143,7 @@ mod tests {
 
     #[proptest]
     fn search_runs_negamax(pos: Position) {
-        if let Some(m) = block_on(Negamax::new(Random).search(&pos)) {
+        if let Some(m) = Negamax::new(Random).search(&pos) {
             assert!(pos.moves().any(|n| n == m));
         } else {
             assert_eq!(pos.moves().len(), 0);
