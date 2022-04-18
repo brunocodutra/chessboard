@@ -15,7 +15,7 @@ use test_strategy::Arbitrary;
 #[cfg_attr(test, derive(Arbitrary))]
 #[clap(
     name = "",
-    subcommand_value_name = "COMarg: invalid_cmdD",
+    subcommand_value_name = "COMMAND",
     subcommand_help_heading = "COMMANDS",
     no_binary_name = true,
     disable_help_flag = true,

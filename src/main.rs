@@ -22,7 +22,7 @@ async fn player(color: Color, url: Url) -> Result<PlayerDispatcher, Anyhow> {
 
         let strategy = match url.path() {
             "negamax" => Negamax::new(engine).into(),
-            path => bail!("unknwon strategy '{}'", path),
+            path => bail!("unknown strategy '{}'", path),
         };
 
         Ok(Ai::new(strategy).into())
@@ -36,7 +36,7 @@ async fn player(color: Color, url: Url) -> Result<PlayerDispatcher, Anyhow> {
                 None => Tcp::connect(host).await?.into(),
             },
 
-            _ => bail!("remote webservices are not supported yet"),
+            _ => bail!("remote web services are not supported yet"),
         };
 
         let player = match url.scheme() {
