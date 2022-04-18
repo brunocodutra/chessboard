@@ -299,8 +299,8 @@ pub enum IllegalPosition {
     MissingKing,
     #[display(fmt = "at least one side has multiple kings")]
     TooManyKings,
-    #[display(fmt = "there are pawns on the backrank")]
-    PawnsOnBackrank,
+    #[display(fmt = "there are pawns on the back-rank")]
+    PawnsOnBackRank,
     #[display(fmt = "the player in check is not to move")]
     OppositeCheck,
     #[display(fmt = "invalid en passant square; wrong rank, occupied, or missing pushed pawn")]
@@ -321,7 +321,7 @@ impl From<sm::PositionError<sm::Chess>> for IllegalPosition {
         } else if kinds.contains(sm::PositionErrorKinds::TOO_MANY_KINGS) {
             IllegalPosition::TooManyKings
         } else if kinds.contains(sm::PositionErrorKinds::PAWNS_ON_BACKRANK) {
-            IllegalPosition::PawnsOnBackrank
+            IllegalPosition::PawnsOnBackRank
         } else if kinds.contains(sm::PositionErrorKinds::OPPOSITE_CHECK) {
             IllegalPosition::OppositeCheck
         } else if kinds.contains(sm::PositionErrorKinds::INVALID_EP_SQUARE) {
