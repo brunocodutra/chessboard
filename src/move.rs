@@ -2,7 +2,6 @@ use crate::{ParsePromotionError, ParseSquareError, Position, Promotion, Square};
 use derive_more::{Display, Error, From};
 use shakmaty as sm;
 use std::str::FromStr;
-use tracing::instrument;
 use vampirc_uci::UciMove;
 
 #[cfg(test)]
@@ -56,7 +55,6 @@ pub enum ParseMoveError {
 impl FromStr for Move {
     type Err = ParseMoveError;
 
-    #[instrument(level = "trace", err)]
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         use ParseMoveError::*;
 

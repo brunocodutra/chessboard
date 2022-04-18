@@ -1,6 +1,5 @@
 use crate::{EngineDispatcher, Move, Position};
 use derive_more::{DebugCustom, From};
-use tracing::instrument;
 
 mod negamax;
 
@@ -21,7 +20,6 @@ pub enum SearchDispatcher {
 }
 
 impl Search for SearchDispatcher {
-    #[instrument(level = "trace")]
     fn search(&mut self, pos: &Position) -> Option<Move> {
         use SearchDispatcher::*;
         match self {

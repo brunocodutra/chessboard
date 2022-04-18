@@ -1,7 +1,6 @@
 use crate::{Engine, Move, Position, Search};
 use derive_more::Constructor;
 use std::fmt::Debug;
-use tracing::instrument;
 
 #[derive(Debug, Clone, Constructor)]
 pub struct Negamax<E: Engine> {
@@ -15,7 +14,6 @@ impl<E: Engine> Negamax<E> {
     #[cfg(not(debug_assertions))]
     const DEPTH: u32 = 4;
 
-    #[cfg_attr(debug_assertions, instrument(level = "trace", skip(self)))]
     fn negamax(&self, pos: Position, depth: u32, mut a: i32, b: i32) -> (Option<Move>, i32) {
         debug_assert!(a < b);
 
@@ -55,8 +53,7 @@ impl<E: Engine> Negamax<E> {
     }
 }
 
-impl<E: Engine + Debug> Search for Negamax<E> {
-    #[instrument(level = "trace")]
+impl<E: Engine> Search for Negamax<E> {
     fn search(&mut self, pos: &Position) -> Option<Move> {
         let (best, _) = self.negamax(pos.clone(), Self::DEPTH, i32::MIN, i32::MAX);
         best

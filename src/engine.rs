@@ -1,6 +1,5 @@
 use crate::Position;
 use derive_more::{DebugCustom, From};
-use tracing::instrument;
 
 mod random;
 
@@ -23,7 +22,6 @@ pub enum EngineDispatcher {
 }
 
 impl Engine for EngineDispatcher {
-    #[instrument(level = "trace")]
     fn evaluate(&self, pos: &Position) -> i32 {
         use EngineDispatcher::*;
         match self {

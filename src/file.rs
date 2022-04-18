@@ -2,7 +2,6 @@ use derive_more::{Display, Error, From};
 use shakmaty as sm;
 use std::convert::{TryFrom, TryInto};
 use std::{char::ParseCharError, iter::FusedIterator, str::FromStr};
-use tracing::instrument;
 
 #[cfg(test)]
 use test_strategy::Arbitrary;
@@ -62,7 +61,6 @@ pub enum ParseFileError {
 impl FromStr for File {
     type Err = ParseFileError;
 
-    #[instrument(level = "trace", err)]
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         Ok(s.parse::<char>()?.try_into()?)
     }
@@ -80,7 +78,6 @@ pub struct FileOutOfRange;
 impl TryFrom<char> for File {
     type Error = FileOutOfRange;
 
-    #[instrument(level = "trace", err)]
     fn try_from(c: char) -> Result<Self, Self::Error> {
         Self::iter()
             .find(|&f| char::from(f) == c)
@@ -102,7 +99,6 @@ pub struct FileIndexOutOfRange;
 impl TryFrom<usize> for File {
     type Error = FileIndexOutOfRange;
 
-    #[instrument(level = "trace", err)]
     fn try_from(i: usize) -> Result<Self, Self::Error> {
         use File::*;
 

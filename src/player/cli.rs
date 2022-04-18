@@ -55,7 +55,6 @@ impl Cmd {
     }
 }
 
-#[instrument(level = "trace", err)]
 fn try_parse_descriptor<T>(s: &str) -> Result<T, String>
 where
     T: FromStr,

@@ -2,7 +2,6 @@ use crate::{Color, IllegalMove, Move, Placement, Square};
 use derive_more::{DebugCustom, Display, Error, From};
 use shakmaty as sm;
 use std::{convert::TryFrom, num::NonZeroU32, str::FromStr};
-use tracing::instrument;
 
 #[cfg(test)]
 use proptest::{prelude::*, sample::select};
@@ -244,7 +243,6 @@ impl Position {
     }
 
     /// Play a [`Move`] if legal in this position.
-    #[instrument(level = "trace", err)]
     pub fn play(&mut self, m: Move) -> Result<(), IllegalMove> {
         match sm::uci::Uci::to_move(&m.into(), &self.chess) {
             Ok(vm) if sm::Position::is_legal(&self.chess, &vm) => {
@@ -348,7 +346,6 @@ pub enum ParsePositionError {
 impl FromStr for Position {
     type Err = ParsePositionError;
 
-    #[instrument(level = "trace", err)]
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let fen: Fen = s.parse()?;
         Ok(Self::try_from(fen)?)

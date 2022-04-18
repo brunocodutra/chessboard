@@ -1,5 +1,4 @@
 use crate::{Action, Color, InvalidAction, Outcome, Position};
-use tracing::instrument;
 
 #[cfg(test)]
 use test_strategy::Arbitrary;
@@ -34,7 +33,6 @@ impl Game {
     }
 
     /// Executes a player action if valid, otherwise returns the reason why not.
-    #[instrument(level = "trace", err)]
     pub fn execute(&mut self, action: Action) -> Result<(), InvalidAction> {
         if let Some(result) = self.outcome() {
             return Err(InvalidAction::GameHasEnded(result));
