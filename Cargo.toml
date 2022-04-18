@@ -2,7 +2,7 @@
 name = "chessboard"
 version = "0.1.0"
 authors = ["Bruno Dutra <brunocodutra@gmail.com>"]
-edition = "2018"
+edition = "2021"
 description = "A sandbox for experimenting with chess engines"
 repository = "https://github.com/brunocodutra/chessboard.git"
 license = "GPL-3.0"
