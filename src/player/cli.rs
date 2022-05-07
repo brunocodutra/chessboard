@@ -15,9 +15,8 @@ use test_strategy::Arbitrary;
 #[cfg_attr(test, derive(Arbitrary))]
 #[clap(
     name = "",
-    subcommand_value_name = "COMMAND",
-    subcommand_help_heading = "COMMANDS",
-    no_binary_name = true,
+    multicall = true,
+    arg_required_else_help = true,
     disable_help_flag = true,
     disable_version_flag = true,
     allow_hyphen_values = true
