@@ -1,19 +1,21 @@
-use crate::{Color, IllegalMove, Move, Outcome};
+use crate::{IllegalMove, Move, Outcome};
 use derive_more::{Display, Error, From};
 
 #[cfg(test)]
 use test_strategy::Arbitrary;
 
 /// The possible actions a player can take.
-#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash, From)]
+#[derive(Debug, Display, Copy, Clone, Eq, PartialEq, Hash, From)]
 #[cfg_attr(test, derive(Arbitrary))]
 pub enum Action {
     /// Move a piece on the board.
+    #[display(fmt = "{}", _0)]
     Move(Move),
 
     /// Resign the game in favor of the opponent.
+    #[display(fmt = "resign")]
     #[from(ignore)]
-    Resign(Color),
+    Resign,
 }
 
 /// The reason why the player [`Action`] was rejected.

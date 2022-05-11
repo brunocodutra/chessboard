@@ -16,7 +16,7 @@ impl<S: Search + Debug + Send> Player for Ai<S> {
     #[instrument(level = "trace", err)]
     async fn act(&mut self, pos: &Position) -> Result<Action, Self::Error> {
         let mv = self.strategy.search(pos).map(Into::into);
-        Ok(mv.unwrap_or_else(|| Action::Resign(pos.turn())))
+        Ok(mv.unwrap_or(Action::Resign))
     }
 }
 
@@ -45,6 +45,6 @@ mod tests {
         strategy.expect_search().times(1).returning(|_| None);
 
         let mut ai = Ai::new(strategy);
-        assert_eq!(block_on(ai.act(&pos))?, Action::Resign(pos.turn()));
+        assert_eq!(block_on(ai.act(&pos))?, Action::Resign);
     }
 }
