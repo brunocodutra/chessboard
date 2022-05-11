@@ -41,8 +41,8 @@ impl Game {
         match action {
             Action::Move(m) => self.position.play(m)?,
 
-            Action::Resign(p) => {
-                self.resigned.replace(p);
+            Action::Resign => {
+                self.resigned.replace(self.position.turn());
             }
         }
 
@@ -174,14 +174,13 @@ mod tests {
         #[by_ref]
         #[filter(#game.outcome().is_none())]
         mut game: Game,
-        p: Color,
     ) {
-        assert_eq!(game.execute(Action::Resign(p)), Ok(()));
+        assert_eq!(game.execute(Action::Resign), Ok(()));
         assert_eq!(
             game,
             Game {
-                position: game.position.clone(),
-                resigned: Some(p)
+                resigned: Some(game.position.turn()),
+                ..game.clone()
             }
         );
     }

@@ -1,4 +1,4 @@
-use crate::{Action, Color, File, Move, Placement, Player, Position, Rank, Remote, Square};
+use crate::{Action, File, Move, Placement, Player, Position, Rank, Remote, Square};
 use anyhow::Error as Anyhow;
 use async_trait::async_trait;
 use clap::Parser;
@@ -45,10 +45,10 @@ enum Cmd {
     },
 }
 
-impl Cmd {
-    fn into_action(self, p: Color) -> Action {
-        match self {
-            Cmd::Resign => Action::Resign(p),
+impl From<Cmd> for Action {
+    fn from(cmd: Cmd) -> Self {
+        match cmd {
+            Cmd::Resign => Action::Resign,
             Cmd::Move { descriptor } => Action::Move(descriptor),
         }
     }
@@ -88,7 +88,7 @@ where
             let line = self.remote.recv().await?;
 
             match Cmd::try_parse_from(line.split_whitespace()) {
-                Ok(s) => break Ok(s.into_action(pos.turn())),
+                Ok(s) => break Ok(s.into()),
                 Err(e) => self.remote.send(e).await?,
             };
         }
@@ -166,7 +166,7 @@ mod tests {
             .returning(move || Ok(cmd.to_string()));
 
         let mut cli = Cli::new(remote);
-        assert_eq!(block_on(cli.act(&pos))?, cmd.into_action(pos.turn()));
+        assert_eq!(block_on(cli.act(&pos))?, cmd.into());
     }
 
     #[proptest]
@@ -194,7 +194,7 @@ mod tests {
             .return_once(move || Ok(Cmd::Resign.to_string()));
 
         let mut cli = Cli::new(remote);
-        assert_eq!(block_on(cli.act(&pos))?, Action::Resign(pos.turn()));
+        assert_eq!(block_on(cli.act(&pos))?, Action::Resign);
     }
 
     #[proptest]
@@ -253,7 +253,7 @@ mod tests {
             .returning(move || Ok(cmd.to_string()));
 
         let mut cli = Cli::new(remote);
-        assert_eq!(block_on(cli.act(&pos))?, cmd.into_action(pos.turn()));
+        assert_eq!(block_on(cli.act(&pos))?, cmd.into());
     }
 
     #[proptest]
@@ -290,7 +290,7 @@ mod tests {
             .returning(move || Ok(cmd.to_string()));
 
         let mut cli = Cli::new(remote);
-        assert_eq!(block_on(cli.act(&pos))?, cmd.into_action(pos.turn()));
+        assert_eq!(block_on(cli.act(&pos))?, cmd.into());
     }
 
     #[proptest]
@@ -328,7 +328,7 @@ mod tests {
             .returning(move || Ok(cmd.to_string()));
 
         let mut cli = Cli::new(remote);
-        assert_eq!(block_on(cli.act(&pos))?, cmd.into_action(pos.turn()));
+        assert_eq!(block_on(cli.act(&pos))?, cmd.into());
     }
 
     #[proptest]
@@ -365,7 +365,7 @@ mod tests {
             .returning(move || Ok(cmd.to_string()));
 
         let mut cli = Cli::new(remote);
-        assert_eq!(block_on(cli.act(&pos))?, cmd.into_action(pos.turn()));
+        assert_eq!(block_on(cli.act(&pos))?, cmd.into());
     }
 
     #[proptest]

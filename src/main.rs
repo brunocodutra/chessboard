@@ -113,7 +113,7 @@ fn main() -> Result<(), Box<dyn Error + Send + Sync + 'static>> {
                         White => white.act(position).await?,
                     };
 
-                    info!(player = %position.turn(), ?action);
+                    info!(player = %position.turn(), %action);
 
                     if let Err(e) = game.execute(action).context("invalid player action") {
                         warn!("{:?}", e);
