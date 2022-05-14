@@ -83,7 +83,7 @@ impl From<Square> for usize {
 
 /// The reason why parsing [`Square`] failed.
 #[derive(Debug, Display, Clone, Eq, PartialEq, Error, From)]
-#[display(fmt = "unable to parse square")]
+#[display(fmt = "failed to parse square")]
 pub enum ParseSquareError {
     InvalidFile(ParseFileError),
     InvalidRank(ParseRankError),

@@ -1,20 +1,20 @@
 use crate::Remote;
 use async_trait::async_trait;
 use derive_more::{DebugCustom, Display, Error, From};
-use futures::AsyncWriteExt;
 use rustyline::{error::ReadlineError, Config, Editor};
-use smol::io::{Error as IoError, ErrorKind as IoErrorKind};
-use smol::{lock::Mutex, unblock, Unblock};
-use std::{fmt::Display, io::stdout, io::Stdout, sync::Arc};
+use std::{fmt::Display, io, sync::Arc};
+use tokio::io::{stdout, AsyncWriteExt, Stdout};
+use tokio::{sync::Mutex, task::block_in_place};
 use tracing::instrument;
 
 /// The reason why writing to or reading from the terminal failed.
 #[derive(Debug, Display, Error, From)]
-pub struct TerminalIoError(IoError);
+#[display(fmt = "the remote terminal failed during IO")]
+pub struct TerminalIoError(io::Error);
 
-impl From<IoErrorKind> for TerminalIoError {
-    fn from(k: IoErrorKind) -> Self {
-        IoError::from(k).into()
+impl From<io::ErrorKind> for TerminalIoError {
+    fn from(k: io::ErrorKind) -> Self {
+        io::Error::from(k).into()
     }
 }
 
@@ -22,16 +22,16 @@ impl From<ReadlineError> for TerminalIoError {
     fn from(e: ReadlineError) -> Self {
         match e {
             ReadlineError::Io(e) => e.into(),
-            ReadlineError::Eof => IoErrorKind::UnexpectedEof.into(),
-            ReadlineError::Interrupted => IoErrorKind::Interrupted.into(),
+            ReadlineError::Eof => io::ErrorKind::UnexpectedEof.into(),
+            ReadlineError::Interrupted => io::ErrorKind::Interrupted.into(),
 
             #[cfg(unix)]
-            ReadlineError::Utf8Error => IoErrorKind::InvalidData.into(),
+            ReadlineError::Utf8Error => io::ErrorKind::InvalidData.into(),
 
             #[cfg(windows)]
-            ReadlineError::Decode(e) => IoError::new(IoErrorKind::InvalidData, e).into(),
+            ReadlineError::Decode(e) => io::Error::new(io::ErrorKind::InvalidData, e).into(),
 
-            e => IoError::new(IoErrorKind::Other, e).into(),
+            e => io::Error::new(io::ErrorKind::Other, e).into(),
         }
     }
 }
@@ -44,7 +44,7 @@ impl From<ReadlineError> for TerminalIoError {
 pub struct Terminal {
     prompt: String,
     reader: Arc<Mutex<Editor<()>>>,
-    writer: Unblock<Stdout>,
+    writer: Stdout,
 }
 
 impl Terminal {
@@ -56,7 +56,7 @@ impl Terminal {
             reader: Arc::new(Mutex::new(Editor::with_config(
                 Config::builder().auto_add_history(true).build(),
             ))),
-            writer: Unblock::new(stdout()),
+            writer: stdout(),
         }
     }
 }
@@ -67,19 +67,22 @@ impl Remote for Terminal {
 
     #[instrument(level = "trace", err)]
     async fn recv(&mut self) -> Result<String, Self::Error> {
-        let mut reader = self.reader.lock_arc().await;
+        let mut reader = self.reader.clone().lock_owned().await;
         let prompt = format!("{} > ", self.prompt);
-        Ok(unblock(move || reader.readline(&prompt)).await?)
+        Ok(block_in_place(move || reader.readline(&prompt))?)
     }
 
     #[instrument(level = "trace", skip(item), err, fields(%item))]
     async fn send<D: Display + Send + 'static>(&mut self, item: D) -> Result<(), Self::Error> {
-        let line = format!("{}\n", item);
-        Ok(self.writer.write_all(line.as_bytes()).await?)
+        let msg = item.to_string();
+        self.writer.write_all(msg.as_bytes()).await?;
+        self.writer.write_u8(b'\n').await?;
+        Ok(())
     }
 
     #[instrument(level = "trace", err)]
     async fn flush(&mut self) -> Result<(), Self::Error> {
-        Ok(self.writer.flush().await?)
+        self.writer.flush().await?;
+        Ok(())
     }
 }

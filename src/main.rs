@@ -3,10 +3,9 @@ use chessboard::player::{Ai, Cli, Uci};
 use chessboard::remote::{Process, Terminal};
 use chessboard::{engine::Random, search::Negamax, Color, Game, Player, PlayerDispatcher};
 use clap::{AppSettings::DeriveDisplayOrder, Parser};
-use futures::try_join;
-use smol::block_on;
 use std::io::{stderr, BufWriter};
 use std::{cmp::min, error::Error};
+use tokio::try_join;
 use tracing::{info, instrument, warn, Level};
 use tracing_subscriber::fmt::format::FmtSpan;
 use url::Url;
@@ -77,7 +76,8 @@ struct Opts {
 }
 
 #[instrument(level = "trace", err)]
-fn main() -> Result<(), Box<dyn Error + Send + Sync + 'static>> {
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn Error + Send + Sync + 'static>> {
     let Opts {
         white,
         black,
@@ -94,36 +94,33 @@ fn main() -> Result<(), Box<dyn Error + Send + Sync + 'static>> {
         .with_span_events(FmtSpan::FULL)
         .try_init()?;
 
-    block_on(async {
-        use Color::*;
+    let mut game = Game::default();
+    let (mut white, mut black) =
+        try_join!(player(Color::White, white), player(Color::Black, black))?;
 
-        let mut game = Game::default();
-        let (mut white, mut black) = try_join!(player(White, white), player(Black, black))?;
+    let outcome = loop {
+        match game.outcome() {
+            Some(o) => break o,
 
-        let outcome = loop {
-            match game.outcome() {
-                Some(o) => break o,
+            None => {
+                let position = game.position();
+                info!(%position);
 
-                None => {
-                    let position = game.position();
-                    info!(%position);
+                let action = match position.turn() {
+                    Color::Black => black.act(position).await?,
+                    Color::White => white.act(position).await?,
+                };
 
-                    let action = match position.turn() {
-                        Black => black.act(position).await?,
-                        White => white.act(position).await?,
-                    };
+                info!(player = %position.turn(), %action);
 
-                    info!(player = %position.turn(), %action);
-
-                    if let Err(e) = game.execute(action).context("invalid player action") {
-                        warn!("{:?}", e);
-                    }
+                if let Err(e) = game.execute(action).context("invalid player action") {
+                    warn!("{:?}", e);
                 }
             }
-        };
+        }
+    };
 
-        info!(%outcome);
+    info!(%outcome);
 
-        Ok(())
-    })
+    Ok(())
 }

@@ -52,7 +52,7 @@ impl File {
 
 /// The reason why parsing [`File`] failed.
 #[derive(Debug, Display, Clone, Eq, PartialEq, Error, From)]
-#[display(fmt = "unable to parse file")]
+#[display(fmt = "failed to parse file")]
 pub enum ParseFileError {
     ParseCharError(ParseCharError),
     OutOfRange(FileOutOfRange),
