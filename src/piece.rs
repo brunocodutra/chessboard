@@ -1,6 +1,6 @@
 use crate::{Color, Role};
 use shakmaty as sm;
-use std::fmt::{Display, Error as FmtError, Formatter, Write};
+use std::fmt::{self, Display, Write};
 
 #[cfg(test)]
 use test_strategy::Arbitrary;
@@ -59,7 +59,7 @@ impl From<Piece> for char {
 }
 
 impl Display for Piece {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let c = if f.alternate() {
             self.figurine()
         } else {

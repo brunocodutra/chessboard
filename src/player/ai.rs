@@ -24,27 +24,28 @@ impl<S: Search + Debug + Send> Player for Ai<S> {
 mod tests {
     use super::*;
     use crate::{search::MockSearch, Move};
-    use smol::block_on;
     use test_strategy::proptest;
+    use tokio::runtime;
 
     #[proptest]
     fn play_searches_for_move(pos: Position, m: Move) {
+        let rt = runtime::Builder::new_multi_thread().build()?;
+
         let mut strategy = MockSearch::new();
-        strategy
-            .expect_search()
-            .times(1)
-            .returning(move |_| Some(m));
+        strategy.expect_search().once().returning(move |_| Some(m));
 
         let mut ai = Ai::new(strategy);
-        assert_eq!(block_on(ai.act(&pos))?, Action::Move(m));
+        assert_eq!(rt.block_on(ai.act(&pos))?, Action::Move(m));
     }
 
     #[proptest]
     fn play_resigns_if_there_are_no_moves(pos: Position) {
+        let rt = runtime::Builder::new_multi_thread().build()?;
+
         let mut strategy = MockSearch::new();
-        strategy.expect_search().times(1).returning(|_| None);
+        strategy.expect_search().once().returning(|_| None);
 
         let mut ai = Ai::new(strategy);
-        assert_eq!(block_on(ai.act(&pos))?, Action::Resign);
+        assert_eq!(rt.block_on(ai.act(&pos))?, Action::Resign);
     }
 }

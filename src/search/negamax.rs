@@ -80,7 +80,7 @@ mod tests {
         let mut engine = MockEngine::new();
         engine
             .expect_evaluate()
-            .times(1)
+            .once()
             .with(eq(pos.clone()))
             .returning(move |_| s);
 
@@ -97,7 +97,7 @@ mod tests {
         let mut engine = MockEngine::new();
         engine
             .expect_evaluate()
-            .times(1)
+            .once()
             .with(eq(pos.clone()))
             .returning(move |_| s);
 

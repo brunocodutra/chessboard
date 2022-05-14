@@ -52,7 +52,7 @@ impl Rank {
 
 /// The reason why parsing [`Rank`] failed.
 #[derive(Debug, Display, Clone, Eq, PartialEq, Error, From)]
-#[display(fmt = "unable to parse rank")]
+#[display(fmt = "failed to parse rank")]
 pub enum ParseRankError {
     ParseIntError(ParseIntError),
     OutOfRange(RankOutOfRange),

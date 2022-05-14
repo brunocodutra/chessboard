@@ -335,7 +335,7 @@ impl From<sm::PositionError<sm::Chess>> for IllegalPosition {
 /// The reason why parsing [`Position`] from a FEN string failed.
 #[derive(Debug, Display, Clone, Eq, PartialEq, Error, From)]
 pub enum ParsePositionError {
-    #[display(fmt = "unable to parse FEN")]
+    #[display(fmt = "failed to parse FEN")]
     InvalidFen(InvalidFen),
 
     #[display(fmt = "FEN represents an illegal position")]
