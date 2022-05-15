@@ -141,7 +141,7 @@ mod tests {
     use tokio::runtime;
 
     #[proptest]
-    fn player_can_execute_any_command(pos: Position, cmd: Cmd) {
+    fn board_is_displayed_before_prompting_player_for_action(pos: Position, cmd: Cmd) {
         let rt = runtime::Builder::new_multi_thread().build()?;
         let mut remote = MockRemote::new();
         let mut seq = Sequence::new();
@@ -173,25 +173,13 @@ mod tests {
     fn player_can_resign(pos: Position) {
         let rt = runtime::Builder::new_multi_thread().build()?;
         let mut remote = MockRemote::new();
-        let mut seq = Sequence::new();
 
-        remote
-            .expect_send()
-            .once()
-            .in_sequence(&mut seq)
-            .with(eq(Board(pos.placement())))
-            .returning(|_| Ok(()));
-
-        remote
-            .expect_flush()
-            .once()
-            .in_sequence(&mut seq)
-            .returning(|| Ok(()));
+        remote.expect_send().returning(|_: Board| Ok(()));
+        remote.expect_flush().returning(|| Ok(()));
 
         remote
             .expect_recv()
             .once()
-            .in_sequence(&mut seq)
             .return_once(move || Ok(Cmd::Resign.to_string()));
 
         let mut cli = Cli::new(remote);
@@ -202,25 +190,13 @@ mod tests {
     fn player_can_make_a_move(pos: Position, m: Move) {
         let rt = runtime::Builder::new_multi_thread().build()?;
         let mut remote = MockRemote::new();
-        let mut seq = Sequence::new();
 
-        remote
-            .expect_send()
-            .once()
-            .in_sequence(&mut seq)
-            .with(eq(Board(pos.placement())))
-            .returning(|_| Ok(()));
-
-        remote
-            .expect_flush()
-            .once()
-            .in_sequence(&mut seq)
-            .returning(|| Ok(()));
+        remote.expect_send().returning(|_: Board| Ok(()));
+        remote.expect_flush().returning(|| Ok(()));
 
         remote
             .expect_recv()
             .once()
-            .in_sequence(&mut seq)
             .returning(move || Ok(Cmd::Move { descriptor: m }.to_string()));
 
         let mut cli = Cli::new(remote);
@@ -228,22 +204,80 @@ mod tests {
     }
 
     #[proptest]
+    fn player_can_ask_for_help(
+        pos: Position,
+        cmd: Cmd,
+        #[strategy("|help|resign|move")] arg: String,
+    ) {
+        let rt = runtime::Builder::new_multi_thread().build()?;
+        let mut remote = MockRemote::new();
+
+        remote.expect_send().returning(|_: Board| Ok(()));
+
+        remote
+            .expect_send()
+            .once()
+            .with(function(|e: &clap::Error| {
+                e.kind() == clap::ErrorKind::DisplayHelp
+            }))
+            .returning(|_| Ok(()));
+
+        remote.expect_flush().returning(|| Ok(()));
+
+        remote
+            .expect_recv()
+            .once()
+            .returning(move || Ok(format!("help {}", arg)));
+
+        remote
+            .expect_recv()
+            .once()
+            .returning(move || Ok(cmd.to_string()));
+
+        let mut cli = Cli::new(remote);
+        assert_eq!(rt.block_on(cli.act(&pos))?, cmd.into());
+    }
+
+    #[proptest]
+    fn help_is_displayed_if_no_command_is_given(
+        pos: Position,
+        cmd: Cmd,
+        #[strategy("\\s+")] arg: String,
+    ) {
+        let rt = runtime::Builder::new_multi_thread().build()?;
+        let mut remote = MockRemote::new();
+
+        remote.expect_send().returning(|_: Board| Ok(()));
+
+        remote
+            .expect_send()
+            .once()
+            .with(function(|e: &clap::Error| {
+                e.kind() == clap::ErrorKind::DisplayHelpOnMissingArgumentOrSubcommand
+            }))
+            .returning(|_| Ok(()));
+
+        remote.expect_flush().returning(|| Ok(()));
+
+        remote.expect_recv().once().return_once(move || Ok(arg));
+
+        remote
+            .expect_recv()
+            .once()
+            .returning(move || Ok(cmd.to_string()));
+
+        let mut cli = Cli::new(remote);
+        assert_eq!(rt.block_on(cli.act(&pos))?, cmd.into());
+    }
+
+    #[proptest]
     fn resign_takes_no_arguments(pos: Position, cmd: Cmd, #[strategy("[^\\s]+")] arg: String) {
         let rt = runtime::Builder::new_multi_thread().build()?;
         let mut remote = MockRemote::new();
 
-        remote
-            .expect_send()
-            .once()
-            .with(eq(Board(pos.placement())))
-            .returning(|_| Ok(()));
-
-        remote
-            .expect_send()
-            .once()
-            .returning(|_: clap::Error| Ok(()));
-
-        remote.expect_flush().times(2).returning(|| Ok(()));
+        remote.expect_send().returning(|_: Board| Ok(()));
+        remote.expect_send().returning(|_: clap::Error| Ok(()));
+        remote.expect_flush().returning(|| Ok(()));
 
         remote
             .expect_recv()
@@ -270,18 +304,9 @@ mod tests {
         let rt = runtime::Builder::new_multi_thread().build()?;
         let mut remote = MockRemote::new();
 
-        remote
-            .expect_send()
-            .once()
-            .with(eq(Board(pos.placement())))
-            .returning(|_| Ok(()));
-
-        remote
-            .expect_send()
-            .once()
-            .returning(|_: clap::Error| Ok(()));
-
-        remote.expect_flush().times(2).returning(|| Ok(()));
+        remote.expect_send().returning(|_: Board| Ok(()));
+        remote.expect_send().returning(|_: clap::Error| Ok(()));
+        remote.expect_flush().returning(|| Ok(()));
 
         remote
             .expect_recv()
@@ -298,72 +323,21 @@ mod tests {
     }
 
     #[proptest]
-    fn player_can_ask_for_help(
-        pos: Position,
-        cmd: Cmd,
-        #[strategy("|help|resign|move")] arg: String,
-    ) {
-        let rt = runtime::Builder::new_multi_thread().build()?;
-        let mut remote = MockRemote::new();
-
-        remote
-            .expect_send()
-            .once()
-            .with(eq(Board(pos.placement())))
-            .returning(|_| Ok(()));
-
-        remote
-            .expect_send()
-            .once()
-            .with(function(|e: &clap::Error| {
-                e.kind() == clap::ErrorKind::DisplayHelp
-            }))
-            .returning(|_| Ok(()));
-
-        remote.expect_flush().times(2).returning(|| Ok(()));
-
-        remote
-            .expect_recv()
-            .once()
-            .returning(move || Ok(format!("help {}", arg)));
-
-        remote
-            .expect_recv()
-            .once()
-            .returning(move || Ok(cmd.to_string()));
-
-        let mut cli = Cli::new(remote);
-        assert_eq!(rt.block_on(cli.act(&pos))?, cmd.into());
-    }
-
-    #[proptest]
     fn player_is_prompted_again_after_invalid_command(
         pos: Position,
         cmd: Cmd,
         #[by_ref]
-        #[filter(Cmd::try_parse_from(#invalid_cmd.split_whitespace()).is_err())]
-        invalid_cmd: String,
+        #[filter(Cmd::try_parse_from(#arg.split_whitespace()).is_err())]
+        arg: String,
     ) {
         let rt = runtime::Builder::new_multi_thread().build()?;
         let mut remote = MockRemote::new();
 
-        remote
-            .expect_send()
-            .once()
-            .with(eq(Board(pos.placement())))
-            .returning(|_| Ok(()));
+        remote.expect_send().returning(|_: Board| Ok(()));
+        remote.expect_send().returning(|_: clap::Error| Ok(()));
+        remote.expect_flush().returning(|| Ok(()));
 
-        remote
-            .expect_send()
-            .once()
-            .returning(|_: clap::Error| Ok(()));
-
-        remote.expect_flush().times(2).returning(|| Ok(()));
-
-        remote
-            .expect_recv()
-            .once()
-            .return_once(move || Ok(invalid_cmd));
+        remote.expect_recv().once().return_once(move || Ok(arg));
 
         remote
             .expect_recv()
