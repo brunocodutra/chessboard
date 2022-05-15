@@ -2,22 +2,77 @@ use crate::Remote;
 use anyhow::{Context, Error as Anyhow};
 use async_trait::async_trait;
 use derive_more::{DebugCustom, Display, Error, From};
-use std::{fmt::Display, io, process::Stdio};
-use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader, BufWriter, Lines};
-use tokio::process::{Child, ChildStdin, ChildStdout};
+use std::{fmt::Display, io};
+use tokio::io::{
+    AsyncBufReadExt, AsyncRead, AsyncWrite, AsyncWriteExt, BufReader, BufWriter, Lines,
+};
 use tokio::{runtime, task::block_in_place};
 use tracing::{error, info, instrument, warn};
+
+#[cfg(test)]
+use tokio::io::DuplexStream;
+
+#[cfg_attr(test, mockall::automock(type Stdin = DuplexStream; type Stdout = DuplexStream; type Status = String;))]
+#[async_trait]
+trait Program {
+    fn id(&self) -> Option<u32>;
+
+    type Stdin: AsyncWrite;
+    fn stdin(&mut self) -> io::Result<Self::Stdin>;
+
+    type Stdout: AsyncRead;
+    fn stdout(&mut self) -> io::Result<Self::Stdout>;
+
+    type Status: Display;
+    async fn wait(&mut self) -> io::Result<Self::Status>;
+}
+
+#[cfg(not(test))]
+use std::process::ExitStatus;
+
+#[cfg(not(test))]
+use tokio::process::{Child, ChildStdin, ChildStdout};
+
+#[cfg(not(test))]
+#[async_trait]
+impl Program for Child {
+    fn id(&self) -> Option<u32> {
+        self.id()
+    }
+
+    type Stdin = ChildStdin;
+    fn stdin(&mut self) -> io::Result<Self::Stdin> {
+        self.stdin.take().ok_or_else(|| {
+            io::Error::new(
+                io::ErrorKind::Other,
+                Anyhow::msg("failed to open the child process' stdin"),
+            )
+        })
+    }
+
+    type Stdout = ChildStdout;
+    fn stdout(&mut self) -> io::Result<Self::Stdout> {
+        self.stdout.take().ok_or_else(|| {
+            io::Error::new(
+                io::ErrorKind::Other,
+                Anyhow::msg("failed to open the child process' stdout"),
+            )
+        })
+    }
+
+    type Status = ExitStatus;
+    async fn wait(&mut self) -> io::Result<ExitStatus> {
+        Self::wait(self).await
+    }
+}
+
+#[cfg(test)]
+type Child = MockProgram;
 
 /// The reason why spawning the remote process failed.
 #[derive(Debug, Display, Error, From)]
 #[display(fmt = "failed to spawn the remote process")]
-pub struct ProcessSpawnError(io::Error);
-
-impl From<Anyhow> for ProcessSpawnError {
-    fn from(e: Anyhow) -> Self {
-        io::Error::new(io::ErrorKind::Other, e).into()
-    }
-}
+pub struct ProcessSpawnError(#[from(forward)] io::Error);
 
 /// The reason why writing to or reading from the remote process failed.
 #[derive(Debug, Display, Error, From)]
@@ -32,29 +87,34 @@ pub struct ProcessIoError(#[from(forward)] io::Error);
 #[debug(fmt = "Process({})", "child.id().map(i64::from).unwrap_or(-1)")]
 pub struct Process {
     child: Child,
-    reader: Lines<BufReader<ChildStdout>>,
-    writer: BufWriter<ChildStdin>,
+    writer: BufWriter<<Child as Program>::Stdin>,
+    reader: Lines<BufReader<<Child as Program>::Stdout>>,
 }
 
 impl Process {
-    /// Spawns a child process.
-    #[instrument(level = "trace", err)]
-    pub async fn spawn(program: &str) -> Result<Self, ProcessSpawnError> {
-        let mut child = tokio::process::Command::new(program)
-            .stdin(Stdio::piped())
-            .stdout(Stdio::piped())
-            .spawn()?;
-
-        let stdout = child.stdout.take().context("failed to open stdout")?;
-        let stdin = child.stdin.take().context("failed to open stdin")?;
+    fn new(mut child: Child) -> Result<Self, ProcessSpawnError> {
+        let stdin = child.stdin()?;
+        let stdout = child.stdout()?;
 
         info!(pid = child.id());
 
         Ok(Process {
             child,
-            reader: BufReader::new(stdout).lines(),
             writer: BufWriter::new(stdin),
+            reader: BufReader::new(stdout).lines(),
         })
+    }
+
+    /// Spawns a child process.
+    #[cfg(not(test))]
+    #[instrument(level = "trace", err)]
+    pub async fn spawn(program: &str) -> Result<Self, ProcessSpawnError> {
+        Process::new(
+            tokio::process::Command::new(program)
+                .stdin(std::process::Stdio::piped())
+                .stdout(std::process::Stdio::piped())
+                .spawn()?,
+        )
     }
 }
 
@@ -100,5 +160,138 @@ impl Remote for Process {
     async fn flush(&mut self) -> Result<(), Self::Error> {
         self.writer.flush().await?;
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::str;
+    use test_strategy::proptest;
+    use tokio::io::{duplex, AsyncReadExt};
+
+    #[proptest]
+    fn new_expects_stdin_and_stdout(id: Option<u32>) {
+        let mut child = MockProgram::new();
+
+        child.expect_id().once().returning(move || id);
+
+        let (stdin, stdout) = duplex(1);
+        child.expect_stdin().once().return_once(move || Ok(stdin));
+        child.expect_stdout().once().return_once(move || Ok(stdout));
+
+        assert!(Process::new(child).is_ok());
+    }
+
+    #[proptest]
+    fn new_fails_if_stdin_is_not_available(e: io::Error) {
+        let mut child = MockProgram::new();
+
+        let kind = e.kind();
+        child.expect_stdin().once().return_once(move || Err(e));
+
+        assert_eq!(Process::new(child).unwrap_err().0.kind(), kind);
+    }
+
+    #[proptest]
+    fn new_fails_if_stdout_is_not_available(e: io::Error) {
+        let mut child = MockProgram::new();
+
+        let kind = e.kind();
+        let (stdin, _) = duplex(1);
+        child.expect_stdin().once().return_once(move || Ok(stdin));
+        child.expect_stdout().once().return_once(move || Err(e));
+
+        assert_eq!(Process::new(child).unwrap_err().0.kind(), kind);
+    }
+
+    #[proptest]
+    fn drop_gracefully_terminates_child_process(id: Option<u32>, status: String) {
+        let rt = runtime::Builder::new_multi_thread().build()?;
+        let mut child = MockProgram::new();
+
+        child.expect_id().once().returning(move || id);
+        child.expect_wait().once().return_once(move || Ok(status));
+
+        let (stdin, stdout) = duplex(1);
+        child.expect_stdin().once().return_once(move || Ok(stdin));
+        child.expect_stdout().once().return_once(move || Ok(stdout));
+
+        rt.block_on(async move {
+            drop(Process::new(child));
+        })
+    }
+
+    #[proptest]
+    fn drop_recovers_from_errors(id: Option<u32>, e: io::Error) {
+        let rt = runtime::Builder::new_multi_thread().build()?;
+        let mut child = MockProgram::new();
+
+        child.expect_id().once().returning(move || id);
+        child.expect_wait().once().return_once(move || Err(e));
+
+        let (stdin, stdout) = duplex(1);
+        child.expect_stdin().once().return_once(move || Ok(stdin));
+        child.expect_stdout().once().return_once(move || Ok(stdout));
+
+        rt.block_on(async move {
+            drop(Process::new(child));
+        })
+    }
+
+    #[proptest]
+    fn drop_recovers_from_missing_runtime(id: Option<u32>) {
+        let mut child = MockProgram::new();
+
+        child.expect_id().once().returning(move || id);
+
+        let (stdin, stdout) = duplex(1);
+        child.expect_stdin().once().return_once(move || Ok(stdin));
+        child.expect_stdout().once().return_once(move || Ok(stdout));
+
+        drop(Process::new(child));
+    }
+
+    #[proptest]
+    fn recv_waits_for_line_break(id: Option<u32>, #[strategy("[^\r\n]")] s: String) {
+        let rt = runtime::Builder::new_multi_thread().build()?;
+        let mut child = MockProgram::new();
+
+        child.expect_id().once().returning(move || id);
+
+        let (stdin, _) = duplex(1);
+        child.expect_stdin().once().return_once(move || Ok(stdin));
+        let (mut tx, stdout) = duplex(s.len() + 1);
+        child.expect_stdout().once().return_once(move || Ok(stdout));
+
+        rt.block_on(tx.write_all(s.as_bytes()))?;
+        rt.block_on(tx.write_u8(b'\n'))?;
+
+        let mut process = Process::new(child)?;
+        assert_eq!(rt.block_on(process.recv())?, s);
+    }
+
+    #[proptest]
+    fn send_appends_line_break(id: Option<u32>, s: String) {
+        let rt = runtime::Builder::new_multi_thread().build()?;
+        let mut child = MockProgram::new();
+
+        child.expect_id().once().returning(move || id);
+
+        let (stdin, mut rx) = duplex(s.len() + 1);
+        child.expect_stdin().once().return_once(move || Ok(stdin));
+        let (_, stdout) = duplex(1);
+        child.expect_stdout().once().return_once(move || Ok(stdout));
+
+        let expected = format!("{}\n", s);
+
+        let mut process = Process::new(child)?;
+        rt.block_on(process.send(s))?;
+        rt.block_on(process.flush())?;
+
+        let mut buf = vec![0u8; expected.len()];
+        rt.block_on(rx.read_exact(&mut buf))?;
+
+        assert_eq!(str::from_utf8(&buf)?, expected);
     }
 }
