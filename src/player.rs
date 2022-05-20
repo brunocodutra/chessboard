@@ -1,4 +1,4 @@
-use crate::{Action, Position, RemoteDispatcher, SearchDispatcher};
+use crate::{Action, IoDispatcher, Position, SearchDispatcher};
 use async_trait::async_trait;
 use derive_more::{DebugCustom, Display, Error, From};
 use std::fmt::Debug;
@@ -26,8 +26,8 @@ pub trait Player {
 #[derive(Debug, Display, Error)]
 pub enum PlayerDispatcherError {
     Ai(<Ai<SearchDispatcher> as Player>::Error),
-    Cli(<Cli<RemoteDispatcher> as Player>::Error),
-    Uci(<Uci<RemoteDispatcher> as Player>::Error),
+    Cli(<Cli<IoDispatcher> as Player>::Error),
+    Uci(<Uci<IoDispatcher> as Player>::Error),
 }
 
 /// A static dispatcher for [`Player`].
@@ -36,9 +36,9 @@ pub enum PlayerDispatcher {
     #[debug(fmt = "{:?}", _0)]
     Ai(Ai<SearchDispatcher>),
     #[debug(fmt = "{:?}", _0)]
-    Cli(Cli<RemoteDispatcher>),
+    Cli(Cli<IoDispatcher>),
     #[debug(fmt = "{:?}", _0)]
-    Uci(Uci<RemoteDispatcher>),
+    Uci(Uci<IoDispatcher>),
 }
 
 #[async_trait]

@@ -1,4 +1,4 @@
-use crate::Remote;
+use crate::Io;
 use async_trait::async_trait;
 use derive_more::DebugCustom;
 use rustyline::{error::ReadlineError, Config, Editor};
@@ -33,7 +33,7 @@ impl Terminal {
 }
 
 #[async_trait]
-impl Remote for Terminal {
+impl Io for Terminal {
     #[instrument(level = "trace", err)]
     async fn recv(&mut self) -> io::Result<String> {
         let mut reader = self.reader.clone().lock_owned().await;

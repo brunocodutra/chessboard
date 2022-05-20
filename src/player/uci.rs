@@ -1,4 +1,4 @@
-use crate::{Action, Player, Position, Remote};
+use crate::{Action, Io, Player, Position};
 use anyhow::{Context, Error as Anyhow};
 use async_trait::async_trait;
 use std::{fmt::Debug, io};
@@ -7,24 +7,24 @@ use tracing::{debug, instrument, warn};
 use vampirc_uci::{parse_one, Duration, UciFen, UciMessage, UciSearchControl, UciTimeControl};
 
 #[derive(Debug)]
-pub struct Uci<R: Remote + Debug> {
-    remote: R,
+pub struct Uci<T: Io + Debug> {
+    io: T,
 }
 
-impl<R: Remote + Debug> Uci<R> {
-    /// Establishes communication with a remote UCI server.
+impl<T: Io + Debug> Uci<T> {
+    /// Establishes communication with UCI server.
     #[instrument(level = "trace", err)]
-    pub async fn init(remote: R) -> io::Result<Self> {
-        let mut uci = Uci { remote };
+    pub async fn init(io: T) -> io::Result<Self> {
+        let mut uci = Uci { io };
 
-        uci.remote.send(UciMessage::Uci).await?;
-        uci.remote.flush().await?;
+        uci.io.send(UciMessage::Uci).await?;
+        uci.io.flush().await?;
 
         while !matches!(uci.next_message().await?, UciMessage::UciOk) {}
 
-        uci.remote.send(UciMessage::UciNewGame).await?;
-        uci.remote.send(UciMessage::IsReady).await?;
-        uci.remote.flush().await?;
+        uci.io.send(UciMessage::UciNewGame).await?;
+        uci.io.send(UciMessage::IsReady).await?;
+        uci.io.flush().await?;
 
         while !matches!(uci.next_message().await?, UciMessage::ReadyOk) {}
 
@@ -34,7 +34,7 @@ impl<R: Remote + Debug> Uci<R> {
     #[instrument(level = "trace", err)]
     async fn next_message(&mut self) -> io::Result<UciMessage> {
         loop {
-            match parse_one(&self.remote.recv().await?) {
+            match parse_one(&self.io.recv().await?) {
                 UciMessage::Unknown(m, Some(cause)) => {
                     let error = Anyhow::from(cause).context(format!("invalid UCI message '{}'", m));
                     warn!("{:?}", error);
@@ -53,14 +53,14 @@ impl<R: Remote + Debug> Uci<R> {
     }
 }
 
-impl<R: Remote + Debug> Drop for Uci<R> {
+impl<T: Io + Debug> Drop for Uci<T> {
     #[instrument(level = "trace")]
     fn drop(&mut self) {
         let result: Result<(), Anyhow> = block_in_place(|| {
             runtime::Handle::try_current()?.block_on(async {
-                self.remote.send(UciMessage::Stop).await?;
-                self.remote.send(UciMessage::Quit).await?;
-                self.remote.flush().await?;
+                self.io.send(UciMessage::Stop).await?;
+                self.io.send(UciMessage::Quit).await?;
+                self.io.flush().await?;
                 Ok(())
             })
         });
@@ -72,7 +72,7 @@ impl<R: Remote + Debug> Drop for Uci<R> {
 }
 
 #[async_trait]
-impl<R: Remote + Debug + Send> Player for Uci<R> {
+impl<T: Io + Debug + Send> Player for Uci<T> {
     type Error = io::Error;
 
     #[instrument(level = "trace", err)]
@@ -88,9 +88,9 @@ impl<R: Remote + Debug + Send> Player for Uci<R> {
             search_control: Some(UciSearchControl::depth(13)),
         };
 
-        self.remote.send(setpos).await?;
-        self.remote.send(go).await?;
-        self.remote.flush().await?;
+        self.io.send(setpos).await?;
+        self.io.send(go).await?;
+        self.io.flush().await?;
 
         let m = loop {
             match self.next_message().await? {
@@ -106,7 +106,7 @@ impl<R: Remote + Debug + Send> Player for Uci<R> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{remote::MockRemote, Move};
+    use crate::{MockIo, Move};
     use mockall::{predicate::*, Sequence};
     use proptest::prelude::*;
     use test_strategy::proptest;
@@ -139,58 +139,51 @@ mod tests {
     #[proptest]
     fn init_shakes_hand_with_engine() {
         let rt = runtime::Builder::new_multi_thread().build()?;
-        let mut remote = MockRemote::new();
+        let mut io = MockIo::new();
         let mut seq = Sequence::new();
 
-        remote
-            .expect_send()
+        io.expect_send()
             .once()
             .in_sequence(&mut seq)
             .with(eq(UciMessage::Uci))
             .returning(|_| Ok(()));
 
-        remote
-            .expect_flush()
+        io.expect_flush()
             .once()
             .in_sequence(&mut seq)
             .returning(|| Ok(()));
 
-        remote
-            .expect_recv()
+        io.expect_recv()
             .once()
             .in_sequence(&mut seq)
             .returning(move || Ok(UciMessage::UciOk.to_string()));
 
-        remote
-            .expect_send()
+        io.expect_send()
             .once()
             .in_sequence(&mut seq)
             .with(eq(UciMessage::UciNewGame))
             .returning(|_| Ok(()));
 
-        remote
-            .expect_send()
+        io.expect_send()
             .once()
             .in_sequence(&mut seq)
             .with(eq(UciMessage::IsReady))
             .returning(|_| Ok(()));
 
-        remote
-            .expect_flush()
+        io.expect_flush()
             .once()
             .in_sequence(&mut seq)
             .returning(|| Ok(()));
 
-        remote
-            .expect_recv()
+        io.expect_recv()
             .once()
             .in_sequence(&mut seq)
             .returning(move || Ok(UciMessage::ReadyOk.to_string()));
 
-        remote.expect_send().returning(|_: UciMessage| Ok(()));
-        remote.expect_flush().returning(|| Ok(()));
+        io.expect_send().returning(|_: UciMessage| Ok(()));
+        io.expect_flush().returning(|| Ok(()));
 
-        assert!(rt.block_on(Uci::init(remote)).is_ok());
+        assert!(rt.block_on(Uci::init(io)).is_ok());
     }
 
     #[proptest]
@@ -200,27 +193,22 @@ mod tests {
         msg: String,
     ) {
         let rt = runtime::Builder::new_multi_thread().build()?;
-        let mut remote = MockRemote::new();
+        let mut io = MockIo::new();
 
-        remote.expect_send().returning(|_: UciMessage| Ok(()));
-        remote.expect_flush().returning(|| Ok(()));
+        io.expect_send().returning(|_: UciMessage| Ok(()));
+        io.expect_flush().returning(|| Ok(()));
 
-        remote
-            .expect_recv()
-            .once()
-            .returning(move || Ok(msg.clone()));
+        io.expect_recv().once().returning(move || Ok(msg.clone()));
 
-        remote
-            .expect_recv()
+        io.expect_recv()
             .once()
             .returning(move || Ok(UciMessage::UciOk.to_string()));
 
-        remote
-            .expect_recv()
+        io.expect_recv()
             .once()
             .returning(move || Ok(UciMessage::ReadyOk.to_string()));
 
-        assert!(rt.block_on(Uci::init(remote)).is_ok());
+        assert!(rt.block_on(Uci::init(io)).is_ok());
     }
 
     #[proptest]
@@ -231,106 +219,96 @@ mod tests {
         msg: UciMessage,
     ) {
         let rt = runtime::Builder::new_multi_thread().build()?;
-        let mut remote = MockRemote::new();
+        let mut io = MockIo::new();
 
-        remote.expect_send().returning(|_: UciMessage| Ok(()));
-        remote.expect_flush().returning(|| Ok(()));
+        io.expect_send().returning(|_: UciMessage| Ok(()));
+        io.expect_flush().returning(|| Ok(()));
 
-        remote
-            .expect_recv()
+        io.expect_recv()
             .once()
             .returning(move || Ok(msg.to_string()));
 
-        remote
-            .expect_recv()
+        io.expect_recv()
             .once()
             .returning(move || Ok(UciMessage::UciOk.to_string()));
 
-        remote
-            .expect_recv()
+        io.expect_recv()
             .once()
             .returning(move || Ok(UciMessage::ReadyOk.to_string()));
 
-        assert!(rt.block_on(Uci::init(remote)).is_ok());
+        assert!(rt.block_on(Uci::init(io)).is_ok());
     }
 
     #[proptest]
     fn init_can_fail(e: io::Error) {
         let rt = runtime::Builder::new_multi_thread().build()?;
-        let mut remote = MockRemote::new();
+        let mut io = MockIo::new();
 
         let kind = e.kind();
-        remote
-            .expect_send()
+        io.expect_send()
             .once()
             .return_once(move |_: UciMessage| Err(e));
-        remote.expect_send().returning(|_: UciMessage| Ok(()));
-        remote.expect_flush().returning(|| Ok(()));
 
-        assert_eq!(rt.block_on(Uci::init(remote)).err().unwrap().kind(), kind);
+        io.expect_send().returning(|_: UciMessage| Ok(()));
+        io.expect_flush().returning(|| Ok(()));
+
+        assert_eq!(rt.block_on(Uci::init(io)).err().unwrap().kind(), kind);
     }
 
     #[proptest]
     fn drop_gracefully_stops_engine() {
         let rt = runtime::Builder::new_multi_thread().build()?;
-        let mut remote = MockRemote::new();
+        let mut io = MockIo::new();
 
         let mut seq = Sequence::new();
 
-        remote
-            .expect_send()
+        io.expect_send()
             .once()
             .in_sequence(&mut seq)
             .with(eq(UciMessage::Stop))
             .returning(|_| Ok(()));
 
-        remote
-            .expect_send()
+        io.expect_send()
             .once()
             .in_sequence(&mut seq)
             .with(eq(UciMessage::Quit))
             .returning(|_| Ok(()));
 
-        remote
-            .expect_flush()
+        io.expect_flush()
             .once()
             .in_sequence(&mut seq)
             .returning(|| Ok(()));
 
         rt.block_on(async move {
-            drop(Uci { remote });
+            drop(Uci { io });
         })
     }
 
     #[proptest]
     fn drop_recovers_from_errors(e: io::Error) {
         let rt = runtime::Builder::new_multi_thread().build()?;
-        let mut remote = MockRemote::new();
-        remote
-            .expect_send()
+        let mut io = MockIo::new();
+        io.expect_send()
             .once()
             .return_once(move |_: UciMessage| Err(e));
 
         rt.block_on(async move {
-            drop(Uci { remote });
+            drop(Uci { io });
         })
     }
 
     #[proptest]
     fn drop_recovers_from_missing_runtime() {
-        drop(Uci {
-            remote: MockRemote::new(),
-        });
+        drop(Uci { io: MockIo::new() });
     }
 
     #[proptest]
     fn play_instructs_engine_to_make_move(pos: Position, m: Move) {
         let rt = runtime::Builder::new_multi_thread().build()?;
-        let mut remote = MockRemote::new();
+        let mut io = MockIo::new();
         let mut seq = Sequence::new();
 
-        remote
-            .expect_send()
+        io.expect_send()
             .once()
             .in_sequence(&mut seq)
             .with(function(|msg: &UciMessage| {
@@ -338,8 +316,7 @@ mod tests {
             }))
             .returning(|_| Ok(()));
 
-        remote
-            .expect_send()
+        io.expect_send()
             .once()
             .in_sequence(&mut seq)
             .with(function(move |msg: &UciMessage| {
@@ -347,19 +324,17 @@ mod tests {
             }))
             .returning(|_| Ok(()));
 
-        remote
-            .expect_flush()
+        io.expect_flush()
             .once()
             .in_sequence(&mut seq)
             .returning(|| Ok(()));
 
-        remote
-            .expect_recv()
+        io.expect_recv()
             .once()
             .in_sequence(&mut seq)
             .returning(move || Ok(UciMessage::best_move(m.into()).to_string()));
 
-        let mut uci = Uci { remote };
+        let mut uci = Uci { io };
         assert_eq!(rt.block_on(uci.act(&pos))?, Action::Move(m));
     }
 
@@ -372,22 +347,18 @@ mod tests {
         msg: String,
     ) {
         let rt = runtime::Builder::new_multi_thread().build()?;
-        let mut remote = MockRemote::new();
+        let mut io = MockIo::new();
 
-        remote.expect_send().returning(|_: UciMessage| Ok(()));
-        remote.expect_flush().returning(|| Ok(()));
+        io.expect_send().returning(|_: UciMessage| Ok(()));
+        io.expect_flush().returning(|| Ok(()));
 
-        remote
-            .expect_recv()
-            .once()
-            .returning(move || Ok(msg.clone()));
+        io.expect_recv().once().returning(move || Ok(msg.clone()));
 
-        remote
-            .expect_recv()
+        io.expect_recv()
             .once()
             .returning(move || Ok(UciMessage::best_move(m.into()).to_string()));
 
-        let mut uci = Uci { remote };
+        let mut uci = Uci { io };
         assert_eq!(rt.block_on(uci.act(&pos))?, Action::Move(m));
     }
 
@@ -401,69 +372,67 @@ mod tests {
         msg: UciMessage,
     ) {
         let rt = runtime::Builder::new_multi_thread().build()?;
-        let mut remote = MockRemote::new();
+        let mut io = MockIo::new();
 
-        remote.expect_send().returning(|_: UciMessage| Ok(()));
-        remote.expect_flush().returning(|| Ok(()));
+        io.expect_send().returning(|_: UciMessage| Ok(()));
+        io.expect_flush().returning(|| Ok(()));
 
-        remote
-            .expect_recv()
+        io.expect_recv()
             .once()
             .returning(move || Ok(msg.to_string()));
 
-        remote
-            .expect_recv()
+        io.expect_recv()
             .once()
             .returning(move || Ok(UciMessage::best_move(m.into()).to_string()));
 
-        let mut uci = Uci { remote };
+        let mut uci = Uci { io };
         assert_eq!(rt.block_on(uci.act(&pos))?, Action::Move(m));
     }
 
     #[proptest]
     fn play_can_fail_writing(pos: Position, e: io::Error) {
         let rt = runtime::Builder::new_multi_thread().build()?;
-        let mut remote = MockRemote::new();
+        let mut io = MockIo::new();
 
         let kind = e.kind();
-        remote
-            .expect_send()
+        io.expect_send()
             .once()
             .return_once(move |_: UciMessage| Err(e));
-        remote.expect_send().returning(|_: UciMessage| Ok(()));
-        remote.expect_flush().returning(|| Ok(()));
 
-        let mut uci = Uci { remote };
+        io.expect_send().returning(|_: UciMessage| Ok(()));
+        io.expect_flush().returning(|| Ok(()));
+
+        let mut uci = Uci { io };
         assert_eq!(rt.block_on(uci.act(&pos)).unwrap_err().kind(), kind);
     }
 
     #[proptest]
     fn play_can_fail_flushing(pos: Position, e: io::Error) {
         let rt = runtime::Builder::new_multi_thread().build()?;
-        let mut remote = MockRemote::new();
+        let mut io = MockIo::new();
 
-        remote.expect_send().returning(|_: UciMessage| Ok(()));
+        io.expect_send().returning(|_: UciMessage| Ok(()));
 
         let kind = e.kind();
-        remote.expect_flush().once().return_once(move || Err(e));
-        remote.expect_flush().returning(|| Ok(()));
+        io.expect_flush().once().return_once(move || Err(e));
+        io.expect_flush().returning(|| Ok(()));
 
-        let mut uci = Uci { remote };
+        let mut uci = Uci { io };
         assert_eq!(rt.block_on(uci.act(&pos)).unwrap_err().kind(), kind);
     }
 
     #[proptest]
     fn play_can_fail_reading(pos: Position, e: io::Error) {
         let rt = runtime::Builder::new_multi_thread().build()?;
-        let mut remote = MockRemote::new();
+        let mut io = MockIo::new();
 
-        remote.expect_send().returning(|_: UciMessage| Ok(()));
-        remote.expect_flush().returning(|| Ok(()));
+        io.expect_send().returning(|_: UciMessage| Ok(()));
+        io.expect_flush().returning(|| Ok(()));
 
         let kind = e.kind();
-        remote.expect_recv().once().return_once(move || Err(e));
+        io.expect_recv().once().return_once(move || Err(e));
 
-        let mut uci = Uci { remote };
+        let mut uci = Uci { io };
         assert_eq!(rt.block_on(uci.act(&pos)).unwrap_err().kind(), kind);
     }
 }

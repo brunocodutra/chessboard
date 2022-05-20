@@ -12,21 +12,21 @@ pub use terminal::*;
 /// Trait for types that communicate via message-passing.
 #[cfg_attr(test, mockall::automock)]
 #[async_trait]
-pub trait Remote {
-    /// Receive a message from the remote endpoint.
+pub trait Io {
+    /// Receive a message.
     async fn recv(&mut self) -> io::Result<String>;
 
-    /// Send a message to the remote endpoint.
+    /// Send a message.
     async fn send<D: Display + Send + 'static>(&mut self, item: D) -> io::Result<()>;
 
     /// Flush the internal buffers.
     async fn flush(&mut self) -> io::Result<()>;
 }
 
-/// A static dispatcher for [`Remote`].
+/// A static dispatcher for [`Io`].
 #[allow(clippy::large_enum_variant)]
 #[derive(DebugCustom, From)]
-pub enum RemoteDispatcher {
+pub enum IoDispatcher {
     #[debug(fmt = "{:?}", _0)]
     Process(Process),
     #[debug(fmt = "{:?}", _0)]
@@ -34,10 +34,10 @@ pub enum RemoteDispatcher {
 }
 
 #[async_trait]
-impl Remote for RemoteDispatcher {
+impl Io for IoDispatcher {
     #[instrument(level = "trace", err)]
     async fn recv(&mut self) -> io::Result<String> {
-        use RemoteDispatcher::*;
+        use IoDispatcher::*;
         let line = match self {
             Process(r) => r.recv().await?,
             Terminal(r) => r.recv().await?,
@@ -48,7 +48,7 @@ impl Remote for RemoteDispatcher {
 
     #[instrument(level = "trace", skip(item), err, fields(%item))]
     async fn send<D: Display + Send + 'static>(&mut self, item: D) -> io::Result<()> {
-        use RemoteDispatcher::*;
+        use IoDispatcher::*;
         match self {
             Process(r) => r.send(item).await?,
             Terminal(r) => r.send(item).await?,
@@ -59,7 +59,7 @@ impl Remote for RemoteDispatcher {
 
     #[instrument(level = "trace", err)]
     async fn flush(&mut self) -> io::Result<()> {
-        use RemoteDispatcher::*;
+        use IoDispatcher::*;
         match self {
             Process(r) => r.flush().await?,
             Terminal(r) => r.flush().await?,
