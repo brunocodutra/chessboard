@@ -4,7 +4,7 @@ use async_trait::async_trait;
 use clap::Parser;
 use derive_more::{Constructor, Deref, Display, From};
 use std::fmt::{self, Debug, Display};
-use std::{error::Error, str::FromStr};
+use std::{io, str::FromStr};
 use tracing::instrument;
 
 #[cfg(test)]
@@ -63,24 +63,16 @@ where
 }
 
 #[derive(Debug, From, Constructor)]
-pub struct Cli<R>
-where
-    R: Remote + Debug,
-    R::Error: Error + Send + Sync + 'static,
-{
+pub struct Cli<R: Remote + Debug> {
     remote: R,
 }
 
 #[async_trait]
-impl<R> Player for Cli<R>
-where
-    R: Remote + Debug + Send,
-    R::Error: Error + Send + Sync + 'static,
-{
-    type Error = R::Error;
+impl<R: Remote + Debug + Send> Player for Cli<R> {
+    type Error = io::Error;
 
     #[instrument(level = "trace", err)]
-    async fn act(&mut self, pos: &Position) -> Result<Action, Self::Error> {
+    async fn act(&mut self, pos: &Position) -> io::Result<Action> {
         self.remote.send(Board(pos.placement())).await?;
 
         loop {
@@ -136,7 +128,6 @@ mod tests {
     use super::*;
     use crate::remote::MockRemote;
     use mockall::{predicate::*, Sequence};
-    use std::io;
     use test_strategy::proptest;
     use tokio::runtime;
 

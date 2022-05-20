@@ -1,28 +1,20 @@
 use crate::{Action, Player, Position, Remote};
 use anyhow::{Context, Error as Anyhow};
 use async_trait::async_trait;
-use std::{error::Error, fmt::Debug};
+use std::{fmt::Debug, io};
 use tokio::{runtime, task::block_in_place};
 use tracing::{debug, instrument, warn};
 use vampirc_uci::{parse_one, Duration, UciFen, UciMessage, UciSearchControl, UciTimeControl};
 
 #[derive(Debug)]
-pub struct Uci<R>
-where
-    R: Remote + Debug,
-    R::Error: Error + Send + Sync + 'static,
-{
+pub struct Uci<R: Remote + Debug> {
     remote: R,
 }
 
-impl<R> Uci<R>
-where
-    R: Remote + Debug,
-    R::Error: Error + Send + Sync + 'static,
-{
+impl<R: Remote + Debug> Uci<R> {
     /// Establishes communication with a remote UCI server.
     #[instrument(level = "trace", err)]
-    pub async fn init(remote: R) -> Result<Self, R::Error> {
+    pub async fn init(remote: R) -> io::Result<Self> {
         let mut uci = Uci { remote };
 
         uci.remote.send(UciMessage::Uci).await?;
@@ -40,7 +32,7 @@ where
     }
 
     #[instrument(level = "trace", err)]
-    async fn next_message(&mut self) -> Result<UciMessage, R::Error> {
+    async fn next_message(&mut self) -> io::Result<UciMessage> {
         loop {
             match parse_one(&self.remote.recv().await?) {
                 UciMessage::Unknown(m, Some(cause)) => {
@@ -61,11 +53,7 @@ where
     }
 }
 
-impl<R> Drop for Uci<R>
-where
-    R: Remote + Debug,
-    R::Error: Error + Send + Sync + 'static,
-{
+impl<R: Remote + Debug> Drop for Uci<R> {
     #[instrument(level = "trace")]
     fn drop(&mut self) {
         let result: Result<(), Anyhow> = block_in_place(|| {
@@ -84,15 +72,11 @@ where
 }
 
 #[async_trait]
-impl<R> Player for Uci<R>
-where
-    R: Remote + Debug + Send,
-    R::Error: Error + Send + Sync + 'static,
-{
-    type Error = R::Error;
+impl<R: Remote + Debug + Send> Player for Uci<R> {
+    type Error = io::Error;
 
     #[instrument(level = "trace", err)]
-    async fn act(&mut self, pos: &Position) -> Result<Action, Self::Error> {
+    async fn act(&mut self, pos: &Position) -> io::Result<Action> {
         let setpos = UciMessage::Position {
             startpos: false,
             fen: Some(UciFen(pos.to_string())),
@@ -125,7 +109,6 @@ mod tests {
     use crate::{remote::MockRemote, Move};
     use mockall::{predicate::*, Sequence};
     use proptest::prelude::*;
-    use std::io;
     use test_strategy::proptest;
     use tokio::runtime;
 

@@ -1,6 +1,6 @@
 use async_trait::async_trait;
-use derive_more::{DebugCustom, Display, Error, From};
-use std::fmt::Display;
+use derive_more::{DebugCustom, From};
+use std::{fmt::Display, io};
 use tracing::instrument;
 
 mod process;
@@ -10,30 +10,17 @@ pub use process::*;
 pub use terminal::*;
 
 /// Trait for types that communicate via message-passing.
-#[cfg_attr(test, mockall::automock(type Error = std::io::Error;))]
+#[cfg_attr(test, mockall::automock)]
 #[async_trait]
 pub trait Remote {
-    /// The reason why sending/receiving a message failed.
-    type Error;
-
     /// Receive a message from the remote endpoint.
-    async fn recv(&mut self) -> Result<String, Self::Error>;
+    async fn recv(&mut self) -> io::Result<String>;
 
     /// Send a message to the remote endpoint.
-    async fn send<D: Display + Send + 'static>(&mut self, item: D) -> Result<(), Self::Error>;
+    async fn send<D: Display + Send + 'static>(&mut self, item: D) -> io::Result<()>;
 
     /// Flush the internal buffers.
-    async fn flush(&mut self) -> Result<(), Self::Error>;
-}
-
-/// The reason why the underlying [`Remote`] failed.
-#[derive(Debug, Display, Error, From)]
-#[display(fmt = "failed to communicate with the remote {}")]
-pub enum RemoteDispatcherError {
-    #[display(fmt = "process")]
-    ProcessIoError(ProcessIoError),
-    #[display(fmt = "terminal")]
-    TerminalIoError(TerminalIoError),
+    async fn flush(&mut self) -> io::Result<()>;
 }
 
 /// A static dispatcher for [`Remote`].
@@ -48,10 +35,8 @@ pub enum RemoteDispatcher {
 
 #[async_trait]
 impl Remote for RemoteDispatcher {
-    type Error = RemoteDispatcherError;
-
     #[instrument(level = "trace", err)]
-    async fn recv(&mut self) -> Result<String, Self::Error> {
+    async fn recv(&mut self) -> io::Result<String> {
         use RemoteDispatcher::*;
         let line = match self {
             Process(r) => r.recv().await?,
@@ -62,7 +47,7 @@ impl Remote for RemoteDispatcher {
     }
 
     #[instrument(level = "trace", skip(item), err, fields(%item))]
-    async fn send<D: Display + Send + 'static>(&mut self, item: D) -> Result<(), Self::Error> {
+    async fn send<D: Display + Send + 'static>(&mut self, item: D) -> io::Result<()> {
         use RemoteDispatcher::*;
         match self {
             Process(r) => r.send(item).await?,
@@ -73,7 +58,7 @@ impl Remote for RemoteDispatcher {
     }
 
     #[instrument(level = "trace", err)]
-    async fn flush(&mut self) -> Result<(), Self::Error> {
+    async fn flush(&mut self) -> io::Result<()> {
         use RemoteDispatcher::*;
         match self {
             Process(r) => r.flush().await?,
