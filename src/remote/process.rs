@@ -1,7 +1,7 @@
 use crate::Remote;
 use anyhow::{Context, Error as Anyhow};
 use async_trait::async_trait;
-use derive_more::{DebugCustom, Display, Error, From};
+use derive_more::DebugCustom;
 use std::{fmt::Display, io};
 use tokio::io::{
     AsyncBufReadExt, AsyncRead, AsyncWrite, AsyncWriteExt, BufReader, BufWriter, Lines,
@@ -69,16 +69,6 @@ impl Program for Child {
 #[cfg(test)]
 type Child = MockProgram;
 
-/// The reason why spawning the remote process failed.
-#[derive(Debug, Display, Error, From)]
-#[display(fmt = "failed to spawn the remote process")]
-pub struct ProcessSpawnError(#[from(forward)] io::Error);
-
-/// The reason why writing to or reading from the remote process failed.
-#[derive(Debug, Display, Error, From)]
-#[display(fmt = "the remote process failed during IO")]
-pub struct ProcessIoError(#[from(forward)] io::Error);
-
 /// An implementation of trait [`Remote`] as a child process.
 ///
 /// # Warning
@@ -92,7 +82,7 @@ pub struct Process {
 }
 
 impl Process {
-    fn new(mut child: Child) -> Result<Self, ProcessSpawnError> {
+    fn new(mut child: Child) -> io::Result<Self> {
         let stdin = child.stdin()?;
         let stdout = child.stdout()?;
 
@@ -108,7 +98,7 @@ impl Process {
     /// Spawns a child process.
     #[cfg(not(test))]
     #[instrument(level = "trace", err)]
-    pub async fn spawn(program: &str) -> Result<Self, ProcessSpawnError> {
+    pub async fn spawn(program: &str) -> io::Result<Self> {
         Process::new(
             tokio::process::Command::new(program)
                 .stdin(std::process::Stdio::piped())
@@ -140,16 +130,14 @@ impl Drop for Process {
 
 #[async_trait]
 impl Remote for Process {
-    type Error = ProcessIoError;
-
     #[instrument(level = "trace", err)]
-    async fn recv(&mut self) -> Result<String, Self::Error> {
+    async fn recv(&mut self) -> io::Result<String> {
         use io::ErrorKind::UnexpectedEof;
         Ok(self.reader.next_line().await?.ok_or(UnexpectedEof)?)
     }
 
     #[instrument(level = "trace", skip(item), err, fields(%item))]
-    async fn send<D: Display + Send + 'static>(&mut self, item: D) -> Result<(), Self::Error> {
+    async fn send<D: Display + Send + 'static>(&mut self, item: D) -> io::Result<()> {
         let msg = item.to_string();
         self.writer.write_all(msg.as_bytes()).await?;
         self.writer.write_u8(b'\n').await?;
@@ -157,7 +145,7 @@ impl Remote for Process {
     }
 
     #[instrument(level = "trace", err)]
-    async fn flush(&mut self) -> Result<(), Self::Error> {
+    async fn flush(&mut self) -> io::Result<()> {
         self.writer.flush().await?;
         Ok(())
     }
@@ -190,7 +178,7 @@ mod tests {
         let kind = e.kind();
         child.expect_stdin().once().return_once(move || Err(e));
 
-        assert_eq!(Process::new(child).unwrap_err().0.kind(), kind);
+        assert_eq!(Process::new(child).unwrap_err().kind(), kind);
     }
 
     #[proptest]
@@ -202,7 +190,7 @@ mod tests {
         child.expect_stdin().once().return_once(move || Ok(stdin));
         child.expect_stdout().once().return_once(move || Err(e));
 
-        assert_eq!(Process::new(child).unwrap_err().0.kind(), kind);
+        assert_eq!(Process::new(child).unwrap_err().kind(), kind);
     }
 
     #[proptest]

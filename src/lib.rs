@@ -31,7 +31,7 @@ pub mod player;
 pub mod remote;
 pub mod search;
 
-pub use crate::engine::{Engine, EngineDispatcher};
-pub use crate::player::{Player, PlayerDispatcher};
-pub use crate::remote::{Remote, RemoteDispatcher, RemoteDispatcherError};
-pub use crate::search::{Search, SearchDispatcher};
+pub use crate::engine::*;
+pub use crate::player::*;
+pub use crate::remote::*;
+pub use crate::search::*;
