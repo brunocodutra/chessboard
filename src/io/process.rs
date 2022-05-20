@@ -1,4 +1,4 @@
-use crate::Remote;
+use crate::Io;
 use anyhow::{Context, Error as Anyhow};
 use async_trait::async_trait;
 use derive_more::DebugCustom;
@@ -69,10 +69,7 @@ impl Program for Child {
 #[cfg(test)]
 type Child = MockProgram;
 
-/// An implementation of trait [`Remote`] as a child process.
-///
-/// # Warning
-/// Dropping this type blocks until the child process exits.
+/// An [`Io`] interface for a remote process.
 #[derive(DebugCustom)]
 #[debug(fmt = "Process({})", "child.id().map(i64::from).unwrap_or(-1)")]
 pub struct Process {
@@ -129,7 +126,7 @@ impl Drop for Process {
 }
 
 #[async_trait]
-impl Remote for Process {
+impl Io for Process {
     #[instrument(level = "trace", err)]
     async fn recv(&mut self) -> io::Result<String> {
         use io::ErrorKind::UnexpectedEof;

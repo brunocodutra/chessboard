@@ -27,11 +27,11 @@ pub use crate::role::*;
 pub use crate::square::*;
 
 pub mod engine;
+pub mod io;
 pub mod player;
-pub mod remote;
 pub mod search;
 
 pub use crate::engine::*;
+pub use crate::io::*;
 pub use crate::player::*;
-pub use crate::remote::*;
 pub use crate::search::*;

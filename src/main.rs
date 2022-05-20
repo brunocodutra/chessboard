@@ -1,6 +1,6 @@
 use anyhow::{bail, Context, Error as Anyhow};
+use chessboard::io::{Process, Terminal};
 use chessboard::player::{Ai, Cli, Uci};
-use chessboard::remote::{Process, Terminal};
 use chessboard::{engine::Random, search::Negamax, Color, Game, Player, PlayerDispatcher};
 use clap::{AppSettings::DeriveDisplayOrder, Parser};
 use std::io::{stderr, BufWriter};
@@ -30,14 +30,14 @@ async fn player(color: Color, url: Url) -> Result<PlayerDispatcher, Anyhow> {
 
         Ok(Ai::new(strategy).into())
     } else {
-        let remote = match url.path() {
+        let io = match url.path() {
             "" => Terminal::new(color).into(),
             path => Process::spawn(path).await?.into(),
         };
 
         let player = match url.scheme() {
-            "cli" => Cli::new(remote).into(),
-            "uci" => Uci::init(remote).await?.into(),
+            "cli" => Cli::new(io).into(),
+            "uci" => Uci::init(io).await?.into(),
             scheme => bail!("unknown protocol '{}'", scheme),
         };
 
