@@ -3,12 +3,9 @@ use shakmaty as sm;
 use std::convert::{TryFrom, TryInto};
 use std::{iter::FusedIterator, num::ParseIntError, str::FromStr};
 
-#[cfg(test)]
-use test_strategy::Arbitrary;
-
 /// Denotes a row on the chess board.
 #[derive(Debug, Display, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
-#[cfg_attr(test, derive(Arbitrary))]
+#[cfg_attr(test, derive(test_strategy::Arbitrary))]
 #[repr(u8)]
 pub enum Rank {
     #[display(fmt = "1")]
@@ -171,19 +168,17 @@ mod tests {
     fn parsing_rank_fails_for_strings_representing_invalid_integers(
         #[strategy("[^0-9]*")] s: String,
     ) {
-        use ParseRankError::*;
         assert_eq!(
-            s.parse::<Rank>(),
-            Err(ParseIntError(s.parse::<u32>().unwrap_err()))
+            s.parse::<Rank>().err(),
+            s.parse::<u32>().err().map(Into::into)
         );
     }
 
     #[proptest]
     fn parsing_rank_fails_for_integers_out_of_range(#[filter(!(1..=8).contains(&#n))] n: u32) {
-        use ParseRankError::*;
         assert_eq!(
-            n.to_string().parse::<Rank>(),
-            Err(OutOfRange(Rank::try_from(n).unwrap_err()))
+            n.to_string().parse::<Rank>().err(),
+            Rank::try_from(n).err().map(Into::into)
         );
     }
 

@@ -1,10 +1,17 @@
 use crate::{Action, Io, Player, Position};
 use anyhow::{Context, Error as Anyhow};
 use async_trait::async_trait;
+use derive_more::{Display, Error, From};
 use std::{fmt::Debug, io};
 use tokio::{runtime, task::block_in_place};
 use tracing::{debug, instrument, warn};
 use vampirc_uci::{parse_one, Duration, UciFen, UciMessage, UciSearchControl, UciTimeControl};
+
+/// The reason why an action could not be received from the UCI server.
+#[derive(Debug, Display, Error, From)]
+#[cfg_attr(test, derive(test_strategy::Arbitrary))]
+#[display(fmt = "the UCI server encountered an error")]
+pub struct UciError(#[from(forward)] io::Error);
 
 #[derive(Debug)]
 pub struct Uci<T: Io + Debug> {
@@ -14,7 +21,7 @@ pub struct Uci<T: Io + Debug> {
 impl<T: Io + Debug> Uci<T> {
     /// Establishes communication with UCI server.
     #[instrument(level = "trace", err)]
-    pub async fn init(io: T) -> io::Result<Self> {
+    pub async fn init(io: T) -> Result<Self, UciError> {
         let mut uci = Uci { io };
 
         uci.io.send(UciMessage::Uci).await?;
@@ -32,16 +39,12 @@ impl<T: Io + Debug> Uci<T> {
     }
 
     #[instrument(level = "trace", err)]
-    async fn next_message(&mut self) -> io::Result<UciMessage> {
+    async fn next_message(&mut self) -> Result<UciMessage, UciError> {
         loop {
             match parse_one(&self.io.recv().await?) {
-                UciMessage::Unknown(m, Some(cause)) => {
-                    let error = Anyhow::from(cause).context(format!("invalid UCI message '{}'", m));
-                    warn!("{:?}", error);
-                }
-
-                UciMessage::Unknown(m, None) => {
-                    warn!("invalid UCI message '{}'", m);
+                UciMessage::Unknown(m, cause) => {
+                    let error = cause.map(Anyhow::new).unwrap_or_else(|| Anyhow::msg(m));
+                    warn!("{:?}", error.context("failed to parse UCI message"));
                 }
 
                 msg => {
@@ -73,10 +76,11 @@ impl<T: Io + Debug> Drop for Uci<T> {
 
 #[async_trait]
 impl<T: Io + Debug + Send> Player for Uci<T> {
-    type Error = io::Error;
+    type Error = UciError;
 
+    /// Request an action from the CLI server.
     #[instrument(level = "trace", err)]
-    async fn act(&mut self, pos: &Position) -> io::Result<Action> {
+    async fn act(&mut self, pos: &Position) -> Result<Action, Self::Error> {
         let setpos = UciMessage::Position {
             startpos: false,
             fen: Some(UciFen(pos.to_string())),
@@ -252,7 +256,10 @@ mod tests {
         io.expect_send().returning(|_: UciMessage| Ok(()));
         io.expect_flush().returning(|| Ok(()));
 
-        assert_eq!(rt.block_on(Uci::init(io)).err().unwrap().kind(), kind);
+        assert_eq!(
+            rt.block_on(Uci::init(io)).err().map(|UciError(e)| e.kind()),
+            Some(kind)
+        );
     }
 
     #[proptest]
@@ -403,7 +410,10 @@ mod tests {
         io.expect_flush().returning(|| Ok(()));
 
         let mut uci = Uci { io };
-        assert_eq!(rt.block_on(uci.act(&pos)).unwrap_err().kind(), kind);
+        assert_eq!(
+            rt.block_on(uci.act(&pos)).map_err(|UciError(e)| e.kind()),
+            Err(kind)
+        );
     }
 
     #[proptest]
@@ -418,7 +428,10 @@ mod tests {
         io.expect_flush().returning(|| Ok(()));
 
         let mut uci = Uci { io };
-        assert_eq!(rt.block_on(uci.act(&pos)).unwrap_err().kind(), kind);
+        assert_eq!(
+            rt.block_on(uci.act(&pos)).map_err(|UciError(e)| e.kind()),
+            Err(kind)
+        );
     }
 
     #[proptest]
@@ -433,6 +446,9 @@ mod tests {
         io.expect_recv().once().return_once(move || Err(e));
 
         let mut uci = Uci { io };
-        assert_eq!(rt.block_on(uci.act(&pos)).unwrap_err().kind(), kind);
+        assert_eq!(
+            rt.block_on(uci.act(&pos)).map_err(|UciError(e)| e.kind()),
+            Err(kind)
+        );
     }
 }

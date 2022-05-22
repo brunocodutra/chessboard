@@ -1,12 +1,9 @@
 use derive_more::Display;
 use shakmaty as sm;
 
-#[cfg(test)]
-use test_strategy::Arbitrary;
-
 /// Denotes the type of a chess [`Piece`][`crate::Piece`].
 #[derive(Debug, Display, Copy, Clone, Eq, PartialEq, Hash)]
-#[cfg_attr(test, derive(Arbitrary))]
+#[cfg_attr(test, derive(test_strategy::Arbitrary))]
 pub enum Role {
     #[display(fmt = "pawn")]
     Pawn,

@@ -2,12 +2,9 @@ use crate::{Color, Role};
 use shakmaty as sm;
 use std::fmt::{self, Display, Write};
 
-#[cfg(test)]
-use test_strategy::Arbitrary;
-
 /// A chess [piece][`Role`] of a certain [`Color`].
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
-#[cfg_attr(test, derive(Arbitrary))]
+#[cfg_attr(test, derive(test_strategy::Arbitrary))]
 pub struct Piece(pub Color, pub Role);
 
 impl Piece {

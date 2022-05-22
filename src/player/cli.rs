@@ -2,17 +2,14 @@ use crate::{Action, File, Io, Move, Placement, Player, Position, Rank, Square};
 use anyhow::Error as Anyhow;
 use async_trait::async_trait;
 use clap::Parser;
-use derive_more::{Constructor, Deref, Display, From};
+use derive_more::{Constructor, Deref, Display, Error, From};
 use std::fmt::{self, Debug, Display};
 use std::{io, str::FromStr};
 use tracing::instrument;
 
-#[cfg(test)]
-use test_strategy::Arbitrary;
-
 /// Command Line Interface
 #[derive(Debug, Display, Copy, Clone, Eq, PartialEq, Hash, Parser)]
-#[cfg_attr(test, derive(Arbitrary))]
+#[cfg_attr(test, derive(test_strategy::Arbitrary))]
 #[clap(
     name = "",
     multicall = true,
@@ -62,6 +59,12 @@ where
     s.parse().map_err(|e| format!("{:?}", Anyhow::from(e)))
 }
 
+/// The reason why an action could not be received through the CLI.
+#[derive(Debug, Display, Error, From)]
+#[cfg_attr(test, derive(test_strategy::Arbitrary))]
+#[display(fmt = "the CLI encountered an error")]
+pub struct CliError(#[from(forward)] io::Error);
+
 #[derive(Debug, From, Constructor)]
 pub struct Cli<T: Io + Debug> {
     io: T,
@@ -69,10 +72,11 @@ pub struct Cli<T: Io + Debug> {
 
 #[async_trait]
 impl<T: Io + Debug + Send> Player for Cli<T> {
-    type Error = io::Error;
+    type Error = CliError;
 
+    /// Prompt the user for an action.
     #[instrument(level = "trace", err)]
-    async fn act(&mut self, pos: &Position) -> io::Result<Action> {
+    async fn act(&mut self, pos: &Position) -> Result<Action, CliError> {
         self.io.send(Board(pos.placement())).await?;
 
         loop {
@@ -333,7 +337,10 @@ mod tests {
         io.expect_send().return_once(move |_: Board| Err(e));
 
         let mut cli = Cli::new(io);
-        assert_eq!(rt.block_on(cli.act(&pos)).unwrap_err().kind(), kind);
+        assert_eq!(
+            rt.block_on(cli.act(&pos)).map_err(|CliError(e)| e.kind()),
+            Err(kind)
+        );
     }
 
     #[proptest]
@@ -347,7 +354,10 @@ mod tests {
         io.expect_flush().return_once(move || Err(e));
 
         let mut cli = Cli::new(io);
-        assert_eq!(rt.block_on(cli.act(&pos)).unwrap_err().kind(), kind);
+        assert_eq!(
+            rt.block_on(cli.act(&pos)).map_err(|CliError(e)| e.kind()),
+            Err(kind)
+        );
     }
 
     #[proptest]
@@ -362,6 +372,9 @@ mod tests {
         io.expect_recv().return_once(move || Err(e));
 
         let mut cli = Cli::new(io);
-        assert_eq!(rt.block_on(cli.act(&pos)).unwrap_err().kind(), kind);
+        assert_eq!(
+            rt.block_on(cli.act(&pos)).map_err(|CliError(e)| e.kind()),
+            Err(kind)
+        );
     }
 }

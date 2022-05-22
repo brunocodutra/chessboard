@@ -3,12 +3,9 @@ use shakmaty as sm;
 use std::str::FromStr;
 use vampirc_uci::UciPiece;
 
-#[cfg(test)]
-use test_strategy::Arbitrary;
-
 /// A promotion specifier.
 #[derive(Debug, Display, Copy, Clone, Eq, PartialEq, Hash)]
-#[cfg_attr(test, derive(Arbitrary))]
+#[cfg_attr(test, derive(test_strategy::Arbitrary))]
 pub enum Promotion {
     #[display(fmt = "n")]
     Knight,

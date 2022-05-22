@@ -1,11 +1,8 @@
 use crate::{Action, Color, InvalidAction, Outcome, Position};
 
-#[cfg(test)]
-use test_strategy::Arbitrary;
-
 /// Holds the state of a game of chess.
 #[derive(Debug, Default, Clone, Eq, PartialEq, Hash)]
-#[cfg_attr(test, derive(Arbitrary))]
+#[cfg_attr(test, derive(test_strategy::Arbitrary))]
 pub struct Game {
     position: Position,
     resigned: Option<Color>,
@@ -120,7 +117,7 @@ mod tests {
             resigned: Some(p),
         };
 
-        assert_eq!(game.execute(a), Err(game.outcome().unwrap().into()));
+        assert_eq!(game.execute(a).err(), game.outcome().map(Into::into));
     }
 
     #[proptest]
@@ -133,7 +130,7 @@ mod tests {
             resigned: None,
         };
 
-        assert_eq!(game.execute(a), Err(game.outcome().unwrap().into()));
+        assert_eq!(game.execute(a).err(), game.outcome().map(Into::into));
     }
 
     #[proptest]
@@ -146,7 +143,7 @@ mod tests {
             resigned: None,
         };
 
-        assert_eq!(game.execute(a), Err(game.outcome().unwrap().into()));
+        assert_eq!(game.execute(a).err(), game.outcome().map(Into::into));
     }
 
     #[proptest]
@@ -159,7 +156,7 @@ mod tests {
             resigned: None,
         };
 
-        assert_eq!(game.execute(a), Err(game.outcome().unwrap().into()));
+        assert_eq!(game.execute(a).err(), game.outcome().map(Into::into));
     }
 
     #[proptest]

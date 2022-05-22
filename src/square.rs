@@ -5,12 +5,9 @@ use std::convert::{TryFrom, TryInto};
 use std::{cmp::Ordering, iter::FusedIterator, str::FromStr};
 use vampirc_uci::UciSquare;
 
-#[cfg(test)]
-use test_strategy::Arbitrary;
-
 /// Denotes a square on the chess board.
 #[derive(Debug, Display, Copy, Clone, Eq, PartialEq, Hash)]
-#[cfg_attr(test, derive(Arbitrary))]
+#[cfg_attr(test, derive(test_strategy::Arbitrary))]
 #[display(fmt = "{}{}", _0, _1)]
 pub struct Square(pub File, pub Rank);
 
@@ -170,8 +167,8 @@ mod tests {
     fn parsing_square_fails_if_file_is_invalid(#[strategy("[^a-h]")] f: String, r: Rank) {
         let s = [f.clone(), r.to_string()].concat();
         assert_eq!(
-            s.parse::<Square>(),
-            Err(f.parse::<File>().unwrap_err().into())
+            s.parse::<Square>().err(),
+            f.parse::<File>().err().map(Into::into)
         );
     }
 
@@ -179,8 +176,8 @@ mod tests {
     fn parsing_square_fails_if_rank_is_invalid(f: File, #[strategy("[^1-8]*")] r: String) {
         let s = [f.to_string(), r.clone()].concat();
         assert_eq!(
-            s.parse::<Square>(),
-            Err(r.parse::<Rank>().unwrap_err().into())
+            s.parse::<Square>().err(),
+            r.parse::<Rank>().err().map(Into::into)
         );
     }
 

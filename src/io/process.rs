@@ -175,7 +175,7 @@ mod tests {
         let kind = e.kind();
         child.expect_stdin().once().return_once(move || Err(e));
 
-        assert_eq!(Process::new(child).unwrap_err().kind(), kind);
+        assert_eq!(Process::new(child).err().map(|e| e.kind()), Some(kind));
     }
 
     #[proptest]
@@ -187,7 +187,7 @@ mod tests {
         child.expect_stdin().once().return_once(move || Ok(stdin));
         child.expect_stdout().once().return_once(move || Err(e));
 
-        assert_eq!(Process::new(child).unwrap_err().kind(), kind);
+        assert_eq!(Process::new(child).err().map(|e| e.kind()), Some(kind));
     }
 
     #[proptest]

@@ -3,12 +3,9 @@ use shakmaty as sm;
 use std::convert::{TryFrom, TryInto};
 use std::{char::ParseCharError, iter::FusedIterator, str::FromStr};
 
-#[cfg(test)]
-use test_strategy::Arbitrary;
-
 /// Denotes a column on the chess board.
 #[derive(Debug, Display, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
-#[cfg_attr(test, derive(Arbitrary))]
+#[cfg_attr(test, derive(test_strategy::Arbitrary))]
 #[repr(u8)]
 pub enum File {
     #[display(fmt = "a")]
@@ -178,10 +175,9 @@ mod tests {
 
     #[proptest]
     fn parsing_file_fails_for_strings_of_length_not_one(#[strategy(".{2,}?")] s: String) {
-        use ParseFileError::*;
         assert_eq!(
-            s.parse::<File>(),
-            Err(ParseCharError(s.parse::<char>().unwrap_err()))
+            s.parse::<File>().err(),
+            s.parse::<char>().err().map(Into::into)
         );
     }
 
@@ -189,10 +185,9 @@ mod tests {
     fn parsing_file_fails_for_char_other_than_lower_case_letter_between_a_and_h(
         #[filter(!('a'..='h').contains(&#c))] c: char,
     ) {
-        use ParseFileError::*;
         assert_eq!(
-            c.to_string().parse::<File>(),
-            Err(OutOfRange(File::try_from(c).unwrap_err()))
+            c.to_string().parse::<File>().err(),
+            File::try_from(c).err().map(Into::into)
         );
     }
 
