@@ -1,7 +1,6 @@
 use async_trait::async_trait;
 use derive_more::{DebugCustom, From};
 use std::{fmt::Display, io};
-use tracing::instrument;
 
 mod process;
 mod terminal;
@@ -35,7 +34,6 @@ pub enum IoDispatcher {
 
 #[async_trait]
 impl Io for IoDispatcher {
-    #[instrument(level = "trace", err)]
     async fn recv(&mut self) -> io::Result<String> {
         use IoDispatcher::*;
         let line = match self {
@@ -46,7 +44,6 @@ impl Io for IoDispatcher {
         Ok(line)
     }
 
-    #[instrument(level = "trace", skip(item), err, fields(%item))]
     async fn send<D: Display + Send + 'static>(&mut self, item: D) -> io::Result<()> {
         use IoDispatcher::*;
         match self {
@@ -57,7 +54,6 @@ impl Io for IoDispatcher {
         Ok(())
     }
 
-    #[instrument(level = "trace", err)]
     async fn flush(&mut self) -> io::Result<()> {
         use IoDispatcher::*;
         match self {
