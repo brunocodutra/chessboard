@@ -1,8 +1,9 @@
 use anyhow::{bail, Context, Error as Anyhow};
-use chessboard::{
-    Ai, Cli, Color, Game, Negamax, Outcome, Player, PlayerDispatcher, Process, Random, Terminal,
-    Uci,
-};
+use chessboard::engine::Random;
+use chessboard::io::{Process, Terminal};
+use chessboard::player::{Ai, Cli, Uci};
+use chessboard::search::Negamax;
+use chessboard::{Color, Game, Outcome, Player, PlayerDispatcher};
 use clap::{AppSettings::DeriveDisplayOrder, Parser};
 use std::{cmp::min, io::stderr};
 use tokio::try_join;

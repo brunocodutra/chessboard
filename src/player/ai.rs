@@ -23,7 +23,7 @@ impl<S: Search + Debug + Send> Player for Ai<S> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{MockSearch, Move};
+    use crate::{search::MockSearch, Move};
     use test_strategy::proptest;
     use tokio::runtime;
 

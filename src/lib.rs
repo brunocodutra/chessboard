@@ -31,7 +31,7 @@ pub mod io;
 pub mod player;
 pub mod search;
 
-pub use crate::engine::*;
-pub use crate::io::*;
-pub use crate::player::*;
-pub use crate::search::*;
+pub use crate::engine::{Dispatcher as EngineDispatcher, Engine};
+pub use crate::io::{Dispatcher as IoDispatcher, Io};
+pub use crate::player::{Dispatcher as PlayerDispatcher, Player};
+pub use crate::search::{Dispatcher as SearchDispatcher, Search};

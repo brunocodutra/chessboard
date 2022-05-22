@@ -110,7 +110,7 @@ impl<T: Io + Debug + Send> Player for Uci<T> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{MockIo, Move};
+    use crate::{io::MockIo, Move};
     use mockall::{predicate::*, Sequence};
     use proptest::prelude::*;
     use test_strategy::proptest;
