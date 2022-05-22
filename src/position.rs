@@ -6,11 +6,8 @@ use std::{convert::TryFrom, num::NonZeroU32, str::FromStr};
 #[cfg(test)]
 use proptest::{prelude::*, sample::select};
 
-#[cfg(test)]
-use test_strategy::Arbitrary;
-
 #[derive(DebugCustom, Display, Default, Clone, Eq, PartialEq, Hash)]
-#[cfg_attr(test, derive(Arbitrary))]
+#[cfg_attr(test, derive(test_strategy::Arbitrary))]
 #[debug(fmt = "Fen(\"{}\")", self)]
 #[display(fmt = "{}", "setup")]
 struct Fen {
@@ -158,7 +155,7 @@ impl Default for PositionKind {
 ///
 /// This type guarantees that it only holds valid positions.
 #[derive(DebugCustom, Display, Default, Clone, Eq, PartialEq, Hash)]
-#[cfg_attr(test, derive(Arbitrary))]
+#[cfg_attr(test, derive(test_strategy::Arbitrary))]
 #[cfg_attr(test, arbitrary(args = PositionKind))]
 #[debug(fmt = "Position(\"{}\")", self)]
 #[display(fmt = "{}", "Fen::from(self.clone())")]
@@ -475,10 +472,7 @@ mod tests {
         let s = [&fen.to_string()[..n], &r].concat();
         let result = s.parse::<Fen>();
         prop_assume!(result.is_err());
-        assert_eq!(
-            s.parse::<Position>(),
-            Err(ParsePositionError::InvalidFen(result.unwrap_err()))
-        );
+        assert_eq!(s.parse::<Position>().err(), result.err().map(Into::into));
     }
 
     #[proptest]
@@ -486,10 +480,7 @@ mod tests {
         let s = fen.to_string();
         let result = Position::try_from(fen);
         prop_assume!(result.is_err());
-        assert_eq!(
-            s.parse::<Position>(),
-            Err(ParsePositionError::IllegalPosition(result.unwrap_err()))
-        );
+        assert_eq!(s.parse::<Position>().err(), result.err().map(Into::into));
     }
 
     #[proptest]

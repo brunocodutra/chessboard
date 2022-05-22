@@ -4,12 +4,9 @@ use shakmaty as sm;
 use std::str::FromStr;
 use vampirc_uci::UciMove;
 
-#[cfg(test)]
-use test_strategy::Arbitrary;
-
 /// A chess move.
 #[derive(Debug, Display, Copy, Clone, Eq, PartialEq, Hash)]
-#[cfg_attr(test, derive(Arbitrary))]
+#[cfg_attr(test, derive(test_strategy::Arbitrary))]
 #[display(fmt = "{}{}{}", _0, _1, _2)]
 pub struct Move(Square, Square, Promotion);
 
@@ -32,7 +29,7 @@ impl Move {
 
 /// Represents an illegal [`Move`] in a given [`Position`].
 #[derive(Debug, Display, Clone, Eq, PartialEq, Hash)]
-#[cfg_attr(test, derive(Arbitrary))]
+#[cfg_attr(test, derive(test_strategy::Arbitrary))]
 #[display(fmt = "move `{}` is illegal in position `{}`", _0, _1)]
 pub struct IllegalMove(pub Move, pub Position);
 
@@ -137,8 +134,8 @@ mod tests {
         use ParseMoveError::*;
         let s = [f.clone(), t.to_string(), p.to_string()].concat();
         assert_eq!(
-            s.parse::<Move>(),
-            Err(InvalidFromSquare(f.parse::<Square>().unwrap_err()))
+            s.parse::<Move>().err(),
+            f.parse::<Square>().err().map(InvalidFromSquare)
         );
     }
 
@@ -151,8 +148,8 @@ mod tests {
         use ParseMoveError::*;
         let s = [f.to_string(), t.clone(), p.to_string()].concat();
         assert_eq!(
-            s.parse::<Move>(),
-            Err(InvalidToSquare(t.parse::<Square>().unwrap_err()))
+            s.parse::<Move>().err(),
+            t.parse::<Square>().err().map(InvalidToSquare)
         );
     }
 
@@ -165,8 +162,8 @@ mod tests {
         use ParseMoveError::*;
         let s = [f.to_string(), t.to_string(), p.clone()].concat();
         assert_eq!(
-            s.parse::<Move>(),
-            Err(InvalidPromotion(p.parse::<Promotion>().unwrap_err()))
+            s.parse::<Move>().err(),
+            p.parse::<Promotion>().err().map(InvalidPromotion)
         );
     }
 

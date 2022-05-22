@@ -1,12 +1,9 @@
 use crate::{IllegalMove, Move, Outcome};
 use derive_more::{Display, Error, From};
 
-#[cfg(test)]
-use test_strategy::Arbitrary;
-
 /// The possible actions a player can take.
 #[derive(Debug, Display, Copy, Clone, Eq, PartialEq, Hash, From)]
-#[cfg_attr(test, derive(Arbitrary))]
+#[cfg_attr(test, derive(test_strategy::Arbitrary))]
 pub enum Action {
     /// Move a piece on the board.
     #[display(fmt = "{}", _0)]

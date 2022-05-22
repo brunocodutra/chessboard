@@ -6,14 +6,11 @@ use std::ops::Index;
 #[cfg(test)]
 use proptest::{collection::hash_map, prelude::*};
 
-#[cfg(test)]
-use test_strategy::Arbitrary;
-
 /// The arrangement of [`Piece`]s on the chess board.
 ///
 /// This type does not guarantee it holds a valid arrangement of pieces.
 #[derive(DebugCustom, Display, Clone, Eq, PartialEq, Hash)]
-#[cfg_attr(test, derive(Arbitrary))]
+#[cfg_attr(test, derive(test_strategy::Arbitrary))]
 #[debug(fmt = "Placement(\"{}\")", self)]
 #[display(fmt = "{}", "board")]
 pub struct Placement {
