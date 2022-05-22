@@ -23,7 +23,7 @@ pub trait Player {
 
 /// The reason why the underlying [`Player`] failed.
 #[derive(Debug, Display, Error, From)]
-pub enum PlayerDispatcherError {
+pub enum DispatcherError {
     Ai(<Ai<SearchDispatcher> as Player>::Error),
     Cli(<Cli<IoDispatcher> as Player>::Error),
     Uci(<Uci<IoDispatcher> as Player>::Error),
@@ -31,7 +31,7 @@ pub enum PlayerDispatcherError {
 
 /// A static dispatcher for [`Player`].
 #[derive(DebugCustom, From)]
-pub enum PlayerDispatcher {
+pub enum Dispatcher {
     #[debug(fmt = "{:?}", _0)]
     Ai(Ai<SearchDispatcher>),
     #[debug(fmt = "{:?}", _0)]
@@ -41,11 +41,11 @@ pub enum PlayerDispatcher {
 }
 
 #[async_trait]
-impl Player for PlayerDispatcher {
-    type Error = PlayerDispatcherError;
+impl Player for Dispatcher {
+    type Error = DispatcherError;
 
     async fn act(&mut self, pos: &Position) -> Result<Action, Self::Error> {
-        use PlayerDispatcher::*;
+        use Dispatcher::*;
         match self {
             Ai(p) => Ok(p.act(pos).await?),
             Cli(p) => Ok(p.act(pos).await?),

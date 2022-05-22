@@ -25,7 +25,7 @@ pub trait Io {
 /// A static dispatcher for [`Io`].
 #[allow(clippy::large_enum_variant)]
 #[derive(DebugCustom, From)]
-pub enum IoDispatcher {
+pub enum Dispatcher {
     #[debug(fmt = "{:?}", _0)]
     Process(Process),
     #[debug(fmt = "{:?}", _0)]
@@ -33,9 +33,9 @@ pub enum IoDispatcher {
 }
 
 #[async_trait]
-impl Io for IoDispatcher {
+impl Io for Dispatcher {
     async fn recv(&mut self) -> io::Result<String> {
-        use IoDispatcher::*;
+        use Dispatcher::*;
         let line = match self {
             Process(r) => r.recv().await?,
             Terminal(r) => r.recv().await?,
@@ -45,7 +45,7 @@ impl Io for IoDispatcher {
     }
 
     async fn send<D: Display + Send + 'static>(&mut self, item: D) -> io::Result<()> {
-        use IoDispatcher::*;
+        use Dispatcher::*;
         match self {
             Process(r) => r.send(item).await?,
             Terminal(r) => r.send(item).await?,
@@ -55,7 +55,7 @@ impl Io for IoDispatcher {
     }
 
     async fn flush(&mut self) -> io::Result<()> {
-        use IoDispatcher::*;
+        use Dispatcher::*;
         match self {
             Process(r) => r.flush().await?,
             Terminal(r) => r.flush().await?,

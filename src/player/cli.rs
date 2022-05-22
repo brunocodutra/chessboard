@@ -130,7 +130,7 @@ impl Display for Board {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::MockIo;
+    use crate::io::MockIo;
     use mockall::{predicate::*, Sequence};
     use test_strategy::proptest;
     use tokio::runtime;

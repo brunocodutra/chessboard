@@ -14,14 +14,14 @@ pub trait Search {
 
 /// A static dispatcher for [`Search`].
 #[derive(DebugCustom, From)]
-pub enum SearchDispatcher {
+pub enum Dispatcher {
     #[debug(fmt = "{:?}", _0)]
     Negamax(Negamax<EngineDispatcher>),
 }
 
-impl Search for SearchDispatcher {
+impl Search for Dispatcher {
     fn search(&mut self, pos: &Position) -> Option<Move> {
-        use SearchDispatcher::*;
+        use Dispatcher::*;
         match self {
             Negamax(s) => s.search(pos),
         }
