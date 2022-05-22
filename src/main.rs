@@ -1,7 +1,8 @@
 use anyhow::{bail, Context, Error as Anyhow};
-use chessboard::io::{Process, Terminal};
-use chessboard::player::{Ai, Cli, Uci};
-use chessboard::{engine::Random, search::Negamax, Color, Game, Player, PlayerDispatcher};
+use chessboard::{
+    Ai, Cli, Color, Game, Negamax, Outcome, Player, PlayerDispatcher, Process, Random, Terminal,
+    Uci,
+};
 use clap::{AppSettings::DeriveDisplayOrder, Parser};
 use std::{cmp::min, io::stderr};
 use tokio::try_join;
@@ -41,6 +42,40 @@ async fn player(color: Color, url: Url) -> Result<PlayerDispatcher, Anyhow> {
         };
 
         Ok(player)
+    }
+}
+
+#[instrument(level = "trace", err)]
+async fn run(mut white: PlayerDispatcher, mut black: PlayerDispatcher) -> Result<Outcome, Anyhow> {
+    let mut game = Game::default();
+
+    loop {
+        match game.outcome() {
+            Some(o) => break Ok(o),
+
+            None => {
+                let position = game.position();
+                info!(%position);
+
+                let turn = position.turn();
+
+                let player = match turn {
+                    Color::Black => &mut black,
+                    Color::White => &mut white,
+                };
+
+                let action = player
+                    .act(position)
+                    .await
+                    .context(format!("the {} player encountered an error", turn))?;
+
+                info!(player = %turn, %action);
+
+                if let Err(e) = game.execute(action).context("invalid player action") {
+                    warn!("{:?}", e);
+                }
+            }
+        }
     }
 }
 
@@ -94,32 +129,8 @@ async fn main() -> Result<(), Anyhow> {
         .map_err(|e| Anyhow::msg(e.to_string()))
         .context("failed to initialize the tracing infrastructure")?;
 
-    let mut game = Game::default();
-    let (mut white, mut black) =
-        try_join!(player(Color::White, white), player(Color::Black, black))?;
-
-    let outcome = loop {
-        match game.outcome() {
-            Some(o) => break o,
-
-            None => {
-                let position = game.position();
-                info!(%position);
-
-                let action = match position.turn() {
-                    Color::Black => black.act(position).await?,
-                    Color::White => white.act(position).await?,
-                };
-
-                info!(player = %position.turn(), %action);
-
-                if let Err(e) = game.execute(action).context("invalid player action") {
-                    warn!("{:?}", e);
-                }
-            }
-        }
-    };
-
+    let (white, black) = try_join!(player(Color::White, white), player(Color::Black, black))?;
+    let outcome = run(white, black).await?;
     info!(%outcome);
 
     Ok(())
