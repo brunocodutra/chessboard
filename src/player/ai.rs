@@ -1,10 +1,10 @@
 use crate::{Action, Player, Position, Search};
 use async_trait::async_trait;
-use derive_more::Constructor;
+use derive_more::{Constructor, From};
 use std::{convert::Infallible, fmt::Debug};
 use tracing::instrument;
 
-#[derive(Debug, Constructor)]
+#[derive(Debug, From, Constructor)]
 pub struct Ai<S: Search> {
     strategy: S,
 }

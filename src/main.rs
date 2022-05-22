@@ -1,53 +1,17 @@
-use anyhow::{bail, Context, Error as Anyhow};
-use chessboard::engine::Random;
-use chessboard::io::{Process, Terminal};
-use chessboard::player::{Ai, Cli, Uci};
-use chessboard::search::Negamax;
-use chessboard::{Color, Game, Outcome, Player, PlayerDispatcher};
+use anyhow::{Context, Error as Anyhow};
+use chessboard::{Color, Game, Outcome, Player, PlayerConfig, Setup};
 use clap::{AppSettings::DeriveDisplayOrder, Parser};
-use std::{cmp::min, io::stderr};
+use std::{cmp::min, error::Error, fmt::Debug, io::stderr};
 use tokio::try_join;
 use tracing::{info, instrument, warn, Level};
 use tracing_subscriber::fmt::format::FmtSpan;
-use url::Url;
 
 #[instrument(level = "trace", err)]
-async fn player(color: Color, url: Url) -> Result<PlayerDispatcher, Anyhow> {
-    if url.has_authority() {
-        bail!("urls that have an authority component are not supported");
-    }
-
-    if let "ai" = url.scheme() {
-        let engine = match url.fragment() {
-            Some("random") => Random::default().into(),
-            Some(fragment) => bail!("unknown engine '{}'", fragment),
-            None => bail!("expected engine as url fragment"),
-        };
-
-        let strategy = match url.path() {
-            "negamax" => Negamax::new(engine).into(),
-            path => bail!("unknown strategy '{}'", path),
-        };
-
-        Ok(Ai::new(strategy).into())
-    } else {
-        let io = match url.path() {
-            "" => Terminal::new(color).into(),
-            path => Process::spawn(path).await?.into(),
-        };
-
-        let player = match url.scheme() {
-            "cli" => Cli::new(io).into(),
-            "uci" => Uci::init(io).await?.into(),
-            scheme => bail!("unknown protocol '{}'", scheme),
-        };
-
-        Ok(player)
-    }
-}
-
-#[instrument(level = "trace", err)]
-async fn run(mut white: PlayerDispatcher, mut black: PlayerDispatcher) -> Result<Outcome, Anyhow> {
+async fn run<T>(mut white: T, mut black: T) -> Result<Outcome, Anyhow>
+where
+    T: Player + Debug,
+    T::Error: Error + Send + Sync + 'static,
+{
     let mut game = Game::default();
 
     loop {
@@ -84,24 +48,12 @@ async fn run(mut white: PlayerDispatcher, mut black: PlayerDispatcher) -> Result
 #[clap(author, version, about, name = "Chessboard", setting = DeriveDisplayOrder)]
 struct Opts {
     /// White pieces player.
-    #[clap(
-        short,
-        long,
-        value_name = "url",
-        default_value = "cli:",
-        parse(try_from_str)
-    )]
-    white: Url,
+    #[clap(short, long, default_value = "cli(term)", parse(try_from_str))]
+    white: PlayerConfig,
 
     /// Black pieces player.
-    #[clap(
-        short,
-        long,
-        value_name = "url",
-        default_value = "cli:",
-        parse(try_from_str)
-    )]
-    black: Url,
+    #[clap(short, long, default_value = "cli(term)", parse(try_from_str))]
+    black: PlayerConfig,
 
     /// Verbosity level.
     #[clap(short, long, value_name = "level", parse(try_from_str))]
@@ -130,7 +82,7 @@ async fn main() -> Result<(), Anyhow> {
         .map_err(|e| Anyhow::msg(e.to_string()))
         .context("failed to initialize the tracing infrastructure")?;
 
-    let (white, black) = try_join!(player(Color::White, white), player(Color::Black, black))?;
+    let (white, black) = try_join!(white.setup(), black.setup())?;
     let outcome = run(white, black).await?;
     info!(%outcome);
 

@@ -4,7 +4,7 @@ use async_trait::async_trait;
 use clap::Parser;
 use derive_more::{Constructor, Deref, Display, Error, From};
 use std::fmt::{self, Debug, Display};
-use std::{io, str::FromStr};
+use std::{error::Error, io, str::FromStr};
 use tracing::instrument;
 
 /// Command Line Interface
@@ -54,7 +54,7 @@ impl From<Cmd> for Action {
 fn try_parse_descriptor<T>(s: &str) -> Result<T, String>
 where
     T: FromStr,
-    Anyhow: From<T::Err>,
+    T::Err: Error + Send + Sync + 'static,
 {
     s.parse().map_err(|e| format!("{:?}", Anyhow::from(e)))
 }

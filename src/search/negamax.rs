@@ -1,8 +1,8 @@
 use crate::{Engine, Move, Position, Search};
-use derive_more::Constructor;
+use derive_more::{Constructor, From};
 use std::fmt::Debug;
 
-#[derive(Debug, Clone, Constructor)]
+#[derive(Debug, Clone, From, Constructor)]
 pub struct Negamax<E: Engine> {
     engine: E,
 }
@@ -63,7 +63,7 @@ impl<E: Engine> Search for Negamax<E> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::engine::{MockEngine, Random};
+    use crate::engine::MockEngine;
     use crate::PositionKind;
     use mockall::predicate::*;
     use test_strategy::proptest;
@@ -140,7 +140,10 @@ mod tests {
 
     #[proptest]
     fn search_runs_negamax(pos: Position) {
-        if let Some(m) = Negamax::new(Random).search(&pos) {
+        let mut engine = MockEngine::new();
+        engine.expect_evaluate().return_const(0);
+
+        if let Some(m) = Negamax::new(engine).search(&pos) {
             assert!(pos.moves().any(|n| n == m));
         } else {
             assert_eq!(pos.moves().len(), 0);
