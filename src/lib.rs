@@ -10,6 +10,7 @@ mod position;
 mod promotion;
 mod rank;
 mod role;
+mod setup;
 mod square;
 
 pub use crate::action::*;
@@ -24,6 +25,7 @@ pub use crate::promotion::*;
 pub use crate::r#move::*;
 pub use crate::rank::*;
 pub use crate::role::*;
+pub use crate::setup::*;
 pub use crate::square::*;
 
 pub mod engine;
@@ -31,7 +33,7 @@ pub mod io;
 pub mod player;
 pub mod search;
 
-pub use crate::engine::{Dispatcher as EngineDispatcher, Engine};
-pub use crate::io::{Dispatcher as IoDispatcher, Io};
-pub use crate::player::{Dispatcher as PlayerDispatcher, Player};
-pub use crate::search::{Dispatcher as SearchDispatcher, Search};
+pub use crate::engine::{Config as EngineConfig, Dispatcher as EngineDispatcher, Engine};
+pub use crate::io::{Config as IoConfig, Dispatcher as IoDispatcher, Io};
+pub use crate::player::{Config as PlayerConfig, Dispatcher as PlayerDispatcher, Player};
+pub use crate::search::{Config as SearchConfig, Dispatcher as SearchDispatcher, Search};

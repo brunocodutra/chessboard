@@ -11,23 +11,21 @@ use tracing::instrument;
 ///
 /// [rustyline]: https://crates.io/crates/rustyline
 #[derive(DebugCustom)]
-#[debug(fmt = "Terminal({})", prompt)]
+#[debug(fmt = "Terminal")]
 pub struct Terminal {
-    prompt: String,
     writer: Stdout,
     reader: Arc<Mutex<Editor<()>>>,
 }
 
 impl Terminal {
     /// Opens a terminal interface with the given prompt.
-    #[instrument(level = "trace", skip(prompt), fields(%prompt))]
-    pub fn new<P: Display>(prompt: P) -> Self {
+    #[instrument(level = "trace")]
+    pub fn open() -> Self {
         Terminal {
-            prompt: prompt.to_string(),
+            writer: stdout(),
             reader: Arc::new(Mutex::new(Editor::with_config(
                 Config::builder().auto_add_history(true).build(),
             ))),
-            writer: stdout(),
         }
     }
 }
@@ -37,8 +35,7 @@ impl Io for Terminal {
     #[instrument(level = "trace", err)]
     async fn recv(&mut self) -> io::Result<String> {
         let mut reader = self.reader.clone().lock_owned().await;
-        let prompt = format!("{} > ", self.prompt);
-        match block_in_place(move || reader.readline(&prompt)) {
+        match block_in_place(move || reader.readline("> ")) {
             Err(ReadlineError::Io(e)) => Err(e),
             Err(ReadlineError::Eof) => Err(io::ErrorKind::UnexpectedEof.into()),
             Err(ReadlineError::Interrupted) => Err(io::ErrorKind::Interrupted.into()),
