@@ -2,7 +2,6 @@ use crate::{Action, IoDispatcher, Position, SearchDispatcher};
 use async_trait::async_trait;
 use derive_more::{DebugCustom, Display, Error, From};
 use std::fmt::Debug;
-use tracing::instrument;
 
 mod ai;
 mod cli;
@@ -45,7 +44,6 @@ pub enum PlayerDispatcher {
 impl Player for PlayerDispatcher {
     type Error = PlayerDispatcherError;
 
-    #[instrument(level = "trace", err)]
     async fn act(&mut self, pos: &Position) -> Result<Action, Self::Error> {
         use PlayerDispatcher::*;
         match self {

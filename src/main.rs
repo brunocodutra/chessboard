@@ -3,8 +3,7 @@ use chessboard::io::{Process, Terminal};
 use chessboard::player::{Ai, Cli, Uci};
 use chessboard::{engine::Random, search::Negamax, Color, Game, Player, PlayerDispatcher};
 use clap::{AppSettings::DeriveDisplayOrder, Parser};
-use std::io::{stderr, BufWriter};
-use std::{cmp::min, error::Error};
+use std::{cmp::min, io::stderr};
 use tokio::try_join;
 use tracing::{info, instrument, warn, Level};
 use tracing_subscriber::fmt::format::FmtSpan;
@@ -75,9 +74,8 @@ struct Opts {
     verbosity: Level,
 }
 
-#[instrument(level = "trace", err)]
 #[tokio::main]
-async fn main() -> Result<(), Box<dyn Error + Send + Sync + 'static>> {
+async fn main() -> Result<(), Anyhow> {
     let Opts {
         white,
         black,
@@ -90,9 +88,11 @@ async fn main() -> Result<(), Box<dyn Error + Send + Sync + 'static>> {
         .pretty()
         .with_thread_ids(true)
         .with_env_filter(filter)
-        .with_writer(|| BufWriter::new(stderr()))
+        .with_writer(stderr)
         .with_span_events(FmtSpan::FULL)
-        .try_init()?;
+        .try_init()
+        .map_err(|e| Anyhow::msg(e.to_string()))
+        .context("failed to initialize the tracing infrastructure")?;
 
     let mut game = Game::default();
     let (mut white, mut black) =
