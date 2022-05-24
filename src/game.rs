@@ -14,7 +14,7 @@ impl Game {
         &self.position
     }
 
-    // The [`Outcome`] of the game if it has already ended.
+    /// The [`Outcome`] of the game if it has already ended.
     pub fn outcome(&self) -> Option<Outcome> {
         if let Some(p) = self.resigned {
             Outcome::Resignation(p).into()
@@ -29,7 +29,7 @@ impl Game {
         }
     }
 
-    /// Executes a player action if valid, otherwise returns the reason why not.
+    /// Executes an [`Action`] if valid, otherwise returns the reason why not.
     pub fn execute(&mut self, action: Action) -> Result<(), InvalidAction> {
         if let Some(result) = self.outcome() {
             return Err(InvalidAction::GameHasEnded(result));

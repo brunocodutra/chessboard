@@ -1,4 +1,4 @@
-use crate::{Position, Setup};
+use crate::{Eval, Position, Setup};
 use anyhow::Error as Anyhow;
 use async_trait::async_trait;
 use derive_more::{DebugCustom, Display, Error, From};
@@ -10,31 +10,22 @@ mod random;
 
 pub use random::Random;
 
-/// Trait for types that implement adversarial search algorithms.
-#[cfg_attr(test, mockall::automock)]
-pub trait Engine {
-    /// Evaluates a position.
-    ///
-    /// Positive values favor the current side to play.
-    fn evaluate(&self, pos: &Position) -> i32;
-}
-
-/// A static dispatcher [`Engine`].
+/// A generic chess engine.
 #[derive(DebugCustom, From)]
-pub enum Dispatcher {
+pub enum Engine {
     #[debug(fmt = "{:?}", _0)]
     Random(Random),
     #[cfg(test)]
     #[debug(fmt = "{:?}", _0)]
-    Mock(MockEngine),
+    Mock(crate::MockEval),
 }
 
-impl Engine for Dispatcher {
-    fn evaluate(&self, pos: &Position) -> i32 {
+impl Eval for Engine {
+    fn eval(&self, pos: &Position) -> i32 {
         match self {
-            Dispatcher::Random(e) => e.evaluate(pos),
+            Engine::Random(e) => e.eval(pos),
             #[cfg(test)]
-            Dispatcher::Mock(e) => e.evaluate(pos),
+            Engine::Mock(e) => e.eval(pos),
         }
     }
 }
@@ -43,18 +34,18 @@ impl Engine for Dispatcher {
 #[derive(Debug, Clone, Eq, PartialEq, Hash, Deserialize)]
 #[cfg_attr(test, derive(test_strategy::Arbitrary))]
 #[serde(deny_unknown_fields, rename_all = "lowercase")]
-pub enum Config {
+pub enum EngineConfig {
     Random {},
     #[cfg(test)]
     Mock(),
 }
 
-/// The reason why parsing [`Config`] failed.
+/// The reason why parsing [`EngineConfig`] failed.
 #[derive(Debug, Display, PartialEq, Error, From)]
 #[display(fmt = "failed to parse engine configuration")]
 pub struct ParseConfigError(ron::de::Error);
 
-impl FromStr for Config {
+impl FromStr for EngineConfig {
     type Err = ParseConfigError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
@@ -63,15 +54,15 @@ impl FromStr for Config {
 }
 
 #[async_trait]
-impl Setup for Config {
-    type Output = Dispatcher;
+impl Setup for EngineConfig {
+    type Output = Engine;
 
     #[instrument(level = "trace", err)]
     async fn setup(self) -> Result<Self::Output, Anyhow> {
         match self {
-            Config::Random {} => Ok(Random::new().into()),
+            EngineConfig::Random {} => Ok(Random::new().into()),
             #[cfg(test)]
-            Config::Mock() => Ok(MockEngine::new().into()),
+            EngineConfig::Mock() => Ok(crate::MockEval::new().into()),
         }
     }
 }
@@ -79,14 +70,15 @@ impl Setup for Config {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::MockEval;
     use std::mem::discriminant;
     use test_strategy::proptest;
     use tokio::runtime;
 
     #[proptest]
     fn engine_config_is_deserializable() {
-        assert_eq!("random()".parse(), Ok(Config::Random {}));
-        assert_eq!("mock()".parse(), Ok(Config::Mock()));
+        assert_eq!("random()".parse(), Ok(EngineConfig::Random {}));
+        assert_eq!("mock()".parse(), Ok(EngineConfig::Mock()));
     }
 
     #[proptest]
@@ -94,13 +86,13 @@ mod tests {
         let rt = runtime::Builder::new_multi_thread().build()?;
 
         assert_eq!(
-            discriminant(&Dispatcher::Random(Random::new())),
-            discriminant(&rt.block_on(Config::Random {}.setup()).unwrap())
+            discriminant(&Engine::Random(Random::new())),
+            discriminant(&rt.block_on(EngineConfig::Random {}.setup()).unwrap())
         );
 
         assert_eq!(
-            discriminant(&Dispatcher::Mock(MockEngine::new())),
-            discriminant(&rt.block_on(Config::Mock().setup()).unwrap())
+            discriminant(&Engine::Mock(MockEval::new())),
+            discriminant(&rt.block_on(EngineConfig::Mock().setup()).unwrap())
         );
     }
 }

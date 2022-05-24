@@ -1,13 +1,13 @@
-use crate::{Engine, Move, Position, Search};
+use crate::{Eval, Move, Position, Search};
 use derive_more::{Constructor, From};
 use std::fmt::Debug;
 
 #[derive(Debug, Clone, From, Constructor)]
-pub struct Negamax<E: Engine> {
+pub struct Negamax<E: Eval> {
     engine: E,
 }
 
-impl<E: Engine> Negamax<E> {
+impl<E: Eval> Negamax<E> {
     #[cfg(debug_assertions)]
     const DEPTH: u32 = 2;
 
@@ -20,7 +20,7 @@ impl<E: Engine> Negamax<E> {
         let moves = pos.moves();
 
         if depth == 0 || moves.len() == 0 {
-            return (None, self.engine.evaluate(&pos));
+            return (None, self.engine.eval(&pos));
         }
 
         let mut best = None;
@@ -53,7 +53,7 @@ impl<E: Engine> Negamax<E> {
     }
 }
 
-impl<E: Engine> Search for Negamax<E> {
+impl<E: Eval> Search for Negamax<E> {
     fn search(&mut self, pos: &Position) -> Option<Move> {
         let (best, _) = self.negamax(pos.clone(), Self::DEPTH, i32::MIN, i32::MAX);
         best
@@ -63,7 +63,7 @@ impl<E: Engine> Search for Negamax<E> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::engine::MockEngine;
+    use crate::MockEval;
     use crate::PositionKind;
     use mockall::predicate::*;
     use test_strategy::proptest;
@@ -72,14 +72,14 @@ mod tests {
     #[should_panic]
     #[cfg(debug_assertions)]
     fn negamax_panics_if_alpha_not_smaller_than_beta(pos: Position, a: i32, b: i32) {
-        Negamax::new(MockEngine::new()).negamax(pos, 0, a.max(b), a.min(b));
+        Negamax::new(MockEval::new()).negamax(pos, 0, a.max(b), a.min(b));
     }
 
     #[proptest]
     fn negamax_returns_none_if_depth_is_zero(pos: Position, s: i32) {
-        let mut engine = MockEngine::new();
+        let mut engine = MockEval::new();
         engine
-            .expect_evaluate()
+            .expect_eval()
             .once()
             .with(eq(pos.clone()))
             .returning(move |_| s);
@@ -94,9 +94,9 @@ mod tests {
         d: u32,
         s: i32,
     ) {
-        let mut engine = MockEngine::new();
+        let mut engine = MockEval::new();
         engine
-            .expect_evaluate()
+            .expect_eval()
             .once()
             .with(eq(pos.clone()))
             .returning(move |_| s);
@@ -119,10 +119,10 @@ mod tests {
             pos
         });
 
-        let mut engine = MockEngine::new();
+        let mut engine = MockEval::new();
 
         engine
-            .expect_evaluate()
+            .expect_eval()
             .times(moves.len())
             .with(in_hash(positions))
             .returning(move |_| {
@@ -140,8 +140,8 @@ mod tests {
 
     #[proptest]
     fn search_runs_negamax(pos: Position) {
-        let mut engine = MockEngine::new();
-        engine.expect_evaluate().return_const(0);
+        let mut engine = MockEval::new();
+        engine.expect_eval().return_const(0);
 
         if let Some(m) = Negamax::new(engine).search(&pos) {
             assert!(pos.moves().any(|n| n == m));

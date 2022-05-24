@@ -252,7 +252,7 @@ impl Position {
     }
 }
 
-/// The reason why a FEN string is invalid.
+/// The reason why the string is not valid FEN.
 #[derive(Debug, Display, Clone, Eq, PartialEq, Error)]
 pub enum InvalidFen {
     #[display(fmt = "syntax error at the piece placement field")]
@@ -287,7 +287,7 @@ impl From<sm::fen::ParseFenError> for InvalidFen {
     }
 }
 
-/// The reason why the position represented by a FEN string is illegal.
+/// The reason why the position represented by the FEN string is illegal.
 #[derive(Debug, Display, Clone, Eq, PartialEq, Error)]
 pub enum IllegalPosition {
     #[display(fmt = "at least one side has no king")]

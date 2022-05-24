@@ -1,4 +1,4 @@
-use crate::{Action, File, Io, Move, Placement, Player, Position, Rank, Square};
+use crate::{Action, File, Io, Move, Placement, Play, Position, Rank, Square};
 use anyhow::Error as Anyhow;
 use async_trait::async_trait;
 use clap::Parser;
@@ -59,24 +59,25 @@ where
     s.parse().map_err(|e| format!("{:?}", Anyhow::from(e)))
 }
 
-/// The reason why an action could not be received through the CLI.
+/// The reason why an [`Action`] could not be received through the CLI.
 #[derive(Debug, Display, Error, From)]
 #[cfg_attr(test, derive(test_strategy::Arbitrary))]
 #[display(fmt = "the CLI encountered an error")]
 pub struct CliError(#[from(forward)] io::Error);
 
+/// A Command Line Interface for a human player.
 #[derive(Debug, From, Constructor)]
 pub struct Cli<T: Io + Debug> {
     io: T,
 }
 
 #[async_trait]
-impl<T: Io + Debug + Send> Player for Cli<T> {
+impl<T: Io + Debug + Send> Play for Cli<T> {
     type Error = CliError;
 
     /// Prompt the user for an action.
     #[instrument(level = "trace", err)]
-    async fn act(&mut self, pos: &Position) -> Result<Action, CliError> {
+    async fn play(&mut self, pos: &Position) -> Result<Action, CliError> {
         self.io.send(Board(pos.placement())).await?;
 
         loop {
@@ -130,7 +131,7 @@ impl Display for Board {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::io::MockIo;
+    use crate::MockIo;
     use mockall::{predicate::*, Sequence};
     use test_strategy::proptest;
     use tokio::runtime;
@@ -158,7 +159,7 @@ mod tests {
             .returning(move || Ok(cmd.to_string()));
 
         let mut cli = Cli::new(io);
-        assert_eq!(rt.block_on(cli.act(&pos))?, cmd.into());
+        assert_eq!(rt.block_on(cli.play(&pos))?, cmd.into());
     }
 
     #[proptest]
@@ -174,7 +175,7 @@ mod tests {
             .return_once(move || Ok(Cmd::Resign.to_string()));
 
         let mut cli = Cli::new(io);
-        assert_eq!(rt.block_on(cli.act(&pos))?, Action::Resign);
+        assert_eq!(rt.block_on(cli.play(&pos))?, Action::Resign);
     }
 
     #[proptest]
@@ -190,7 +191,7 @@ mod tests {
             .returning(move || Ok(Cmd::Move { descriptor: m }.to_string()));
 
         let mut cli = Cli::new(io);
-        assert_eq!(rt.block_on(cli.act(&pos))?, Action::Move(m));
+        assert_eq!(rt.block_on(cli.play(&pos))?, Action::Move(m));
     }
 
     #[proptest]
@@ -222,7 +223,7 @@ mod tests {
             .returning(move || Ok(cmd.to_string()));
 
         let mut cli = Cli::new(io);
-        assert_eq!(rt.block_on(cli.act(&pos))?, cmd.into());
+        assert_eq!(rt.block_on(cli.play(&pos))?, cmd.into());
     }
 
     #[proptest]
@@ -252,7 +253,7 @@ mod tests {
             .returning(move || Ok(cmd.to_string()));
 
         let mut cli = Cli::new(io);
-        assert_eq!(rt.block_on(cli.act(&pos))?, cmd.into());
+        assert_eq!(rt.block_on(cli.play(&pos))?, cmd.into());
     }
 
     #[proptest]
@@ -273,7 +274,7 @@ mod tests {
             .returning(move || Ok(cmd.to_string()));
 
         let mut cli = Cli::new(io);
-        assert_eq!(rt.block_on(cli.act(&pos))?, cmd.into());
+        assert_eq!(rt.block_on(cli.play(&pos))?, cmd.into());
     }
 
     #[proptest]
@@ -300,7 +301,7 @@ mod tests {
             .returning(move || Ok(cmd.to_string()));
 
         let mut cli = Cli::new(io);
-        assert_eq!(rt.block_on(cli.act(&pos))?, cmd.into());
+        assert_eq!(rt.block_on(cli.play(&pos))?, cmd.into());
     }
 
     #[proptest]
@@ -325,7 +326,7 @@ mod tests {
             .returning(move || Ok(cmd.to_string()));
 
         let mut cli = Cli::new(io);
-        assert_eq!(rt.block_on(cli.act(&pos))?, cmd.into());
+        assert_eq!(rt.block_on(cli.play(&pos))?, cmd.into());
     }
 
     #[proptest]
@@ -338,7 +339,7 @@ mod tests {
 
         let mut cli = Cli::new(io);
         assert_eq!(
-            rt.block_on(cli.act(&pos)).map_err(|CliError(e)| e.kind()),
+            rt.block_on(cli.play(&pos)).map_err(|CliError(e)| e.kind()),
             Err(kind)
         );
     }
@@ -355,7 +356,7 @@ mod tests {
 
         let mut cli = Cli::new(io);
         assert_eq!(
-            rt.block_on(cli.act(&pos)).map_err(|CliError(e)| e.kind()),
+            rt.block_on(cli.play(&pos)).map_err(|CliError(e)| e.kind()),
             Err(kind)
         );
     }
@@ -373,7 +374,7 @@ mod tests {
 
         let mut cli = Cli::new(io);
         assert_eq!(
-            rt.block_on(cli.act(&pos)).map_err(|CliError(e)| e.kind()),
+            rt.block_on(cli.play(&pos)).map_err(|CliError(e)| e.kind()),
             Err(kind)
         );
     }
