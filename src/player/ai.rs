@@ -1,20 +1,21 @@
-use crate::{Action, Player, Position, Search};
+use crate::{Action, Play, Position, Search};
 use async_trait::async_trait;
 use derive_more::{Constructor, From};
 use std::{convert::Infallible, fmt::Debug};
 use tracing::instrument;
 
+/// A computed controlled player.
 #[derive(Debug, From, Constructor)]
 pub struct Ai<S: Search> {
     strategy: S,
 }
 
 #[async_trait]
-impl<S: Search + Debug + Send> Player for Ai<S> {
+impl<S: Search + Debug + Send> Play for Ai<S> {
     type Error = Infallible;
 
     #[instrument(level = "trace", err)]
-    async fn act(&mut self, pos: &Position) -> Result<Action, Self::Error> {
+    async fn play(&mut self, pos: &Position) -> Result<Action, Self::Error> {
         let mv = self.strategy.search(pos).map(Into::into);
         Ok(mv.unwrap_or(Action::Resign))
     }
@@ -23,7 +24,7 @@ impl<S: Search + Debug + Send> Player for Ai<S> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{search::MockSearch, Move};
+    use crate::{MockSearch, Move};
     use test_strategy::proptest;
     use tokio::runtime;
 
@@ -35,7 +36,7 @@ mod tests {
         strategy.expect_search().once().returning(move |_| Some(m));
 
         let mut ai = Ai::new(strategy);
-        assert_eq!(rt.block_on(ai.act(&pos))?, Action::Move(m));
+        assert_eq!(rt.block_on(ai.play(&pos))?, Action::Move(m));
     }
 
     #[proptest]
@@ -46,6 +47,6 @@ mod tests {
         strategy.expect_search().once().returning(|_| None);
 
         let mut ai = Ai::new(strategy);
-        assert_eq!(rt.block_on(ai.act(&pos))?, Action::Resign);
+        assert_eq!(rt.block_on(ai.play(&pos))?, Action::Resign);
     }
 }

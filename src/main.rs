@@ -1,5 +1,5 @@
 use anyhow::{Context, Error as Anyhow};
-use chessboard::{Color, Game, Outcome, Player, PlayerConfig, Setup};
+use chessboard::{Color, Game, Outcome, Play, PlayerConfig, Setup};
 use clap::{AppSettings::DeriveDisplayOrder, Parser};
 use std::{cmp::min, error::Error, fmt::Debug, io::stderr};
 use tokio::try_join;
@@ -9,7 +9,7 @@ use tracing_subscriber::fmt::format::FmtSpan;
 #[instrument(level = "trace", err)]
 async fn run<T>(mut white: T, mut black: T) -> Result<Outcome, Anyhow>
 where
-    T: Player + Debug,
+    T: Play + Debug,
     T::Error: Error + Send + Sync + 'static,
 {
     let mut game = Game::default();
@@ -30,7 +30,7 @@ where
                 };
 
                 let action = player
-                    .act(position)
+                    .play(position)
                     .await
                     .context(format!("the {} player encountered an error", turn))?;
 

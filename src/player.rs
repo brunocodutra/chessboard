@@ -1,4 +1,4 @@
-use crate::{Action, IoConfig, IoDispatcher, Position, SearchConfig, SearchDispatcher, Setup};
+use crate::{Action, Play, Position, Remote, RemoteConfig, Setup, Strategy, StrategyConfig};
 use anyhow::Error as Anyhow;
 use async_trait::async_trait;
 use derive_more::{DebugCustom, Display, Error, From};
@@ -14,44 +14,34 @@ pub use ai::*;
 pub use cli::*;
 pub use uci::*;
 
-/// Trait for types that play chess.
-#[async_trait]
-pub trait Player {
-    /// The reason why acting failed.
-    type Error;
-
-    /// Play the next turn.
-    async fn act(&mut self, pos: &Position) -> Result<Action, Self::Error>;
-}
-
-/// The reason why the underlying [`Player`] failed.
+/// The reason why [`Player`] failed to perform an action.
 #[derive(Debug, Display, Error, From)]
-pub enum DispatcherError {
-    Ai(<Ai<SearchDispatcher> as Player>::Error),
-    Cli(<Cli<IoDispatcher> as Player>::Error),
-    Uci(<Uci<IoDispatcher> as Player>::Error),
+pub enum PlayerError {
+    Ai(<Ai<Strategy> as Play>::Error),
+    Cli(<Cli<Remote> as Play>::Error),
+    Uci(<Uci<Remote> as Play>::Error),
 }
 
-/// A static dispatcher for [`Player`].
+/// A generic player.
 #[derive(DebugCustom, From)]
-pub enum Dispatcher {
+pub enum Player {
     #[debug(fmt = "{:?}", _0)]
-    Ai(Ai<SearchDispatcher>),
+    Ai(Ai<Strategy>),
     #[debug(fmt = "{:?}", _0)]
-    Cli(Cli<IoDispatcher>),
+    Cli(Cli<Remote>),
     #[debug(fmt = "{:?}", _0)]
-    Uci(Uci<IoDispatcher>),
+    Uci(Uci<Remote>),
 }
 
 #[async_trait]
-impl Player for Dispatcher {
-    type Error = DispatcherError;
+impl Play for Player {
+    type Error = PlayerError;
 
-    async fn act(&mut self, pos: &Position) -> Result<Action, Self::Error> {
+    async fn play(&mut self, pos: &Position) -> Result<Action, Self::Error> {
         match self {
-            Dispatcher::Ai(p) => Ok(p.act(pos).await?),
-            Dispatcher::Cli(p) => Ok(p.act(pos).await?),
-            Dispatcher::Uci(p) => Ok(p.act(pos).await?),
+            Player::Ai(p) => Ok(p.play(pos).await?),
+            Player::Cli(p) => Ok(p.play(pos).await?),
+            Player::Uci(p) => Ok(p.play(pos).await?),
         }
     }
 }
@@ -60,18 +50,18 @@ impl Player for Dispatcher {
 #[derive(Debug, Clone, Eq, PartialEq, Hash, Deserialize)]
 #[cfg_attr(test, derive(test_strategy::Arbitrary))]
 #[serde(deny_unknown_fields, rename_all = "lowercase")]
-pub enum Config {
-    Ai(SearchConfig),
-    Cli(IoConfig),
-    Uci(IoConfig),
+pub enum PlayerConfig {
+    Ai(StrategyConfig),
+    Cli(RemoteConfig),
+    Uci(RemoteConfig),
 }
 
-/// The reason why parsing [`Config`] failed.
+/// The reason why parsing [`PlayerConfig`] failed.
 #[derive(Debug, Display, PartialEq, Error, From)]
 #[display(fmt = "failed to parse player configuration")]
 pub struct ParseConfigError(ron::de::Error);
 
-impl FromStr for Config {
+impl FromStr for PlayerConfig {
     type Err = ParseConfigError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
@@ -80,15 +70,15 @@ impl FromStr for Config {
 }
 
 #[async_trait]
-impl Setup for Config {
-    type Output = Dispatcher;
+impl Setup for PlayerConfig {
+    type Output = Player;
 
     #[instrument(level = "trace", err)]
     async fn setup(self) -> Result<Self::Output, Anyhow> {
         match self {
-            Config::Ai(cfg) => Ok(Ai::new(cfg.setup().await?).into()),
-            Config::Cli(cfg) => Ok(Cli::new(cfg.setup().await?).into()),
-            Config::Uci(cfg) => Ok(Uci::init(cfg.setup().await?).await?.into()),
+            PlayerConfig::Ai(cfg) => Ok(Ai::new(cfg.setup().await?).into()),
+            PlayerConfig::Cli(cfg) => Ok(Cli::new(cfg.setup().await?).into()),
+            PlayerConfig::Uci(cfg) => Ok(Uci::init(cfg.setup().await?).await?.into()),
         }
     }
 }
@@ -96,16 +86,25 @@ impl Setup for Config {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{io::MockIo, search::MockSearch};
+    use crate::{MockIo, MockSearch};
     use std::mem::discriminant;
     use test_strategy::proptest;
     use tokio::runtime;
 
     #[proptest]
     fn player_config_is_deserializable() {
-        assert_eq!("ai(mock())".parse(), Ok(Config::Ai(SearchConfig::Mock())));
-        assert_eq!("cli(mock())".parse(), Ok(Config::Cli(IoConfig::Mock())));
-        assert_eq!("uci(mock())".parse(), Ok(Config::Uci(IoConfig::Mock())));
+        assert_eq!(
+            "ai(mock())".parse(),
+            Ok(PlayerConfig::Ai(StrategyConfig::Mock()))
+        );
+        assert_eq!(
+            "cli(mock())".parse(),
+            Ok(PlayerConfig::Cli(RemoteConfig::Mock()))
+        );
+        assert_eq!(
+            "uci(mock())".parse(),
+            Ok(PlayerConfig::Uci(RemoteConfig::Mock()))
+        );
     }
 
     #[proptest]
@@ -113,20 +112,19 @@ mod tests {
         let rt = runtime::Builder::new_multi_thread().build()?;
 
         assert_eq!(
-            discriminant(&Dispatcher::Ai(Ai::new(SearchDispatcher::Mock(
-                MockSearch::new()
-            )))),
+            discriminant(&Player::Ai(Ai::new(Strategy::Mock(MockSearch::new())))),
             discriminant(
-                &rt.block_on(Config::Ai(SearchConfig::Mock()).setup())
+                &rt.block_on(PlayerConfig::Ai(StrategyConfig::Mock()).setup())
                     .unwrap()
             )
         );
 
         assert_eq!(
-            discriminant(&Dispatcher::Cli(Cli::new(
-                IoDispatcher::Mock(MockIo::new())
-            ))),
-            discriminant(&rt.block_on(Config::Cli(IoConfig::Mock()).setup()).unwrap())
+            discriminant(&Player::Cli(Cli::new(Remote::Mock(MockIo::new())))),
+            discriminant(
+                &rt.block_on(PlayerConfig::Cli(RemoteConfig::Mock()).setup())
+                    .unwrap()
+            )
         );
     }
 }

@@ -1,4 +1,4 @@
-use crate::{Action, Io, Player, Position};
+use crate::{Action, Io, Play, Position};
 use anyhow::{Context, Error as Anyhow};
 use async_trait::async_trait;
 use derive_more::{Display, Error, From};
@@ -7,12 +7,13 @@ use tokio::{runtime, task::block_in_place};
 use tracing::{debug, instrument, warn};
 use vampirc_uci::{parse_one, Duration, UciFen, UciMessage, UciSearchControl, UciTimeControl};
 
-/// The reason why an action could not be received from the UCI server.
+/// The reason why an [`Action`] could not be received from the UCI server.
 #[derive(Debug, Display, Error, From)]
 #[cfg_attr(test, derive(test_strategy::Arbitrary))]
 #[display(fmt = "the UCI server encountered an error")]
 pub struct UciError(#[from(forward)] io::Error);
 
+/// A Universal Chess Interface client for a computer controlled player.
 #[derive(Debug)]
 pub struct Uci<T: Io + Debug> {
     io: T,
@@ -75,12 +76,12 @@ impl<T: Io + Debug> Drop for Uci<T> {
 }
 
 #[async_trait]
-impl<T: Io + Debug + Send> Player for Uci<T> {
+impl<T: Io + Debug + Send> Play for Uci<T> {
     type Error = UciError;
 
     /// Request an action from the CLI server.
     #[instrument(level = "trace", err)]
-    async fn act(&mut self, pos: &Position) -> Result<Action, Self::Error> {
+    async fn play(&mut self, pos: &Position) -> Result<Action, Self::Error> {
         let setpos = UciMessage::Position {
             startpos: false,
             fen: Some(UciFen(pos.to_string())),
@@ -110,7 +111,7 @@ impl<T: Io + Debug + Send> Player for Uci<T> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{io::MockIo, Move};
+    use crate::{MockIo, Move};
     use mockall::{predicate::*, Sequence};
     use proptest::prelude::*;
     use test_strategy::proptest;
@@ -342,7 +343,7 @@ mod tests {
             .returning(move || Ok(UciMessage::best_move(m.into()).to_string()));
 
         let mut uci = Uci { io };
-        assert_eq!(rt.block_on(uci.act(&pos))?, Action::Move(m));
+        assert_eq!(rt.block_on(uci.play(&pos))?, Action::Move(m));
     }
 
     #[proptest]
@@ -366,7 +367,7 @@ mod tests {
             .returning(move || Ok(UciMessage::best_move(m.into()).to_string()));
 
         let mut uci = Uci { io };
-        assert_eq!(rt.block_on(uci.act(&pos))?, Action::Move(m));
+        assert_eq!(rt.block_on(uci.play(&pos))?, Action::Move(m));
     }
 
     #[proptest]
@@ -393,7 +394,7 @@ mod tests {
             .returning(move || Ok(UciMessage::best_move(m.into()).to_string()));
 
         let mut uci = Uci { io };
-        assert_eq!(rt.block_on(uci.act(&pos))?, Action::Move(m));
+        assert_eq!(rt.block_on(uci.play(&pos))?, Action::Move(m));
     }
 
     #[proptest]
@@ -411,7 +412,7 @@ mod tests {
 
         let mut uci = Uci { io };
         assert_eq!(
-            rt.block_on(uci.act(&pos)).map_err(|UciError(e)| e.kind()),
+            rt.block_on(uci.play(&pos)).map_err(|UciError(e)| e.kind()),
             Err(kind)
         );
     }
@@ -429,7 +430,7 @@ mod tests {
 
         let mut uci = Uci { io };
         assert_eq!(
-            rt.block_on(uci.act(&pos)).map_err(|UciError(e)| e.kind()),
+            rt.block_on(uci.play(&pos)).map_err(|UciError(e)| e.kind()),
             Err(kind)
         );
     }
@@ -447,7 +448,7 @@ mod tests {
 
         let mut uci = Uci { io };
         assert_eq!(
-            rt.block_on(uci.act(&pos)).map_err(|UciError(e)| e.kind()),
+            rt.block_on(uci.play(&pos)).map_err(|UciError(e)| e.kind()),
             Err(kind)
         );
     }
