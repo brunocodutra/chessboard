@@ -21,6 +21,18 @@ pub struct Placement {
     board: sm::Board,
 }
 
+impl Placement {
+    /// The number of pieces of a [`Color`].
+    pub fn material(&self, c: Color) -> usize {
+        self.board.by_color(c.into()).count()
+    }
+
+    /// The number of pieces of a kind.
+    pub fn pieces(&self, p: Piece) -> usize {
+        self.board.by_piece(p.into()).count()
+    }
+}
+
 /// Initializes an empty [`Placement`].
 impl Default for Placement {
     fn default() -> Self {
@@ -82,6 +94,22 @@ mod tests {
     #[proptest]
     fn placement_is_empty_by_default(s: Square) {
         assert_eq!(Placement::default()[s], None);
+    }
+
+    #[proptest]
+    fn material_counts_number_of_pieces_of_a_color(p: Placement, c: Color) {
+        assert_eq!(
+            p.material(c),
+            (p.board.occupied() & !p.board.by_color((!c).into())).count()
+        );
+    }
+
+    #[proptest]
+    fn pieces_counts_number_of_pieces_of_a_kind(p: Placement, pc: Piece) {
+        assert_eq!(
+            p.pieces(pc),
+            (p.board.by_color(pc.0.into()) & p.board.by_role(pc.1.into())).count()
+        );
     }
 
     #[proptest]
