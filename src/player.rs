@@ -20,6 +20,8 @@ pub enum PlayerError {
     Ai(<Ai<Strategy> as Play>::Error),
     Cli(<Cli<Remote> as Play>::Error),
     Uci(<Uci<Remote> as Play>::Error),
+    #[cfg(test)]
+    Mock(#[error(not(source))] <crate::MockPlay as Play>::Error),
 }
 
 /// A generic player.
@@ -31,6 +33,8 @@ pub enum Player {
     Cli(Cli<Remote>),
     #[debug(fmt = "{:?}", _0)]
     Uci(Uci<Remote>),
+    #[cfg(test)]
+    Mock(crate::MockPlay),
 }
 
 #[async_trait]
@@ -42,6 +46,8 @@ impl Play for Player {
             Player::Ai(p) => Ok(p.play(pos).await?),
             Player::Cli(p) => Ok(p.play(pos).await?),
             Player::Uci(p) => Ok(p.play(pos).await?),
+            #[cfg(test)]
+            Player::Mock(p) => Ok(p.play(pos).await?),
         }
     }
 }
@@ -54,6 +60,8 @@ pub enum PlayerConfig {
     Ai(StrategyConfig),
     Cli(RemoteConfig),
     Uci(RemoteConfig),
+    #[cfg(test)]
+    Mock(),
 }
 
 /// The reason why parsing [`PlayerConfig`] failed.
@@ -79,6 +87,8 @@ impl Setup for PlayerConfig {
             PlayerConfig::Ai(cfg) => Ok(Ai::new(cfg.setup().await?).into()),
             PlayerConfig::Cli(cfg) => Ok(Cli::new(cfg.setup().await?).into()),
             PlayerConfig::Uci(cfg) => Ok(Uci::init(cfg.setup().await?).await?.into()),
+            #[cfg(test)]
+            PlayerConfig::Mock() => Ok(crate::MockPlay::new().into()),
         }
     }
 }
@@ -86,7 +96,7 @@ impl Setup for PlayerConfig {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{MockIo, MockSearch};
+    use crate::{MockIo, MockPlay, MockSearch};
     use std::mem::discriminant;
     use test_strategy::proptest;
     use tokio::runtime;
@@ -105,6 +115,7 @@ mod tests {
             "uci(mock())".parse(),
             Ok(PlayerConfig::Uci(RemoteConfig::Mock()))
         );
+        assert_eq!("mock()".parse(), Ok(PlayerConfig::Mock()));
     }
 
     #[proptest]
@@ -125,6 +136,11 @@ mod tests {
                 &rt.block_on(PlayerConfig::Cli(RemoteConfig::Mock()).setup())
                     .unwrap()
             )
+        );
+
+        assert_eq!(
+            discriminant(&Player::Mock(MockPlay::new())),
+            discriminant(&rt.block_on(PlayerConfig::Mock().setup()).unwrap())
         );
     }
 }

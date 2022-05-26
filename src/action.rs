@@ -18,6 +18,7 @@ pub enum Action {
 
 /// The reason why the player [`Action`] was rejected.
 #[derive(Debug, Display, Clone, Eq, PartialEq, Error, From)]
+#[cfg_attr(test, derive(test_strategy::Arbitrary))]
 #[error(ignore)]
 pub enum InvalidAction {
     #[display(fmt = "the game has already ended in a {}", _0)]
