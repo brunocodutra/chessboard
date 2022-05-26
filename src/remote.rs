@@ -91,7 +91,7 @@ impl FromStr for RemoteConfig {
 impl Setup for RemoteConfig {
     type Output = Remote;
 
-    #[instrument(level = "trace", err)]
+    #[instrument(level = "trace", err, ret)]
     async fn setup(self) -> Result<Self::Output, Anyhow> {
         match self {
             RemoteConfig::Process(path) => Ok(Process::spawn(&path).await?.into()),

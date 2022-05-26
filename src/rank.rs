@@ -1,27 +1,35 @@
-use derive_more::{Display, Error, From};
+use derive_more::{DebugCustom, Display, Error, From};
 use shakmaty as sm;
 use std::convert::{TryFrom, TryInto};
 use std::{iter::FusedIterator, num::ParseIntError, str::FromStr};
 
 /// Denotes a row on the chess board.
-#[derive(Debug, Display, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
+#[derive(DebugCustom, Display, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
 #[cfg_attr(test, derive(test_strategy::Arbitrary))]
 #[repr(u8)]
 pub enum Rank {
+    #[debug(fmt = "1")]
     #[display(fmt = "1")]
     First = 1,
+    #[debug(fmt = "2")]
     #[display(fmt = "2")]
     Second,
+    #[debug(fmt = "3")]
     #[display(fmt = "3")]
     Third,
+    #[debug(fmt = "4")]
     #[display(fmt = "4")]
     Fourth,
+    #[debug(fmt = "5")]
     #[display(fmt = "5")]
     Fifth,
+    #[debug(fmt = "6")]
     #[display(fmt = "6")]
     Sixth,
+    #[debug(fmt = "7")]
     #[display(fmt = "7")]
     Seventh,
+    #[debug(fmt = "8")]
     #[display(fmt = "8")]
     Eighth,
 }

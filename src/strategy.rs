@@ -60,7 +60,7 @@ impl FromStr for StrategyConfig {
 impl Setup for StrategyConfig {
     type Output = Strategy;
 
-    #[instrument(level = "trace", err)]
+    #[instrument(level = "trace", err, ret)]
     async fn setup(self) -> Result<Self::Output, Anyhow> {
         match self {
             StrategyConfig::Negamax { engine: cfg } => Ok(Negamax::new(cfg.setup().await?).into()),

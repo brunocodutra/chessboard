@@ -76,7 +76,7 @@ impl<T: Io + Debug + Send> Play for Cli<T> {
     type Error = CliError;
 
     /// Prompt the user for an action.
-    #[instrument(level = "trace", err)]
+    #[instrument(level = "trace", err, ret)]
     async fn play(&mut self, pos: &Position) -> Result<Action, CliError> {
         self.io.send(Board(pos.placement())).await?;
 

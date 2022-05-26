@@ -6,7 +6,7 @@ use tokio::try_join;
 use tracing::{info, instrument, warn, Level};
 use tracing_subscriber::fmt::format::FmtSpan;
 
-#[instrument(level = "trace", err)]
+#[instrument(level = "trace", err, ret)]
 async fn run<T>(mut white: T, mut black: T) -> Result<Outcome, Anyhow>
 where
     T: Play + Debug,

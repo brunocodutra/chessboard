@@ -73,7 +73,7 @@ impl FromStr for PlayerConfig {
 impl Setup for PlayerConfig {
     type Output = Player;
 
-    #[instrument(level = "trace", err)]
+    #[instrument(level = "trace", err, ret)]
     async fn setup(self) -> Result<Self::Output, Anyhow> {
         match self {
             PlayerConfig::Ai(cfg) => Ok(Ai::new(cfg.setup().await?).into()),

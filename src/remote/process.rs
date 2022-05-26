@@ -76,7 +76,7 @@ impl Process {
     }
 
     /// Spawns a remote process.
-    #[instrument(level = "trace", err)]
+    #[instrument(level = "trace", err, ret)]
     pub async fn spawn(path: &str) -> io::Result<Self> {
         #[cfg(test)]
         {
@@ -121,13 +121,13 @@ impl Drop for Process {
 
 #[async_trait]
 impl Io for Process {
-    #[instrument(level = "trace", err)]
+    #[instrument(level = "trace", err, ret)]
     async fn recv(&mut self) -> io::Result<String> {
         use io::ErrorKind::UnexpectedEof;
         Ok(self.reader.next_line().await?.ok_or(UnexpectedEof)?)
     }
 
-    #[instrument(level = "trace", skip(item), err, fields(%item))]
+    #[instrument(level = "trace", err, skip(item), fields(%item))]
     async fn send<D: Display + Send + 'static>(&mut self, item: D) -> io::Result<()> {
         let msg = item.to_string();
         self.writer.write_all(msg.as_bytes()).await?;
