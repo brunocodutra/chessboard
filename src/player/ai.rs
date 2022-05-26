@@ -14,7 +14,7 @@ pub struct Ai<S: Search> {
 impl<S: Search + Debug + Send> Play for Ai<S> {
     type Error = Infallible;
 
-    #[instrument(level = "trace", err)]
+    #[instrument(level = "trace", err, ret)]
     async fn play(&mut self, pos: &Position) -> Result<Action, Self::Error> {
         let mv = self.strategy.search(pos).map(Into::into);
         Ok(mv.unwrap_or(Action::Resign))

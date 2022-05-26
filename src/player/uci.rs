@@ -21,7 +21,7 @@ pub struct Uci<T: Io + Debug> {
 
 impl<T: Io + Debug> Uci<T> {
     /// Establishes communication with UCI server.
-    #[instrument(level = "trace", err)]
+    #[instrument(level = "trace", err, ret)]
     pub async fn init(io: T) -> Result<Self, UciError> {
         let mut uci = Uci { io };
 
@@ -39,7 +39,7 @@ impl<T: Io + Debug> Uci<T> {
         Ok(uci)
     }
 
-    #[instrument(level = "trace", err)]
+    #[instrument(level = "trace", err, ret)]
     async fn next_message(&mut self) -> Result<UciMessage, UciError> {
         loop {
             match parse_one(&self.io.recv().await?) {
@@ -80,7 +80,7 @@ impl<T: Io + Debug + Send> Play for Uci<T> {
     type Error = UciError;
 
     /// Request an action from the CLI server.
-    #[instrument(level = "trace", err)]
+    #[instrument(level = "trace", err, ret)]
     async fn play(&mut self, pos: &Position) -> Result<Action, Self::Error> {
         let setpos = UciMessage::Position {
             startpos: false,

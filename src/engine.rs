@@ -57,7 +57,7 @@ impl FromStr for EngineConfig {
 impl Setup for EngineConfig {
     type Output = Engine;
 
-    #[instrument(level = "trace", err)]
+    #[instrument(level = "trace", err, ret)]
     async fn setup(self) -> Result<Self::Output, Anyhow> {
         match self {
             EngineConfig::Random {} => Ok(Random::new().into()),
