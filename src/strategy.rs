@@ -79,19 +79,22 @@ mod tests {
     use tokio::runtime;
 
     #[proptest]
-    fn search_config_is_deserializable() {
+    fn negamax_config_is_deserializable() {
         assert_eq!(
             "negamax(engine:mock())".parse(),
             Ok(StrategyConfig::Negamax {
                 engine: EngineConfig::Mock()
             })
         );
+    }
 
+    #[proptest]
+    fn mock_config_is_deserializable() {
         assert_eq!("mock()".parse(), Ok(StrategyConfig::Mock()));
     }
 
     #[proptest]
-    fn search_can_be_configured_at_runtime() {
+    fn negamax_can_be_configured_at_runtime() {
         let rt = runtime::Builder::new_multi_thread().build()?;
 
         assert_eq!(
@@ -108,6 +111,11 @@ mod tests {
                 .unwrap()
             )
         );
+    }
+
+    #[proptest]
+    fn mock_can_be_configured_at_runtime() {
+        let rt = runtime::Builder::new_multi_thread().build()?;
 
         assert_eq!(
             discriminant(&Strategy::Mock(MockSearch::new())),

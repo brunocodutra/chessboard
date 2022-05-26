@@ -102,24 +102,36 @@ mod tests {
     use tokio::runtime;
 
     #[proptest]
-    fn player_config_is_deserializable() {
+    fn ai_config_is_deserializable() {
         assert_eq!(
             "ai(mock())".parse(),
             Ok(PlayerConfig::Ai(StrategyConfig::Mock()))
         );
+    }
+
+    #[proptest]
+    fn cli_config_is_deserializable() {
         assert_eq!(
             "cli(mock())".parse(),
             Ok(PlayerConfig::Cli(RemoteConfig::Mock()))
         );
+    }
+
+    #[proptest]
+    fn uci_config_is_deserializable() {
         assert_eq!(
             "uci(mock())".parse(),
             Ok(PlayerConfig::Uci(RemoteConfig::Mock()))
         );
+    }
+
+    #[proptest]
+    fn mock_config_is_deserializable() {
         assert_eq!("mock()".parse(), Ok(PlayerConfig::Mock()));
     }
 
     #[proptest]
-    fn player_can_be_configured_at_runtime() {
+    fn ai_can_be_configured_at_runtime() {
         let rt = runtime::Builder::new_multi_thread().build()?;
 
         assert_eq!(
@@ -129,6 +141,11 @@ mod tests {
                     .unwrap()
             )
         );
+    }
+
+    #[proptest]
+    fn cli_can_be_configured_at_runtime() {
+        let rt = runtime::Builder::new_multi_thread().build()?;
 
         assert_eq!(
             discriminant(&Player::Cli(Cli::new(Remote::Mock(MockIo::new())))),
@@ -137,6 +154,11 @@ mod tests {
                     .unwrap()
             )
         );
+    }
+
+    #[proptest]
+    fn mock_can_be_configured_at_runtime() {
+        let rt = runtime::Builder::new_multi_thread().build()?;
 
         assert_eq!(
             discriminant(&Player::Mock(MockPlay::new())),

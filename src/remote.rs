@@ -111,28 +111,46 @@ mod tests {
     use tokio::runtime;
 
     #[proptest]
-    fn io_config_is_deserializable(s: String) {
+    fn terminal_config_is_deserializable() {
         assert_eq!("term".parse(), Ok(RemoteConfig::Terminal));
+    }
+
+    #[proptest]
+    fn process_config_is_deserializable(s: String) {
         assert_eq!(
             format!("proc({:?})", s).parse(),
             Ok(RemoteConfig::Process(s))
         );
+    }
+
+    #[proptest]
+    fn mock_config_is_deserializable() {
         assert_eq!("mock()".parse(), Ok(RemoteConfig::Mock()));
     }
 
     #[proptest]
-    fn io_can_be_configured_at_runtime(s: String) {
+    fn process_can_be_configured_at_runtime(s: String) {
         let rt = runtime::Builder::new_multi_thread().build()?;
 
         assert_eq!(
             discriminant(&Remote::Process(rt.block_on(Process::spawn(&s))?)),
             discriminant(&rt.block_on(RemoteConfig::Process(s).setup()).unwrap())
         );
+    }
+
+    #[proptest]
+    fn terminal_can_be_configured_at_runtime() {
+        let rt = runtime::Builder::new_multi_thread().build()?;
 
         assert_eq!(
             discriminant(&Remote::Terminal(Terminal::open())),
             discriminant(&rt.block_on(RemoteConfig::Terminal.setup()).unwrap())
         );
+    }
+
+    #[proptest]
+    fn mock_can_be_configured_at_runtime() {
+        let rt = runtime::Builder::new_multi_thread().build()?;
 
         assert_eq!(
             discriminant(&Remote::Mock(MockIo::new())),
