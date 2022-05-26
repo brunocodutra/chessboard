@@ -1,52 +1,14 @@
 use anyhow::{Context, Error as Anyhow};
-use chessboard::{Color, Game, Outcome, Play, PlayerConfig, Setup};
+use chessboard::{Game, PlayerConfig, Setup};
 use clap::{AppSettings::DeriveDisplayOrder, Parser};
-use std::{cmp::min, error::Error, fmt::Debug, io::stderr};
+use std::{cmp::min, io::stderr};
 use tokio::try_join;
-use tracing::{info, instrument, warn, Level};
+use tracing::{info, Level};
 use tracing_subscriber::fmt::format::FmtSpan;
-
-#[instrument(level = "trace", err, ret)]
-async fn run<T>(mut white: T, mut black: T) -> Result<Outcome, Anyhow>
-where
-    T: Play + Debug,
-    T::Error: Error + Send + Sync + 'static,
-{
-    let mut game = Game::default();
-
-    loop {
-        match game.outcome() {
-            Some(o) => break Ok(o),
-
-            None => {
-                let position = game.position();
-                info!(%position);
-
-                let turn = position.turn();
-
-                let player = match turn {
-                    Color::Black => &mut black,
-                    Color::White => &mut white,
-                };
-
-                let action = player
-                    .play(position)
-                    .await
-                    .context(format!("the {} player encountered an error", turn))?;
-
-                info!(player = %turn, %action);
-
-                if let Err(e) = game.execute(action).context("invalid player action") {
-                    warn!("{:?}", e);
-                }
-            }
-        }
-    }
-}
 
 #[derive(Parser)]
 #[clap(author, version, about, name = "Chessboard", setting = DeriveDisplayOrder)]
-struct Opts {
+struct Args {
     /// White pieces player.
     #[clap(short, long, default_value = "cli(term)", parse(try_from_str))]
     white: PlayerConfig,
@@ -64,11 +26,11 @@ struct Opts {
 
 #[tokio::main]
 async fn main() -> Result<(), Anyhow> {
-    let Opts {
+    let Args {
         white,
         black,
         verbosity,
-    } = Opts::parse();
+    } = Args::parse();
 
     let filter = format!("{},chessboard={}", min(Level::WARN, verbosity), verbosity);
 
@@ -83,7 +45,10 @@ async fn main() -> Result<(), Anyhow> {
         .context("failed to initialize the tracing infrastructure")?;
 
     let (white, black) = try_join!(white.setup(), black.setup())?;
-    let outcome = run(white, black).await?;
+
+    let mut game = Game::default();
+    let outcome = game.run(white, black).await?;
+
     info!(%outcome);
 
     Ok(())
