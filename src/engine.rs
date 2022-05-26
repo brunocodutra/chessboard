@@ -6,8 +6,10 @@ use serde::Deserialize;
 use std::str::FromStr;
 use tracing::instrument;
 
+mod heuristic;
 mod random;
 
+pub use heuristic::Heuristic;
 pub use random::Random;
 
 /// A generic chess engine.
@@ -15,6 +17,8 @@ pub use random::Random;
 pub enum Engine {
     #[debug(fmt = "{:?}", _0)]
     Random(Random),
+    #[debug(fmt = "{:?}", _0)]
+    Heuristic(Heuristic),
     #[cfg(test)]
     #[debug(fmt = "{:?}", _0)]
     Mock(crate::MockEval),
@@ -24,6 +28,7 @@ impl Eval for Engine {
     fn eval(&self, pos: &Position) -> i32 {
         match self {
             Engine::Random(e) => e.eval(pos),
+            Engine::Heuristic(e) => e.eval(pos),
             #[cfg(test)]
             Engine::Mock(e) => e.eval(pos),
         }
@@ -36,6 +41,7 @@ impl Eval for Engine {
 #[serde(deny_unknown_fields, rename_all = "lowercase")]
 pub enum EngineConfig {
     Random {},
+    Heuristic {},
     #[cfg(test)]
     Mock(),
 }
@@ -61,6 +67,7 @@ impl Setup for EngineConfig {
     async fn setup(self) -> Result<Self::Output, Anyhow> {
         match self {
             EngineConfig::Random {} => Ok(Random::new().into()),
+            EngineConfig::Heuristic { .. } => Ok(Heuristic::new().into()),
             #[cfg(test)]
             EngineConfig::Mock() => Ok(crate::MockEval::new().into()),
         }
@@ -76,19 +83,43 @@ mod tests {
     use tokio::runtime;
 
     #[proptest]
-    fn engine_config_is_deserializable() {
+    fn random_config_is_deserializable() {
         assert_eq!("random()".parse(), Ok(EngineConfig::Random {}));
+    }
+
+    #[proptest]
+    fn heuristic_config_is_deserializable() {
+        assert_eq!("heuristic()".parse(), Ok(EngineConfig::Heuristic {}));
+    }
+
+    #[proptest]
+    fn mock_engine_config_is_deserializable() {
         assert_eq!("mock()".parse(), Ok(EngineConfig::Mock()));
     }
 
     #[proptest]
-    fn engine_can_be_configured_at_runtime() {
+    fn random_can_be_configured_at_runtime() {
         let rt = runtime::Builder::new_multi_thread().build()?;
 
         assert_eq!(
             discriminant(&Engine::Random(Random::new())),
             discriminant(&rt.block_on(EngineConfig::Random {}.setup()).unwrap())
         );
+    }
+
+    #[proptest]
+    fn heuristic_can_be_configured_at_runtime() {
+        let rt = runtime::Builder::new_multi_thread().build()?;
+
+        assert_eq!(
+            discriminant(&Engine::Heuristic(Heuristic::new())),
+            discriminant(&rt.block_on(EngineConfig::Heuristic {}.setup()).unwrap())
+        );
+    }
+
+    #[proptest]
+    fn mock_can_be_configured_at_runtime() {
+        let rt = runtime::Builder::new_multi_thread().build()?;
 
         assert_eq!(
             discriminant(&Engine::Mock(MockEval::new())),

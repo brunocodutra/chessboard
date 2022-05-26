@@ -21,7 +21,7 @@ mod tests {
     use test_strategy::proptest;
 
     #[proptest]
-    fn evaluate_returns_stable_score(pos: Position) {
+    fn score_is_stable(pos: Position) {
         assert_eq!(Random::new().eval(&pos), Random::new().eval(&pos.clone()));
     }
 }
