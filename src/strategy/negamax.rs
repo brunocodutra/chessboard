@@ -63,8 +63,7 @@ impl<E: Eval> Search for Negamax<E> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::MockEval;
-    use crate::PositionKind;
+    use crate::{engine::Random, MockEval};
     use mockall::predicate::*;
     use test_strategy::proptest;
 
@@ -82,7 +81,7 @@ mod tests {
             .expect_eval()
             .once()
             .with(eq(pos.clone()))
-            .returning(move |_| s);
+            .return_const(s);
 
         let strategy = Negamax::new(engine);
         assert_eq!(strategy.negamax(pos, 0, i32::MIN, i32::MAX), (None, s));
@@ -90,7 +89,9 @@ mod tests {
 
     #[proptest]
     fn negamax_returns_none_if_there_are_no_moves(
-        #[any(PositionKind::Checkmate)] pos: Position,
+        #[by_ref]
+        #[filter(#pos.moves().len() == 0)]
+        pos: Position,
         d: u32,
         s: i32,
     ) {
@@ -99,43 +100,29 @@ mod tests {
             .expect_eval()
             .once()
             .with(eq(pos.clone()))
-            .returning(move |_| s);
+            .return_const(s);
 
         let strategy = Negamax::new(engine);
         assert_eq!(strategy.negamax(pos, d, i32::MIN, i32::MAX), (None, s));
     }
 
     #[proptest]
-    fn negamax_returns_move_with_best_score(
-        #[by_ref]
-        #[filter(#pos.moves().len() > 0)]
-        pos: Position,
-        #[strategy(-128..=128)] mut score: i32,
-    ) {
-        let moves = pos.moves();
-        let positions = moves.clone().map(|m| {
-            let mut pos = pos.clone();
-            pos.play(m).unwrap();
-            pos
-        });
+    fn negamax_returns_move_with_best_score(pos: Position) {
+        let engine = Random::new();
 
-        let mut engine = MockEval::new();
+        let best = pos
+            .moves()
+            .map(|m| {
+                let mut pos = pos.clone();
+                pos.play(m).unwrap();
+                (m, engine.eval(&pos))
+            })
+            .min_by_key(|&(_, s)| s)
+            .map(|(m, s)| (Some(m), s.saturating_neg()))
+            .unwrap_or((None, engine.eval(&pos)));
 
-        engine
-            .expect_eval()
-            .times(moves.len())
-            .with(in_hash(positions))
-            .returning(move |_| {
-                score -= 1;
-                score
-            });
-
-        let score: i32 = moves.len() as i32 - score;
         let strategy = Negamax::new(engine);
-        assert_eq!(
-            strategy.negamax(pos, 1, i32::MIN, i32::MAX),
-            (moves.last(), score)
-        );
+        assert_eq!(strategy.negamax(pos, 1, i32::MIN, i32::MAX), best);
     }
 
     #[proptest]
