@@ -102,7 +102,7 @@ mod test {
     fn parsing_invalid_fen_fails(
         #[by_ref] fen: Fen,
         #[strategy(..=#fen.to_string().len())] n: usize,
-        #[strategy(".+")] r: String,
+        #[strategy("[^[:ascii:]]+")] r: String,
     ) {
         assert!([&fen.to_string()[..n], &r].concat().parse::<Fen>().is_err());
     }

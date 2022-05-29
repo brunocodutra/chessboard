@@ -259,6 +259,13 @@ impl From<Position> for sm::Chess {
     }
 }
 
+#[doc(hidden)]
+impl AsRef<sm::Chess> for Position {
+    fn as_ref(&self) -> &sm::Chess {
+        &self.chess
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
