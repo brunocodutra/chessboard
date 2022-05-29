@@ -1,7 +1,7 @@
 use derive_more::{Display, Error, From};
 use shakmaty as sm;
 use std::convert::{TryFrom, TryInto};
-use std::{char::ParseCharError, iter::FusedIterator, str::FromStr};
+use std::{char::ParseCharError, iter::FusedIterator, ops::Sub, str::FromStr};
 
 /// Denotes a column on the chess board.
 #[derive(Debug, Display, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
@@ -44,6 +44,15 @@ impl File {
     /// Returns an iterator over [`File`]s ordered by [index][`File::index`].
     pub fn iter() -> impl DoubleEndedIterator<Item = Self> + ExactSizeIterator + FusedIterator {
         (0usize..8).map(File::new)
+    }
+}
+
+/// The number of squares between two [`File`]s.
+impl Sub for File {
+    type Output = isize;
+
+    fn sub(self, rhs: Self) -> Self::Output {
+        self as isize - rhs as isize
     }
 }
 
@@ -204,6 +213,11 @@ mod tests {
     #[proptest]
     fn file_has_an_index(f: File) {
         assert_eq!(f.index().try_into(), Ok(f));
+    }
+
+    #[proptest]
+    fn subtracting_files_gives_distance(a: File, b: File) {
+        assert_eq!(a - b, a.index() as isize - b.index() as isize);
     }
 
     #[proptest]
