@@ -1,7 +1,7 @@
 use derive_more::{DebugCustom, Display, Error, From};
 use shakmaty as sm;
 use std::convert::{TryFrom, TryInto};
-use std::{iter::FusedIterator, num::ParseIntError, str::FromStr};
+use std::{iter::FusedIterator, num::ParseIntError, ops::Sub, str::FromStr};
 
 /// Denotes a row on the chess board.
 #[derive(DebugCustom, Display, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
@@ -52,6 +52,15 @@ impl Rank {
     /// Returns an iterator over [`Rank`]s ordered by [index][`Rank::index`].
     pub fn iter() -> impl DoubleEndedIterator<Item = Self> + ExactSizeIterator + FusedIterator {
         (0usize..8).map(Rank::new)
+    }
+}
+
+/// The number of squares between two [`Rank`]s.
+impl Sub for Rank {
+    type Output = isize;
+
+    fn sub(self, rhs: Self) -> Self::Output {
+        self as isize - rhs as isize
     }
 }
 
@@ -198,6 +207,11 @@ mod tests {
     #[proptest]
     fn rank_has_an_index(f: Rank) {
         assert_eq!(f.index().try_into(), Ok(f));
+    }
+
+    #[proptest]
+    fn subtracting_ranks_gives_distance(a: Rank, b: Rank) {
+        assert_eq!(a - b, a.index() as isize - b.index() as isize);
     }
 
     #[proptest]
