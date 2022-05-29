@@ -1,63 +1,10 @@
-use crate::{Color, IllegalMove, Move, Placement, Square};
-use derive_more::{DebugCustom, Display, Error, From};
+use crate::{Color, Fen, IllegalMove, Move, Placement, Square};
+use derive_more::{DebugCustom, Display, Error};
 use shakmaty as sm;
-use std::{convert::TryFrom, num::NonZeroU32, str::FromStr};
+use std::{convert::TryFrom, num::NonZeroU32};
 
 #[cfg(test)]
 use proptest::{prelude::*, sample::Selector};
-
-#[derive(DebugCustom, Display, Default, Clone, Eq, PartialEq, Hash)]
-#[cfg_attr(test, derive(test_strategy::Arbitrary))]
-#[debug(fmt = "Fen(\"{}\")", self)]
-#[display(fmt = "{}", "setup")]
-struct Fen {
-    #[cfg_attr(test, strategy(
-        any::<Placement>().prop_filter_map("invalid fen", |p| {
-            let fen = sm::fen::Fen(sm::Setup { board: p.into(), ..Default::default() });
-            fen.to_string().parse().ok()
-        })
-    ))]
-    setup: sm::fen::Fen,
-}
-
-impl FromStr for Fen {
-    type Err = InvalidFen;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        Ok(Fen { setup: s.parse()? })
-    }
-}
-
-impl From<Position> for Fen {
-    fn from(pos: Position) -> Self {
-        pos.chess.into()
-    }
-}
-
-#[doc(hidden)]
-impl From<sm::Chess> for Fen {
-    fn from(chess: sm::Chess) -> Self {
-        Fen {
-            setup: sm::fen::Fen::from_position(chess, sm::EnPassantMode::Always),
-        }
-    }
-}
-
-#[doc(hidden)]
-impl TryFrom<Fen> for sm::Chess {
-    type Error = IllegalPosition;
-
-    fn try_from(fen: Fen) -> Result<Self, Self::Error> {
-        Ok(fen.setup.into_position(sm::CastlingMode::Standard)?)
-    }
-}
-
-#[doc(hidden)]
-impl From<Fen> for sm::Setup {
-    fn from(fen: Fen) -> Self {
-        fen.setup.into()
-    }
-}
 
 #[cfg(test)]
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
@@ -66,71 +13,6 @@ pub enum PositionKind {
     Stalemate,
     Draw,
     Any,
-}
-
-#[cfg(test)]
-impl PositionKind {
-    fn checkmate() -> impl Strategy<Value = Fen> {
-        prop_oneof![
-            "4k3/8/8/8/8/2P1q3/1P6/3RKR2 w - - 0 1",
-            "4R3/4kp2/5N2/4P3/8/8/8/4K3 b - - 0 1",
-            "4k3/8/8/8/3nn3/3P4/4Kb2/3Q1B2 w - - 0 1",
-            "3q1b2/4kB2/3p4/4N1B1/8/8/8/4K3 b - - 0 1",
-            "4k1r1/8/8/8/8/5b2/5P1P/5RK1 w - - 0 1",
-            "1nbB4/1pk5/2p5/8/8/8/8/3RK3 b - - 0 1",
-            "4k3/8/2b5/8/8/8/4nP1P/5RK1 w - - 0 1",
-            "3r1r2/4k2p/R3Q3/8/8/8/8/4K3 b - - 0 1",
-        ]
-        .prop_map(|s| s.parse().unwrap())
-    }
-
-    fn stalemate() -> impl Strategy<Value = Fen> {
-        prop_oneof![
-            "rn2k1nr/pp4pp/3p4/q1pP4/P1P2p1b/1b2pPRP/1P1NP1PQ/2B1KBNR w Kkq - 0 1",
-            "5bnr/4p1pq/4Qpkr/7p/7P/4P3/PPPP1PP1/RNB1KBNR b KQ - 0 1",
-            "NBk5/PpP1p3/1P2P3/8/8/3p1p2/3PpPpp/4Kbrq w - - 0 1",
-            "NBk5/PpP1p3/1P2P3/8/8/3p1p2/3PpPpp/4Kbrq b - - 0 1",
-            "8/8/8/2p2p1p/2P2P1k/4pP1P/4P1KP/5BNR w - - 0 1",
-            "8/8/8/2p2p1p/2P2P1k/4pP1P/4P1KP/5BNR b - - 0 1",
-            "8/8/8/8/pp6/kp6/1p6/1K6 w - - 0 1",
-            "8/8/8/8/pp6/kp6/1p6/1K6 b - - 0 1",
-        ]
-        .prop_map(|s| s.parse().unwrap())
-    }
-
-    fn draw() -> impl Strategy<Value = Fen> {
-        prop_oneof![
-            "8/2K1k3/8/8/8/8/8/8 w - - 0 1",
-            "8/8/8/1K6/8/1k6/8/8 b - - 0 1",
-            "8/8/6k1/8/2K5/8/6N1/8 b - - 0 1",
-            "8/2n5/2k5/8/4K3/8/8/8 w - - 0 1",
-            "8/8/8/5k2/8/2B1K3/8/8 b - - 0 1",
-            "8/6b1/1k6/5K2/8/8/8/8 w - - 0 1",
-            "8/8/3kb3/8/8/3BK3/8/8 b - - 0 1",
-            "8/8/3bk3/8/8/3KB3/8/8 w - - 0 1",
-        ]
-        .prop_map(|s| s.parse().unwrap())
-    }
-
-    fn any() -> impl Strategy<Value = Fen> {
-        prop_oneof![
-            Self::checkmate(),
-            Self::stalemate(),
-            Self::draw(),
-            Just(sm::Chess::default())
-                .prop_recursive(32, 32, 1, |inner| {
-                    (inner, any::<Selector>()).prop_map(|(chess, selector)| {
-                        if let Some(m) = selector.try_select(sm::Position::legal_moves(&chess)) {
-                            sm::Position::play(chess, &m).unwrap()
-                        } else {
-                            chess
-                        }
-                    })
-                })
-                .no_shrink()
-                .prop_map_into()
-        ]
-    }
 }
 
 #[cfg(test)]
@@ -149,18 +31,87 @@ impl Default for PositionKind {
 #[debug(fmt = "Position(\"{}\")", self)]
 #[display(fmt = "{}", "Fen::from(self.clone())")]
 pub struct Position {
-    #[cfg_attr(test, strategy(Self::strategy(&args).prop_map(|fen| fen.try_into().unwrap())))]
+    #[cfg_attr(test, strategy(Self::strategy(&args).prop_map_into()))]
     chess: sm::Chess,
 }
 
 impl Position {
     #[cfg(test)]
-    fn strategy(kind: &PositionKind) -> impl Strategy<Value = Fen> {
+    fn checkmate() -> impl Strategy<Value = Position> {
+        prop_oneof![
+            "4k3/8/8/8/8/2P1q3/1P6/3RKR2 w - - 0 1",
+            "4R3/4kp2/5N2/4P3/8/8/8/4K3 b - - 0 1",
+            "4k3/8/8/8/3nn3/3P4/4Kb2/3Q1B2 w - - 0 1",
+            "3q1b2/4kB2/3p4/4N1B1/8/8/8/4K3 b - - 0 1",
+            "4k1r1/8/8/8/8/5b2/5P1P/5RK1 w - - 0 1",
+            "1nbB4/1pk5/2p5/8/8/8/8/3RK3 b - - 0 1",
+            "4k3/8/2b5/8/8/8/4nP1P/5RK1 w - - 0 1",
+            "3r1r2/4k2p/R3Q3/8/8/8/8/4K3 b - - 0 1",
+        ]
+        .prop_map(|s| s.parse().unwrap())
+        .prop_map(|fen: Fen| fen.try_into().unwrap())
+    }
+
+    #[cfg(test)]
+    fn stalemate() -> impl Strategy<Value = Position> {
+        prop_oneof![
+            "rn2k1nr/pp4pp/3p4/q1pP4/P1P2p1b/1b2pPRP/1P1NP1PQ/2B1KBNR w Kkq - 0 1",
+            "5bnr/4p1pq/4Qpkr/7p/7P/4P3/PPPP1PP1/RNB1KBNR b KQ - 0 1",
+            "NBk5/PpP1p3/1P2P3/8/8/3p1p2/3PpPpp/4Kbrq w - - 0 1",
+            "NBk5/PpP1p3/1P2P3/8/8/3p1p2/3PpPpp/4Kbrq b - - 0 1",
+            "8/8/8/2p2p1p/2P2P1k/4pP1P/4P1KP/5BNR w - - 0 1",
+            "8/8/8/2p2p1p/2P2P1k/4pP1P/4P1KP/5BNR b - - 0 1",
+            "8/8/8/8/pp6/kp6/1p6/1K6 w - - 0 1",
+            "8/8/8/8/pp6/kp6/1p6/1K6 b - - 0 1",
+        ]
+        .prop_map(|s| s.parse().unwrap())
+        .prop_map(|fen: Fen| fen.try_into().unwrap())
+    }
+
+    #[cfg(test)]
+    fn draw() -> impl Strategy<Value = Position> {
+        prop_oneof![
+            "8/2K1k3/8/8/8/8/8/8 w - - 0 1",
+            "8/8/8/1K6/8/1k6/8/8 b - - 0 1",
+            "8/8/6k1/8/2K5/8/6N1/8 b - - 0 1",
+            "8/2n5/2k5/8/4K3/8/8/8 w - - 0 1",
+            "8/8/8/5k2/8/2B1K3/8/8 b - - 0 1",
+            "8/6b1/1k6/5K2/8/8/8/8 w - - 0 1",
+            "8/8/3kb3/8/8/3BK3/8/8 b - - 0 1",
+            "8/8/3bk3/8/8/3KB3/8/8 w - - 0 1",
+        ]
+        .prop_map(|s| s.parse().unwrap())
+        .prop_map(|fen: Fen| fen.try_into().unwrap())
+    }
+
+    #[cfg(test)]
+    fn any() -> impl Strategy<Value = Position> {
+        prop_oneof![
+            Self::checkmate(),
+            Self::stalemate(),
+            Self::draw(),
+            Just(sm::Chess::default())
+                .prop_recursive(32, 32, 1, |inner| {
+                    (inner, any::<Selector>()).prop_map(|(chess, selector)| {
+                        if let Some(m) = selector.try_select(sm::Position::legal_moves(&chess)) {
+                            sm::Position::play(chess, &m).unwrap()
+                        } else {
+                            chess
+                        }
+                    })
+                })
+                .no_shrink()
+                .prop_map_into()
+        ]
+    }
+
+    #[cfg(test)]
+    fn strategy(kind: &PositionKind) -> impl Strategy<Value = Position> {
         match kind {
-            PositionKind::Checkmate => PositionKind::checkmate().boxed(),
-            PositionKind::Stalemate => PositionKind::stalemate().boxed(),
-            PositionKind::Draw => PositionKind::draw().boxed(),
-            PositionKind::Any => PositionKind::any().boxed(),
+            PositionKind::Checkmate => Self::checkmate().boxed(),
+            PositionKind::Stalemate => Self::stalemate().boxed(),
+            PositionKind::Draw => Self::draw().boxed(),
+            PositionKind::Any => Self::any().boxed(),
         }
     }
 
@@ -235,41 +186,6 @@ impl Position {
     }
 }
 
-/// The reason why the string is not valid FEN.
-#[derive(Debug, Display, Clone, Eq, PartialEq, Error)]
-pub enum InvalidFen {
-    #[display(fmt = "syntax error at the piece placement field")]
-    InvalidPlacement,
-    #[display(fmt = "syntax error at the side to move field")]
-    InvalidTurn,
-    #[display(fmt = "syntax error at the castling rights field")]
-    InvalidCastlingRights,
-    #[display(fmt = "syntax error at the en passant square field")]
-    InvalidEnPassantSquare,
-    #[display(fmt = "syntax error at the halfmove clock field")]
-    InvalidHalfmoveClock,
-    #[display(fmt = "syntax error at the fullmove counter field")]
-    InvalidFullmoves,
-    #[display(fmt = "unspecified syntax error")]
-    InvalidSyntax,
-}
-
-#[doc(hidden)]
-impl From<sm::fen::ParseFenError> for InvalidFen {
-    fn from(e: sm::fen::ParseFenError) -> Self {
-        use InvalidFen::*;
-        match e {
-            sm::fen::ParseFenError::InvalidBoard => InvalidPlacement,
-            sm::fen::ParseFenError::InvalidTurn => InvalidTurn,
-            sm::fen::ParseFenError::InvalidCastling => InvalidCastlingRights,
-            sm::fen::ParseFenError::InvalidEpSquare => InvalidEnPassantSquare,
-            sm::fen::ParseFenError::InvalidHalfmoveClock => InvalidHalfmoveClock,
-            sm::fen::ParseFenError::InvalidFullmoves => InvalidFullmoves,
-            _ => InvalidSyntax,
-        }
-    }
-}
-
 /// The reason why the position represented by the FEN string is illegal.
 #[derive(Debug, Display, Clone, Eq, PartialEq, Error)]
 pub enum IllegalPosition {
@@ -312,33 +228,20 @@ impl From<sm::PositionError<sm::Chess>> for IllegalPosition {
     }
 }
 
-/// The reason why parsing [`Position`] from a FEN string failed.
-#[derive(Debug, Display, Clone, Eq, PartialEq, Error, From)]
-pub enum ParsePositionError {
-    #[display(fmt = "failed to parse FEN")]
-    InvalidFen(InvalidFen),
-
-    #[display(fmt = "FEN represents an illegal position")]
-    IllegalPosition(IllegalPosition),
-}
-
-/// Parses a [`Position`] from a FEN string.
-impl FromStr for Position {
-    type Err = ParsePositionError;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let fen: Fen = s.parse()?;
-        Ok(Self::try_from(fen)?)
-    }
-}
-
 impl TryFrom<Fen> for Position {
     type Error = IllegalPosition;
 
     fn try_from(fen: Fen) -> Result<Self, Self::Error> {
         Ok(Position {
-            chess: fen.try_into()?,
+            chess: sm::Setup::from(fen).position(sm::CastlingMode::Standard)?,
         })
+    }
+}
+
+#[doc(hidden)]
+impl From<Position> for sm::Setup {
+    fn from(pos: Position) -> Self {
+        sm::Position::into_setup(pos.chess, sm::EnPassantMode::Always)
     }
 }
 
@@ -353,13 +256,6 @@ impl From<sm::Chess> for Position {
 impl From<Position> for sm::Chess {
     fn from(pos: Position) -> Self {
         pos.chess
-    }
-}
-
-#[doc(hidden)]
-impl From<Position> for sm::Setup {
-    fn from(pos: Position) -> Self {
-        Fen::from(pos).setup.into()
     }
 }
 
@@ -453,28 +349,8 @@ mod tests {
     }
 
     #[proptest]
-    fn parsing_printed_position_is_an_identity(pos: Position) {
-        assert_eq!(pos.to_string().parse(), Ok(pos));
-    }
-
-    #[proptest]
-    fn parsing_invalid_fen_fails(
-        #[by_ref] fen: Fen,
-        #[strategy(..=#fen.to_string().len())] n: usize,
-        #[strategy(".+")] r: String,
-    ) {
-        let s = [&fen.to_string()[..n], &r].concat();
-        let result = s.parse::<Fen>();
-        prop_assume!(result.is_err());
-        assert_eq!(s.parse::<Position>().err(), result.err().map(Into::into));
-    }
-
-    #[proptest]
-    fn parsing_illegal_fen_fails(fen: Fen) {
-        let s = fen.to_string();
-        let result = Position::try_from(fen);
-        prop_assume!(result.is_err());
-        assert_eq!(s.parse::<Position>().err(), result.err().map(Into::into));
+    fn all_positions_can_be_represented_using_fen_notation(pos: Position) {
+        assert_eq!(Position::try_from(Fen::from(pos.clone())), Ok(pos));
     }
 
     #[proptest]
