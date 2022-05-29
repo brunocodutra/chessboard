@@ -4,7 +4,7 @@ use shakmaty as sm;
 use std::{convert::TryFrom, num::NonZeroU32, str::FromStr};
 
 #[cfg(test)]
-use proptest::{prelude::*, sample::select};
+use proptest::{prelude::*, sample::Selector};
 
 #[derive(DebugCustom, Display, Default, Clone, Eq, PartialEq, Hash)]
 #[cfg_attr(test, derive(test_strategy::Arbitrary))]
@@ -28,31 +28,40 @@ impl FromStr for Fen {
     }
 }
 
-#[doc(hidden)]
-impl TryFrom<Fen> for Position {
-    type Error = IllegalPosition;
-
-    fn try_from(fen: Fen) -> Result<Self, Self::Error> {
-        Ok(Position {
-            chess: fen.setup.into_position(sm::CastlingMode::Standard)?,
-        })
+impl From<Position> for Fen {
+    fn from(pos: Position) -> Self {
+        pos.chess.into()
     }
 }
 
 #[doc(hidden)]
-impl From<Position> for Fen {
-    fn from(pos: Position) -> Self {
+impl From<sm::Chess> for Fen {
+    fn from(chess: sm::Chess) -> Self {
         Fen {
-            setup: sm::Position::into_setup(pos.chess, sm::EnPassantMode::Always).into(),
+            setup: sm::fen::Fen::from_position(chess, sm::EnPassantMode::Always),
         }
+    }
+}
+
+#[doc(hidden)]
+impl TryFrom<Fen> for sm::Chess {
+    type Error = IllegalPosition;
+
+    fn try_from(fen: Fen) -> Result<Self, Self::Error> {
+        Ok(fen.setup.into_position(sm::CastlingMode::Standard)?)
+    }
+}
+
+#[doc(hidden)]
+impl From<Fen> for sm::Setup {
+    fn from(fen: Fen) -> Self {
+        fen.setup.into()
     }
 }
 
 #[cfg(test)]
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
 pub enum PositionKind {
-    Opening,
-    Ending,
     Checkmate,
     Stalemate,
     Draw,
@@ -61,37 +70,8 @@ pub enum PositionKind {
 
 #[cfg(test)]
 impl PositionKind {
-    #[inline]
-    fn opening() -> Vec<&'static str> {
-        vec![
-            "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",
-            "rnbqkb1r/ppp1pppp/3p4/3nP3/3P4/5N2/PPP2PPP/RNBQKB1R b KQkq - 1 4",
-            "r1bqk1nr/pppp1ppp/2n5/2b1p3/2B1P3/5N2/PPPP1PPP/RNBQK2R w KQkq - 4 4",
-            "rnbqkb1r/ppp1pp1p/3p1np1/8/3PPP2/2N5/PPP3PP/R1BQKBNR b KQkq - 0 4",
-            "r1bqkb1r/pppp1ppp/2n2n2/1B2p3/4P3/5N2/PPPP1PPP/RNBQK2R w KQkq - 4 4",
-            "rnbqkb1r/ppp1pppp/5n2/3P4/3P4/8/PPP2PPP/RNBQKBNR b KQkq - 0 3",
-            "rnbqkb1r/pp2pp1p/3p1np1/8/3NP3/2N5/PPP2PPP/R1BQKB1R w KQkq - 0 6",
-            "rnbqkb1r/ppp1pp1p/5np1/3p4/2PP1B2/2N5/PP2PPPP/R2QKBNR b KQkq - 1 4",
-        ]
-    }
-
-    #[inline]
-    fn ending() -> Vec<&'static str> {
-        vec![
-            "8/8/8/3nk3/8/3Q4/8/7K w - - 0 1",
-            "8/8/3B4/6K1/8/8/2k5/q7 b - - 0 1",
-            "8/3k4/3P4/3K4/8/8/8/8 w - - 0 1",
-            "3K4/3P1k2/8/8/8/8/7r/4R3 b - - 0 1",
-            "3k4/4r3/3K4/3B4/8/8/8/5R2 w - - 0 1",
-            "4k3/7R/8/3KPr2/8/8/8/8 b - - 0 1",
-            "8/8/4r3/3k4/8/8/3K1Q2/8 w - - 0 1",
-            "8/7k/6pP/6P1/8/p1p5/8/1K6 b - - 0 1",
-        ]
-    }
-
-    #[inline]
-    fn checkmate() -> Vec<&'static str> {
-        vec![
+    fn checkmate() -> impl Strategy<Value = Fen> {
+        prop_oneof![
             "4k3/8/8/8/8/2P1q3/1P6/3RKR2 w - - 0 1",
             "4R3/4kp2/5N2/4P3/8/8/8/4K3 b - - 0 1",
             "4k3/8/8/8/3nn3/3P4/4Kb2/3Q1B2 w - - 0 1",
@@ -101,11 +81,11 @@ impl PositionKind {
             "4k3/8/2b5/8/8/8/4nP1P/5RK1 w - - 0 1",
             "3r1r2/4k2p/R3Q3/8/8/8/8/4K3 b - - 0 1",
         ]
+        .prop_map(|s| s.parse().unwrap())
     }
 
-    #[inline]
-    fn stalemate() -> Vec<&'static str> {
-        vec![
+    fn stalemate() -> impl Strategy<Value = Fen> {
+        prop_oneof![
             "rn2k1nr/pp4pp/3p4/q1pP4/P1P2p1b/1b2pPRP/1P1NP1PQ/2B1KBNR w Kkq - 0 1",
             "5bnr/4p1pq/4Qpkr/7p/7P/4P3/PPPP1PP1/RNB1KBNR b KQ - 0 1",
             "NBk5/PpP1p3/1P2P3/8/8/3p1p2/3PpPpp/4Kbrq w - - 0 1",
@@ -115,11 +95,11 @@ impl PositionKind {
             "8/8/8/8/pp6/kp6/1p6/1K6 w - - 0 1",
             "8/8/8/8/pp6/kp6/1p6/1K6 b - - 0 1",
         ]
+        .prop_map(|s| s.parse().unwrap())
     }
 
-    #[inline]
-    fn draw() -> Vec<&'static str> {
-        vec![
+    fn draw() -> impl Strategy<Value = Fen> {
+        prop_oneof![
             "8/2K1k3/8/8/8/8/8/8 w - - 0 1",
             "8/8/8/1K6/8/1k6/8/8 b - - 0 1",
             "8/8/6k1/8/2K5/8/6N1/8 b - - 0 1",
@@ -129,18 +109,27 @@ impl PositionKind {
             "8/8/3kb3/8/8/3BK3/8/8 b - - 0 1",
             "8/8/3bk3/8/8/3KB3/8/8 w - - 0 1",
         ]
+        .prop_map(|s| s.parse().unwrap())
     }
 
-    #[inline]
-    fn any() -> Vec<&'static str> {
-        [
-            Self::opening(),
-            Self::ending(),
+    fn any() -> impl Strategy<Value = Fen> {
+        prop_oneof![
             Self::checkmate(),
             Self::stalemate(),
             Self::draw(),
+            Just(sm::Chess::default())
+                .prop_recursive(32, 32, 1, |inner| {
+                    (inner, any::<Selector>()).prop_map(|(chess, selector)| {
+                        if let Some(m) = selector.try_select(sm::Position::legal_moves(&chess)) {
+                            sm::Position::play(chess, &m).unwrap()
+                        } else {
+                            chess
+                        }
+                    })
+                })
+                .no_shrink()
+                .prop_map_into()
         ]
-        .concat()
     }
 }
 
@@ -160,25 +149,19 @@ impl Default for PositionKind {
 #[debug(fmt = "Position(\"{}\")", self)]
 #[display(fmt = "{}", "Fen::from(self.clone())")]
 pub struct Position {
-    #[cfg_attr(test, strategy(Self::strategy(&args).prop_map_into()))]
+    #[cfg_attr(test, strategy(Self::strategy(&args).prop_map(|fen| fen.try_into().unwrap())))]
     chess: sm::Chess,
 }
 
 impl Position {
     #[cfg(test)]
-    fn strategy(kind: &PositionKind) -> impl Strategy<Value = Self> {
-        let positions = match kind {
-            PositionKind::Opening => select(PositionKind::opening()),
-            PositionKind::Ending => select(PositionKind::ending()),
-            PositionKind::Checkmate => select(PositionKind::checkmate()),
-            PositionKind::Stalemate => select(PositionKind::stalemate()),
-            PositionKind::Draw => select(PositionKind::draw()),
-            PositionKind::Any => select(PositionKind::any()),
-        };
-
-        positions
-            .prop_map(|s| s.parse().unwrap())
-            .prop_map(|fen: Fen| Position::try_from(fen).unwrap())
+    fn strategy(kind: &PositionKind) -> impl Strategy<Value = Fen> {
+        match kind {
+            PositionKind::Checkmate => PositionKind::checkmate().boxed(),
+            PositionKind::Stalemate => PositionKind::stalemate().boxed(),
+            PositionKind::Draw => PositionKind::draw().boxed(),
+            PositionKind::Any => PositionKind::any().boxed(),
+        }
     }
 
     /// The current arrangement of [`Piece`](crate::Piece)s on the board.
@@ -349,6 +332,16 @@ impl FromStr for Position {
     }
 }
 
+impl TryFrom<Fen> for Position {
+    type Error = IllegalPosition;
+
+    fn try_from(fen: Fen) -> Result<Self, Self::Error> {
+        Ok(Position {
+            chess: fen.try_into()?,
+        })
+    }
+}
+
 #[doc(hidden)]
 impl From<sm::Chess> for Position {
     fn from(chess: sm::Chess) -> Self {
@@ -373,6 +366,7 @@ impl From<Position> for sm::Setup {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use proptest::sample::select;
     use test_strategy::proptest;
 
     #[proptest]
