@@ -1,6 +1,7 @@
 mod action;
 mod color;
 mod eval;
+mod fen;
 mod file;
 mod game;
 mod io;
@@ -20,6 +21,7 @@ mod square;
 pub use crate::action::*;
 pub use crate::color::*;
 pub use crate::eval::*;
+pub use crate::fen::*;
 pub use crate::file::*;
 pub use crate::game::*;
 pub use crate::io::*;
