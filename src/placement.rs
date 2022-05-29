@@ -81,6 +81,13 @@ impl From<Placement> for sm::Board {
     }
 }
 
+#[doc(hidden)]
+impl AsRef<sm::Board> for Placement {
+    fn as_ref(&self) -> &sm::Board {
+        &self.board
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
