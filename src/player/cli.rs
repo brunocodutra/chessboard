@@ -78,7 +78,7 @@ impl<T: Io + Debug + Send> Play for Cli<T> {
     /// Prompt the user for an action.
     #[instrument(level = "trace", err, ret)]
     async fn play(&mut self, pos: &Position) -> Result<Action, CliError> {
-        self.io.send(Board(pos.clone())).await?;
+        self.io.send(&Board(pos).to_string()).await?;
 
         loop {
             self.io.flush().await?;
@@ -86,16 +86,16 @@ impl<T: Io + Debug + Send> Play for Cli<T> {
 
             match Cmd::try_parse_from(line.split_whitespace()) {
                 Ok(s) => break Ok(s.into()),
-                Err(e) => self.io.send(e).await?,
+                Err(e) => self.io.send(&e.to_string()).await?,
             }
         }
     }
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, Hash, Deref)]
-struct Board(Position);
+struct Board<'a>(&'a Position);
 
-impl Display for Board {
+impl<'a> Display for Board<'a> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "  ")?;
         for file in File::iter() {
@@ -132,7 +132,8 @@ impl Display for Board {
 mod tests {
     use super::*;
     use crate::MockIo;
-    use mockall::{predicate::*, Sequence};
+    use clap::IntoApp;
+    use mockall::Sequence;
     use test_strategy::proptest;
     use tokio::runtime;
 
@@ -142,10 +143,11 @@ mod tests {
         let mut io = MockIo::new();
         let mut seq = Sequence::new();
 
+        let board = Board(&pos).to_string();
         io.expect_send()
             .once()
             .in_sequence(&mut seq)
-            .with(eq(Board(pos.clone())))
+            .withf(move |msg| msg == board)
             .returning(|_| Ok(()));
 
         io.expect_flush()
@@ -167,7 +169,7 @@ mod tests {
         let rt = runtime::Builder::new_multi_thread().build()?;
         let mut io = MockIo::new();
 
-        io.expect_send().returning(|_: Board| Ok(()));
+        io.expect_send().returning(|_| Ok(()));
         io.expect_flush().returning(|| Ok(()));
 
         io.expect_recv()
@@ -183,7 +185,7 @@ mod tests {
         let rt = runtime::Builder::new_multi_thread().build()?;
         let mut io = MockIo::new();
 
-        io.expect_send().returning(|_: Board| Ok(()));
+        io.expect_send().returning(|_| Ok(()));
         io.expect_flush().returning(|| Ok(()));
 
         io.expect_recv()
@@ -195,28 +197,24 @@ mod tests {
     }
 
     #[proptest]
-    fn player_can_ask_for_help(
-        pos: Position,
-        cmd: Cmd,
-        #[strategy("|help|resign|move")] arg: String,
-    ) {
+    fn player_can_ask_for_help(pos: Position, cmd: Cmd) {
         let rt = runtime::Builder::new_multi_thread().build()?;
         let mut io = MockIo::new();
 
-        io.expect_send().returning(|_: Board| Ok(()));
+        io.expect_send().once().returning(|_| Ok(()));
+
+        let mut buffer = Vec::new();
+        Cmd::command().write_help(&mut buffer)?;
+        let help = String::from_utf8(buffer)?;
 
         io.expect_send()
             .once()
-            .with(function(|e: &clap::Error| {
-                e.kind() == clap::ErrorKind::DisplayHelp
-            }))
+            .withf(move |msg| msg == help)
             .returning(|_| Ok(()));
 
         io.expect_flush().returning(|| Ok(()));
 
-        io.expect_recv()
-            .once()
-            .returning(move || Ok(format!("help {}", arg)));
+        io.expect_recv().once().returning(move || Ok("help".into()));
 
         io.expect_recv()
             .once()
@@ -235,13 +233,15 @@ mod tests {
         let rt = runtime::Builder::new_multi_thread().build()?;
         let mut io = MockIo::new();
 
-        io.expect_send().returning(|_: Board| Ok(()));
+        io.expect_send().once().returning(|_| Ok(()));
+
+        let mut buffer = Vec::new();
+        Cmd::command().write_help(&mut buffer)?;
+        let help = String::from_utf8(buffer)?;
 
         io.expect_send()
             .once()
-            .with(function(|e: &clap::Error| {
-                e.kind() == clap::ErrorKind::DisplayHelpOnMissingArgumentOrSubcommand
-            }))
+            .withf(move |msg| msg == help)
             .returning(|_| Ok(()));
 
         io.expect_flush().returning(|| Ok(()));
@@ -261,8 +261,7 @@ mod tests {
         let rt = runtime::Builder::new_multi_thread().build()?;
         let mut io = MockIo::new();
 
-        io.expect_send().returning(|_: Board| Ok(()));
-        io.expect_send().returning(|_: clap::Error| Ok(()));
+        io.expect_send().returning(|_| Ok(()));
         io.expect_flush().returning(|| Ok(()));
 
         io.expect_recv()
@@ -288,8 +287,7 @@ mod tests {
         let rt = runtime::Builder::new_multi_thread().build()?;
         let mut io = MockIo::new();
 
-        io.expect_send().returning(|_: Board| Ok(()));
-        io.expect_send().returning(|_: clap::Error| Ok(()));
+        io.expect_send().returning(|_| Ok(()));
         io.expect_flush().returning(|| Ok(()));
 
         io.expect_recv()
@@ -315,8 +313,7 @@ mod tests {
         let rt = runtime::Builder::new_multi_thread().build()?;
         let mut io = MockIo::new();
 
-        io.expect_send().returning(|_: Board| Ok(()));
-        io.expect_send().returning(|_: clap::Error| Ok(()));
+        io.expect_send().returning(|_| Ok(()));
         io.expect_flush().returning(|| Ok(()));
 
         io.expect_recv().once().return_once(move || Ok(arg));
@@ -335,7 +332,7 @@ mod tests {
         let mut io = MockIo::new();
 
         let kind = e.kind();
-        io.expect_send().return_once(move |_: Board| Err(e));
+        io.expect_send().return_once(move |_| Err(e));
 
         let mut cli = Cli::new(io);
         assert_eq!(
@@ -349,7 +346,7 @@ mod tests {
         let rt = runtime::Builder::new_multi_thread().build()?;
         let mut io = MockIo::new();
 
-        io.expect_send().returning(|_: Board| Ok(()));
+        io.expect_send().returning(|_| Ok(()));
 
         let kind = e.kind();
         io.expect_flush().return_once(move || Err(e));
@@ -366,7 +363,7 @@ mod tests {
         let rt = runtime::Builder::new_multi_thread().build()?;
         let mut io = MockIo::new();
 
-        io.expect_send().returning(|_: Board| Ok(()));
+        io.expect_send().returning(|_| Ok(()));
         io.expect_flush().returning(|| Ok(()));
 
         let kind = e.kind();

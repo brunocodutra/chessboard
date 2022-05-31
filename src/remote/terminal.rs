@@ -2,7 +2,7 @@ use crate::Io;
 use async_trait::async_trait;
 use derive_more::DebugCustom;
 use rustyline::{error::ReadlineError, Config, Editor};
-use std::{fmt::Display, io, sync::Arc};
+use std::{io, sync::Arc};
 use tokio::io::{stdout, AsyncWriteExt, Stdout};
 use tokio::{sync::Mutex, task::block_in_place};
 use tracing::instrument;
@@ -52,9 +52,8 @@ impl Io for Terminal {
         }
     }
 
-    #[instrument(level = "trace", err, skip(item), fields(%item))]
-    async fn send<D: Display + Send + 'static>(&mut self, item: D) -> io::Result<()> {
-        let msg = item.to_string();
+    #[instrument(level = "trace", err)]
+    async fn send(&mut self, msg: &str) -> io::Result<()> {
         self.writer.write_all(msg.as_bytes()).await?;
         self.writer.write_u8(b'\n').await?;
         Ok(())

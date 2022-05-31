@@ -3,7 +3,7 @@ use anyhow::Error as Anyhow;
 use async_trait::async_trait;
 use derive_more::{DebugCustom, Display, Error, From};
 use serde::Deserialize;
-use std::{fmt::Display, io, str::FromStr};
+use std::{io, str::FromStr};
 use tracing::instrument;
 
 mod process;
@@ -38,12 +38,12 @@ impl Io for Remote {
         Ok(line)
     }
 
-    async fn send<D: Display + Send + 'static>(&mut self, item: D) -> io::Result<()> {
+    async fn send(&mut self, msg: &str) -> io::Result<()> {
         match self {
-            Remote::Process(io) => io.send(item).await?,
-            Remote::Terminal(io) => io.send(item).await?,
+            Remote::Process(io) => io.send(msg).await?,
+            Remote::Terminal(io) => io.send(msg).await?,
             #[cfg(test)]
-            Remote::Mock(io) => io.send(item).await?,
+            Remote::Mock(io) => io.send(msg).await?,
         }
 
         Ok(())
