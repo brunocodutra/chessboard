@@ -296,13 +296,13 @@ mod tests {
             Color::Black => (&mut b, &mut w),
         };
 
-        p.expect_play().once().return_const(Ok(Action::Move(m)));
-        q.expect_play().once().return_const(Ok(Action::Resign));
+        p.expect_play().return_const(Ok(Action::Move(m)));
+        q.expect_play().return_const(Ok(Action::Resign));
 
-        assert_eq!(
-            rt.block_on(game.run(w, b)).map(|r| r.moves),
-            Ok(vec![san, San::null()])
-        );
+        let report = rt.block_on(game.run(w, b));
+
+        prop_assume!(game.outcome() == Some(Outcome::Resignation(!turn)));
+        assert_eq!(report.map(|r| r.moves), Ok(vec![san, San::null()]));
     }
 
     #[proptest]
@@ -323,7 +323,7 @@ mod tests {
             Color::Black => &mut b,
         };
 
-        p.expect_play().once().return_const(Ok(Action::Resign));
+        p.expect_play().return_const(Ok(Action::Resign));
 
         assert_eq!(
             rt.block_on(game.run(w, b)).map(|r| r.outcome),
@@ -351,9 +351,7 @@ mod tests {
         };
 
         p.expect_play()
-            .once()
             .return_const(Ok(action))
-            .once()
             .return_const(Ok(Action::Resign));
 
         assert_eq!(
@@ -381,7 +379,7 @@ mod tests {
             Color::Black => &mut b,
         };
 
-        p.expect_play().once().return_const(Err(e.clone()));
+        p.expect_play().return_const(Err(e.clone()));
 
         assert_eq!(
             rt.block_on(game.run(w, b)),
