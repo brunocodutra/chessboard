@@ -25,5 +25,6 @@ vampirc-uci = { version = "0.11.0", default-features = false }
 
 [dev-dependencies]
 mockall = "0.11.0"
+pgn-reader = "0.20.0"
 proptest = "1.0.0"
 test-strategy = "0.2.0"

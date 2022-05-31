@@ -1,4 +1,4 @@
-use crate::{Action, Color, InvalidAction, Outcome, Play, Position};
+use crate::{Action, Color, GameReport, InvalidAction, Outcome, Play, Position, San};
 use anyhow::Context;
 use derive_more::{Display, Error};
 use tracing::{info, instrument, warn};
@@ -45,20 +45,21 @@ impl Game {
     }
 
     /// Executes an [`Action`] if valid, otherwise returns the reason why not.
-    pub fn execute(&mut self, action: Action) -> Result<(), InvalidAction> {
+    ///
+    /// If the action is valid, a [`San`] recording the move is returned.
+    pub fn execute(&mut self, action: Action) -> Result<San, InvalidAction> {
         if let Some(result) = self.outcome() {
             return Err(InvalidAction::GameHasEnded(result));
         }
 
         match action {
-            Action::Move(m) => self.position.play(m)?,
+            Action::Move(m) => Ok(self.position.play(m)?),
 
             Action::Resign => {
                 self.resigned.replace(self.position.turn());
+                Ok(San::null())
             }
         }
-
-        Ok(())
     }
 
     /// Challenge two players for a game of chess.
@@ -67,10 +68,12 @@ impl Game {
         &mut self,
         mut white: W,
         mut black: B,
-    ) -> Result<Outcome, GameInterrupted<W::Error, B::Error>> {
+    ) -> Result<GameReport, GameInterrupted<W::Error, B::Error>> {
+        let mut moves = Vec::new();
+
         loop {
             match self.outcome() {
-                Some(o) => break Ok(o),
+                Some(outcome) => break Ok(GameReport { outcome, moves }),
 
                 None => {
                     let position = self.position();
@@ -87,8 +90,9 @@ impl Game {
 
                     info!(player = %turn, %action);
 
-                    if let Err(e) = self.execute(action).context("invalid player action") {
-                        warn!("{:?}", e);
+                    match self.execute(action).context("invalid player action") {
+                        Err(e) => warn!("{:?}", e),
+                        Ok(san) => moves.push(san),
                     }
                 }
             }
@@ -100,7 +104,7 @@ impl Game {
 mod tests {
     use super::*;
     use crate::{MockPlay, Move, PositionKind};
-    use proptest::prop_assume;
+    use proptest::{prop_assume, sample::select};
     use test_strategy::proptest;
     use tokio::runtime;
 
@@ -222,7 +226,7 @@ mod tests {
         #[filter(#game.outcome().is_none())]
         mut game: Game,
     ) {
-        assert_eq!(game.execute(Action::Resign), Ok(()));
+        assert_eq!(game.execute(Action::Resign), Ok(San::null()));
         assert_eq!(
             game,
             Game {
@@ -266,7 +270,39 @@ mod tests {
         let w = MockPlay::new();
         let b = MockPlay::new();
 
-        assert_eq!(rt.block_on(game.run(w, b)).ok(), game.outcome());
+        assert_eq!(
+            rt.block_on(game.run(w, b)).ok().map(|r| r.outcome),
+            game.outcome()
+        );
+    }
+
+    #[proptest]
+    fn game_returns_sequence_of_moves_in_standard_notation(
+        #[by_ref]
+        #[filter(#game.outcome().is_none())]
+        mut game: Game,
+        #[strategy(select(#game.position().moves().collect::<Vec<_>>()))] m: Move,
+    ) {
+        let rt = runtime::Builder::new_multi_thread().build()?;
+
+        let turn = game.position().turn();
+        let san = game.position().clone().play(m)?;
+
+        let mut w = MockPlay::new();
+        let mut b = MockPlay::new();
+
+        let (p, q) = match turn {
+            Color::White => (&mut w, &mut b),
+            Color::Black => (&mut b, &mut w),
+        };
+
+        p.expect_play().once().return_const(Ok(Action::Move(m)));
+        q.expect_play().once().return_const(Ok(Action::Resign));
+
+        assert_eq!(
+            rt.block_on(game.run(w, b)).map(|r| r.moves),
+            Ok(vec![san, San::null()])
+        );
     }
 
     #[proptest]
@@ -289,7 +325,10 @@ mod tests {
 
         p.expect_play().once().return_const(Ok(Action::Resign));
 
-        assert_eq!(rt.block_on(game.run(w, b)), Ok(Outcome::Resignation(turn)));
+        assert_eq!(
+            rt.block_on(game.run(w, b)).map(|r| r.outcome),
+            Ok(Outcome::Resignation(turn))
+        );
     }
 
     #[proptest]
@@ -317,7 +356,10 @@ mod tests {
             .once()
             .return_const(Ok(Action::Resign));
 
-        assert_eq!(rt.block_on(game.run(w, b)), Ok(Outcome::Resignation(turn)));
+        assert_eq!(
+            rt.block_on(game.run(w, b)).map(|r| r.outcome),
+            Ok(Outcome::Resignation(turn))
+        );
     }
 
     #[proptest]

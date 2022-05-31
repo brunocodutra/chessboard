@@ -23,6 +23,16 @@ pub struct San(
     sm::san::SanPlus,
 );
 
+impl San {
+    /// The null move, used to indicate the player's resignation.
+    pub fn null() -> Self {
+        San(sm::san::SanPlus {
+            san: sm::san::San::Null,
+            suffix: None,
+        })
+    }
+}
+
 /// The reason why the string is not valid FEN.
 #[derive(Debug, Display, Clone, Error, From)]
 #[display(fmt = "{}", _0)]

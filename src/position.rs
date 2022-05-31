@@ -1,4 +1,4 @@
-use crate::{Color, Fen, IllegalMove, Move, Placement, Square};
+use crate::{Color, Fen, IllegalMove, Move, Placement, San, Square};
 use derive_more::{DebugCustom, Display, Error};
 use shakmaty as sm;
 use std::{convert::TryFrom, num::NonZeroU32};
@@ -100,7 +100,6 @@ impl Position {
                         }
                     })
                 })
-                .no_shrink()
                 .prop_map_into()
         ]
     }
@@ -174,11 +173,10 @@ impl Position {
     }
 
     /// Play a [`Move`] if legal in this position.
-    pub fn play(&mut self, m: Move) -> Result<(), IllegalMove> {
+    pub fn play(&mut self, m: Move) -> Result<San, IllegalMove> {
         match sm::uci::Uci::to_move(&m.into(), &self.chess) {
             Ok(vm) if sm::Position::is_legal(&self.chess, &vm) => {
-                sm::Position::play_unchecked(&mut self.chess, &vm);
-                Ok(())
+                Ok(sm::san::SanPlus::from_move_and_play_unchecked(&mut self.chess, &vm).into())
             }
 
             _ => Err(IllegalMove(m, self.clone())),
@@ -340,8 +338,9 @@ mod tests {
         #[strategy(select(#pos.moves().collect::<Vec<_>>()))] m: Move,
     ) {
         let vm = sm::uci::Uci::to_move(&m.into(), &pos.chess)?;
+        let san = sm::san::SanPlus::from_move(pos.chess.clone(), &vm).into();
         let after = sm::Position::play(pos.chess.clone(), &vm)?.into();
-        assert_eq!(pos.play(m), Ok(()));
+        assert_eq!(pos.play(m), Ok(san));
         assert_eq!(pos, after);
     }
 
