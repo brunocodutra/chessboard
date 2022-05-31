@@ -4,7 +4,7 @@ use shakmaty as sm;
 use std::str::FromStr;
 
 #[cfg(test)]
-use proptest::prelude::*;
+use proptest::{collection::hash_map, prelude::*};
 
 /// A representation of the [Forsyth–Edwards Notation].
 ///
@@ -15,10 +15,10 @@ use proptest::prelude::*;
 #[display(fmt = "{}", "setup")]
 pub struct Fen {
     #[cfg_attr(test, strategy(
-        any::<crate::Placement>().prop_filter_map("invalid fen", |p| {
-            let fen = sm::fen::Fen(sm::Setup { board: p.into(), ..Default::default() });
-            fen.to_string().parse().ok()
-        })
+        hash_map(any::<crate::Square>().prop_map_into(), any::<crate::Piece>().prop_map_into(), 0..=64)
+            .prop_map(|setup| setup.into_iter().collect())
+            .prop_map(|board| sm::fen::Fen(sm::Setup { board, ..Default::default() }))
+            .prop_filter_map("invalid fen", |fen| fen.to_string().parse().ok())
     ))]
     setup: sm::fen::Fen,
 }

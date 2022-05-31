@@ -1,7 +1,7 @@
-use crate::{Color, Fen, IllegalMove, Move, Placement, San, Square};
+use crate::{Color, Fen, IllegalMove, Move, Piece, Role, San, Square};
 use derive_more::{DebugCustom, Display, Error};
 use shakmaty as sm;
-use std::{convert::TryFrom, num::NonZeroU32};
+use std::{convert::TryFrom, num::NonZeroU32, ops::Index};
 
 #[cfg(test)]
 use proptest::{prelude::*, sample::Selector};
@@ -114,11 +114,6 @@ impl Position {
         }
     }
 
-    /// The current arrangement of [`Piece`](crate::Piece)s on the board.
-    pub fn placement(&self) -> Placement {
-        sm::Position::board(&self.chess).clone().into()
-    }
-
     /// The side to move.
     pub fn turn(&self) -> Color {
         sm::Position::turn(&self.chess).into()
@@ -165,6 +160,16 @@ impl Position {
         sm::Position::is_insufficient_material(&self.chess)
     }
 
+    /// The number of pieces of a [`Color`].
+    pub fn material(&self, c: Color) -> usize {
+        sm::Position::board(&self.chess).by_color(c.into()).count()
+    }
+
+    /// The number of pieces of a kind.
+    pub fn pieces(&self, p: Piece) -> usize {
+        sm::Position::board(&self.chess).by_piece(p.into()).count()
+    }
+
     /// Legal [`Move`]s that can be played in this position
     pub fn moves(&self) -> impl ExactSizeIterator<Item = Move> + Clone {
         sm::Position::legal_moves(&self.chess)
@@ -180,6 +185,34 @@ impl Position {
             }
 
             _ => Err(IllegalMove(m, self.clone())),
+        }
+    }
+}
+
+/// Retrieves the [`Piece`] at a given [`Square`], if any.
+impl Index<Square> for Position {
+    type Output = Option<Piece>;
+
+    fn index(&self, s: Square) -> &Self::Output {
+        use Color::*;
+        use Role::*;
+        match sm::Position::board(&self.chess)
+            .piece_at(s.into())
+            .map(Into::into)
+        {
+            Some(Piece(White, Pawn)) => &Some(Piece(White, Pawn)),
+            Some(Piece(White, Knight)) => &Some(Piece(White, Knight)),
+            Some(Piece(White, Bishop)) => &Some(Piece(White, Bishop)),
+            Some(Piece(White, Rook)) => &Some(Piece(White, Rook)),
+            Some(Piece(White, Queen)) => &Some(Piece(White, Queen)),
+            Some(Piece(White, King)) => &Some(Piece(White, King)),
+            Some(Piece(Black, Pawn)) => &Some(Piece(Black, Pawn)),
+            Some(Piece(Black, Knight)) => &Some(Piece(Black, Knight)),
+            Some(Piece(Black, Bishop)) => &Some(Piece(Black, Bishop)),
+            Some(Piece(Black, Rook)) => &Some(Piece(Black, Rook)),
+            Some(Piece(Black, Queen)) => &Some(Piece(Black, Queen)),
+            Some(Piece(Black, King)) => &Some(Piece(Black, King)),
+            None => &None,
         }
     }
 }
@@ -271,11 +304,6 @@ mod tests {
     use test_strategy::proptest;
 
     #[proptest]
-    fn placement_returns_the_piece_arrangement(pos: Position) {
-        assert_eq!(pos.placement(), sm::Setup::from(pos).board.into());
-    }
-
-    #[proptest]
     fn turn_returns_the_current_side_to_play(pos: Position) {
         assert_eq!(pos.turn(), sm::Setup::from(pos).turn.into());
     }
@@ -320,6 +348,26 @@ mod tests {
     }
 
     #[proptest]
+    fn material_counts_number_of_pieces_of_a_color(pos: Position, c: Color) {
+        assert_eq!(
+            pos.material(c),
+            (sm::Position::board(&pos.chess).occupied()
+                & !sm::Position::board(&pos.chess).by_color((!c).into()))
+            .count()
+        );
+    }
+
+    #[proptest]
+    fn pieces_counts_number_of_pieces_of_a_kind(pos: Position, pc: Piece) {
+        assert_eq!(
+            pos.pieces(pc),
+            (sm::Position::board(&pos.chess).by_color(pc.0.into())
+                & sm::Position::board(&pos.chess).by_role(pc.1.into()))
+            .count()
+        );
+    }
+
+    #[proptest]
     fn moves_returns_the_legal_moves_from_this_position(pos: Position) {
         let moves: Vec<Move> = sm::Position::legal_moves(&pos.chess)
             .iter()
@@ -352,6 +400,16 @@ mod tests {
         let before = pos.clone();
         assert_eq!(pos.play(m), Err(IllegalMove(m, before.clone())));
         assert_eq!(pos, before);
+    }
+
+    #[proptest]
+    fn position_can_be_indexed_by_square(pos: Position, s: Square) {
+        assert_eq!(
+            pos[s],
+            sm::Position::board(&pos.chess)
+                .piece_at(s.into())
+                .map(Into::into)
+        );
     }
 
     #[proptest]
