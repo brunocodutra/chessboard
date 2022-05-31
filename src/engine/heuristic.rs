@@ -17,9 +17,6 @@ impl Eval for Heuristic {
         } else if pos.is_checkmate() {
             i32::MIN
         } else {
-            let c = pos.turn();
-            let p = pos.placement();
-
             // Fisher's system
             [
                 (Role::Pawn, 100),
@@ -28,8 +25,9 @@ impl Eval for Heuristic {
                 (Role::Rook, 500),
                 (Role::Queen, 900),
             ]
-            .iter()
-            .map(|&(r, s)| (p.pieces(Piece(c, r)) as i32 - p.pieces(Piece(!c, r)) as i32) * s)
+            .into_iter()
+            .map(|(r, s)| (Piece(pos.turn(), r), Piece(!pos.turn(), r), s))
+            .map(|(a, b, s)| (pos.pieces(a) as i32 - pos.pieces(b) as i32) * s)
             .sum()
         }
     }

@@ -1,4 +1,4 @@
-use crate::{Action, File, Io, Move, Placement, Play, Position, Rank, Square};
+use crate::{Action, File, Io, Move, Play, Position, Rank, Square};
 use anyhow::Error as Anyhow;
 use async_trait::async_trait;
 use clap::Parser;
@@ -78,7 +78,7 @@ impl<T: Io + Debug + Send> Play for Cli<T> {
     /// Prompt the user for an action.
     #[instrument(level = "trace", err, ret)]
     async fn play(&mut self, pos: &Position) -> Result<Action, CliError> {
-        self.io.send(Board(pos.placement())).await?;
+        self.io.send(Board(pos.clone())).await?;
 
         loop {
             self.io.flush().await?;
@@ -93,7 +93,7 @@ impl<T: Io + Debug + Send> Play for Cli<T> {
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, Hash, Deref)]
-struct Board(Placement);
+struct Board(Position);
 
 impl Display for Board {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
@@ -145,7 +145,7 @@ mod tests {
         io.expect_send()
             .once()
             .in_sequence(&mut seq)
-            .with(eq(Board(pos.placement())))
+            .with(eq(Board(pos.clone())))
             .returning(|_| Ok(()));
 
         io.expect_flush()
