@@ -145,6 +145,7 @@ dependencies = [
  "clap",
  "derive_more",
  "mockall",
+ "pgn-reader",
  "proptest",
  "ron",
  "rustyline",
@@ -442,6 +443,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "mach"
+version = "0.3.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b823e83b2affd8f40a9ee8c29dbc56404c1e34cd2710921f2801e2cf29527afa"
+dependencies = [
+ "libc",
+]
+
+[[package]]
 name = "maplit"
 version = "1.0.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -626,6 +636,18 @@ dependencies = [
  "maplit",
  "pest",
  "sha-1",
+]
+
+[[package]]
+name = "pgn-reader"
+version = "0.20.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f3084f5d442b72225bcbeed93f3c8e497bcd3a73363e9ba8877a50bb5e4a4fd8"
+dependencies = [
+ "btoi",
+ "memchr",
+ "shakmaty",
+ "slice-deque",
 ]
 
 [[package]]
@@ -962,6 +984,17 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e51e73328dc4ac0c7ccbda3a494dfa03df1de2f46018127f60c693f2648455b0"
 dependencies = [
  "libc",
+]
+
+[[package]]
+name = "slice-deque"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "31ef6ee280cdefba6d2d0b4b78a84a1c1a3f3a4cec98c2d4231c8bc225de0f25"
+dependencies = [
+ "libc",
+ "mach",
+ "winapi",
 ]
 
 [[package]]

@@ -47,9 +47,9 @@ async fn main() -> Result<(), Anyhow> {
     let (white, black) = try_join!(white.setup(), black.setup())?;
 
     let mut game = Game::default();
-    let outcome = game.run(white, black).await?;
-
-    info!(%outcome);
+    let report = game.run(white, black).await?;
+    info!(outcome = %report.outcome);
+    println!("{}", report);
 
     Ok(())
 }

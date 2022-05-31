@@ -28,7 +28,7 @@ impl Move {
 }
 
 /// Represents an illegal [`Move`] in a given [`Position`].
-#[derive(Debug, Display, Clone, Eq, PartialEq, Hash)]
+#[derive(Debug, Display, Clone, Eq, PartialEq, Hash, Error)]
 #[cfg_attr(test, derive(test_strategy::Arbitrary))]
 #[display(fmt = "move `{}` is illegal in position `{}`", _0, _1)]
 pub struct IllegalMove(pub Move, pub Position);
