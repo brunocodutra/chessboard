@@ -2,7 +2,7 @@ use crate::Io;
 use anyhow::{Context, Error as Anyhow};
 use async_trait::async_trait;
 use derive_more::DebugCustom;
-use std::{fmt::Display, io};
+use std::io;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader, BufWriter, Lines};
 use tokio::{runtime, task::block_in_place};
 use tracing::{error, info, instrument, warn};
@@ -127,9 +127,8 @@ impl Io for Process {
         Ok(self.reader.next_line().await?.ok_or(UnexpectedEof)?)
     }
 
-    #[instrument(level = "trace", err, skip(item), fields(%item))]
-    async fn send<D: Display + Send + 'static>(&mut self, item: D) -> io::Result<()> {
-        let msg = item.to_string();
+    #[instrument(level = "trace", err)]
+    async fn send(&mut self, msg: &str) -> io::Result<()> {
         self.writer.write_all(msg.as_bytes()).await?;
         self.writer.write_u8(b'\n').await?;
         Ok(())
@@ -249,7 +248,7 @@ mod tests {
         let expected = format!("{}\n", s);
 
         let mut process = Process::new(child)?;
-        rt.block_on(process.send(s))?;
+        rt.block_on(process.send(&s))?;
         rt.block_on(process.flush())?;
 
         let mut buf = vec![0u8; expected.len()];

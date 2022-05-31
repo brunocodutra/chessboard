@@ -1,5 +1,5 @@
 use async_trait::async_trait;
-use std::{fmt::Display, io};
+use std::io;
 
 /// Trait for types that communicate via message-passing.
 #[cfg_attr(test, mockall::automock)]
@@ -9,7 +9,7 @@ pub trait Io {
     async fn recv(&mut self) -> io::Result<String>;
 
     /// Send a message.
-    async fn send<D: Display + Send + 'static>(&mut self, item: D) -> io::Result<()>;
+    async fn send(&mut self, msg: &str) -> io::Result<()>;
 
     /// Flush the internal buffers.
     async fn flush(&mut self) -> io::Result<()>;

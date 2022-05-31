@@ -25,13 +25,13 @@ impl<T: Io + Debug> Uci<T> {
     pub async fn init(io: T) -> Result<Self, UciError> {
         let mut uci = Uci { io };
 
-        uci.io.send(UciMessage::Uci).await?;
+        uci.io.send(&UciMessage::Uci.to_string()).await?;
         uci.io.flush().await?;
 
         while !matches!(uci.next_message().await?, UciMessage::UciOk) {}
 
-        uci.io.send(UciMessage::UciNewGame).await?;
-        uci.io.send(UciMessage::IsReady).await?;
+        uci.io.send(&UciMessage::UciNewGame.to_string()).await?;
+        uci.io.send(&UciMessage::IsReady.to_string()).await?;
         uci.io.flush().await?;
 
         while !matches!(uci.next_message().await?, UciMessage::ReadyOk) {}
@@ -42,7 +42,7 @@ impl<T: Io + Debug> Uci<T> {
     #[instrument(level = "trace", err, ret)]
     async fn next_message(&mut self) -> Result<UciMessage, UciError> {
         loop {
-            match parse_one(&self.io.recv().await?) {
+            match parse_one(self.io.recv().await?.trim()) {
                 UciMessage::Unknown(m, cause) => {
                     let error = cause.map(Anyhow::new).unwrap_or_else(|| Anyhow::msg(m));
                     warn!("{:?}", error.context("failed to parse UCI message"));
@@ -62,8 +62,8 @@ impl<T: Io + Debug> Drop for Uci<T> {
     fn drop(&mut self) {
         let result: Result<(), Anyhow> = block_in_place(|| {
             runtime::Handle::try_current()?.block_on(async {
-                self.io.send(UciMessage::Stop).await?;
-                self.io.send(UciMessage::Quit).await?;
+                self.io.send(&UciMessage::Stop.to_string()).await?;
+                self.io.send(&UciMessage::Quit.to_string()).await?;
                 self.io.flush().await?;
                 Ok(())
             })
@@ -82,7 +82,7 @@ impl<T: Io + Debug + Send> Play for Uci<T> {
     /// Request an action from the CLI server.
     #[instrument(level = "trace", err, ret)]
     async fn play(&mut self, pos: &Position) -> Result<Action, Self::Error> {
-        let setpos = UciMessage::Position {
+        let position = UciMessage::Position {
             startpos: false,
             fen: Some(UciFen(pos.to_string())),
             moves: Vec::new(),
@@ -93,8 +93,8 @@ impl<T: Io + Debug + Send> Play for Uci<T> {
             search_control: Some(UciSearchControl::depth(13)),
         };
 
-        self.io.send(setpos).await?;
-        self.io.send(go).await?;
+        self.io.send(&position.to_string()).await?;
+        self.io.send(&go.to_string()).await?;
         self.io.flush().await?;
 
         let m = loop {
@@ -112,7 +112,7 @@ impl<T: Io + Debug + Send> Play for Uci<T> {
 mod tests {
     use super::*;
     use crate::{MockIo, Move};
-    use mockall::{predicate::*, Sequence};
+    use mockall::Sequence;
     use proptest::prelude::*;
     use test_strategy::proptest;
     use tokio::runtime;
@@ -150,7 +150,7 @@ mod tests {
         io.expect_send()
             .once()
             .in_sequence(&mut seq)
-            .with(eq(UciMessage::Uci))
+            .withf(|msg| msg == UciMessage::Uci.to_string())
             .returning(|_| Ok(()));
 
         io.expect_flush()
@@ -166,13 +166,13 @@ mod tests {
         io.expect_send()
             .once()
             .in_sequence(&mut seq)
-            .with(eq(UciMessage::UciNewGame))
+            .withf(|msg| msg == UciMessage::UciNewGame.to_string())
             .returning(|_| Ok(()));
 
         io.expect_send()
             .once()
             .in_sequence(&mut seq)
-            .with(eq(UciMessage::IsReady))
+            .withf(|msg| msg == UciMessage::IsReady.to_string())
             .returning(|_| Ok(()));
 
         io.expect_flush()
@@ -185,7 +185,7 @@ mod tests {
             .in_sequence(&mut seq)
             .returning(move || Ok(UciMessage::ReadyOk.to_string()));
 
-        io.expect_send().returning(|_: UciMessage| Ok(()));
+        io.expect_send().returning(|_| Ok(()));
         io.expect_flush().returning(|| Ok(()));
 
         assert!(rt.block_on(Uci::init(io)).is_ok());
@@ -194,13 +194,13 @@ mod tests {
     #[proptest]
     fn init_ignores_invalid_uci_messages(
         #[by_ref]
-        #[filter(matches!(parse_one(#msg), UciMessage::Unknown(_, _)))]
+        #[filter(matches!(parse_one(#msg.trim()), UciMessage::Unknown(_, _)))]
         msg: String,
     ) {
         let rt = runtime::Builder::new_multi_thread().build()?;
         let mut io = MockIo::new();
 
-        io.expect_send().returning(|_: UciMessage| Ok(()));
+        io.expect_send().returning(|_| Ok(()));
         io.expect_flush().returning(|| Ok(()));
 
         io.expect_recv().once().returning(move || Ok(msg.clone()));
@@ -226,7 +226,7 @@ mod tests {
         let rt = runtime::Builder::new_multi_thread().build()?;
         let mut io = MockIo::new();
 
-        io.expect_send().returning(|_: UciMessage| Ok(()));
+        io.expect_send().returning(|_| Ok(()));
         io.expect_flush().returning(|| Ok(()));
 
         io.expect_recv()
@@ -250,11 +250,9 @@ mod tests {
         let mut io = MockIo::new();
 
         let kind = e.kind();
-        io.expect_send()
-            .once()
-            .return_once(move |_: UciMessage| Err(e));
+        io.expect_send().once().return_once(move |_| Err(e));
 
-        io.expect_send().returning(|_: UciMessage| Ok(()));
+        io.expect_send().returning(|_| Ok(()));
         io.expect_flush().returning(|| Ok(()));
 
         assert_eq!(
@@ -273,13 +271,13 @@ mod tests {
         io.expect_send()
             .once()
             .in_sequence(&mut seq)
-            .with(eq(UciMessage::Stop))
+            .withf(|msg| msg == UciMessage::Stop.to_string())
             .returning(|_| Ok(()));
 
         io.expect_send()
             .once()
             .in_sequence(&mut seq)
-            .with(eq(UciMessage::Quit))
+            .withf(|msg| msg == UciMessage::Quit.to_string())
             .returning(|_| Ok(()));
 
         io.expect_flush()
@@ -296,9 +294,7 @@ mod tests {
     fn drop_recovers_from_errors(e: io::Error) {
         let rt = runtime::Builder::new_multi_thread().build()?;
         let mut io = MockIo::new();
-        io.expect_send()
-            .once()
-            .return_once(move |_: UciMessage| Err(e));
+        io.expect_send().once().return_once(move |_| Err(e));
 
         rt.block_on(async move {
             drop(Uci { io });
@@ -319,17 +315,13 @@ mod tests {
         io.expect_send()
             .once()
             .in_sequence(&mut seq)
-            .with(function(|msg: &UciMessage| {
-                matches!(msg, UciMessage::Position { .. })
-            }))
+            .withf(|msg| matches!(parse_one(msg.trim()), UciMessage::Position { .. }))
             .returning(|_| Ok(()));
 
         io.expect_send()
             .once()
             .in_sequence(&mut seq)
-            .with(function(move |msg: &UciMessage| {
-                matches!(msg, UciMessage::Go { .. })
-            }))
+            .withf(|msg| matches!(parse_one(msg.trim()), UciMessage::Go { .. }))
             .returning(|_| Ok(()));
 
         io.expect_flush()
@@ -351,13 +343,13 @@ mod tests {
         pos: Position,
         m: Move,
         #[by_ref]
-        #[filter(matches!(parse_one(#msg), UciMessage::Unknown(_, _)))]
+        #[filter(matches!(parse_one(#msg.trim()), UciMessage::Unknown(_, _)))]
         msg: String,
     ) {
         let rt = runtime::Builder::new_multi_thread().build()?;
         let mut io = MockIo::new();
 
-        io.expect_send().returning(|_: UciMessage| Ok(()));
+        io.expect_send().returning(|_| Ok(()));
         io.expect_flush().returning(|| Ok(()));
 
         io.expect_recv().once().returning(move || Ok(msg.clone()));
@@ -382,7 +374,7 @@ mod tests {
         let rt = runtime::Builder::new_multi_thread().build()?;
         let mut io = MockIo::new();
 
-        io.expect_send().returning(|_: UciMessage| Ok(()));
+        io.expect_send().returning(|_| Ok(()));
         io.expect_flush().returning(|| Ok(()));
 
         io.expect_recv()
@@ -403,11 +395,9 @@ mod tests {
         let mut io = MockIo::new();
 
         let kind = e.kind();
-        io.expect_send()
-            .once()
-            .return_once(move |_: UciMessage| Err(e));
+        io.expect_send().once().return_once(move |_| Err(e));
 
-        io.expect_send().returning(|_: UciMessage| Ok(()));
+        io.expect_send().returning(|_| Ok(()));
         io.expect_flush().returning(|| Ok(()));
 
         let mut uci = Uci { io };
@@ -422,7 +412,7 @@ mod tests {
         let rt = runtime::Builder::new_multi_thread().build()?;
         let mut io = MockIo::new();
 
-        io.expect_send().returning(|_: UciMessage| Ok(()));
+        io.expect_send().returning(|_| Ok(()));
 
         let kind = e.kind();
         io.expect_flush().once().return_once(move || Err(e));
@@ -440,7 +430,7 @@ mod tests {
         let rt = runtime::Builder::new_multi_thread().build()?;
         let mut io = MockIo::new();
 
-        io.expect_send().returning(|_: UciMessage| Ok(()));
+        io.expect_send().returning(|_| Ok(()));
         io.expect_flush().returning(|| Ok(()));
 
         let kind = e.kind();
