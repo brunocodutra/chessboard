@@ -14,6 +14,7 @@ anyhow = { version = "1.0.57", default-features = false, features = ["std"] }
 async-trait = { version = "0.1.56", default-features = false }
 clap = { version = "3.1.18", default-features = false, features = ["derive", "std", "unstable-multicall"] }
 derive_more = { version = "0.99.16", default-features = false, features = ["constructor", "deref", "display", "error", "from"] }
+rayon = { version = "1.5.3", default-features = false }
 ron = { version = "0.7.0", default-features = false }
 rustyline = { version = "9.0.0", default-features = false }
 serde = { version = "1.0.137", default-features = false, features = ["derive", "std"] }

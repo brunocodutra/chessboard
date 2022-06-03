@@ -186,6 +186,7 @@ dependencies = [
  "mockall",
  "pgn-reader",
  "proptest",
+ "rayon",
  "ron",
  "rustyline",
  "serde",

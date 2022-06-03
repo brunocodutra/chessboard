@@ -1,62 +1,60 @@
 use crate::{Eval, Move, Position, Search, SearchControl};
 use derive_more::{Constructor, From};
+use rayon::prelude::*;
 use std::fmt::Debug;
+use std::sync::atomic::{AtomicI32, Ordering};
 
 #[derive(Debug, Clone, From, Constructor)]
-pub struct Negamax<E: Eval> {
+pub struct Negamax<E: Eval + Send + Sync> {
     engine: E,
 }
 
-impl<E: Eval> Negamax<E> {
-    #[cfg(debug_assertions)]
-    const DEPTH: u32 = 2;
+impl<E: Eval + Send + Sync> Negamax<E> {
+    const DEPTH: u32 = 5;
 
-    #[cfg(not(debug_assertions))]
-    const DEPTH: u32 = 4;
+    fn negamax(&self, pos: &Position, depth: u32, alpha: i32, beta: i32) -> (Option<Move>, i32) {
+        debug_assert!(alpha < beta);
 
-    fn negamax(&self, pos: Position, depth: u32, mut a: i32, b: i32) -> (Option<Move>, i32) {
-        debug_assert!(a < b);
-
-        let moves = pos.moves();
-
-        if depth == 0 || moves.len() == 0 {
-            return (None, self.engine.eval(&pos));
+        if depth == 0 {
+            return (None, self.engine.eval(pos));
         }
 
-        let mut best = None;
-        let mut score = i32::MIN;
+        let cutoff = AtomicI32::new(alpha);
 
-        for m in moves {
-            let mut next = pos.clone();
-            next.play(m).expect("expected legal move");
+        pos.moves()
+            .par_bridge()
+            .map(|m| {
+                let alpha = cutoff.load(Ordering::Relaxed);
 
-            let (_, s) = self.negamax(next, depth - 1, b.saturating_neg(), a.saturating_neg());
+                if alpha >= beta {
+                    return None;
+                }
 
-            if score < s.saturating_neg() {
-                score = s.saturating_neg();
-                best = Some(m);
-                a = a.max(score);
-            }
+                let mut pos = pos.clone();
+                pos.play(m).expect("expected legal move");
 
-            #[cfg(debug_assertions)]
-            tracing::debug!(%score, alpha = %a, beta = %b);
+                let (_, s) = self.negamax(
+                    &pos,
+                    depth - 1,
+                    beta.saturating_neg(),
+                    alpha.saturating_neg(),
+                );
 
-            if a >= b {
-                break;
-            }
-        }
+                cutoff.fetch_max(s.saturating_neg(), Ordering::Relaxed);
 
-        #[cfg(debug_assertions)]
-        tracing::debug!(?best, %score);
-
-        (best, score)
+                Some((m, s))
+            })
+            .while_some()
+            .min_by_key(|&(_, s)| s)
+            .map(|(m, s)| (Some(m), s.saturating_neg()))
+            .unwrap_or_else(|| (None, self.engine.eval(pos)))
     }
 }
 
-impl<E: Eval> Search for Negamax<E> {
+impl<E: Eval + Send + Sync> Search for Negamax<E> {
     fn search(&self, pos: &Position, ctrl: SearchControl) -> Option<Move> {
         let max_depth = ctrl.max_depth.unwrap_or(Self::DEPTH);
-        let (best, _) = self.negamax(pos.clone(), max_depth, i32::MIN, i32::MAX);
+        let (best, _) = self.negamax(pos, max_depth, i32::MIN, i32::MAX);
         best
     }
 }
@@ -66,13 +64,14 @@ mod tests {
     use super::*;
     use crate::{engine::Random, MockEval, PositionKind};
     use mockall::predicate::*;
+    use std::iter::repeat;
     use test_strategy::proptest;
 
     #[proptest]
     #[should_panic]
     #[cfg(debug_assertions)]
     fn negamax_panics_if_alpha_not_smaller_than_beta(pos: Position, a: i32, b: i32) {
-        Negamax::new(MockEval::new()).negamax(pos, 0, a.max(b), a.min(b));
+        Negamax::new(MockEval::new()).negamax(&pos, 0, a.max(b), a.min(b));
     }
 
     #[proptest]
@@ -85,7 +84,7 @@ mod tests {
             .return_const(s);
 
         let strategy = Negamax::new(engine);
-        assert_eq!(strategy.negamax(pos, 0, i32::MIN, i32::MAX), (None, s));
+        assert_eq!(strategy.negamax(&pos, 0, i32::MIN, i32::MAX), (None, s));
     }
 
     #[proptest]
@@ -102,7 +101,7 @@ mod tests {
             .return_const(s);
 
         let strategy = Negamax::new(engine);
-        assert_eq!(strategy.negamax(pos, d, i32::MIN, i32::MAX), (None, s));
+        assert_eq!(strategy.negamax(&pos, d, i32::MIN, i32::MAX), (None, s));
     }
 
     #[proptest]
@@ -111,27 +110,37 @@ mod tests {
 
         let best = pos
             .moves()
-            .map(|m| {
-                let mut pos = pos.clone();
+            .zip(repeat(pos.clone()))
+            .map(|(m, mut pos)| {
                 pos.play(m).unwrap();
-                (m, engine.eval(&pos))
+                let s = pos
+                    .moves()
+                    .zip(repeat(pos.clone()))
+                    .map(|(m, mut pos)| {
+                        pos.play(m).unwrap();
+                        engine.eval(&pos).saturating_neg()
+                    })
+                    .max()
+                    .unwrap_or_else(|| engine.eval(&pos))
+                    .saturating_neg();
+
+                (Some(m), s)
             })
-            .min_by_key(|&(_, s)| s)
-            .map(|(m, s)| (Some(m), s.saturating_neg()))
+            .max_by_key(|&(_, s)| s)
             .unwrap_or((None, engine.eval(&pos)));
 
         let strategy = Negamax::new(engine);
-        assert_eq!(strategy.negamax(pos, 1, i32::MIN, i32::MAX), best);
+        assert_eq!(strategy.negamax(&pos, 2, i32::MIN, i32::MAX), best);
     }
 
     #[proptest]
-    fn search_runs_negamax_with_max_depth(pos: Position, #[strategy(0u32..4)] d: u32) {
+    fn search_runs_negamax_with_max_depth(pos: Position, #[strategy(0u32..=2)] d: u32) {
         let engine = Random::new();
         let ctrl = SearchControl { max_depth: Some(d) };
         let strategy = Negamax::new(engine);
         assert_eq!(
             strategy.search(&pos, ctrl),
-            strategy.negamax(pos, d, i32::MIN, i32::MAX).0
+            strategy.negamax(&pos, d, i32::MIN, i32::MAX).0
         );
     }
 }
