@@ -1,4 +1,4 @@
-use crate::{Action, Play, Position, Search};
+use crate::{Action, Play, Position, Search, SearchControl};
 use async_trait::async_trait;
 use derive_more::{Constructor, From};
 use std::{convert::Infallible, fmt::Debug};
@@ -16,7 +16,8 @@ impl<S: Search + Debug + Send> Play for Ai<S> {
 
     #[instrument(level = "trace", err, ret)]
     async fn play(&mut self, pos: &Position) -> Result<Action, Self::Error> {
-        let mv = self.strategy.search(pos).map(Into::into);
+        let ctrl = SearchControl::default();
+        let mv = self.strategy.search(pos, ctrl).map(Into::into);
         Ok(mv.unwrap_or(Action::Resign))
     }
 }
@@ -25,6 +26,7 @@ impl<S: Search + Debug + Send> Play for Ai<S> {
 mod tests {
     use super::*;
     use crate::{MockSearch, Move};
+    use mockall::predicate::{always, eq};
     use test_strategy::proptest;
     use tokio::runtime;
 
@@ -33,7 +35,11 @@ mod tests {
         let rt = runtime::Builder::new_multi_thread().build()?;
 
         let mut strategy = MockSearch::new();
-        strategy.expect_search().once().returning(move |_| Some(m));
+        strategy
+            .expect_search()
+            .once()
+            .with(eq(pos.clone()), always())
+            .return_const(Some(m));
 
         let mut ai = Ai::new(strategy);
         assert_eq!(rt.block_on(ai.play(&pos))?, Action::Move(m));
@@ -44,7 +50,11 @@ mod tests {
         let rt = runtime::Builder::new_multi_thread().build()?;
 
         let mut strategy = MockSearch::new();
-        strategy.expect_search().once().returning(|_| None);
+        strategy
+            .expect_search()
+            .once()
+            .with(eq(pos.clone()), always())
+            .return_const(None);
 
         let mut ai = Ai::new(strategy);
         assert_eq!(rt.block_on(ai.play(&pos))?, Action::Resign);
