@@ -1,4 +1,4 @@
-use crate::{Eval, Move, Position, Search};
+use crate::{Eval, Move, Position, Search, SearchControl};
 use derive_more::{Constructor, From};
 use std::fmt::Debug;
 
@@ -54,8 +54,9 @@ impl<E: Eval> Negamax<E> {
 }
 
 impl<E: Eval> Search for Negamax<E> {
-    fn search(&mut self, pos: &Position) -> Option<Move> {
-        let (best, _) = self.negamax(pos.clone(), Self::DEPTH, i32::MIN, i32::MAX);
+    fn search(&mut self, pos: &Position, ctrl: SearchControl) -> Option<Move> {
+        let max_depth = ctrl.max_depth.unwrap_or(Self::DEPTH);
+        let (best, _) = self.negamax(pos.clone(), max_depth, i32::MIN, i32::MAX);
         best
     }
 }
@@ -126,14 +127,13 @@ mod tests {
     }
 
     #[proptest]
-    fn search_runs_negamax(pos: Position) {
-        let mut engine = MockEval::new();
-        engine.expect_eval().return_const(0);
-
-        if let Some(m) = Negamax::new(engine).search(&pos) {
-            assert!(pos.moves().any(|n| n == m));
-        } else {
-            assert_eq!(pos.moves().len(), 0);
-        }
+    fn search_runs_negamax_with_max_depth(pos: Position, #[strategy(0u32..4)] d: u32) {
+        let engine = Random::new();
+        let ctrl = SearchControl { max_depth: Some(d) };
+        let mut strategy = Negamax::new(engine);
+        assert_eq!(
+            strategy.search(&pos, ctrl),
+            strategy.negamax(pos, d, i32::MIN, i32::MAX).0
+        );
     }
 }
