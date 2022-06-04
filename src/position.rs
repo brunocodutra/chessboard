@@ -1,6 +1,7 @@
 use crate::{Color, Fen, IllegalMove, Move, Piece, Role, San, Square};
 use derive_more::{DebugCustom, Display, Error};
 use shakmaty as sm;
+use std::hash::{Hash, Hasher};
 use std::{convert::TryFrom, num::NonZeroU32, ops::Index};
 
 #[cfg(test)]
@@ -25,7 +26,7 @@ impl Default for PositionKind {
 /// The current position on the chess board.
 ///
 /// This type guarantees that it only holds valid positions.
-#[derive(DebugCustom, Display, Default, Clone, Eq, PartialEq, Hash)]
+#[derive(DebugCustom, Display, Default, Clone, Eq, PartialEq)]
 #[cfg_attr(test, derive(test_strategy::Arbitrary))]
 #[cfg_attr(test, arbitrary(args = PositionKind))]
 #[debug(fmt = "Position(\"{}\")", self)]
@@ -186,6 +187,16 @@ impl Position {
 
             _ => Err(IllegalMove(m, self.clone())),
         }
+    }
+}
+
+/// Computes the [Zobrist] hash.
+///
+/// [Zobrist]: https://en.wikipedia.org/wiki/Zobrist_hashing
+#[allow(clippy::derive_hash_xor_eq)]
+impl Hash for Position {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        state.write_u64(sm::zobrist::ZobristHash::zobrist_hash(&self.chess));
     }
 }
 
