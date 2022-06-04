@@ -58,7 +58,7 @@ mod tests {
         }
     }
 
-    #[proptest]
+    #[proptest(cases = 10)]
     fn report_prints_simplified_pgn(r: GameReport) {
         let mut reader = BufferedReader::new_cursor(r.to_string());
         let mut visitor = PgnVisitor::default();
