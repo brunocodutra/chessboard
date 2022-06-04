@@ -87,22 +87,17 @@ impl Position {
 
     #[cfg(test)]
     fn any() -> impl Strategy<Value = Position> {
-        prop_oneof![
-            Self::checkmate(),
-            Self::stalemate(),
-            Self::draw(),
-            Just(sm::Chess::default())
-                .prop_recursive(32, 32, 1, |inner| {
-                    (inner, any::<Selector>()).prop_map(|(chess, selector)| {
-                        if let Some(m) = selector.try_select(sm::Position::legal_moves(&chess)) {
-                            sm::Position::play(chess, &m).unwrap()
-                        } else {
-                            chess
-                        }
-                    })
-                })
-                .prop_map_into()
-        ]
+        (0..32, any::<Selector>()).prop_map(|(depth, selector)| {
+            let mut chess = sm::Chess::default();
+            for _ in 0..depth {
+                if let Some(m) = selector.try_select(sm::Position::legal_moves(&chess)) {
+                    sm::Position::play_unchecked(&mut chess, &m);
+                } else {
+                    break;
+                }
+            }
+            chess.into()
+        })
     }
 
     #[cfg(test)]

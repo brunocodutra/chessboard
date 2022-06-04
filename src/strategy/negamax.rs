@@ -64,7 +64,7 @@ impl<E: Eval> Search for Negamax<E> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{engine::Random, MockEval};
+    use crate::{engine::Random, MockEval, PositionKind};
     use mockall::predicate::*;
     use test_strategy::proptest;
 
@@ -90,9 +90,7 @@ mod tests {
 
     #[proptest]
     fn negamax_returns_none_if_there_are_no_moves(
-        #[by_ref]
-        #[filter(#pos.moves().len() == 0)]
-        pos: Position,
+        #[any(PositionKind::Stalemate)] pos: Position,
         d: u32,
         s: i32,
     ) {
