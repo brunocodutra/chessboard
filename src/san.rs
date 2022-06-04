@@ -79,10 +79,10 @@ mod test {
 
     #[proptest]
     fn parsing_invalid_san_fails(
-        #[by_ref] san: San,
-        #[strategy(..=#san.to_string().len())] n: usize,
-        #[strategy("[^[:ascii:]]+")] r: String,
+        #[by_ref]
+        #[filter(#s.parse::<sm::san::SanPlus>().is_err())]
+        s: String,
     ) {
-        assert!([&san.to_string()[..n], &r].concat().parse::<San>().is_err());
+        assert!(s.parse::<San>().is_err());
     }
 }
