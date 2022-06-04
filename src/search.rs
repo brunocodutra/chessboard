@@ -11,5 +11,5 @@ pub trait Search {
     /// Searches for the strongest [`Move`] in this [`Position`], if one exists.
     ///
     /// Implementors are expected to respect the limits specified in `ctrl`.
-    fn search(&mut self, pos: &Position, ctrl: SearchControl) -> Option<Move>;
+    fn search(&self, pos: &Position, ctrl: SearchControl) -> Option<Move>;
 }

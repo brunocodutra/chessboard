@@ -21,7 +21,7 @@ pub enum Strategy {
 }
 
 impl Search for Strategy {
-    fn search(&mut self, pos: &Position, ctrl: SearchControl) -> Option<Move> {
+    fn search(&self, pos: &Position, ctrl: SearchControl) -> Option<Move> {
         match self {
             Strategy::Negamax(s) => s.search(pos, ctrl),
             #[cfg(test)]
