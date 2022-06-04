@@ -54,7 +54,7 @@ impl<E: Eval> Negamax<E> {
 }
 
 impl<E: Eval> Search for Negamax<E> {
-    fn search(&mut self, pos: &Position, ctrl: SearchControl) -> Option<Move> {
+    fn search(&self, pos: &Position, ctrl: SearchControl) -> Option<Move> {
         let max_depth = ctrl.max_depth.unwrap_or(Self::DEPTH);
         let (best, _) = self.negamax(pos.clone(), max_depth, i32::MIN, i32::MAX);
         best
@@ -130,7 +130,7 @@ mod tests {
     fn search_runs_negamax_with_max_depth(pos: Position, #[strategy(0u32..4)] d: u32) {
         let engine = Random::new();
         let ctrl = SearchControl { max_depth: Some(d) };
-        let mut strategy = Negamax::new(engine);
+        let strategy = Negamax::new(engine);
         assert_eq!(
             strategy.search(&pos, ctrl),
             strategy.negamax(pos, d, i32::MIN, i32::MAX).0
