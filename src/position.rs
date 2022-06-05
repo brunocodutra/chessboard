@@ -150,11 +150,6 @@ impl Position {
         sm::Position::is_insufficient_material(&self.chess)
     }
 
-    /// The number of pieces of a [`Color`].
-    pub fn material(&self, c: Color) -> usize {
-        sm::Position::board(&self.chess).by_color(c.into()).count()
-    }
-
     /// The number of pieces of a kind.
     pub fn pieces(&self, p: Piece) -> usize {
         sm::Position::board(&self.chess).by_piece(p.into()).count()
@@ -337,16 +332,6 @@ mod tests {
         #[any(PositionKind::InsufficientMaterial)] pos: Position,
     ) {
         assert!(pos.is_material_insufficient());
-    }
-
-    #[proptest]
-    fn material_counts_number_of_pieces_of_a_color(pos: Position, c: Color) {
-        assert_eq!(
-            pos.material(c),
-            (sm::Position::board(&pos.chess).occupied()
-                & !sm::Position::board(&pos.chess).by_color((!c).into()))
-            .count()
-        );
     }
 
     #[proptest]
