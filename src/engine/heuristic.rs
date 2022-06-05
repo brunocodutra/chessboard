@@ -27,7 +27,7 @@ impl Eval for Heuristic {
             ]
             .into_iter()
             .map(|(r, s)| (Piece(pos.turn(), r), Piece(!pos.turn(), r), s))
-            .map(|(a, b, s)| (pos.pieces(a) as i32 - pos.pieces(b) as i32) * s)
+            .map(|(a, b, s)| (pos.pieces(a).len() as i32 - pos.pieces(b).len() as i32) * s)
             .sum()
         }
     }

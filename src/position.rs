@@ -150,13 +150,16 @@ impl Position {
         sm::Position::is_insufficient_material(&self.chess)
     }
 
-    /// The number of pieces of a kind.
-    pub fn pieces(&self, p: Piece) -> usize {
-        sm::Position::board(&self.chess).by_piece(p.into()).count()
+    /// The [`Square`]s occupied by [`Piece`]s of a kind.
+    pub fn pieces(&self, p: Piece) -> impl ExactSizeIterator<Item = Square> {
+        sm::Position::board(&self.chess)
+            .by_piece(p.into())
+            .into_iter()
+            .map(Square::from)
     }
 
     /// Legal [`Move`]s that can be played in this position
-    pub fn moves(&self) -> impl ExactSizeIterator<Item = Move> + Clone {
+    pub fn moves(&self) -> impl ExactSizeIterator<Item = Move> {
         sm::Position::legal_moves(&self.chess)
             .into_iter()
             .map(|m| sm::uci::Uci::from_standard(&m).into())
@@ -335,13 +338,10 @@ mod tests {
     }
 
     #[proptest]
-    fn pieces_counts_number_of_pieces_of_a_kind(pos: Position, pc: Piece) {
-        assert_eq!(
-            pos.pieces(pc),
-            (sm::Position::board(&pos.chess).by_color(pc.0.into())
-                & sm::Position::board(&pos.chess).by_role(pc.1.into()))
-            .count()
-        );
+    fn pieces_returns_squares_of_pieces_of_a_kind(pos: Position, p: Piece) {
+        for s in pos.pieces(p) {
+            assert_eq!(pos[s], Some(p));
+        }
     }
 
     #[proptest]
