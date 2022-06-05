@@ -33,14 +33,14 @@ impl Game {
     pub fn outcome(&self) -> Option<Outcome> {
         if let Some(p) = self.resigned {
             Outcome::Resignation(p).into()
-        } else if self.position().is_checkmate() {
-            Outcome::Checkmate(!self.position().turn()).into()
-        } else if self.position().is_stalemate() {
-            Outcome::Stalemate.into()
         } else if self.position().is_material_insufficient() {
             Outcome::DrawByInsufficientMaterial.into()
-        } else {
+        } else if self.position().moves().len() > 0 {
             None
+        } else if self.position().checkers().len() > 0 {
+            Outcome::Checkmate(!self.position().turn()).into()
+        } else {
+            Outcome::Stalemate.into()
         }
     }
 
