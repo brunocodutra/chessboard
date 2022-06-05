@@ -175,6 +175,13 @@ impl Position {
             .map(Square::from)
     }
 
+    /// The [`Square`]s occupied by [`Piece`]s giving check.
+    pub fn checkers(&self) -> impl ExactSizeIterator<Item = Square> {
+        sm::Position::checkers(&self.chess)
+            .into_iter()
+            .map(Square::from)
+    }
+
     /// Legal [`Move`]s that can be played in this position
     pub fn moves(&self) -> impl ExactSizeIterator<Item = Move> {
         sm::Position::legal_moves(&self.chess)
@@ -316,6 +323,7 @@ impl AsRef<sm::Chess> for Position {
 mod tests {
     use super::*;
     use proptest::sample::select;
+    use std::collections::HashSet;
     use test_strategy::proptest;
 
     #[proptest]
@@ -387,6 +395,16 @@ mod tests {
         for whence in pos.attackers(s, c) {
             assert!(pos.attacks(whence).any(|whither| whither == s))
         }
+    }
+
+    #[proptest]
+    fn checkers_returns_squares_of_pieces_giving_check(pos: Position) {
+        assert_eq!(
+            pos.checkers().collect::<HashSet<_>>(),
+            pos.pieces(Piece(pos.turn(), Role::King))
+                .flat_map(|s| pos.attackers(s, !pos.turn()))
+                .collect::<HashSet<_>>(),
+        )
     }
 
     #[proptest]
