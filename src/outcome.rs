@@ -14,6 +14,6 @@ pub enum Outcome {
     #[display(fmt = "stalemate")]
     Stalemate,
 
-    #[display(fmt = "draw")]
-    Draw,
+    #[display(fmt = "draw by insufficient material")]
+    DrawByInsufficientMaterial,
 }
