@@ -33,7 +33,7 @@ impl Outcome {
         matches!(self, Resignation(_) | Checkmate(_))
     }
 
-    /// The winning side, if the outcome is [decisive](`is_decisive`).
+    /// The winning side, if the outcome is [decisive](`Self::is_decisive`).
     pub fn winner(&self) -> Option<Color> {
         match *self {
             Outcome::Checkmate(c) => Some(c),
