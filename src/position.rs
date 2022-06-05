@@ -115,14 +115,6 @@ impl Position {
         sm::Position::turn(&self.chess).into()
     }
 
-    /// The en passant target square, if any.
-    ///
-    /// The existence of an en passant square does not imply that the pushed pawn can be captured,
-    /// but simply that a pawn has been pushed two squares forward.
-    pub fn en_passant_square(&self) -> Option<Square> {
-        sm::Position::maybe_ep_square(&self.chess).map(Into::into)
-    }
-
     /// The number of halfmoves since the last capture or pawn advance.
     pub fn halfmove_clock(&self) -> u32 {
         sm::Position::halfmoves(&self.chess)
@@ -312,14 +304,6 @@ mod tests {
     #[proptest]
     fn turn_returns_the_current_side_to_play(pos: Position) {
         assert_eq!(pos.turn(), sm::Setup::from(pos).turn.into());
-    }
-
-    #[proptest]
-    fn en_passant_square_returns_the_current_pushed_pawn_skipped_square(pos: Position) {
-        assert_eq!(
-            pos.en_passant_square(),
-            sm::Setup::from(pos).ep_square.map(Into::into)
-        );
     }
 
     #[proptest]
