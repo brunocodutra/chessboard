@@ -37,8 +37,8 @@ impl Game {
             Outcome::Checkmate(!self.position().turn()).into()
         } else if self.position().is_stalemate() {
             Outcome::Stalemate.into()
-        } else if self.position().is_draw() {
-            Outcome::Draw.into()
+        } else if self.position().is_material_insufficient() {
+            Outcome::DrawByInsufficientMaterial.into()
         } else {
             None
         }
@@ -151,13 +151,15 @@ mod tests {
     }
 
     #[proptest]
-    fn outcome_returns_some_result_on_a_draw_position(#[any(PositionKind::Draw)] pos: Position) {
+    fn outcome_returns_some_result_on_position_with_insufficient_material(
+        #[any(PositionKind::InsufficientMaterial)] pos: Position,
+    ) {
         let game = Game {
             position: pos,
             resigned: None,
         };
 
-        assert_eq!(game.outcome(), Some(Outcome::Draw));
+        assert_eq!(game.outcome(), Some(Outcome::DrawByInsufficientMaterial));
     }
 
     #[proptest]
@@ -201,8 +203,8 @@ mod tests {
     }
 
     #[proptest]
-    fn any_player_action_on_a_draw_position_is_invalid(
-        #[any(PositionKind::Draw)] pos: Position,
+    fn any_player_action_on_position_with_insufficient_material_is_invalid(
+        #[any(PositionKind::InsufficientMaterial)] pos: Position,
         a: Action,
     ) {
         let mut game = Game {

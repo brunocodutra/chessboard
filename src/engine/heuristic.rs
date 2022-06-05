@@ -12,7 +12,7 @@ impl Heuristic {
 
 impl Eval for Heuristic {
     fn eval(&self, pos: &Position) -> i32 {
-        if pos.is_draw() || pos.is_stalemate() {
+        if pos.is_material_insufficient() || pos.is_stalemate() {
             0
         } else if pos.is_checkmate() {
             i32::MIN
@@ -48,7 +48,9 @@ mod tests {
     }
 
     #[proptest]
-    fn draw_position_evaluates_to_balanced_score(#[any(PositionKind::Stalemate)] pos: Position) {
+    fn position_with_insufficient_material_evaluates_to_balanced_score(
+        #[any(PositionKind::Stalemate)] pos: Position,
+    ) {
         assert_eq!(Heuristic::new().eval(&pos), 0);
     }
 

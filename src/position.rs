@@ -12,7 +12,7 @@ use proptest::{prelude::*, sample::Selector};
 pub enum PositionKind {
     Checkmate,
     Stalemate,
-    Draw,
+    InsufficientMaterial,
     Any,
 }
 
@@ -70,7 +70,7 @@ impl Position {
     }
 
     #[cfg(test)]
-    fn draw() -> impl Strategy<Value = Position> {
+    fn insufficient_material() -> impl Strategy<Value = Position> {
         prop_oneof![
             "8/2K1k3/8/8/8/8/8/8 w - - 0 1",
             "8/8/8/1K6/8/1k6/8/8 b - - 0 1",
@@ -105,7 +105,7 @@ impl Position {
         match kind {
             PositionKind::Checkmate => Self::checkmate().boxed(),
             PositionKind::Stalemate => Self::stalemate().boxed(),
-            PositionKind::Draw => Self::draw().boxed(),
+            PositionKind::InsufficientMaterial => Self::insufficient_material().boxed(),
             PositionKind::Any => Self::any().boxed(),
         }
     }
@@ -131,22 +131,22 @@ impl Position {
 
     /// Whether this position is a [checkmate].
     ///
-    /// [checkmate]: https://en.wikipedia.org/wiki/Checkmate
+    /// [checkmate]: https://en.wikipedia.org/wiki/Glossary_of_chess#checkmate
     pub fn is_checkmate(&self) -> bool {
         sm::Position::is_checkmate(&self.chess)
     }
 
     /// Whether this position is a [stalemate].
     ///
-    /// [stalemate]: https://en.wikipedia.org/wiki/Stalemate
+    /// [stalemate]: https://en.wikipedia.org/wiki/Glossary_of_chess#stalemate
     pub fn is_stalemate(&self) -> bool {
         sm::Position::is_stalemate(&self.chess)
     }
 
-    /// Whether this position is a [draw] by insufficient material.
+    /// Whether this position has [insufficient material].
     ///
-    /// [draw]: https://en.wikipedia.org/wiki/Draw_(chess)
-    pub fn is_draw(&self) -> bool {
+    /// [insufficient material]: https://en.wikipedia.org/wiki/Glossary_of_chess#insufficient_material
+    pub fn is_material_insufficient(&self) -> bool {
         sm::Position::is_insufficient_material(&self.chess)
     }
 
@@ -333,10 +333,10 @@ mod tests {
     }
 
     #[proptest]
-    fn is_draw_returns_whether_the_position_has_insufficient_material(
-        #[any(PositionKind::Draw)] pos: Position,
+    fn is_material_insufficient_returns_whether_the_position_has_insufficient_material(
+        #[any(PositionKind::InsufficientMaterial)] pos: Position,
     ) {
-        assert!(pos.is_draw());
+        assert!(pos.is_material_insufficient());
     }
 
     #[proptest]
