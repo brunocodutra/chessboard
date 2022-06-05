@@ -158,6 +158,23 @@ impl Position {
             .map(Square::from)
     }
 
+    /// Into where the piece in this [`Square`] can attack.
+    pub fn attacks(&self, s: Square) -> impl ExactSizeIterator<Item = Square> {
+        sm::Position::board(&self.chess)
+            .attacks_from(s.into())
+            .into_iter()
+            .map(Square::from)
+    }
+
+    /// From where pieces of this [`Color`] can attack into this [`Square`].
+    pub fn attackers(&self, s: Square, c: Color) -> impl ExactSizeIterator<Item = Square> {
+        let board = sm::Position::board(&self.chess);
+        board
+            .attacks_to(s.into(), c.into(), board.occupied())
+            .into_iter()
+            .map(Square::from)
+    }
+
     /// Legal [`Move`]s that can be played in this position
     pub fn moves(&self) -> impl ExactSizeIterator<Item = Move> {
         sm::Position::legal_moves(&self.chess)
@@ -341,6 +358,34 @@ mod tests {
     fn pieces_returns_squares_of_pieces_of_a_kind(pos: Position, p: Piece) {
         for s in pos.pieces(p) {
             assert_eq!(pos[s], Some(p));
+        }
+    }
+
+    #[proptest]
+    fn attacks_returns_squares_attacked_by_this_piece(pos: Position, s: Square) {
+        for whither in pos.attacks(s) {
+            assert!(pos
+                .attackers(whither, pos[s].unwrap().color())
+                .any(|whence| whence == s))
+        }
+    }
+
+    #[proptest]
+    fn attacks_returns_empty_iterator_if_square_is_not_occupied(
+        #[by_ref] pos: Position,
+        #[filter(#pos[#s].is_none())] s: Square,
+    ) {
+        assert_eq!(pos.attacks(s).len(), 0);
+    }
+
+    #[proptest]
+    fn attackers_returns_squares_from_where_pieces_of_a_color_can_attack(
+        pos: Position,
+        s: Square,
+        c: Color,
+    ) {
+        for whence in pos.attackers(s, c) {
+            assert!(pos.attacks(whence).any(|whither| whither == s))
         }
     }
 
