@@ -116,13 +116,15 @@ impl Position {
     }
 
     /// The number of halfmoves since the last capture or pawn advance.
-    pub fn halfmove_clock(&self) -> u32 {
+    ///
+    /// It resets to 0 whenever a piece is captured or a pawn is moved.
+    pub fn halfmoves(&self) -> u32 {
         sm::Position::halfmoves(&self.chess)
     }
 
-    /// The current move number.
+    /// The current move number since the start of the game.
     ///
-    /// It starts at 1, and is incremented after every Black's move.
+    /// It starts at 1, and is incremented after every move by black.
     pub fn fullmoves(&self) -> NonZeroU32 {
         sm::Position::fullmoves(&self.chess)
     }
@@ -307,8 +309,8 @@ mod tests {
     }
 
     #[proptest]
-    fn halfmove_clock_returns_the_number_of_halfmoves_since_last_irreversible_move(pos: Position) {
-        assert_eq!(pos.halfmove_clock(), sm::Setup::from(pos).halfmoves);
+    fn halfmoves_returns_the_number_of_halfmoves_since_last_irreversible_move(pos: Position) {
+        assert_eq!(pos.halfmoves(), sm::Setup::from(pos).halfmoves);
     }
 
     #[proptest]
