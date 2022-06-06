@@ -1,4 +1,4 @@
-use crate::{Action, Play, Position, Remote, RemoteConfig, Setup, Strategy, StrategyConfig};
+use crate::{Action, Game, Play, Remote, RemoteConfig, Setup, Strategy, StrategyConfig};
 use anyhow::Error as Anyhow;
 use async_trait::async_trait;
 use derive_more::{DebugCustom, Display, Error, From};
@@ -41,13 +41,13 @@ pub enum Player {
 impl Play for Player {
     type Error = PlayerError;
 
-    async fn play(&mut self, pos: &Position) -> Result<Action, Self::Error> {
+    async fn play(&mut self, game: &Game) -> Result<Action, Self::Error> {
         match self {
-            Player::Ai(p) => Ok(p.play(pos).await?),
-            Player::Cli(p) => Ok(p.play(pos).await?),
-            Player::Uci(p) => Ok(p.play(pos).await?),
+            Player::Ai(p) => Ok(p.play(game).await?),
+            Player::Cli(p) => Ok(p.play(game).await?),
+            Player::Uci(p) => Ok(p.play(game).await?),
             #[cfg(test)]
-            Player::Mock(p) => Ok(p.play(pos).await?),
+            Player::Mock(p) => Ok(p.play(game).await?),
         }
     }
 }

@@ -18,9 +18,11 @@ pub enum GameInterrupted<W, B> {
 /// Holds the state of a game of chess.
 #[derive(Debug, Default, Clone, Eq, PartialEq, Hash)]
 #[cfg_attr(test, derive(test_strategy::Arbitrary))]
+#[cfg_attr(test, arbitrary(args = Option<Outcome>))]
 pub struct Game {
     position: Position,
-    resigned: Option<Color>,
+    #[cfg_attr(test, strategy(proptest::strategy::Just(*args)))]
+    outcome: Option<Outcome>,
 }
 
 impl Game {
@@ -31,17 +33,7 @@ impl Game {
 
     /// The [`Outcome`] of the game if it has already ended.
     pub fn outcome(&self) -> Option<Outcome> {
-        if let Some(p) = self.resigned {
-            Outcome::Resignation(p).into()
-        } else if self.position().is_material_insufficient() {
-            Outcome::DrawByInsufficientMaterial.into()
-        } else if self.position().moves().len() > 0 {
-            None
-        } else if self.position().checkers().len() > 0 {
-            Outcome::Checkmate(!self.position().turn()).into()
-        } else {
-            Outcome::Stalemate.into()
-        }
+        self.outcome
     }
 
     /// Executes an [`Action`] if valid, otherwise returns the reason why not.
@@ -53,10 +45,24 @@ impl Game {
         }
 
         match action {
-            Action::Move(m) => Ok(self.position.play(m)?),
+            Action::Move(m) => {
+                let san = self.position.play(m)?;
+
+                self.outcome = if self.position().is_material_insufficient() {
+                    Some(Outcome::DrawByInsufficientMaterial)
+                } else if self.position().moves().len() > 0 {
+                    None
+                } else if self.position().checkers().len() > 0 {
+                    Some(Outcome::Checkmate(!self.position().turn()))
+                } else {
+                    Some(Outcome::Stalemate)
+                };
+
+                Ok(san)
+            }
 
             Action::Resign => {
-                self.resigned.replace(self.position.turn());
+                self.outcome = Some(Outcome::Resignation(self.position.turn()));
                 Ok(San::null())
             }
         }
@@ -76,19 +82,15 @@ impl Game {
                 Some(outcome) => break Ok(GameReport { outcome, moves }),
 
                 None => {
-                    let position = self.position();
-
-                    info!(%position);
-
-                    let turn = position.turn();
+                    let turn = self.position().turn();
 
                     use GameInterrupted::*;
                     let action = match turn {
-                        Color::White => white.play(position).await.map_err(White)?,
-                        Color::Black => black.play(position).await.map_err(Black)?,
+                        Color::White => white.play(self).await.map_err(White)?,
+                        Color::Black => black.play(self).await.map_err(Black)?,
                     };
 
-                    info!(player = %turn, %action);
+                    info!(position = %self.position(), player = %turn, %action);
 
                     match self.execute(action).context("invalid player action") {
                         Err(e) => warn!("{:?}", e),
@@ -103,192 +105,80 @@ impl Game {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{MockPlay, Move, PositionKind};
+    use crate::{MockPlay, Move};
     use proptest::{prop_assume, sample::select};
     use test_strategy::proptest;
     use tokio::runtime;
 
     #[proptest]
-    fn position_borrows_the_current_game_state(game: Game) {
-        assert_eq!(game.position(), &game.position);
+    fn position_borrows_the_current_game_state(g: Game) {
+        assert_eq!(g.position(), &g.position);
     }
 
     #[proptest]
-    fn outcome_returns_some_result_if_a_player_has_resigned(pos: Position, p: Color) {
-        let game = Game {
-            position: pos,
-            resigned: Some(p),
-        };
-
-        assert_eq!(game.outcome(), Some(Outcome::Resignation(p)));
+    fn outcome_returns_some_result_if_game_has_ended(o: Outcome, #[any(Some(#o))] g: Game) {
+        assert_eq!(g.outcome(), Some(o));
     }
 
     #[proptest]
-    fn outcome_returns_some_result_on_a_checkmate_position(
-        #[any(PositionKind::Checkmate)] pos: Position,
+    fn no_further_actions_can_be_executed_after_game_has_ended(
+        o: Outcome,
+        #[any(Some(#o))] mut g: Game,
+        a: Action,
     ) {
-        let game = Game {
-            position: pos,
-            resigned: None,
-        };
+        assert_eq!(g.execute(a), Err(InvalidAction::GameHasEnded(o)));
+    }
 
+    #[proptest]
+    fn game_state_does_not_change_after_an_invalid_action(
+        #[by_ref] mut g: Game,
+        #[filter(#g.clone().execute(#a).is_err())] a: Action,
+    ) {
+        let before = g.clone();
+        assert_eq!(g.execute(a).ok(), None);
+        assert_eq!(g, before);
+    }
+
+    #[proptest]
+    fn players_can_resign(mut g: Game) {
+        assert_eq!(g.execute(Action::Resign), Ok(San::null()));
         assert_eq!(
-            game.outcome(),
-            Some(Outcome::Checkmate(!game.position().turn()))
-        );
-    }
-
-    #[proptest]
-    fn outcome_returns_some_result_on_a_stalemate_position(
-        #[any(PositionKind::Stalemate)] pos: Position,
-    ) {
-        let game = Game {
-            position: pos,
-            resigned: None,
-        };
-
-        assert_eq!(game.outcome(), Some(Outcome::Stalemate));
-    }
-
-    #[proptest]
-    fn outcome_returns_some_result_on_position_with_insufficient_material(
-        #[any(PositionKind::InsufficientMaterial)] pos: Position,
-    ) {
-        let game = Game {
-            position: pos,
-            resigned: None,
-        };
-
-        assert_eq!(game.outcome(), Some(Outcome::DrawByInsufficientMaterial));
-    }
-
-    #[proptest]
-    fn any_player_action_after_one_side_has_resigned_is_invalid(
-        pos: Position,
-        p: Color,
-        a: Action,
-    ) {
-        let mut game = Game {
-            position: pos,
-            resigned: Some(p),
-        };
-
-        assert_eq!(game.execute(a).err(), game.outcome().map(Into::into));
-    }
-
-    #[proptest]
-    fn any_player_action_on_a_checkmate_position_is_invalid(
-        #[any(PositionKind::Checkmate)] pos: Position,
-        a: Action,
-    ) {
-        let mut game = Game {
-            position: pos,
-            resigned: None,
-        };
-
-        assert_eq!(game.execute(a).err(), game.outcome().map(Into::into));
-    }
-
-    #[proptest]
-    fn any_player_action_on_a_stalemate_position_is_invalid(
-        #[any(PositionKind::Stalemate)] pos: Position,
-        a: Action,
-    ) {
-        let mut game = Game {
-            position: pos,
-            resigned: None,
-        };
-
-        assert_eq!(game.execute(a).err(), game.outcome().map(Into::into));
-    }
-
-    #[proptest]
-    fn any_player_action_on_position_with_insufficient_material_is_invalid(
-        #[any(PositionKind::InsufficientMaterial)] pos: Position,
-        a: Action,
-    ) {
-        let mut game = Game {
-            position: pos,
-            resigned: None,
-        };
-
-        assert_eq!(game.execute(a).err(), game.outcome().map(Into::into));
-    }
-
-    #[proptest]
-    fn game_state_does_not_change_after_an_invalid_action(mut game: Game, a: Action) {
-        let before = game.clone();
-        prop_assume!(game.execute(a).is_err());
-        assert_eq!(game, before);
-    }
-
-    #[proptest]
-    fn players_can_resign(
-        #[by_ref]
-        #[filter(#game.outcome().is_none())]
-        mut game: Game,
-    ) {
-        assert_eq!(game.execute(Action::Resign), Ok(San::null()));
-        assert_eq!(
-            game,
+            g,
             Game {
-                resigned: Some(game.position.turn()),
-                ..game.clone()
+                outcome: Some(Outcome::Resignation(g.position().turn())),
+                ..g.clone()
             }
         );
     }
 
     #[proptest]
-    fn players_can_make_a_move(
-        #[by_ref]
-        #[filter(#game.outcome().is_none())]
-        mut game: Game,
-        m: Move,
-    ) {
-        let mut pos = game.position.clone();
-
-        assert_eq!(
-            game.execute(Action::Move(m)),
-            pos.play(m).map_err(Into::into)
-        );
-
-        assert_eq!(
-            game,
-            Game {
-                position: pos,
-                resigned: None
-            }
-        );
+    fn players_can_make_a_move(mut g: Game, m: Move) {
+        let mut pos = g.position.clone();
+        assert_eq!(g.execute(Action::Move(m)), pos.play(m).map_err(Into::into));
+        assert_eq!(g.position(), &pos);
     }
 
     #[proptest]
-    fn game_ends_once_an_outcome_is_reached(
-        #[by_ref]
-        #[filter(#game.outcome().is_some())]
-        mut game: Game,
-    ) {
+    fn game_ends_once_an_outcome_is_reached(o: Outcome, #[any(Some(#o))] mut g: Game) {
         let rt = runtime::Builder::new_multi_thread().build()?;
 
         let w = MockPlay::new();
         let b = MockPlay::new();
 
-        assert_eq!(
-            rt.block_on(game.run(w, b)).ok().map(|r| r.outcome),
-            game.outcome()
-        );
+        assert_eq!(rt.block_on(g.run(w, b)).ok().map(|r| r.outcome), Some(o));
     }
 
     #[proptest]
     fn game_returns_sequence_of_moves_in_standard_notation(
         #[by_ref]
-        #[filter(#game.outcome().is_none())]
-        mut game: Game,
-        #[strategy(select(#game.position().moves().collect::<Vec<_>>()))] m: Move,
+        #[filter(#g.position().moves().len() > 0)]
+        mut g: Game,
+        #[strategy(select(#g.position().moves().collect::<Vec<_>>()))] m: Move,
     ) {
         let rt = runtime::Builder::new_multi_thread().build()?;
 
-        let turn = game.position().turn();
-        let san = game.position().clone().play(m)?;
+        let turn = g.position().turn();
+        let san = g.position().clone().play(m)?;
 
         let mut w = MockPlay::new();
         let mut b = MockPlay::new();
@@ -301,21 +191,17 @@ mod tests {
         p.expect_play().return_const(Ok(Action::Move(m)));
         q.expect_play().return_const(Ok(Action::Resign));
 
-        let report = rt.block_on(game.run(w, b));
+        let report = rt.block_on(g.run(w, b));
 
-        prop_assume!(game.outcome() == Some(Outcome::Resignation(!turn)));
+        prop_assume!(g.outcome() == Some(Outcome::Resignation(!turn)));
         assert_eq!(report.map(|r| r.moves), Ok(vec![san, San::null()]));
     }
 
     #[proptest]
-    fn game_executes_player_actions_in_their_turn(
-        #[by_ref]
-        #[filter(#game.outcome().is_none())]
-        mut game: Game,
-    ) {
+    fn game_executes_player_actions_in_their_turn(mut g: Game) {
         let rt = runtime::Builder::new_multi_thread().build()?;
 
-        let turn = game.position().turn();
+        let turn = g.position().turn();
 
         let mut w = MockPlay::new();
         let mut b = MockPlay::new();
@@ -328,21 +214,19 @@ mod tests {
         p.expect_play().return_const(Ok(Action::Resign));
 
         assert_eq!(
-            rt.block_on(game.run(w, b)).map(|r| r.outcome),
+            rt.block_on(g.run(w, b)).map(|r| r.outcome),
             Ok(Outcome::Resignation(turn))
         );
     }
 
     #[proptest]
     fn game_ignores_invalid_player_actions(
-        #[by_ref]
-        #[filter(#game.outcome().is_none())]
-        mut game: Game,
-        #[filter(#game.clone().execute(#action).is_err())] action: Action,
+        #[by_ref] mut g: Game,
+        #[filter(#g.clone().execute(#a).is_err())] a: Action,
     ) {
         let rt = runtime::Builder::new_multi_thread().build()?;
 
-        let turn = game.position().turn();
+        let turn = g.position().turn();
 
         let mut w = MockPlay::new();
         let mut b = MockPlay::new();
@@ -353,25 +237,20 @@ mod tests {
         };
 
         p.expect_play()
-            .return_const(Ok(action))
+            .return_const(Ok(a))
             .return_const(Ok(Action::Resign));
 
         assert_eq!(
-            rt.block_on(game.run(w, b)).map(|r| r.outcome),
+            rt.block_on(g.run(w, b)).map(|r| r.outcome),
             Ok(Outcome::Resignation(turn))
         );
     }
 
     #[proptest]
-    fn game_interrupts_if_player_encounters_an_error(
-        #[by_ref]
-        #[filter(#game.outcome().is_none())]
-        mut game: Game,
-        e: String,
-    ) {
+    fn game_interrupts_if_player_encounters_an_error(mut g: Game, e: String) {
         let rt = runtime::Builder::new_multi_thread().build()?;
 
-        let turn = game.position().turn();
+        let turn = g.position().turn();
 
         let mut w = MockPlay::new();
         let mut b = MockPlay::new();
@@ -384,7 +263,7 @@ mod tests {
         p.expect_play().return_const(Err(e.clone()));
 
         assert_eq!(
-            rt.block_on(game.run(w, b)),
+            rt.block_on(g.run(w, b)),
             match turn {
                 Color::White => Err(GameInterrupted::White(e)),
                 Color::Black => Err(GameInterrupted::Black(e)),

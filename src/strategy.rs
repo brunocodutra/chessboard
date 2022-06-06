@@ -1,4 +1,4 @@
-use crate::{Engine, EngineConfig, Move, Position, Search, SearchControl, Setup};
+use crate::{Action, Engine, EngineConfig, Game, Search, SearchControl, Setup};
 use anyhow::Error as Anyhow;
 use async_trait::async_trait;
 use derive_more::{DebugCustom, Display, Error, From};
@@ -21,11 +21,11 @@ pub enum Strategy {
 }
 
 impl Search for Strategy {
-    fn search(&self, pos: &Position, ctrl: SearchControl) -> Option<Move> {
+    fn search(&self, game: &Game, ctrl: SearchControl) -> Option<Action> {
         match self {
-            Strategy::Negamax(s) => s.search(pos, ctrl),
+            Strategy::Negamax(s) => s.search(game, ctrl),
             #[cfg(test)]
-            Strategy::Mock(s) => s.search(pos, ctrl),
+            Strategy::Mock(s) => s.search(game, ctrl),
         }
     }
 }

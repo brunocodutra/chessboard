@@ -1,4 +1,4 @@
-use crate::{Action, File, Io, Move, Play, Position, Rank, Square};
+use crate::{Action, File, Game, Io, Move, Play, Position, Rank, Square};
 use anyhow::Error as Anyhow;
 use async_trait::async_trait;
 use clap::Parser;
@@ -77,8 +77,8 @@ impl<T: Io + Debug + Send> Play for Cli<T> {
 
     /// Prompt the user for an action.
     #[instrument(level = "trace", err, ret)]
-    async fn play(&mut self, pos: &Position) -> Result<Action, CliError> {
-        self.io.send(&Board(pos).to_string()).await?;
+    async fn play(&mut self, game: &Game) -> Result<Action, CliError> {
+        self.io.send(&Board(game.position()).to_string()).await?;
 
         loop {
             self.io.flush().await?;
@@ -138,12 +138,12 @@ mod tests {
     use tokio::runtime;
 
     #[proptest]
-    fn board_is_displayed_before_prompting_player_for_action(pos: Position, cmd: Cmd) {
+    fn board_is_displayed_before_prompting_player_for_action(g: Game, cmd: Cmd) {
         let rt = runtime::Builder::new_multi_thread().build()?;
         let mut io = MockIo::new();
         let mut seq = Sequence::new();
 
-        let board = Board(&pos).to_string();
+        let board = Board(g.position()).to_string();
         io.expect_send()
             .once()
             .in_sequence(&mut seq)
@@ -161,11 +161,11 @@ mod tests {
             .returning(move || Ok(cmd.to_string()));
 
         let mut cli = Cli::new(io);
-        assert_eq!(rt.block_on(cli.play(&pos))?, cmd.into());
+        assert_eq!(rt.block_on(cli.play(&g))?, cmd.into());
     }
 
     #[proptest]
-    fn player_can_resign(pos: Position) {
+    fn player_can_resign(g: Game) {
         let rt = runtime::Builder::new_multi_thread().build()?;
         let mut io = MockIo::new();
 
@@ -177,11 +177,11 @@ mod tests {
             .return_once(move || Ok(Cmd::Resign.to_string()));
 
         let mut cli = Cli::new(io);
-        assert_eq!(rt.block_on(cli.play(&pos))?, Action::Resign);
+        assert_eq!(rt.block_on(cli.play(&g))?, Action::Resign);
     }
 
     #[proptest]
-    fn player_can_make_a_move(pos: Position, m: Move) {
+    fn player_can_make_a_move(g: Game, m: Move) {
         let rt = runtime::Builder::new_multi_thread().build()?;
         let mut io = MockIo::new();
 
@@ -193,11 +193,11 @@ mod tests {
             .returning(move || Ok(Cmd::Move { descriptor: m }.to_string()));
 
         let mut cli = Cli::new(io);
-        assert_eq!(rt.block_on(cli.play(&pos))?, Action::Move(m));
+        assert_eq!(rt.block_on(cli.play(&g))?, Action::Move(m));
     }
 
     #[proptest]
-    fn player_can_ask_for_help(pos: Position, cmd: Cmd) {
+    fn player_can_ask_for_help(g: Game, cmd: Cmd) {
         let rt = runtime::Builder::new_multi_thread().build()?;
         let mut io = MockIo::new();
 
@@ -221,12 +221,12 @@ mod tests {
             .returning(move || Ok(cmd.to_string()));
 
         let mut cli = Cli::new(io);
-        assert_eq!(rt.block_on(cli.play(&pos))?, cmd.into());
+        assert_eq!(rt.block_on(cli.play(&g))?, cmd.into());
     }
 
     #[proptest]
     fn help_is_displayed_if_no_command_is_given(
-        pos: Position,
+        g: Game,
         cmd: Cmd,
         #[strategy("\\s+")] arg: String,
     ) {
@@ -253,11 +253,11 @@ mod tests {
             .returning(move || Ok(cmd.to_string()));
 
         let mut cli = Cli::new(io);
-        assert_eq!(rt.block_on(cli.play(&pos))?, cmd.into());
+        assert_eq!(rt.block_on(cli.play(&g))?, cmd.into());
     }
 
     #[proptest]
-    fn resign_takes_no_arguments(pos: Position, cmd: Cmd, #[strategy("[^\\s]+")] arg: String) {
+    fn resign_takes_no_arguments(g: Game, cmd: Cmd, #[strategy("[^\\s]+")] arg: String) {
         let rt = runtime::Builder::new_multi_thread().build()?;
         let mut io = MockIo::new();
 
@@ -273,12 +273,12 @@ mod tests {
             .returning(move || Ok(cmd.to_string()));
 
         let mut cli = Cli::new(io);
-        assert_eq!(rt.block_on(cli.play(&pos))?, cmd.into());
+        assert_eq!(rt.block_on(cli.play(&g))?, cmd.into());
     }
 
     #[proptest]
     fn move_does_not_accept_invalid_moves(
-        pos: Position,
+        g: Game,
         cmd: Cmd,
         #[by_ref]
         #[filter(#arg.parse::<Move>().is_err())]
@@ -299,12 +299,12 @@ mod tests {
             .returning(move || Ok(cmd.to_string()));
 
         let mut cli = Cli::new(io);
-        assert_eq!(rt.block_on(cli.play(&pos))?, cmd.into());
+        assert_eq!(rt.block_on(cli.play(&g))?, cmd.into());
     }
 
     #[proptest]
     fn player_is_prompted_again_after_invalid_command(
-        pos: Position,
+        g: Game,
         cmd: Cmd,
         #[by_ref]
         #[filter(Cmd::try_parse_from(#arg.split_whitespace()).is_err())]
@@ -323,11 +323,11 @@ mod tests {
             .returning(move || Ok(cmd.to_string()));
 
         let mut cli = Cli::new(io);
-        assert_eq!(rt.block_on(cli.play(&pos))?, cmd.into());
+        assert_eq!(rt.block_on(cli.play(&g))?, cmd.into());
     }
 
     #[proptest]
-    fn play_can_fail_writing(pos: Position, e: io::Error) {
+    fn play_can_fail_writing(g: Game, e: io::Error) {
         let rt = runtime::Builder::new_multi_thread().build()?;
         let mut io = MockIo::new();
 
@@ -336,13 +336,13 @@ mod tests {
 
         let mut cli = Cli::new(io);
         assert_eq!(
-            rt.block_on(cli.play(&pos)).map_err(|CliError(e)| e.kind()),
+            rt.block_on(cli.play(&g)).map_err(|CliError(e)| e.kind()),
             Err(kind)
         );
     }
 
     #[proptest]
-    fn play_can_fail_flushing(pos: Position, e: io::Error) {
+    fn play_can_fail_flushing(g: Game, e: io::Error) {
         let rt = runtime::Builder::new_multi_thread().build()?;
         let mut io = MockIo::new();
 
@@ -353,13 +353,13 @@ mod tests {
 
         let mut cli = Cli::new(io);
         assert_eq!(
-            rt.block_on(cli.play(&pos)).map_err(|CliError(e)| e.kind()),
+            rt.block_on(cli.play(&g)).map_err(|CliError(e)| e.kind()),
             Err(kind)
         );
     }
 
     #[proptest]
-    fn play_can_fail_reading(pos: Position, e: io::Error) {
+    fn play_can_fail_reading(g: Game, e: io::Error) {
         let rt = runtime::Builder::new_multi_thread().build()?;
         let mut io = MockIo::new();
 
@@ -371,7 +371,7 @@ mod tests {
 
         let mut cli = Cli::new(io);
         assert_eq!(
-            rt.block_on(cli.play(&pos)).map_err(|CliError(e)| e.kind()),
+            rt.block_on(cli.play(&g)).map_err(|CliError(e)| e.kind()),
             Err(kind)
         );
     }

@@ -1,4 +1,4 @@
-use crate::{Action, Position};
+use crate::{Action, Game};
 use async_trait::async_trait;
 
 /// Trait for types that know how to play chess.
@@ -9,5 +9,5 @@ pub trait Play {
     type Error;
 
     /// Play the next turn.
-    async fn play(&mut self, pos: &Position) -> Result<Action, Self::Error>;
+    async fn play(&mut self, game: &Game) -> Result<Action, Self::Error>;
 }

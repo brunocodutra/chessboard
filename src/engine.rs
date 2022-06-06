@@ -1,4 +1,4 @@
-use crate::{Eval, Position, Setup};
+use crate::{Eval, Game, Setup};
 use anyhow::Error as Anyhow;
 use async_trait::async_trait;
 use derive_more::{DebugCustom, Display, Error, From};
@@ -25,12 +25,12 @@ pub enum Engine {
 }
 
 impl Eval for Engine {
-    fn eval(&self, pos: &Position) -> i32 {
+    fn eval(&self, game: &Game) -> i32 {
         match self {
-            Engine::Random(e) => e.eval(pos),
-            Engine::Heuristic(e) => e.eval(pos),
+            Engine::Random(e) => e.eval(game),
+            Engine::Heuristic(e) => e.eval(game),
             #[cfg(test)]
-            Engine::Mock(e) => e.eval(pos),
+            Engine::Mock(e) => e.eval(game),
         }
     }
 }

@@ -1,4 +1,4 @@
-use crate::{Move, Position};
+use crate::{Action, Game};
 
 #[derive(Debug, Default, Copy, Clone, Eq, PartialEq, Hash)]
 pub struct SearchControl {
@@ -8,8 +8,8 @@ pub struct SearchControl {
 /// Trait for types that implement adversarial search algorithms.
 #[cfg_attr(test, mockall::automock)]
 pub trait Search {
-    /// Searches for the strongest [`Move`] in this [`Position`], if one exists.
+    /// Searches for the strongest [`Action`], if one exists.
     ///
     /// Implementors are expected to respect the limits specified in `ctrl`.
-    fn search(&self, pos: &Position, ctrl: SearchControl) -> Option<Move>;
+    fn search(&self, game: &Game, ctrl: SearchControl) -> Option<Action>;
 }

@@ -1,10 +1,10 @@
-use crate::Position;
+use crate::Game;
 
-/// Trait for types that can evaluate a [`Position`].
+/// Trait for types that can evaluate a [`Game`].
 #[cfg_attr(test, mockall::automock)]
 pub trait Eval {
-    /// Evaluates a [`Position`].
+    /// Evaluates a [`Game`].
     ///
     /// Positive values favor the current side to play.
-    fn eval(&self, pos: &Position) -> i32;
+    fn eval(&self, game: &Game) -> i32;
 }
