@@ -1,4 +1,4 @@
-use crate::{Action, Io, Play, Position};
+use crate::{Action, Game, Io, Play};
 use anyhow::{Context, Error as Anyhow};
 use async_trait::async_trait;
 use derive_more::{Display, Error, From};
@@ -81,10 +81,10 @@ impl<T: Io + Debug + Send> Play for Uci<T> {
 
     /// Request an action from the CLI server.
     #[instrument(level = "trace", err, ret)]
-    async fn play(&mut self, pos: &Position) -> Result<Action, Self::Error> {
+    async fn play(&mut self, game: &Game) -> Result<Action, Self::Error> {
         let position = UciMessage::Position {
             startpos: false,
-            fen: Some(UciFen(pos.to_string())),
+            fen: Some(UciFen(game.position().to_string())),
             moves: Vec::new(),
         };
 
@@ -307,7 +307,7 @@ mod tests {
     }
 
     #[proptest]
-    fn play_instructs_engine_to_make_move(pos: Position, m: Move) {
+    fn play_instructs_engine_to_make_move(g: Game, m: Move) {
         let rt = runtime::Builder::new_multi_thread().build()?;
         let mut io = MockIo::new();
         let mut seq = Sequence::new();
@@ -335,12 +335,12 @@ mod tests {
             .returning(move || Ok(UciMessage::best_move(m.into()).to_string()));
 
         let mut uci = Uci { io };
-        assert_eq!(rt.block_on(uci.play(&pos))?, Action::Move(m));
+        assert_eq!(rt.block_on(uci.play(&g))?, Action::Move(m));
     }
 
     #[proptest]
     fn play_ignores_invalid_uci_messages(
-        pos: Position,
+        g: Game,
         m: Move,
         #[by_ref]
         #[filter(matches!(parse_one(#msg.trim()), UciMessage::Unknown(_, _)))]
@@ -359,12 +359,12 @@ mod tests {
             .returning(move || Ok(UciMessage::best_move(m.into()).to_string()));
 
         let mut uci = Uci { io };
-        assert_eq!(rt.block_on(uci.play(&pos))?, Action::Move(m));
+        assert_eq!(rt.block_on(uci.play(&g))?, Action::Move(m));
     }
 
     #[proptest]
     fn play_ignores_unexpected_uci_messages(
-        pos: Position,
+        g: Game,
         m: Move,
         #[by_ref]
         #[filter(!matches!(#msg, UciMessage::BestMove { .. }))]
@@ -386,11 +386,11 @@ mod tests {
             .returning(move || Ok(UciMessage::best_move(m.into()).to_string()));
 
         let mut uci = Uci { io };
-        assert_eq!(rt.block_on(uci.play(&pos))?, Action::Move(m));
+        assert_eq!(rt.block_on(uci.play(&g))?, Action::Move(m));
     }
 
     #[proptest]
-    fn play_can_fail_writing(pos: Position, e: io::Error) {
+    fn play_can_fail_writing(g: Game, e: io::Error) {
         let rt = runtime::Builder::new_multi_thread().build()?;
         let mut io = MockIo::new();
 
@@ -402,13 +402,13 @@ mod tests {
 
         let mut uci = Uci { io };
         assert_eq!(
-            rt.block_on(uci.play(&pos)).map_err(|UciError(e)| e.kind()),
+            rt.block_on(uci.play(&g)).map_err(|UciError(e)| e.kind()),
             Err(kind)
         );
     }
 
     #[proptest]
-    fn play_can_fail_flushing(pos: Position, e: io::Error) {
+    fn play_can_fail_flushing(g: Game, e: io::Error) {
         let rt = runtime::Builder::new_multi_thread().build()?;
         let mut io = MockIo::new();
 
@@ -420,13 +420,13 @@ mod tests {
 
         let mut uci = Uci { io };
         assert_eq!(
-            rt.block_on(uci.play(&pos)).map_err(|UciError(e)| e.kind()),
+            rt.block_on(uci.play(&g)).map_err(|UciError(e)| e.kind()),
             Err(kind)
         );
     }
 
     #[proptest]
-    fn play_can_fail_reading(pos: Position, e: io::Error) {
+    fn play_can_fail_reading(g: Game, e: io::Error) {
         let rt = runtime::Builder::new_multi_thread().build()?;
         let mut io = MockIo::new();
 
@@ -438,7 +438,7 @@ mod tests {
 
         let mut uci = Uci { io };
         assert_eq!(
-            rt.block_on(uci.play(&pos)).map_err(|UciError(e)| e.kind()),
+            rt.block_on(uci.play(&g)).map_err(|UciError(e)| e.kind()),
             Err(kind)
         );
     }

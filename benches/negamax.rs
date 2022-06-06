@@ -1,18 +1,18 @@
-use chessboard::{engine::Random, strategy::Negamax, Position, Search, SearchControl};
+use chessboard::{engine::Random, strategy::Negamax, Game, Search, SearchControl};
 use criterion::{criterion_group, criterion_main, BatchSize, Criterion};
 use proptest::{prelude::*, sample::Selector, strategy::ValueTree, test_runner::TestRunner};
 
-fn position() -> impl Strategy<Value = Position> {
+fn game() -> impl Strategy<Value = Game> {
     any::<Selector>().prop_map(|selector| {
-        let mut pos = Position::default();
+        let mut game = Game::default();
         for _ in 0..8 {
-            if let Some(m) = selector.try_select(pos.moves()) {
-                pos.play(m).unwrap();
+            if let Some(m) = selector.try_select(game.position().moves()) {
+                game.execute(m.into()).unwrap();
             } else {
                 break;
             }
         }
-        pos
+        game
     })
 }
 
@@ -22,10 +22,10 @@ fn bench(c: &mut Criterion) {
     let negamax = Negamax::new(Random::new());
     for d in [1, 2, 4] {
         let ctrl = SearchControl { max_depth: Some(d) };
-        group.bench_with_input(format!("depth={}", d), &position(), |b, s| {
+        group.bench_with_input(format!("depth={}", d), &game(), |b, s| {
             b.iter_batched_ref(
                 || s.new_tree(&mut runner).unwrap().current(),
-                |pos| negamax.search(pos, ctrl),
+                |game| negamax.search(game, ctrl),
                 BatchSize::SmallInput,
             )
         });

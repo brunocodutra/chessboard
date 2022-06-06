@@ -7,109 +7,29 @@ use std::{convert::TryFrom, num::NonZeroU32, ops::Index};
 #[cfg(test)]
 use proptest::{prelude::*, sample::Selector};
 
-#[cfg(test)]
-#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
-pub enum PositionKind {
-    Checkmate,
-    Stalemate,
-    InsufficientMaterial,
-    Any,
-}
-
-#[cfg(test)]
-impl Default for PositionKind {
-    fn default() -> Self {
-        PositionKind::Any
-    }
-}
-
 /// The current position on the chess board.
 ///
 /// This type guarantees that it only holds valid positions.
 #[derive(DebugCustom, Display, Default, Clone, Eq, PartialEq)]
 #[cfg_attr(test, derive(test_strategy::Arbitrary))]
-#[cfg_attr(test, arbitrary(args = PositionKind))]
 #[debug(fmt = "Position(\"{}\")", self)]
 #[display(fmt = "{}", "Fen::from(self.clone())")]
 pub struct Position {
-    #[cfg_attr(test, strategy(Self::strategy(&args).prop_map_into()))]
+    #[cfg_attr(test, strategy((0..32, any::<Selector>()).prop_map(|(depth, selector)| {
+        let mut chess = sm::Chess::default();
+        for _ in 0..depth {
+            if let Some(m) = selector.try_select(sm::Position::legal_moves(&chess)) {
+                sm::Position::play_unchecked(&mut chess, &m);
+            } else {
+                break;
+            }
+        }
+        chess
+    })))]
     chess: sm::Chess,
 }
 
 impl Position {
-    #[cfg(test)]
-    fn checkmate() -> impl Strategy<Value = Position> {
-        prop_oneof![
-            "4k3/8/8/8/8/2P1q3/1P6/3RKR2 w - - 0 1",
-            "4R3/4kp2/5N2/4P3/8/8/8/4K3 b - - 0 1",
-            "4k3/8/8/8/3nn3/3P4/4Kb2/3Q1B2 w - - 0 1",
-            "3q1b2/4kB2/3p4/4N1B1/8/8/8/4K3 b - - 0 1",
-            "4k1r1/8/8/8/8/5b2/5P1P/5RK1 w - - 0 1",
-            "1nbB4/1pk5/2p5/8/8/8/8/3RK3 b - - 0 1",
-            "4k3/8/2b5/8/8/8/4nP1P/5RK1 w - - 0 1",
-            "3r1r2/4k2p/R3Q3/8/8/8/8/4K3 b - - 0 1",
-        ]
-        .prop_map(|s| s.parse().unwrap())
-        .prop_map(|fen: Fen| fen.try_into().unwrap())
-    }
-
-    #[cfg(test)]
-    fn stalemate() -> impl Strategy<Value = Position> {
-        prop_oneof![
-            "rn2k1nr/pp4pp/3p4/q1pP4/P1P2p1b/1b2pPRP/1P1NP1PQ/2B1KBNR w Kkq - 0 1",
-            "5bnr/4p1pq/4Qpkr/7p/7P/4P3/PPPP1PP1/RNB1KBNR b KQ - 0 1",
-            "NBk5/PpP1p3/1P2P3/8/8/3p1p2/3PpPpp/4Kbrq w - - 0 1",
-            "NBk5/PpP1p3/1P2P3/8/8/3p1p2/3PpPpp/4Kbrq b - - 0 1",
-            "8/8/8/2p2p1p/2P2P1k/4pP1P/4P1KP/5BNR w - - 0 1",
-            "8/8/8/2p2p1p/2P2P1k/4pP1P/4P1KP/5BNR b - - 0 1",
-            "8/8/8/8/pp6/kp6/1p6/1K6 w - - 0 1",
-            "8/8/8/8/pp6/kp6/1p6/1K6 b - - 0 1",
-        ]
-        .prop_map(|s| s.parse().unwrap())
-        .prop_map(|fen: Fen| fen.try_into().unwrap())
-    }
-
-    #[cfg(test)]
-    fn insufficient_material() -> impl Strategy<Value = Position> {
-        prop_oneof![
-            "8/2K1k3/8/8/8/8/8/8 w - - 0 1",
-            "8/8/8/1K6/8/1k6/8/8 b - - 0 1",
-            "8/8/6k1/8/2K5/8/6N1/8 b - - 0 1",
-            "8/2n5/2k5/8/4K3/8/8/8 w - - 0 1",
-            "8/8/8/5k2/8/2B1K3/8/8 b - - 0 1",
-            "8/6b1/1k6/5K2/8/8/8/8 w - - 0 1",
-            "8/8/3kb3/8/8/3BK3/8/8 b - - 0 1",
-            "8/8/3bk3/8/8/3KB3/8/8 w - - 0 1",
-        ]
-        .prop_map(|s| s.parse().unwrap())
-        .prop_map(|fen: Fen| fen.try_into().unwrap())
-    }
-
-    #[cfg(test)]
-    fn any() -> impl Strategy<Value = Position> {
-        (0..32, any::<Selector>()).prop_map(|(depth, selector)| {
-            let mut chess = sm::Chess::default();
-            for _ in 0..depth {
-                if let Some(m) = selector.try_select(sm::Position::legal_moves(&chess)) {
-                    sm::Position::play_unchecked(&mut chess, &m);
-                } else {
-                    break;
-                }
-            }
-            chess.into()
-        })
-    }
-
-    #[cfg(test)]
-    fn strategy(kind: &PositionKind) -> impl Strategy<Value = Position> {
-        match kind {
-            PositionKind::Checkmate => Self::checkmate().boxed(),
-            PositionKind::Stalemate => Self::stalemate().boxed(),
-            PositionKind::InsufficientMaterial => Self::insufficient_material().boxed(),
-            PositionKind::Any => Self::any().boxed(),
-        }
-    }
-
     /// The side to move.
     pub fn turn(&self) -> Color {
         sm::Position::turn(&self.chess).into()
@@ -127,20 +47,6 @@ impl Position {
     /// It starts at 1, and is incremented after every move by black.
     pub fn fullmoves(&self) -> NonZeroU32 {
         sm::Position::fullmoves(&self.chess)
-    }
-
-    /// Whether this position is a [checkmate].
-    ///
-    /// [checkmate]: https://en.wikipedia.org/wiki/Glossary_of_chess#checkmate
-    pub fn is_checkmate(&self) -> bool {
-        sm::Position::is_checkmate(&self.chess)
-    }
-
-    /// Whether this position is a [stalemate].
-    ///
-    /// [stalemate]: https://en.wikipedia.org/wiki/Glossary_of_chess#stalemate
-    pub fn is_stalemate(&self) -> bool {
-        sm::Position::is_stalemate(&self.chess)
     }
 
     /// Whether this position has [insufficient material].
@@ -207,7 +113,7 @@ impl Position {
 #[allow(clippy::derive_hash_xor_eq)]
 impl Hash for Position {
     fn hash<H: Hasher>(&self, state: &mut H) {
-        state.write_u64(sm::zobrist::ZobristHash::zobrist_hash(&self.chess));
+        state.write_u128(sm::zobrist::ZobristHash::zobrist_hash(&self.chess));
     }
 }
 
@@ -322,7 +228,7 @@ impl AsRef<sm::Chess> for Position {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use proptest::sample::select;
+    use proptest::{collection::hash_set, sample::select};
     use std::collections::HashSet;
     use test_strategy::proptest;
 
@@ -342,23 +248,28 @@ mod tests {
     }
 
     #[proptest]
-    fn is_checkmate_returns_whether_the_position_is_a_checkmate(
-        #[any(PositionKind::Checkmate)] pos: Position,
-    ) {
-        assert!(pos.is_checkmate());
-    }
-
-    #[proptest]
-    fn is_stalemate_returns_whether_the_position_is_a_stalemate(
-        #[any(PositionKind::Stalemate)] pos: Position,
-    ) {
-        assert!(pos.is_stalemate());
-    }
-
-    #[proptest]
     fn is_material_insufficient_returns_whether_the_position_has_insufficient_material(
-        #[any(PositionKind::InsufficientMaterial)] pos: Position,
+        c: Color,
+        #[strategy(select([Role::Knight, Role::Bishop].as_ref()))] r: Role,
+        #[strategy(hash_set(any::<Square>(), 2..=3))] s: HashSet<Square>,
     ) {
+        let setup = sm::Setup {
+            board: s
+                .into_iter()
+                .map(Into::into)
+                .zip(vec![
+                    Piece(!c, Role::King).into(),
+                    Piece(c, Role::King).into(),
+                    Piece(c, r).into(),
+                ])
+                .collect(),
+            turn: (!c).into(),
+            ..sm::Setup::empty()
+        }
+        .position::<sm::Chess>(sm::CastlingMode::Standard);
+
+        prop_assume!(setup.is_ok());
+        let pos = Position::from(setup?);
         assert!(pos.is_material_insufficient());
     }
 
