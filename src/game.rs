@@ -1,6 +1,7 @@
 use crate::{Action, Color, GameReport, InvalidAction, Outcome, Play, Position, San};
 use anyhow::Context;
 use derive_more::{Display, Error};
+use shakmaty as sm;
 use tracing::{info, instrument, warn};
 
 /// The reason why the [`Game`] was interrupted.
@@ -48,12 +49,12 @@ impl Game {
             Action::Move(m) => {
                 let san = self.position.play(m)?;
 
-                self.outcome = if self.position().is_material_insufficient() {
+                self.outcome = if sm::Position::is_insufficient_material(&self.position.board) {
                     Some(Outcome::DrawByInsufficientMaterial)
-                } else if self.position().moves().len() > 0 {
+                } else if self.position.moves().len() > 0 {
                     None
-                } else if self.position().checkers().len() > 0 {
-                    Some(Outcome::Checkmate(!self.position().turn()))
+                } else if self.position.checkers().len() > 0 {
+                    Some(Outcome::Checkmate(!self.position.turn()))
                 } else {
                     Some(Outcome::Stalemate)
                 };
@@ -82,7 +83,7 @@ impl Game {
                 Some(outcome) => break Ok(GameReport { outcome, moves }),
 
                 None => {
-                    let turn = self.position().turn();
+                    let turn = self.position.turn();
 
                     use GameInterrupted::*;
                     let action = match turn {
@@ -90,7 +91,7 @@ impl Game {
                         Color::Black => black.play(self).await.map_err(Black)?,
                     };
 
-                    info!(position = %self.position(), player = %turn, %action);
+                    info!(position = %self.position, player = %turn, %action);
 
                     match self.execute(action).context("invalid player action") {
                         Err(e) => warn!("{:?}", e),
@@ -145,7 +146,7 @@ mod tests {
         assert_eq!(
             g,
             Game {
-                outcome: Some(Outcome::Resignation(g.position().turn())),
+                outcome: Some(Outcome::Resignation(g.position.turn())),
                 ..g.clone()
             }
         );
@@ -155,7 +156,7 @@ mod tests {
     fn players_can_make_a_move(mut g: Game, m: Move) {
         let mut pos = g.position.clone();
         assert_eq!(g.execute(Action::Move(m)), pos.play(m).map_err(Into::into));
-        assert_eq!(g.position(), &pos);
+        assert_eq!(g.position, pos);
     }
 
     #[proptest]
@@ -171,14 +172,14 @@ mod tests {
     #[proptest]
     fn game_returns_sequence_of_moves_in_standard_notation(
         #[by_ref]
-        #[filter(#g.position().moves().len() > 0)]
+        #[filter(#g.position.moves().len() > 0)]
         mut g: Game,
-        #[strategy(select(#g.position().moves().collect::<Vec<_>>()))] m: Move,
+        #[strategy(select(#g.position.moves().collect::<Vec<_>>()))] m: Move,
     ) {
         let rt = runtime::Builder::new_multi_thread().build()?;
 
-        let turn = g.position().turn();
-        let san = g.position().clone().play(m)?;
+        let turn = g.position.turn();
+        let san = g.position.clone().play(m)?;
 
         let mut w = MockPlay::new();
         let mut b = MockPlay::new();
@@ -201,7 +202,7 @@ mod tests {
     fn game_executes_player_actions_in_their_turn(mut g: Game) {
         let rt = runtime::Builder::new_multi_thread().build()?;
 
-        let turn = g.position().turn();
+        let turn = g.position.turn();
 
         let mut w = MockPlay::new();
         let mut b = MockPlay::new();
@@ -226,7 +227,7 @@ mod tests {
     ) {
         let rt = runtime::Builder::new_multi_thread().build()?;
 
-        let turn = g.position().turn();
+        let turn = g.position.turn();
 
         let mut w = MockPlay::new();
         let mut b = MockPlay::new();
@@ -250,7 +251,7 @@ mod tests {
     fn game_interrupts_if_player_encounters_an_error(mut g: Game, e: String) {
         let rt = runtime::Builder::new_multi_thread().build()?;
 
-        let turn = g.position().turn();
+        let turn = g.position.turn();
 
         let mut w = MockPlay::new();
         let mut b = MockPlay::new();
