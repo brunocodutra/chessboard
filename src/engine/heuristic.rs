@@ -13,8 +13,12 @@ impl Heuristic {
 impl Eval for Heuristic {
     fn eval(&self, game: &Game) -> i32 {
         match game.outcome() {
-            Some(o) if o.is_draw() => 0,
-            Some(_) => i32::MIN,
+            Some(o) => match o.winner() {
+                Some(w) if w == game.position().turn() => i32::MAX,
+                Some(_) => i32::MIN,
+                None => 0,
+            },
+
             None => {
                 let pos = game.position();
 
@@ -56,10 +60,22 @@ mod tests {
     }
 
     #[proptest]
-    fn decided_game_evaluates_to_lowest_possible_score(
+    fn lost_game_evaluates_to_lowest_possible_score(
         #[filter(#_o.is_decisive())] _o: Outcome,
-        #[any(Some(#_o))] g: Game,
+        #[any(Some(#_o))]
+        #[filter(#_o.winner() != Some(#g.position().turn()))]
+        g: Game,
     ) {
         assert_eq!(Heuristic::new().eval(&g), i32::MIN);
+    }
+
+    #[proptest]
+    fn won_game_evaluates_to_highest_possible_score(
+        #[filter(#_o.is_decisive())] _o: Outcome,
+        #[any(Some(#_o))]
+        #[filter(#_o.winner() == Some(#g.position().turn()))]
+        g: Game,
+    ) {
+        assert_eq!(Heuristic::new().eval(&g), i32::MAX);
     }
 }

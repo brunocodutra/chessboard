@@ -81,7 +81,7 @@ impl Position {
             .map(Square::from)
     }
 
-    /// Legal [`Move`]s that can be played in this position
+    // An iterator over the legal [`Move`]s that can be played in this position.
     pub fn moves(&self) -> impl ExactSizeIterator<Item = Move> {
         sm::Position::legal_moves(&self.board)
             .into_iter()

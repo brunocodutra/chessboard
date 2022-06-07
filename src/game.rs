@@ -1,7 +1,8 @@
-use crate::{Action, Color, GameReport, InvalidAction, Outcome, Play, Position, San};
+use crate::{Action, Color, GameReport, IllegalAction, Outcome, Play, Position, San};
 use anyhow::Context;
 use derive_more::{Display, Error};
 use shakmaty as sm;
+use std::iter::once;
 use tracing::{info, instrument, warn};
 
 /// The reason why the [`Game`] was interrupted.
@@ -37,12 +38,25 @@ impl Game {
         self.outcome
     }
 
-    /// Executes an [`Action`] if valid, otherwise returns the reason why not.
+    /// An iterator over the legal [`Action`]s that can be played in this position.
+    pub fn actions(&self) -> impl Iterator<Item = Action> {
+        let moves = self.position().moves().map(Action::Move);
+
+        let take = if self.outcome().is_none() {
+            moves.len() + 1
+        } else {
+            0
+        };
+
+        moves.chain(once(Action::Resign)).take(take)
+    }
+
+    /// Executes an [`Action`] if legal, otherwise returns the reason why not.
     ///
-    /// If the action is valid, a [`San`] recording the move is returned.
-    pub fn execute(&mut self, action: Action) -> Result<San, InvalidAction> {
+    /// If the action is legal, a [`San`] recording the move is returned.
+    pub fn execute(&mut self, action: Action) -> Result<San, IllegalAction> {
         if let Some(result) = self.outcome() {
-            return Err(InvalidAction::GameHasEnded(result));
+            return Err(IllegalAction::GameHasEnded(result));
         }
 
         match action {
@@ -64,6 +78,16 @@ impl Game {
 
             Action::Resign => {
                 self.outcome = Some(Outcome::Resignation(self.position.turn()));
+
+                let noop = sm::Move::Put {
+                    role: sm::Role::King,
+                    to: sm::Position::our(&self.position.board, sm::Role::King)
+                        .first()
+                        .expect("expected king on the board"),
+                };
+
+                sm::Position::play_unchecked(&mut self.position.board, &noop);
+
                 Ok(San::null())
             }
         }
@@ -93,7 +117,7 @@ impl Game {
 
                     info!(position = %self.position, player = %turn, %action);
 
-                    match self.execute(action).context("invalid player action") {
+                    match self.execute(action).context("illegal player action") {
                         Err(e) => warn!("{:?}", e),
                         Ok(san) => moves.push(san),
                     }
@@ -122,41 +146,63 @@ mod tests {
     }
 
     #[proptest]
-    fn no_further_actions_can_be_executed_after_game_has_ended(
+    fn all_legal_moves_are_possible_before_game_has_ended(g: Game) {
+        assert_eq!(
+            g.actions()
+                .filter_map(|a| match a {
+                    Action::Move(m) => Some(m),
+                    Action::Resign => None,
+                })
+                .collect::<Vec<_>>(),
+            g.position().moves().collect::<Vec<_>>()
+        );
+    }
+
+    #[proptest]
+    fn resigning_is_always_possible_before_game_has_ended(g: Game) {
+        assert_eq!(g.actions().filter(|a| a == &Action::Resign).count(), 1);
+    }
+
+    #[proptest]
+    fn there_are_no_further_actions_if_game_has_ended(_o: Outcome, #[any(Some(#_o))] g: Game) {
+        assert_eq!(g.actions().count(), 0);
+    }
+
+    #[proptest]
+    fn legal_actions_can_always_be_executed(
+        #[by_ref] mut g: Game,
+        #[strategy(select(#g.actions().collect::<Vec<_>>()))] a: Action,
+    ) {
+        assert_eq!(g.execute(a).err(), None);
+    }
+
+    #[proptest]
+    fn legal_actions_always_change_the_side_to_play(
+        #[by_ref] mut g: Game,
+        #[strategy(select(#g.actions().collect::<Vec<_>>()))] a: Action,
+    ) {
+        let turn = !g.position.turn();
+        g.execute(a)?;
+        assert_eq!(g.position().turn(), turn);
+    }
+
+    #[proptest]
+    fn actions_cannot_be_executed_after_game_has_ended(
         o: Outcome,
         #[any(Some(#o))] mut g: Game,
         a: Action,
     ) {
-        assert_eq!(g.execute(a), Err(InvalidAction::GameHasEnded(o)));
+        assert_eq!(g.execute(a), Err(IllegalAction::GameHasEnded(o)));
     }
 
     #[proptest]
     fn game_state_does_not_change_after_an_invalid_action(
         #[by_ref] mut g: Game,
-        #[filter(#g.clone().execute(#a).is_err())] a: Action,
+        #[filter(#g.actions().all(|a| a != #a))] a: Action,
     ) {
         let before = g.clone();
         assert_eq!(g.execute(a).ok(), None);
         assert_eq!(g, before);
-    }
-
-    #[proptest]
-    fn players_can_resign(mut g: Game) {
-        assert_eq!(g.execute(Action::Resign), Ok(San::null()));
-        assert_eq!(
-            g,
-            Game {
-                outcome: Some(Outcome::Resignation(g.position.turn())),
-                ..g.clone()
-            }
-        );
-    }
-
-    #[proptest]
-    fn players_can_make_a_move(mut g: Game, m: Move) {
-        let mut pos = g.position.clone();
-        assert_eq!(g.execute(Action::Move(m)), pos.play(m).map_err(Into::into));
-        assert_eq!(g.position, pos);
     }
 
     #[proptest]
@@ -221,9 +267,9 @@ mod tests {
     }
 
     #[proptest]
-    fn game_ignores_invalid_player_actions(
+    fn game_ignores_illegal_player_actions(
         #[by_ref] mut g: Game,
-        #[filter(#g.clone().execute(#a).is_err())] a: Action,
+        #[filter(#g.actions().all(|a| a != #a))] a: Action,
     ) {
         let rt = runtime::Builder::new_multi_thread().build()?;
 

@@ -6,8 +6,8 @@ fn game() -> impl Strategy<Value = Game> {
     any::<Selector>().prop_map(|selector| {
         let mut game = Game::default();
         for _ in 0..8 {
-            if let Some(m) = selector.try_select(game.position().moves()) {
-                game.execute(m.into()).unwrap();
+            if let Some(a) = selector.try_select(game.actions()) {
+                game.execute(a).unwrap();
             } else {
                 break;
             }
