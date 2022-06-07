@@ -20,7 +20,7 @@ pub enum Action {
 #[derive(Debug, Display, Clone, Eq, PartialEq, Error, From)]
 #[cfg_attr(test, derive(test_strategy::Arbitrary))]
 #[error(ignore)]
-pub enum InvalidAction {
+pub enum IllegalAction {
     #[display(fmt = "the game has already ended in a {}", _0)]
     GameHasEnded(Outcome),
 
@@ -39,15 +39,15 @@ mod tests {
     }
 
     #[proptest]
-    fn invalid_action_can_be_converted_from_outcome(o: Outcome) {
-        assert_eq!(InvalidAction::from(o), InvalidAction::GameHasEnded(o));
+    fn illegal_action_can_be_converted_from_outcome(o: Outcome) {
+        assert_eq!(IllegalAction::from(o), IllegalAction::GameHasEnded(o));
     }
 
     #[proptest]
-    fn invalid_action_can_be_converted_from_illegal_move(im: IllegalMove) {
+    fn illegal_action_can_be_converted_from_illegal_move(im: IllegalMove) {
         assert_eq!(
-            InvalidAction::from(im.clone()),
-            InvalidAction::PlayerAttemptedIllegalMove(im)
+            IllegalAction::from(im.clone()),
+            IllegalAction::PlayerAttemptedIllegalMove(im)
         );
     }
 }

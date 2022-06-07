@@ -21,10 +21,9 @@ impl<E: Eval + Send + Sync> Negamax<E> {
 
         let cutoff = AtomicI32::new(alpha);
 
-        game.position()
-            .moves()
+        game.actions()
             .par_bridge()
-            .map(|m| {
+            .map(|a| {
                 let alpha = cutoff.load(Ordering::Relaxed);
 
                 if alpha >= beta {
@@ -32,7 +31,7 @@ impl<E: Eval + Send + Sync> Negamax<E> {
                 }
 
                 let mut game = game.clone();
-                game.execute(m.into()).expect("expected legal move");
+                game.execute(a).expect("expected legal action");
 
                 let (_, s) = self.negamax(
                     &game,
@@ -43,12 +42,11 @@ impl<E: Eval + Send + Sync> Negamax<E> {
 
                 cutoff.fetch_max(s.saturating_neg(), Ordering::Relaxed);
 
-                Some((m.into(), s))
+                Some((Some(a), s.saturating_neg()))
             })
             .while_some()
-            .min_by_key(|&(_, s)| s)
-            .map(|(m, s)| (Some(m), s.saturating_neg()))
-            .unwrap_or_else(|| (None, self.engine.eval(game)))
+            .max_by_key(|&(_, s)| s)
+            .expect("expected at least one legal action")
     }
 }
 
@@ -111,24 +109,22 @@ mod tests {
         let engine = Random::new();
 
         let best = g
-            .position()
-            .moves()
+            .actions()
             .zip(repeat(g.clone()))
-            .map(|(m, mut g)| {
-                g.execute(m.into()).unwrap();
+            .map(|(a, mut g)| {
+                g.execute(a).unwrap();
                 let s = g
-                    .position()
-                    .moves()
+                    .actions()
                     .zip(repeat(g.clone()))
-                    .map(|(m, mut g)| {
-                        g.execute(m.into()).unwrap();
+                    .map(|(a, mut g)| {
+                        g.execute(a).unwrap();
                         engine.eval(&g).saturating_neg()
                     })
                     .max()
                     .unwrap_or_else(|| engine.eval(&g))
                     .saturating_neg();
 
-                (Some(m.into()), s)
+                (Some(a), s)
             })
             .max_by_key(|&(_, s)| s)
             .unwrap_or((None, engine.eval(&g)));
