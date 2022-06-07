@@ -1,4 +1,4 @@
-use crate::{Action, Game, Play, Search, SearchControl};
+use crate::{Act, Action, Game, Search, SearchControl};
 use async_trait::async_trait;
 use derive_more::{Constructor, From};
 use std::{convert::Infallible, fmt::Debug};
@@ -11,11 +11,11 @@ pub struct Ai<S: Search> {
 }
 
 #[async_trait]
-impl<S: Search + Debug + Send> Play for Ai<S> {
+impl<S: Search + Debug + Send> Act for Ai<S> {
     type Error = Infallible;
 
     #[instrument(level = "trace", err, ret)]
-    async fn play(&mut self, game: &Game) -> Result<Action, Self::Error> {
+    async fn act(&mut self, game: &Game) -> Result<Action, Self::Error> {
         let ctrl = SearchControl::default();
         Ok(self.strategy.search(game, ctrl).unwrap_or(Action::Resign))
     }
@@ -41,7 +41,7 @@ mod tests {
             .return_const(Some(a));
 
         let mut ai = Ai::new(strategy);
-        assert_eq!(rt.block_on(ai.play(&g))?, a);
+        assert_eq!(rt.block_on(ai.act(&g))?, a);
     }
 
     #[proptest]
@@ -56,6 +56,6 @@ mod tests {
             .return_const(None);
 
         let mut ai = Ai::new(strategy);
-        assert_eq!(rt.block_on(ai.play(&g))?, Action::Resign);
+        assert_eq!(rt.block_on(ai.act(&g))?, Action::Resign);
     }
 }
