@@ -31,6 +31,9 @@ pgn-reader = "0.20.0"
 proptest = "1.0.0"
 test-strategy = "0.2.0"
 
+[profile.release]
+lto = "thin"
+
 [[bench]]
 name = "negamax"
 harness = false
