@@ -60,13 +60,6 @@ impl From<San> for sm::san::SanPlus {
     }
 }
 
-#[doc(hidden)]
-impl AsRef<sm::san::SanPlus> for San {
-    fn as_ref(&self) -> &sm::san::SanPlus {
-        &self.0
-    }
-}
-
 #[cfg(test)]
 mod test {
     use super::*;
