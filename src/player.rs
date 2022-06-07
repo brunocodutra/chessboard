@@ -1,4 +1,4 @@
-use crate::{Action, Game, Play, Remote, RemoteConfig, Setup, Strategy, StrategyConfig};
+use crate::{Act, Action, Game, Remote, RemoteConfig, Setup, Strategy, StrategyConfig};
 use anyhow::Error as Anyhow;
 use async_trait::async_trait;
 use derive_more::{DebugCustom, Display, Error, From};
@@ -17,11 +17,11 @@ pub use uci::*;
 /// The reason why [`Player`] failed to perform an action.
 #[derive(Debug, Display, Error, From)]
 pub enum PlayerError {
-    Ai(<Ai<Strategy> as Play>::Error),
-    Cli(<Cli<Remote> as Play>::Error),
-    Uci(<Uci<Remote> as Play>::Error),
+    Ai(<Ai<Strategy> as Act>::Error),
+    Cli(<Cli<Remote> as Act>::Error),
+    Uci(<Uci<Remote> as Act>::Error),
     #[cfg(test)]
-    Mock(#[error(not(source))] <crate::MockPlay as Play>::Error),
+    Mock(#[error(not(source))] <crate::MockAct as Act>::Error),
 }
 
 /// A generic player.
@@ -34,20 +34,20 @@ pub enum Player {
     #[debug(fmt = "{:?}", _0)]
     Uci(Uci<Remote>),
     #[cfg(test)]
-    Mock(crate::MockPlay),
+    Mock(crate::MockAct),
 }
 
 #[async_trait]
-impl Play for Player {
+impl Act for Player {
     type Error = PlayerError;
 
-    async fn play(&mut self, game: &Game) -> Result<Action, Self::Error> {
+    async fn act(&mut self, game: &Game) -> Result<Action, Self::Error> {
         match self {
-            Player::Ai(p) => Ok(p.play(game).await?),
-            Player::Cli(p) => Ok(p.play(game).await?),
-            Player::Uci(p) => Ok(p.play(game).await?),
+            Player::Ai(p) => Ok(p.act(game).await?),
+            Player::Cli(p) => Ok(p.act(game).await?),
+            Player::Uci(p) => Ok(p.act(game).await?),
             #[cfg(test)]
-            Player::Mock(p) => Ok(p.play(game).await?),
+            Player::Mock(p) => Ok(p.act(game).await?),
         }
     }
 }
@@ -88,7 +88,7 @@ impl Setup for PlayerConfig {
             PlayerConfig::Cli(cfg) => Ok(Cli::new(cfg.setup().await?).into()),
             PlayerConfig::Uci(cfg) => Ok(Uci::init(cfg.setup().await?).await?.into()),
             #[cfg(test)]
-            PlayerConfig::Mock() => Ok(crate::MockPlay::new().into()),
+            PlayerConfig::Mock() => Ok(crate::MockAct::new().into()),
         }
     }
 }
@@ -96,7 +96,7 @@ impl Setup for PlayerConfig {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{MockIo, MockPlay, MockSearch};
+    use crate::{MockAct, MockIo, MockSearch};
     use std::mem::discriminant;
     use test_strategy::proptest;
     use tokio::runtime;
@@ -161,7 +161,7 @@ mod tests {
         let rt = runtime::Builder::new_multi_thread().build()?;
 
         assert_eq!(
-            discriminant(&Player::Mock(MockPlay::new())),
+            discriminant(&Player::Mock(MockAct::new())),
             discriminant(&rt.block_on(PlayerConfig::Mock().setup()).unwrap())
         );
     }

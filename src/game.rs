@@ -1,4 +1,4 @@
-use crate::{Action, Color, GameReport, IllegalAction, Outcome, Play, Position, San};
+use crate::{Act, Action, Color, GameReport, IllegalAction, Outcome, Position, San};
 use anyhow::Context;
 use derive_more::{Display, Error};
 use shakmaty as sm;
@@ -95,7 +95,7 @@ impl Game {
 
     /// Challenge two players for a game of chess.
     #[instrument(level = "trace", err, ret, skip(white, black))]
-    pub async fn run<W: Play, B: Play>(
+    pub async fn run<W: Act, B: Act>(
         &mut self,
         mut white: W,
         mut black: B,
@@ -111,8 +111,8 @@ impl Game {
 
                     use GameInterrupted::*;
                     let action = match turn {
-                        Color::White => white.play(self).await.map_err(White)?,
-                        Color::Black => black.play(self).await.map_err(Black)?,
+                        Color::White => white.act(self).await.map_err(White)?,
+                        Color::Black => black.act(self).await.map_err(Black)?,
                     };
 
                     info!(position = %self.position, player = %turn, %action);
@@ -130,7 +130,7 @@ impl Game {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{MockPlay, Move};
+    use crate::{MockAct, Move};
     use proptest::{prop_assume, sample::select};
     use test_strategy::proptest;
     use tokio::runtime;
@@ -209,8 +209,8 @@ mod tests {
     fn game_ends_once_an_outcome_is_reached(o: Outcome, #[any(Some(#o))] mut g: Game) {
         let rt = runtime::Builder::new_multi_thread().build()?;
 
-        let w = MockPlay::new();
-        let b = MockPlay::new();
+        let w = MockAct::new();
+        let b = MockAct::new();
 
         assert_eq!(rt.block_on(g.run(w, b)).ok().map(|r| r.outcome), Some(o));
     }
@@ -227,16 +227,16 @@ mod tests {
         let turn = g.position.turn();
         let san = g.position.clone().play(m)?;
 
-        let mut w = MockPlay::new();
-        let mut b = MockPlay::new();
+        let mut w = MockAct::new();
+        let mut b = MockAct::new();
 
         let (p, q) = match turn {
             Color::White => (&mut w, &mut b),
             Color::Black => (&mut b, &mut w),
         };
 
-        p.expect_play().return_const(Ok(Action::Move(m)));
-        q.expect_play().return_const(Ok(Action::Resign));
+        p.expect_act().return_const(Ok(Action::Move(m)));
+        q.expect_act().return_const(Ok(Action::Resign));
 
         let report = rt.block_on(g.run(w, b));
 
@@ -250,15 +250,15 @@ mod tests {
 
         let turn = g.position.turn();
 
-        let mut w = MockPlay::new();
-        let mut b = MockPlay::new();
+        let mut w = MockAct::new();
+        let mut b = MockAct::new();
 
         let p = match turn {
             Color::White => &mut w,
             Color::Black => &mut b,
         };
 
-        p.expect_play().return_const(Ok(Action::Resign));
+        p.expect_act().return_const(Ok(Action::Resign));
 
         assert_eq!(
             rt.block_on(g.run(w, b)).map(|r| r.outcome),
@@ -275,15 +275,15 @@ mod tests {
 
         let turn = g.position.turn();
 
-        let mut w = MockPlay::new();
-        let mut b = MockPlay::new();
+        let mut w = MockAct::new();
+        let mut b = MockAct::new();
 
         let p = match turn {
             Color::White => &mut w,
             Color::Black => &mut b,
         };
 
-        p.expect_play()
+        p.expect_act()
             .return_const(Ok(a))
             .return_const(Ok(Action::Resign));
 
@@ -299,15 +299,15 @@ mod tests {
 
         let turn = g.position.turn();
 
-        let mut w = MockPlay::new();
-        let mut b = MockPlay::new();
+        let mut w = MockAct::new();
+        let mut b = MockAct::new();
 
         let p = match turn {
             Color::White => &mut w,
             Color::Black => &mut b,
         };
 
-        p.expect_play().return_const(Err(e.clone()));
+        p.expect_act().return_const(Err(e.clone()));
 
         assert_eq!(
             rt.block_on(g.run(w, b)),

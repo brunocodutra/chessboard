@@ -1,3 +1,4 @@
+mod act;
 mod action;
 mod color;
 mod eval;
@@ -8,7 +9,6 @@ mod io;
 mod r#move;
 mod outcome;
 mod piece;
-mod play;
 mod position;
 mod promotion;
 mod rank;
@@ -19,6 +19,7 @@ mod search;
 mod setup;
 mod square;
 
+pub use crate::act::*;
 pub use crate::action::*;
 pub use crate::color::*;
 pub use crate::eval::*;
@@ -28,7 +29,6 @@ pub use crate::game::*;
 pub use crate::io::*;
 pub use crate::outcome::*;
 pub use crate::piece::*;
-pub use crate::play::*;
 pub use crate::position::*;
 pub use crate::promotion::*;
 pub use crate::r#move::*;

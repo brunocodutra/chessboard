@@ -1,4 +1,4 @@
-use crate::{Action, Game, Io, Play};
+use crate::{Act, Action, Game, Io};
 use anyhow::{Context, Error as Anyhow};
 use async_trait::async_trait;
 use derive_more::{Display, Error, From};
@@ -76,12 +76,12 @@ impl<T: Io + Debug> Drop for Uci<T> {
 }
 
 #[async_trait]
-impl<T: Io + Debug + Send> Play for Uci<T> {
+impl<T: Io + Debug + Send> Act for Uci<T> {
     type Error = UciError;
 
     /// Request an action from the CLI server.
     #[instrument(level = "trace", err, ret)]
-    async fn play(&mut self, game: &Game) -> Result<Action, Self::Error> {
+    async fn act(&mut self, game: &Game) -> Result<Action, Self::Error> {
         let position = UciMessage::Position {
             startpos: false,
             fen: Some(UciFen(game.position().to_string())),
@@ -335,7 +335,7 @@ mod tests {
             .returning(move || Ok(UciMessage::best_move(m.into()).to_string()));
 
         let mut uci = Uci { io };
-        assert_eq!(rt.block_on(uci.play(&g))?, Action::Move(m));
+        assert_eq!(rt.block_on(uci.act(&g))?, Action::Move(m));
     }
 
     #[proptest]
@@ -359,7 +359,7 @@ mod tests {
             .returning(move || Ok(UciMessage::best_move(m.into()).to_string()));
 
         let mut uci = Uci { io };
-        assert_eq!(rt.block_on(uci.play(&g))?, Action::Move(m));
+        assert_eq!(rt.block_on(uci.act(&g))?, Action::Move(m));
     }
 
     #[proptest]
@@ -386,7 +386,7 @@ mod tests {
             .returning(move || Ok(UciMessage::best_move(m.into()).to_string()));
 
         let mut uci = Uci { io };
-        assert_eq!(rt.block_on(uci.play(&g))?, Action::Move(m));
+        assert_eq!(rt.block_on(uci.act(&g))?, Action::Move(m));
     }
 
     #[proptest]
@@ -402,7 +402,7 @@ mod tests {
 
         let mut uci = Uci { io };
         assert_eq!(
-            rt.block_on(uci.play(&g)).map_err(|UciError(e)| e.kind()),
+            rt.block_on(uci.act(&g)).map_err(|UciError(e)| e.kind()),
             Err(kind)
         );
     }
@@ -420,7 +420,7 @@ mod tests {
 
         let mut uci = Uci { io };
         assert_eq!(
-            rt.block_on(uci.play(&g)).map_err(|UciError(e)| e.kind()),
+            rt.block_on(uci.act(&g)).map_err(|UciError(e)| e.kind()),
             Err(kind)
         );
     }
@@ -438,7 +438,7 @@ mod tests {
 
         let mut uci = Uci { io };
         assert_eq!(
-            rt.block_on(uci.play(&g)).map_err(|UciError(e)| e.kind()),
+            rt.block_on(uci.act(&g)).map_err(|UciError(e)| e.kind()),
             Err(kind)
         );
     }
