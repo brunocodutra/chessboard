@@ -25,7 +25,7 @@ pub enum Engine {
 }
 
 impl Eval for Engine {
-    fn eval(&self, game: &Game) -> i32 {
+    fn eval(&self, game: &Game) -> i16 {
         match self {
             Engine::Random(e) => e.eval(game),
             Engine::Heuristic(e) => e.eval(game),

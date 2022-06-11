@@ -11,11 +11,11 @@ impl Heuristic {
 }
 
 impl Eval for Heuristic {
-    fn eval(&self, game: &Game) -> i32 {
+    fn eval(&self, game: &Game) -> i16 {
         match game.outcome() {
             Some(o) => match o.winner() {
-                Some(w) if w == game.position().turn() => i32::MAX,
-                Some(_) => i32::MIN,
+                Some(w) if w == game.position().turn() => i16::MAX,
+                Some(_) => i16::MIN,
                 None => 0,
             },
 
@@ -32,7 +32,7 @@ impl Eval for Heuristic {
                 ]
                 .into_iter()
                 .map(|(r, s)| (Piece(pos.turn(), r), Piece(!pos.turn(), r), s))
-                .map(|(a, b, s)| (pos.pieces(a).len() as i32 - pos.pieces(b).len() as i32) * s)
+                .map(|(a, b, s)| (pos.pieces(a).len() as i16 - pos.pieces(b).len() as i16) * s)
                 .sum()
             }
         }
@@ -66,7 +66,7 @@ mod tests {
         #[filter(#_o.winner() != Some(#g.position().turn()))]
         g: Game,
     ) {
-        assert_eq!(Heuristic::new().eval(&g), i32::MIN);
+        assert_eq!(Heuristic::new().eval(&g), i16::MIN);
     }
 
     #[proptest]
@@ -76,6 +76,6 @@ mod tests {
         #[filter(#_o.winner() == Some(#g.position().turn()))]
         g: Game,
     ) {
-        assert_eq!(Heuristic::new().eval(&g), i32::MAX);
+        assert_eq!(Heuristic::new().eval(&g), i16::MAX);
     }
 }
