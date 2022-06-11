@@ -2,7 +2,7 @@ use crate::{Action, Eval, Game, Search, SearchControl};
 use derive_more::{Constructor, From};
 use rayon::prelude::*;
 use std::fmt::Debug;
-use std::sync::atomic::{AtomicI32, Ordering};
+use std::sync::atomic::{AtomicI16, Ordering};
 
 #[derive(Debug, Clone, From, Constructor)]
 pub struct Negamax<E: Eval + Send + Sync> {
@@ -12,14 +12,14 @@ pub struct Negamax<E: Eval + Send + Sync> {
 impl<E: Eval + Send + Sync> Negamax<E> {
     const DEPTH: u32 = 5;
 
-    fn negamax(&self, game: &Game, depth: u32, alpha: i32, beta: i32) -> (Option<Action>, i32) {
+    fn negamax(&self, game: &Game, depth: u32, alpha: i16, beta: i16) -> (Option<Action>, i16) {
         debug_assert!(alpha < beta);
 
         if depth == 0 || game.outcome().is_some() {
             return (None, self.engine.eval(game));
         }
 
-        let cutoff = AtomicI32::new(alpha);
+        let cutoff = AtomicI16::new(alpha);
 
         game.actions()
             .par_bridge()
@@ -53,7 +53,7 @@ impl<E: Eval + Send + Sync> Negamax<E> {
 impl<E: Eval + Send + Sync> Search for Negamax<E> {
     fn search(&self, game: &Game, ctrl: SearchControl) -> Option<Action> {
         let max_depth = ctrl.max_depth.unwrap_or(Self::DEPTH);
-        let (best, _) = self.negamax(game, max_depth, i32::MIN, i32::MAX);
+        let (best, _) = self.negamax(game, max_depth, i16::MIN, i16::MAX);
         best
     }
 }
@@ -69,12 +69,12 @@ mod tests {
     #[proptest]
     #[should_panic]
     #[cfg(debug_assertions)]
-    fn negamax_panics_if_alpha_not_smaller_than_beta(g: Game, a: i32, b: i32) {
+    fn negamax_panics_if_alpha_not_smaller_than_beta(g: Game, a: i16, b: i16) {
         Negamax::new(MockEval::new()).negamax(&g, 0, a.max(b), a.min(b));
     }
 
     #[proptest]
-    fn negamax_returns_none_if_depth_is_zero(g: Game, s: i32) {
+    fn negamax_returns_none_if_depth_is_zero(g: Game, s: i16) {
         let mut engine = MockEval::new();
         engine
             .expect_eval()
@@ -83,7 +83,7 @@ mod tests {
             .return_const(s);
 
         let strategy = Negamax::new(engine);
-        assert_eq!(strategy.negamax(&g, 0, i32::MIN, i32::MAX), (None, s));
+        assert_eq!(strategy.negamax(&g, 0, i16::MIN, i16::MAX), (None, s));
     }
 
     #[proptest]
@@ -91,7 +91,7 @@ mod tests {
         _o: Outcome,
         #[any(Some(#_o))] g: Game,
         d: u32,
-        s: i32,
+        s: i16,
     ) {
         let mut engine = MockEval::new();
         engine
@@ -101,7 +101,7 @@ mod tests {
             .return_const(s);
 
         let strategy = Negamax::new(engine);
-        assert_eq!(strategy.negamax(&g, d, i32::MIN, i32::MAX), (None, s));
+        assert_eq!(strategy.negamax(&g, d, i16::MIN, i16::MAX), (None, s));
     }
 
     #[proptest]
@@ -130,7 +130,7 @@ mod tests {
             .unwrap_or((None, engine.eval(&g)));
 
         let strategy = Negamax::new(engine);
-        assert_eq!(strategy.negamax(&g, 2, i32::MIN, i32::MAX), best);
+        assert_eq!(strategy.negamax(&g, 2, i16::MIN, i16::MAX), best);
     }
 
     #[proptest]
@@ -140,7 +140,7 @@ mod tests {
         let strategy = Negamax::new(engine);
         assert_eq!(
             strategy.search(&g, ctrl),
-            strategy.negamax(&g, d, i32::MIN, i32::MAX).0
+            strategy.negamax(&g, d, i16::MIN, i16::MAX).0
         );
     }
 }

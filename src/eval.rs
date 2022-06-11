@@ -6,5 +6,5 @@ pub trait Eval {
     /// Evaluates a [`Game`].
     ///
     /// Positive values favor the current side to play.
-    fn eval(&self, game: &Game) -> i32;
+    fn eval(&self, game: &Game) -> i16;
 }

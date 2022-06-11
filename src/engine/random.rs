@@ -8,10 +8,10 @@ use std::hash::{Hash, Hasher};
 pub struct Random {}
 
 impl Eval for Random {
-    fn eval(&self, game: &Game) -> i32 {
+    fn eval(&self, game: &Game) -> i16 {
         let mut hashser = DefaultHasher::new();
         game.hash(&mut hashser);
-        hashser.finish() as i32
+        hashser.finish() as i16
     }
 }
 
