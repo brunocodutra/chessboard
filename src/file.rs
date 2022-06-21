@@ -1,30 +1,17 @@
-use derive_more::{Display, Error, From};
+use derive_more::{DebugCustom, Display, Error, From};
 use shakmaty as sm;
 use std::convert::{TryFrom, TryInto};
-use std::{char::ParseCharError, iter::FusedIterator, ops::Sub, str::FromStr};
+use std::{char::ParseCharError, num::TryFromIntError, ops::Sub, str::FromStr};
+
+#[cfg(test)]
+use proptest::sample::select;
 
 /// Denotes a column on the chess board.
-#[derive(Debug, Display, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
+#[derive(DebugCustom, Display, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
 #[cfg_attr(test, derive(test_strategy::Arbitrary))]
-#[repr(u8)]
-pub enum File {
-    #[display(fmt = "a")]
-    A = b'a',
-    #[display(fmt = "b")]
-    B,
-    #[display(fmt = "c")]
-    C,
-    #[display(fmt = "d")]
-    D,
-    #[display(fmt = "e")]
-    E,
-    #[display(fmt = "f")]
-    F,
-    #[display(fmt = "g")]
-    G,
-    #[display(fmt = "h")]
-    H,
-}
+#[debug(fmt = "{}", self)]
+#[display(fmt = "{}", _0)]
+pub struct File(#[cfg_attr(test, strategy(select(sm::File::ALL.as_ref())))] sm::File);
 
 impl File {
     /// Constructs [`File`] from index.
@@ -32,27 +19,26 @@ impl File {
     /// # Panics
     ///
     /// Panics if `i` is not in the range (0..=7).
-    pub fn new(i: usize) -> Self {
+    pub fn from_index(i: u8) -> Self {
         i.try_into().unwrap()
     }
 
     /// This files's index in the range (0..=7).
-    pub fn index(&self) -> usize {
+    pub fn index(&self) -> u8 {
         (*self).into()
     }
 
     /// Returns an iterator over [`File`]s ordered by [index][`File::index`].
-    pub fn iter() -> impl DoubleEndedIterator<Item = Self> + ExactSizeIterator + FusedIterator {
-        (0usize..8).map(File::new)
+    pub fn iter() -> impl DoubleEndedIterator<Item = Self> + ExactSizeIterator {
+        sm::File::ALL.into_iter().map(File)
     }
 }
 
-/// The number of squares between two [`File`]s.
 impl Sub for File {
-    type Output = isize;
+    type Output = i8;
 
     fn sub(self, rhs: Self) -> Self::Output {
-        self as isize - rhs as isize
+        self.index() as i8 - rhs.index() as i8
     }
 }
 
@@ -61,7 +47,7 @@ impl Sub for File {
 #[display(fmt = "failed to parse file")]
 pub enum ParseFileError {
     ParseCharError(ParseCharError),
-    OutOfRange(FileOutOfRange),
+    InvalidFile(InvalidFile),
 }
 
 impl FromStr for File {
@@ -74,64 +60,59 @@ impl FromStr for File {
 
 /// The reason why converting [`File`] from index failed.
 #[derive(Debug, Display, Clone, Eq, PartialEq, Error)]
-#[display(
-    fmt = "expected lower case letter in the range `({}..={})`",
-    File::A,
-    File::H
-)]
-pub struct FileOutOfRange;
+#[display(fmt = "expected lower case letter in the range `('a'..='h')`")]
+pub struct InvalidFile;
 
 impl TryFrom<char> for File {
-    type Error = FileOutOfRange;
+    type Error = InvalidFile;
 
     fn try_from(c: char) -> Result<Self, Self::Error> {
-        Self::iter()
-            .find(|&f| char::from(f) == c)
-            .ok_or(FileOutOfRange)
+        sm::File::from_char(c).map(File).ok_or(InvalidFile)
     }
 }
 
 impl From<File> for char {
     fn from(f: File) -> char {
-        (f as u8).into()
+        f.0.char()
     }
 }
 
 /// The reason why converting [`File`] from index failed.
 #[derive(Debug, Display, Clone, Eq, PartialEq, Error)]
 #[display(fmt = "expected integer in the range `(0..=7)`")]
-pub struct FileIndexOutOfRange;
+pub struct FileOutOfRange;
 
-impl TryFrom<usize> for File {
-    type Error = FileIndexOutOfRange;
-
-    fn try_from(i: usize) -> Result<Self, Self::Error> {
-        use File::*;
-
-        [A, B, C, D, E, F, G, H]
-            .get(i)
-            .copied()
-            .ok_or(FileIndexOutOfRange)
+impl From<TryFromIntError> for FileOutOfRange {
+    fn from(_: TryFromIntError) -> Self {
+        FileOutOfRange
     }
 }
 
-impl From<File> for usize {
-    fn from(f: File) -> usize {
-        f as usize - File::A as usize
+impl TryFrom<u8> for File {
+    type Error = FileOutOfRange;
+
+    fn try_from(i: u8) -> Result<Self, Self::Error> {
+        Ok(File(i.try_into()?))
+    }
+}
+
+impl From<File> for u8 {
+    fn from(f: File) -> u8 {
+        f.0.into()
     }
 }
 
 #[doc(hidden)]
 impl From<sm::File> for File {
     fn from(f: sm::File) -> Self {
-        File::new(usize::from(f))
+        File(f)
     }
 }
 
 #[doc(hidden)]
 impl From<File> for sm::File {
     fn from(f: File) -> Self {
-        sm::File::new(f.index() as u32)
+        f.0
     }
 }
 
@@ -142,19 +123,17 @@ mod tests {
 
     #[proptest]
     fn iter_returns_iterator_over_files_in_order() {
-        use File::*;
         assert_eq!(
             File::iter().collect::<Vec<_>>(),
-            vec![A, B, C, D, E, F, G, H]
+            (0..=7).map(File::from_index).collect::<Vec<_>>()
         );
     }
 
     #[proptest]
     fn iter_returns_double_ended_iterator() {
-        use File::*;
         assert_eq!(
             File::iter().rev().collect::<Vec<_>>(),
-            vec![H, G, F, E, D, C, B, A]
+            (0..=7).rev().map(File::from_index).collect::<Vec<_>>()
         );
     }
 
@@ -178,7 +157,7 @@ mod tests {
     fn parsing_file_fails_for_upper_case_letter(#[strategy("[A-Z]")] s: String) {
         assert_eq!(
             s.parse::<File>(),
-            Err(ParseFileError::OutOfRange(FileOutOfRange))
+            Err(ParseFileError::InvalidFile(InvalidFile))
         );
     }
 
@@ -191,9 +170,7 @@ mod tests {
     }
 
     #[proptest]
-    fn parsing_file_fails_for_char_other_than_lower_case_letter_between_a_and_h(
-        #[filter(!('a'..='h').contains(&#c))] c: char,
-    ) {
+    fn parsing_file_fails_for_letters_out_of_range(#[filter(!('a'..='h').contains(&#c))] c: char) {
         assert_eq!(
             c.to_string().parse::<File>().err(),
             File::try_from(c).err().map(Into::into)
@@ -201,13 +178,15 @@ mod tests {
     }
 
     #[proptest]
-    fn file_can_be_converted_into_char(f: File) {
+    fn file_can_be_converted_to_char(f: File) {
         assert_eq!(char::from(f).try_into(), Ok(f));
     }
 
     #[proptest]
-    fn converting_file_from_char_out_of_range_fails(#[strategy(b'i'..)] c: u8) {
-        assert_eq!(File::try_from(char::from(c)), Err(FileOutOfRange));
+    fn converting_file_from_letter_out_of_range_fails(
+        #[filter(!('a'..='h').contains(&#c))] c: char,
+    ) {
+        assert_eq!(File::try_from(c), Err(InvalidFile));
     }
 
     #[proptest]
@@ -217,23 +196,23 @@ mod tests {
 
     #[proptest]
     fn subtracting_files_gives_distance(a: File, b: File) {
-        assert_eq!(a - b, a.index() as isize - b.index() as isize);
+        assert_eq!(a - b, a.index() as i8 - b.index() as i8);
     }
 
     #[proptest]
-    fn new_constructs_file_by_index(#[strategy(0usize..=7)] i: usize) {
-        assert_eq!(File::new(i).index(), i);
+    fn from_index_constructs_file_by_index(#[strategy(0u8..8)] i: u8) {
+        assert_eq!(File::from_index(i).index(), i);
     }
 
     #[proptest]
     #[should_panic]
-    fn new_panics_if_index_out_of_range(#[strategy(8usize..)] i: usize) {
-        File::new(i);
+    fn from_index_panics_if_index_out_of_range(#[strategy(8u8..)] i: u8) {
+        File::from_index(i);
     }
 
     #[proptest]
-    fn converting_file_from_index_out_of_range_fails(#[strategy(8usize..)] i: usize) {
-        assert_eq!(File::try_from(i), Err(FileIndexOutOfRange));
+    fn converting_file_from_index_out_of_range_fails(#[strategy(8u8..)] i: u8) {
+        assert_eq!(File::try_from(i), Err(FileOutOfRange));
     }
 
     #[proptest]
