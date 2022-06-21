@@ -109,7 +109,7 @@ impl<'a> Display for Board<'a> {
             write!(f, " {} |", rank)?;
 
             for file in File::iter() {
-                match self[Square(file, rank)] {
+                match self[Square::new(file, rank)] {
                     Some(piece) => write!(f, " {:#} |", piece)?,
                     None => write!(f, "   |")?,
                 }

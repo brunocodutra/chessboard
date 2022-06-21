@@ -1,80 +1,80 @@
 use crate::{File, ParseFileError, ParseRankError, Rank};
-use derive_more::{Display, Error, From};
+use derive_more::{DebugCustom, Display, Error, From};
 use shakmaty as sm;
 use std::convert::{TryFrom, TryInto};
-use std::{cmp::Ordering, iter::FusedIterator, str::FromStr};
+use std::{num::TryFromIntError, str::FromStr};
 use vampirc_uci::UciSquare;
 
+#[cfg(test)]
+use proptest::sample::select;
+
 /// Denotes a square on the chess board.
-#[derive(Debug, Display, Copy, Clone, Eq, PartialEq, Hash)]
+#[derive(DebugCustom, Display, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
 #[cfg_attr(test, derive(test_strategy::Arbitrary))]
-#[display(fmt = "{}{}", _0, _1)]
-pub struct Square(pub File, pub Rank);
+#[debug(fmt = "{}", self)]
+#[display(fmt = "{}{}", "self.file()", "self.rank()")]
+pub struct Square(#[cfg_attr(test, strategy(select(sm::Square::ALL.as_ref())))] sm::Square);
 
 impl Square {
+    /// Constructs [`Square`] from a pair of [`File`] and [`Rank`].
+    pub fn new(f: File, r: Rank) -> Self {
+        Square(sm::Square::from_coords(f.into(), r.into()))
+    }
+
     /// Constructs [`Square`] from index.
     ///
     /// # Panics
     ///
-    /// Panics if `i` is not in the range (0..=63).
-    pub fn new(i: usize) -> Self {
+    /// Panics if `i` is not in the range (0..64).
+    pub fn from_index(i: u8) -> Self {
         i.try_into().unwrap()
     }
 
-    /// This squares's index in the range (0..=63).
+    /// This squares's index in the range (0..64).
     ///
     /// Squares are ordered from a1 = 0 to h8 = 63, files then ranks, so b1 = 2 and a2 = 8.
-    pub fn index(&self) -> usize {
+    pub fn index(&self) -> u8 {
         (*self).into()
     }
 
     /// Returns an iterator over [`Square`]s ordered by [index][`Square::index`].
-    pub fn iter() -> impl DoubleEndedIterator<Item = Self> + ExactSizeIterator + FusedIterator {
-        (0usize..64).map(Square::new)
+    pub fn iter() -> impl DoubleEndedIterator<Item = Self> + ExactSizeIterator {
+        sm::Square::ALL.into_iter().map(Square)
     }
 
     /// This square's [`File`].
     pub fn file(&self) -> File {
-        self.0
+        self.0.file().into()
     }
 
     /// This square's [`Rank`].
     pub fn rank(&self) -> Rank {
-        self.1
-    }
-}
-
-impl Ord for Square {
-    fn cmp(&self, other: &Self) -> Ordering {
-        self.index().cmp(&other.index())
-    }
-}
-
-impl PartialOrd for Square {
-    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        self.index().partial_cmp(&other.index())
+        self.0.rank().into()
     }
 }
 
 /// The reason why converting [`Square`] from index failed.
 #[derive(Debug, Display, Clone, Eq, PartialEq, Error)]
-#[display(fmt = "expected integer in the range `(0..=63)`")]
-pub struct SquareIndexOutOfRange;
+#[display(fmt = "expected integer in the range `(0..64)`")]
+pub struct SquareOutOfRange;
 
-impl TryFrom<usize> for Square {
-    type Error = SquareIndexOutOfRange;
-
-    fn try_from(i: usize) -> Result<Self, Self::Error> {
-        Ok(Square(
-            (i % 8).try_into().map_err(|_| SquareIndexOutOfRange)?,
-            (i / 8).try_into().map_err(|_| SquareIndexOutOfRange)?,
-        ))
+impl From<TryFromIntError> for SquareOutOfRange {
+    fn from(_: TryFromIntError) -> Self {
+        SquareOutOfRange
     }
 }
 
-impl From<Square> for usize {
-    fn from(f: Square) -> usize {
-        f.rank().index() * 8 + f.file().index()
+impl TryFrom<u8> for Square {
+    type Error = SquareOutOfRange;
+
+    fn try_from(i: u8) -> Result<Self, Self::Error> {
+        Ok(Square(i.try_into()?))
+    }
+}
+
+impl From<Square> for u8 {
+    fn from(s: Square) -> u8 {
+        s.0.into()
     }
 }
 
@@ -91,7 +91,7 @@ impl FromStr for Square {
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let i = s.char_indices().nth(1).map_or_else(|| s.len(), |(i, _)| i);
-        Ok(Square(s[..i].parse()?, s[i..].parse()?))
+        Ok(Square::new(s[..i].parse()?, s[i..].parse()?))
     }
 }
 
@@ -100,7 +100,7 @@ impl From<Square> for UciSquare {
     fn from(s: Square) -> Self {
         UciSquare {
             file: s.file().into(),
-            rank: s.rank() as u8,
+            rank: s.rank().index() + 1,
         }
     }
 }
@@ -108,24 +108,21 @@ impl From<Square> for UciSquare {
 #[doc(hidden)]
 impl From<UciSquare> for Square {
     fn from(s: UciSquare) -> Self {
-        Square(
-            s.file.try_into().unwrap(),
-            (s.rank as u32).try_into().unwrap(),
-        )
+        Square::new(s.file.try_into().unwrap(), (s.rank - 1).try_into().unwrap())
     }
 }
 
 #[doc(hidden)]
 impl From<sm::Square> for Square {
     fn from(s: sm::Square) -> Self {
-        Square::new(usize::from(s))
+        Square(s)
     }
 }
 
 #[doc(hidden)]
 impl From<Square> for sm::Square {
     fn from(s: Square) -> Self {
-        sm::Square::new(s.index() as u32)
+        s.0
     }
 }
 
@@ -135,22 +132,24 @@ mod tests {
     use test_strategy::proptest;
 
     #[proptest]
-    fn iter_returns_iterator_over_files_in_order() {
-        let squares: Vec<_> = Rank::iter()
-            .flat_map(|r| File::iter().map(move |f| Square(f, r)))
-            .collect();
+    fn new_constructs_square_from_pair_of_file_and_rank(s: Square) {
+        assert_eq!(Square::new(s.file(), s.rank()), s);
+    }
 
-        assert_eq!(Square::iter().collect::<Vec<_>>(), squares);
+    #[proptest]
+    fn iter_returns_iterator_over_files_in_order() {
+        assert_eq!(
+            Square::iter().collect::<Vec<_>>(),
+            (0..=63).map(Square::from_index).collect::<Vec<_>>()
+        );
     }
 
     #[proptest]
     fn iter_returns_double_ended_iterator() {
-        let squares: Vec<_> = Rank::iter()
-            .flat_map(|r| File::iter().map(move |f| Square(f, r)))
-            .rev()
-            .collect();
-
-        assert_eq!(Square::iter().rev().collect::<Vec<_>>(), squares);
+        assert_eq!(
+            Square::iter().rev().collect::<Vec<_>>(),
+            (0..=63).rev().map(Square::from_index).collect::<Vec<_>>()
+        );
     }
 
     #[proptest]
@@ -187,19 +186,19 @@ mod tests {
     }
 
     #[proptest]
-    fn new_constructs_square_by_index(#[strategy(0usize..=63)] i: usize) {
-        assert_eq!(Square::new(i).index(), i);
+    fn from_index_constructs_square_by_index(#[strategy(0u8..64)] i: u8) {
+        assert_eq!(Square::from_index(i).index(), i);
     }
 
     #[proptest]
     #[should_panic]
-    fn new_panics_if_index_out_of_range(#[strategy(64usize..)] i: usize) {
-        Square::new(i);
+    fn from_index_panics_if_index_out_of_range(#[strategy(64u8..)] i: u8) {
+        Square::from_index(i);
     }
 
     #[proptest]
-    fn converting_square_from_index_out_of_range_fails(#[strategy(64usize..)] i: usize) {
-        assert_eq!(Square::try_from(i), Err(SquareIndexOutOfRange));
+    fn converting_square_from_index_out_of_range_fails(#[strategy(64u8..)] i: u8) {
+        assert_eq!(Square::try_from(i), Err(SquareOutOfRange));
     }
 
     #[proptest]
