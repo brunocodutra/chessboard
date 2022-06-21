@@ -119,7 +119,13 @@ impl From<Rank> for sm::Rank {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::mem::size_of;
     use test_strategy::proptest;
+
+    #[proptest]
+    fn rank_guarantees_zero_value_optimization() {
+        assert_eq!(size_of::<Option<Rank>>(), size_of::<Rank>());
+    }
 
     #[proptest]
     fn iter_returns_iterator_over_ranks_in_order() {
@@ -175,7 +181,9 @@ mod tests {
     }
 
     #[proptest]
-    fn converting_rank_from_digit_out_of_range_fails(#[filter(!('1'..='8').contains(&#c))] c: char) {
+    fn converting_rank_from_digit_out_of_range_fails(
+        #[filter(!('1'..='8').contains(&#c))] c: char,
+    ) {
         assert_eq!(Rank::try_from(c), Err(InvalidRank));
     }
 

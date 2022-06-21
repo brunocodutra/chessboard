@@ -129,7 +129,13 @@ impl From<Square> for sm::Square {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::mem::size_of;
     use test_strategy::proptest;
+
+    #[proptest]
+    fn square_guarantees_zero_value_optimization() {
+        assert_eq!(size_of::<Option<Square>>(), size_of::<Square>());
+    }
 
     #[proptest]
     fn new_constructs_square_from_pair_of_file_and_rank(s: Square) {

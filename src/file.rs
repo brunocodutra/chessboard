@@ -119,7 +119,13 @@ impl From<File> for sm::File {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::mem::size_of;
     use test_strategy::proptest;
+
+    #[proptest]
+    fn file_guarantees_zero_value_optimization() {
+        assert_eq!(size_of::<Option<File>>(), size_of::<File>());
+    }
 
     #[proptest]
     fn iter_returns_iterator_over_files_in_order() {

@@ -113,7 +113,13 @@ impl From<Move> for sm::uci::Uci {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::mem::size_of;
     use test_strategy::proptest;
+
+    #[proptest]
+    fn move_guarantees_zero_value_optimization() {
+        assert_eq!(size_of::<Option<Move>>(), size_of::<Move>());
+    }
 
     #[proptest]
     fn move_serializes_to_pure_coordinate_notation(m: Move) {
