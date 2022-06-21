@@ -63,7 +63,7 @@ impl Game {
             Action::Move(m) => {
                 let san = self.position.play(m)?;
 
-                self.outcome = if sm::Position::is_insufficient_material(&self.position.board) {
+                self.outcome = if sm::Position::is_insufficient_material(self.position.as_ref()) {
                     Some(Outcome::DrawByInsufficientMaterial)
                 } else if self.position.moves().len() > 0 {
                     None
@@ -81,12 +81,12 @@ impl Game {
 
                 let noop = sm::Move::Put {
                     role: sm::Role::King,
-                    to: sm::Position::our(&self.position.board, sm::Role::King)
+                    to: sm::Position::our(self.position.as_ref(), sm::Role::King)
                         .first()
                         .expect("expected king on the board"),
                 };
 
-                sm::Position::play_unchecked(&mut self.position.board, &noop);
+                sm::Position::play_unchecked(self.position.as_mut(), &noop);
 
                 Ok(San::null())
             }

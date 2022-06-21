@@ -12,16 +12,16 @@ use proptest::{collection::hash_map, prelude::*};
 #[derive(DebugCustom, Display, Default, Clone, Eq, PartialEq, Hash)]
 #[cfg_attr(test, derive(test_strategy::Arbitrary))]
 #[debug(fmt = "Fen(\"{}\")", self)]
-#[display(fmt = "{}", "setup")]
-pub struct Fen {
+#[display(fmt = "{}", _0)]
+pub struct Fen(
     #[cfg_attr(test, strategy(
         hash_map(any::<crate::Square>().prop_map_into(), any::<crate::Piece>().prop_map_into(), 0..=64)
             .prop_map(|setup| setup.into_iter().collect())
             .prop_map(|board| sm::fen::Fen(sm::Setup { board, ..Default::default() }))
             .prop_filter_map("invalid fen", |fen| fen.to_string().parse().ok())
     ))]
-    setup: sm::fen::Fen,
-}
+    sm::fen::Fen,
+);
 
 /// The reason why the string is not valid FEN.
 #[derive(Debug, Display, Clone, Eq, PartialEq, Error)]
@@ -62,7 +62,7 @@ impl FromStr for Fen {
     type Err = ParseFenError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        Ok(Fen { setup: s.parse()? })
+        Ok(Fen(s.parse()?))
     }
 }
 
@@ -75,16 +75,14 @@ impl From<Position> for Fen {
 #[doc(hidden)]
 impl From<sm::Setup> for Fen {
     fn from(setup: sm::Setup) -> Self {
-        Fen {
-            setup: sm::fen::Fen(setup),
-        }
+        Fen(sm::fen::Fen(setup))
     }
 }
 
 #[doc(hidden)]
 impl From<Fen> for sm::Setup {
     fn from(fen: Fen) -> Self {
-        fen.setup.into()
+        fen.0.into()
     }
 }
 
