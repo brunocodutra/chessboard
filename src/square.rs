@@ -1,7 +1,8 @@
-use crate::{File, ParseFileError, ParseRankError, Rank};
+use crate::{Binary, Bits, File, ParseFileError, ParseRankError, Rank};
+use bitvec::{field::BitField, order::Lsb0, view::BitView};
 use derive_more::{DebugCustom, Display, Error, From};
 use shakmaty as sm;
-use std::convert::{TryFrom, TryInto};
+use std::convert::{Infallible, TryFrom, TryInto};
 use std::{num::TryFromIntError, str::FromStr};
 use vampirc_uci::UciSquare;
 
@@ -50,6 +51,19 @@ impl Square {
     /// This square's [`Rank`].
     pub fn rank(&self) -> Rank {
         self.0.rank().into()
+    }
+}
+
+impl Binary for Square {
+    type Register = Bits<6, 1>;
+    type Error = Infallible;
+
+    fn encode(&self) -> Self::Register {
+        self.index().view_bits::<Lsb0>().into()
+    }
+
+    fn decode(register: Self::Register) -> Result<Self, Self::Error> {
+        Ok(Square::from_index(register.load()))
     }
 }
 
@@ -161,6 +175,16 @@ mod tests {
     #[proptest]
     fn iter_returns_iterator_of_exact_size() {
         assert_eq!(Square::iter().len(), 64);
+    }
+
+    #[proptest]
+    fn decoding_encoded_square_is_an_identity(s: Square) {
+        assert_eq!(Square::decode(s.encode()), Ok(s));
+    }
+
+    #[proptest]
+    fn decoding_square_never_fails(b: Bits<6, 1>) {
+        assert!(Square::decode(b).is_ok());
     }
 
     #[proptest]
