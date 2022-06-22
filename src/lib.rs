@@ -1,5 +1,6 @@
 mod act;
 mod action;
+mod binary;
 mod bits;
 mod color;
 mod eval;
@@ -22,6 +23,7 @@ mod square;
 
 pub use crate::act::*;
 pub use crate::action::*;
+pub use crate::binary::*;
 pub use crate::bits::*;
 pub use crate::color::*;
 pub use crate::eval::*;
