@@ -1,3 +1,5 @@
+use crate::{Binary, Bits};
+use bitvec::{field::BitField, order::Lsb0, view::BitView};
 use derive_more::{Display, Error};
 use shakmaty as sm;
 use std::str::FromStr;
@@ -7,6 +9,8 @@ use vampirc_uci::UciPiece;
 #[derive(Debug, Display, Copy, Clone, Eq, PartialEq, Hash)]
 #[cfg_attr(test, derive(test_strategy::Arbitrary))]
 pub enum Promotion {
+    #[display(fmt = "")]
+    None,
     #[display(fmt = "n")]
     Knight,
     #[display(fmt = "b")]
@@ -15,8 +19,29 @@ pub enum Promotion {
     Rook,
     #[display(fmt = "q")]
     Queen,
-    #[display(fmt = "")]
-    None,
+}
+
+/// The reason why decoding [`Promotion`] from binary failed.
+#[derive(Debug, Display, Clone, Eq, PartialEq, Hash, Error)]
+#[cfg_attr(test, derive(test_strategy::Arbitrary))]
+#[display(fmt = "`{}` is not a valid promotion", _0)]
+pub struct DecodePromotionError(#[error(not(source))] Bits<3, 1>);
+
+impl Binary for Promotion {
+    type Register = Bits<3, 1>;
+    type Error = DecodePromotionError;
+
+    fn encode(&self) -> Self::Register {
+        (*self as u8).view_bits::<Lsb0>().into()
+    }
+
+    fn decode(register: Self::Register) -> Result<Self, Self::Error> {
+        use Promotion::*;
+        [None, Knight, Bishop, Rook, Queen]
+            .into_iter()
+            .nth(register.load())
+            .ok_or(DecodePromotionError(register))
+    }
 }
 
 /// The reason parsing [`Promotion`] failed.
@@ -103,6 +128,16 @@ impl From<Promotion> for Option<sm::Role> {
 mod tests {
     use super::*;
     use test_strategy::proptest;
+
+    #[proptest]
+    fn decoding_encoded_promotion_is_an_identity(p: Promotion) {
+        assert_eq!(Promotion::decode(p.encode()), Ok(p));
+    }
+
+    #[proptest]
+    fn decoding_promotion_fails_for_invalid_register(#[any(5)] b: Bits<3, 1>) {
+        assert_eq!(Promotion::decode(b), Err(DecodePromotionError(b)));
+    }
 
     #[proptest]
     fn parsing_printed_promotion_is_an_identity(p: Promotion) {
