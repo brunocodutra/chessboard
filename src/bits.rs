@@ -5,6 +5,11 @@ use std::ops::{Deref, DerefMut};
 #[cfg(test)]
 use proptest::prelude::*;
 
+/// Trait for fixed width collection of bits.
+pub trait Register {
+    const WIDTH: usize;
+}
+
 /// A fixed width collection of bits.
 ///
 /// # Warning
@@ -26,6 +31,10 @@ pub struct Bits<const W: usize, const C: usize>(
     })))]
     BitArray<[u8; C]>,
 );
+
+impl<const W: usize, const C: usize> Register for Bits<W, C> {
+    const WIDTH: usize = W;
+}
 
 /// Constructs [`Bits`] from any [`BitSlice`].
 ///
