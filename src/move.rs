@@ -1,3 +1,4 @@
+use crate::{Binary, Bits, Register};
 use crate::{ParsePromotionError, ParseSquareError, Position, Promotion, Square};
 use derive_more::{Display, Error, From};
 use shakmaty as sm;
@@ -32,6 +33,42 @@ impl Move {
 #[cfg_attr(test, derive(test_strategy::Arbitrary))]
 #[display(fmt = "move `{}` is illegal in position `{}`", _0, _1)]
 pub struct IllegalMove(pub Move, pub Position);
+
+/// The reason why decoding [`Move`] from binary failed.
+#[derive(Debug, Display, Clone, Eq, PartialEq, Hash, Error)]
+#[cfg_attr(test, derive(test_strategy::Arbitrary))]
+#[display(fmt = "`{}` is not a valid Move", _0)]
+pub struct DecodeMoveError(#[error(not(source))] Bits<15, 2>);
+
+impl Binary for Move {
+    type Register = Bits<15, 2>;
+    type Error = DecodeMoveError;
+
+    fn encode(&self) -> Self::Register {
+        let mut register = Bits::default();
+        let (whence, rest) = register.split_at_mut(<Square as Binary>::Register::WIDTH);
+        let (whither, rest) = rest.split_at_mut(<Square as Binary>::Register::WIDTH);
+        let (promotion, _) = rest.split_at_mut(<Promotion as Binary>::Register::WIDTH);
+
+        whence.clone_from_bitslice(&self.whence().encode());
+        whither.clone_from_bitslice(&self.whither().encode());
+        promotion.clone_from_bitslice(&self.promotion().encode());
+
+        register
+    }
+
+    fn decode(register: Self::Register) -> Result<Self, Self::Error> {
+        let (whence, rest) = register.split_at(<Square as Binary>::Register::WIDTH);
+        let (whither, rest) = rest.split_at(<Square as Binary>::Register::WIDTH);
+        let (promotion, _) = rest.split_at(<Promotion as Binary>::Register::WIDTH);
+
+        Ok(Move(
+            Square::decode(whence.into()).map_err(|_| DecodeMoveError(register))?,
+            Square::decode(whither.into()).map_err(|_| DecodeMoveError(register))?,
+            Promotion::decode(promotion.into()).map_err(|_| DecodeMoveError(register))?,
+        ))
+    }
+}
 
 /// The reason why parsing [`Move`] failed.
 #[derive(Debug, Display, Clone, Eq, PartialEq, Error, From)]
@@ -119,6 +156,16 @@ mod tests {
     #[proptest]
     fn move_guarantees_zero_value_optimization() {
         assert_eq!(size_of::<Option<Move>>(), size_of::<Move>());
+    }
+
+    #[proptest]
+    fn decoding_encoded_move_is_an_identity(m: Move) {
+        assert_eq!(Move::decode(m.encode()), Ok(m));
+    }
+
+    #[proptest]
+    fn decoding_move_fails_for_invalid_register(#[any(64*64*5)] b: Bits<15, 2>) {
+        assert_eq!(Move::decode(b), Err(DecodeMoveError(b)));
     }
 
     #[proptest]
