@@ -21,7 +21,7 @@ fn bench(c: &mut Criterion) {
     let mut group = c.benchmark_group("negamax");
     let negamax = Negamax::new(Random::new());
     for d in [1, 2, 4] {
-        let ctrl = SearchControl { max_depth: Some(d) };
+        let ctrl = SearchControl { depth: Some(d) };
         group.bench_with_input(format!("depth={}", d), &game(), |b, s| {
             b.iter_batched_ref(
                 || s.new_tree(&mut runner).unwrap().current(),
