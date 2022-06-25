@@ -2,7 +2,7 @@ use crate::{Action, Game};
 
 #[derive(Debug, Default, Copy, Clone, Eq, PartialEq, Hash)]
 pub struct SearchControl {
-    pub max_depth: Option<u32>,
+    pub depth: Option<u8>,
 }
 
 /// Trait for types that implement adversarial search algorithms.

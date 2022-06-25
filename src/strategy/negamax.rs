@@ -10,12 +10,12 @@ pub struct Negamax<E: Eval + Send + Sync> {
 }
 
 impl<E: Eval + Send + Sync> Negamax<E> {
-    const DEPTH: u32 = 5;
+    const DEPTH: u8 = 5;
 
-    fn negamax(&self, game: &Game, depth: u32, alpha: i16, beta: i16) -> (Option<Action>, i16) {
+    fn negamax(&self, game: &Game, height: u8, alpha: i16, beta: i16) -> (Option<Action>, i16) {
         debug_assert!(alpha < beta);
 
-        if depth == 0 || game.outcome().is_some() {
+        if height == 0 || game.outcome().is_some() {
             return (None, self.engine.eval(game));
         }
 
@@ -35,7 +35,7 @@ impl<E: Eval + Send + Sync> Negamax<E> {
 
                 let (_, s) = self.negamax(
                     &game,
-                    depth - 1,
+                    height - 1,
                     beta.saturating_neg(),
                     alpha.saturating_neg(),
                 );
@@ -52,8 +52,8 @@ impl<E: Eval + Send + Sync> Negamax<E> {
 
 impl<E: Eval + Send + Sync> Search for Negamax<E> {
     fn search(&self, game: &Game, ctrl: SearchControl) -> Option<Action> {
-        let max_depth = ctrl.max_depth.unwrap_or(Self::DEPTH);
-        let (best, _) = self.negamax(game, max_depth, i16::MIN, i16::MAX);
+        let depth = ctrl.depth.unwrap_or(Self::DEPTH);
+        let (best, _) = self.negamax(game, depth, i16::MIN, i16::MAX);
         best
     }
 }
@@ -90,7 +90,7 @@ mod tests {
     fn negamax_returns_none_if_game_has_ended(
         _o: Outcome,
         #[any(Some(#_o))] g: Game,
-        d: u32,
+        d: u8,
         s: i16,
     ) {
         let mut engine = MockEval::new();
@@ -134,9 +134,9 @@ mod tests {
     }
 
     #[proptest]
-    fn search_runs_negamax_with_max_depth(g: Game, #[strategy(0u32..=2)] d: u32) {
+    fn search_runs_negamax_with_max_depth(g: Game, #[strategy(0u8..=2)] d: u8) {
         let engine = Random::new();
-        let ctrl = SearchControl { max_depth: Some(d) };
+        let ctrl = SearchControl { depth: Some(d) };
         let strategy = Negamax::new(engine);
         assert_eq!(
             strategy.search(&g, ctrl),
