@@ -1,7 +1,7 @@
 use crate::{Action, Eval, Game, Search};
 use derive_more::{Display, Error, From};
 use rayon::prelude::*;
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize};
 use std::sync::atomic::{AtomicI16, Ordering};
 use std::{fmt::Debug, str::FromStr};
 
@@ -10,8 +10,19 @@ use std::{fmt::Debug, str::FromStr};
 #[display(fmt = "{}", "ron::ser::to_string(self).unwrap()")]
 #[serde(deny_unknown_fields, rename = "config", default)]
 pub struct NegamaxConfig {
-    #[cfg_attr(test, strategy(0u8..=2))]
-    pub max_depth: u8,
+    #[cfg_attr(test, strategy(0i8..=2))]
+    #[serde(deserialize_with = "deserialize_max_depth")]
+    pub max_depth: i8,
+}
+
+fn deserialize_max_depth<'de, D: Deserializer<'de>>(deserializer: D) -> Result<i8, D::Error> {
+    match i8::deserialize(deserializer)? {
+        d @ 0.. => Ok(d),
+        d => Err(serde::de::Error::invalid_value(
+            serde::de::Unexpected::Unsigned(d as u64),
+            &"a non negative number",
+        )),
+    }
 }
 
 impl Default for NegamaxConfig {
@@ -50,7 +61,7 @@ impl<E: Eval + Send + Sync> Negamax<E> {
         Negamax { engine, config }
     }
 
-    fn negamax(&self, game: &Game, height: u8, alpha: i16, beta: i16) -> (Option<Action>, i16) {
+    fn negamax(&self, game: &Game, height: i8, alpha: i16, beta: i16) -> (Option<Action>, i16) {
         debug_assert!(alpha < beta);
 
         if height == 0 || game.outcome().is_some() {
@@ -109,6 +120,14 @@ mod tests {
     }
 
     #[proptest]
+    fn config_fails_to_deserialize_negative_max_depth(#[strategy(i8::MIN..0)] d: i8) {
+        assert!(matches!(
+            format!("config(max_depth:{})", d).parse::<NegamaxConfig>(),
+            Err(ParseNegamaxConfigError(_))
+        ));
+    }
+
+    #[proptest]
     fn parsing_printed_config_is_an_identity(c: NegamaxConfig) {
         assert_eq!(c.to_string().parse(), Ok(c));
     }
@@ -137,7 +156,7 @@ mod tests {
     fn negamax_returns_none_if_game_has_ended(
         _o: Outcome,
         #[any(Some(#_o))] g: Game,
-        d: u8,
+        d: i8,
         s: i16,
     ) {
         let mut engine = MockEval::new();
