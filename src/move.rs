@@ -38,10 +38,10 @@ pub struct IllegalMove(pub Move, pub Position);
 #[derive(Debug, Display, Clone, Eq, PartialEq, Hash, Error)]
 #[cfg_attr(test, derive(test_strategy::Arbitrary))]
 #[display(fmt = "`{}` is not a valid Move", _0)]
-pub struct DecodeMoveError(#[error(not(source))] Bits<15, 2>);
+pub struct DecodeMoveError(#[error(not(source))] Bits<u16, 15>);
 
 impl Binary for Move {
-    type Register = Bits<15, 2>;
+    type Register = Bits<u16, 15>;
     type Error = DecodeMoveError;
 
     fn encode(&self) -> Self::Register {
@@ -164,7 +164,7 @@ mod tests {
     }
 
     #[proptest]
-    fn decoding_move_fails_for_invalid_register(#[any(64*64*5)] b: Bits<15, 2>) {
+    fn decoding_move_fails_for_invalid_register(#[any(64*64*5)] b: Bits<u16, 15>) {
         assert_eq!(Move::decode(b), Err(DecodeMoveError(b)));
     }
 
