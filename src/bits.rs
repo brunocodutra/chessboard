@@ -1,14 +1,10 @@
+use crate::Register;
 use bitvec::{prelude::*, slice::BitSlice};
 use derive_more::{DebugCustom, Display};
 use std::ops::{Deref, DerefMut};
 
 #[cfg(test)]
 use proptest::prelude::*;
-
-/// Trait for fixed width collection of bits.
-pub trait Register {
-    const WIDTH: usize;
-}
 
 /// A fixed width collection of bits.
 ///
