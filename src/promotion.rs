@@ -25,10 +25,10 @@ pub enum Promotion {
 #[derive(Debug, Display, Clone, Eq, PartialEq, Hash, Error)]
 #[cfg_attr(test, derive(test_strategy::Arbitrary))]
 #[display(fmt = "`{}` is not a valid promotion", _0)]
-pub struct DecodePromotionError(#[error(not(source))] Bits<3, 1>);
+pub struct DecodePromotionError(#[error(not(source))] Bits<u8, 3>);
 
 impl Binary for Promotion {
-    type Register = Bits<3, 1>;
+    type Register = Bits<u8, 3>;
     type Error = DecodePromotionError;
 
     fn encode(&self) -> Self::Register {
@@ -135,7 +135,7 @@ mod tests {
     }
 
     #[proptest]
-    fn decoding_promotion_fails_for_invalid_register(#[any(5)] b: Bits<3, 1>) {
+    fn decoding_promotion_fails_for_invalid_register(#[any(5)] b: Bits<u8, 3>) {
         assert_eq!(Promotion::decode(b), Err(DecodePromotionError(b)));
     }
 

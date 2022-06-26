@@ -55,7 +55,7 @@ impl Square {
 }
 
 impl Binary for Square {
-    type Register = Bits<6, 1>;
+    type Register = Bits<u8, 6>;
     type Error = Infallible;
 
     fn encode(&self) -> Self::Register {
@@ -183,7 +183,7 @@ mod tests {
     }
 
     #[proptest]
-    fn decoding_square_never_fails(b: Bits<6, 1>) {
+    fn decoding_square_never_fails(b: Bits<u8, 6>) {
         assert!(Square::decode(b).is_ok());
     }
 
