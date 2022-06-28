@@ -164,7 +164,7 @@ mod tests {
     }
 
     #[proptest]
-    fn decoding_move_fails_for_invalid_register(#[any(64*64*5)] b: Bits<u16, 15>) {
+    fn decoding_move_fails_for_invalid_register(#[any(64 * 64 * 5)] b: Bits<u16, 15>) {
         assert_eq!(Move::decode(b), Err(DecodeMoveError(b)));
     }
 
