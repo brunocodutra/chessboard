@@ -14,7 +14,7 @@ use proptest::prelude::*;
 #[display(fmt = "{:b}", "self.deref()")]
 #[repr(transparent)]
 pub struct Bits<T: BitStore + BitRegister, const W: usize>(
-    #[cfg_attr(test, strategy(*args..=!(T::ALL << W)))] T,
+    #[cfg_attr(test, strategy(*args..=Self::max().0))] T,
 );
 
 impl<T: BitStore + BitRegister, const W: usize> Register for Bits<T, W> {
@@ -25,7 +25,7 @@ impl<T: BitStore + BitRegister, const W: usize> Bits<T, W> {
     /// The largest possible value.
     #[inline]
     pub fn max() -> Self {
-        Bits(!(T::ALL << W))
+        Bits(T::ALL >> (T::BITS - W as u32))
     }
 }
 

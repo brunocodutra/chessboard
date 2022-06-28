@@ -1,7 +1,7 @@
-use crate::{Color, Fen, IllegalMove, Move, Piece, Role, San, Square};
+use crate::{Bits, Color, Fen, IllegalMove, Move, Piece, Role, San, Square};
+use bitvec::{order::Lsb0, view::BitView};
 use derive_more::{DebugCustom, Display, Error};
 use shakmaty as sm;
-use std::hash::{Hash, Hasher};
 use std::{convert::TryFrom, num::NonZeroU32, ops::Index};
 
 #[cfg(test)]
@@ -10,7 +10,7 @@ use proptest::{prelude::*, sample::Selector};
 /// The current position on the chess board.
 ///
 /// This type guarantees that it only holds valid positions.
-#[derive(DebugCustom, Display, Default, Clone, Eq, PartialEq)]
+#[derive(DebugCustom, Display, Default, Clone, Eq, PartialEq, Hash)]
 #[cfg_attr(test, derive(test_strategy::Arbitrary))]
 #[debug(fmt = "Position(\"{}\")", self)]
 #[display(fmt = "{}", "Fen::from(self.clone())")]
@@ -47,6 +47,15 @@ impl Position {
     /// It starts at 1, and is incremented after every move by black.
     pub fn fullmoves(&self) -> NonZeroU32 {
         sm::Position::fullmoves(&self.0)
+    }
+
+    /// This position's [signature].
+    ///
+    /// [signature]: https://en.wikipedia.org/wiki/Zobrist_hashing.
+    pub fn signature(&self) -> Bits<u64, 64> {
+        sm::zobrist::ZobristHash::zobrist_hash::<u64>(&self.0)
+            .view_bits::<Lsb0>()
+            .into()
     }
 
     /// The [`Square`]s occupied by [`Piece`]s of a kind.
@@ -97,16 +106,6 @@ impl Position {
 
             _ => Err(IllegalMove(m, self.clone())),
         }
-    }
-}
-
-/// Computes the [Zobrist] hash.
-///
-/// [Zobrist]: https://en.wikipedia.org/wiki/Zobrist_hashing
-#[allow(clippy::derive_hash_xor_eq)]
-impl Hash for Position {
-    fn hash<H: Hasher>(&self, state: &mut H) {
-        state.write_u128(sm::zobrist::ZobristHash::zobrist_hash(&self.0));
     }
 }
 
@@ -228,6 +227,7 @@ impl AsMut<sm::Chess> for Position {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use bitvec::field::BitField;
     use proptest::sample::select;
     use std::collections::HashSet;
     use test_strategy::proptest;
@@ -245,6 +245,14 @@ mod tests {
     #[proptest]
     fn fullmoves_returns_the_current_move_number(pos: Position) {
         assert_eq!(pos.fullmoves(), sm::Setup::from(pos).fullmoves);
+    }
+
+    #[proptest]
+    fn signature_returns_the_zobrist_hash(pos: Position) {
+        assert_eq!(
+            pos.signature().load::<u64>(),
+            sm::zobrist::ZobristHash::zobrist_hash(&pos.0)
+        );
     }
 
     #[proptest]
