@@ -21,6 +21,18 @@ where
         Cache { memory }
     }
 
+    /// The [`Cache`] size.
+    #[inline]
+    pub fn len(&self) -> usize {
+        self.memory.len()
+    }
+
+    /// Whether the [`Cache`] is empty.
+    #[inline]
+    pub fn is_empty(&self) -> bool {
+        self.memory.is_empty()
+    }
+
     /// Loads a value from the cache.
     pub fn load(&self, idx: usize) -> T {
         T::decode(self.memory[idx].load(Ordering::Relaxed)).expect("expected valid encoding")
@@ -56,12 +68,22 @@ mod tests {
     use test_strategy::proptest;
 
     #[proptest]
-    fn new_initializes_cache(#[strategy(0..=100usize)] s: usize, #[strategy(0..#s)] i: usize) {
+    fn new_initializes_cache(#[strategy(1..=100usize)] s: usize, #[strategy(0..#s)] i: usize) {
         let cache = Cache::<Bits<u64, 48>>::new(s);
         assert_eq!(
             cache.memory[i].load(Ordering::SeqCst),
             Bits::<u64, 48>::default()
         );
+    }
+
+    #[proptest]
+    fn len_returns_cache_size(#[strategy(0..=100usize)] s: usize) {
+        assert_eq!(Cache::<Bits<u64, 48>>::new(s).len(), s);
+    }
+
+    #[proptest]
+    fn is_empty_returns_whether_cache_is_disabled(#[strategy(0..=100usize)] s: usize) {
+        assert_eq!(Cache::<Bits<u64, 48>>::new(s).is_empty(), s == 0);
     }
 
     #[proptest]
@@ -106,8 +128,8 @@ mod tests {
     }
 
     #[proptest]
-    fn cache_is_thread_safe(#[any(size_range(1..=100).lift())] vs: Vec<Bits<u64, 48>>) {
-        let cache = Cache::<Bits<u64, 48>>::new(vs.len().try_into()?);
+    fn cache_is_thread_safe(#[any(size_range(0..=100).lift())] vs: Vec<Bits<u64, 48>>) {
+        let cache = Cache::<Bits<u64, 48>>::new(vs.len());
 
         vs.par_iter().enumerate().for_each(|(i, v)| {
             cache.store(i, *v);
