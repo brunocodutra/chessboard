@@ -130,7 +130,7 @@ jobs:
         toolchain: stable
     - uses: actions-rs/tarpaulin@v0.1
       with:
-        args: --all-features --avoid-cfg-tarpaulin
+        args: --all-features
     - uses: codecov/codecov-action@v2
       with:
         token: ${{secrets.CODECOV_TOKEN}}

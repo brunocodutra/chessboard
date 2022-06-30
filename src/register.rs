@@ -1,11 +1,10 @@
-use bitvec::{mem::BitRegister, store::BitStore};
+use std::mem::size_of;
 
 /// Trait for fixed width collection of bits.
 pub trait Register: Copy {
     /// How many bits this register contains.
-    const WIDTH: usize;
-}
+    const WIDTH: usize = Self::SIZE << 3;
 
-impl<T: BitStore + BitRegister> Register for T {
-    const WIDTH: usize = T::BITS as usize;
+    /// How many bytes this register contains.
+    const SIZE: usize = size_of::<Self>();
 }

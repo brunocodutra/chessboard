@@ -2,3 +2,4 @@
 cobertura.xml
 .vscode
 /proptest-regressions
+lcov.info
