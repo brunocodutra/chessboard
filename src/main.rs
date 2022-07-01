@@ -1,5 +1,5 @@
 use anyhow::{Context, Error as Anyhow};
-use chessboard::{Game, PlayerConfig, Setup};
+use chessboard::{Build, Game, PlayerBuilder};
 use clap::{AppSettings::DeriveDisplayOrder, Parser};
 use std::{cmp::min, io::stderr};
 use tokio::try_join;
@@ -11,11 +11,11 @@ use tracing_subscriber::fmt::format::FmtSpan;
 struct Args {
     /// White pieces player.
     #[clap(short, long, default_value = "cli()", parse(try_from_str))]
-    white: PlayerConfig,
+    white: PlayerBuilder,
 
     /// Black pieces player.
     #[clap(short, long, default_value = "cli()", parse(try_from_str))]
-    black: PlayerConfig,
+    black: PlayerBuilder,
 
     /// Verbosity level.
     #[clap(short, long, value_name = "level", parse(try_from_str))]
@@ -44,7 +44,7 @@ async fn main() -> Result<(), Anyhow> {
         .map_err(|e| Anyhow::msg(e.to_string()))
         .context("failed to initialize the tracing infrastructure")?;
 
-    let (white, black) = try_join!(white.setup(), black.setup())?;
+    let (white, black) = try_join!(white.build(), black.build())?;
 
     let mut game = Game::default();
     let report = game.run(white, black).await?;

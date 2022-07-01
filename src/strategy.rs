@@ -1,4 +1,4 @@
-use crate::{Action, Engine, EngineConfig, Game, Search, SearchControl, Setup};
+use crate::{Action, Build, Engine, EngineBuilder, Game, Search, SearchControl};
 use anyhow::Error as Anyhow;
 use async_trait::async_trait;
 use derive_more::{DebugCustom, Display, Error, From};
@@ -34,22 +34,22 @@ impl Search for Strategy {
 #[derive(Debug, Clone, Eq, PartialEq, Hash, Deserialize)]
 #[cfg_attr(test, derive(test_strategy::Arbitrary))]
 #[serde(deny_unknown_fields, rename_all = "lowercase")]
-pub enum StrategyConfig {
+pub enum StrategyBuilder {
     Negamax {
-        engine: EngineConfig,
+        engine: EngineBuilder,
     },
 
     #[cfg(test)]
     Mock(),
 }
 
-/// The reason why parsing [`StrategyConfig`] failed.
+/// The reason why parsing [`StrategyBuilder`] failed.
 #[derive(Debug, Display, PartialEq, Error, From)]
 #[display(fmt = "failed to parse search configuration")]
-pub struct ParseConfigError(ron::de::Error);
+pub struct ParseBuilderError(ron::de::Error);
 
-impl FromStr for StrategyConfig {
-    type Err = ParseConfigError;
+impl FromStr for StrategyBuilder {
+    type Err = ParseBuilderError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         Ok(ron::de::from_str(s)?)
@@ -57,15 +57,15 @@ impl FromStr for StrategyConfig {
 }
 
 #[async_trait]
-impl Setup for StrategyConfig {
+impl Build for StrategyBuilder {
     type Output = Strategy;
 
     #[instrument(level = "trace", err, ret)]
-    async fn setup(self) -> Result<Self::Output, Anyhow> {
+    async fn build(self) -> Result<Self::Output, Anyhow> {
         match self {
-            StrategyConfig::Negamax { engine: cfg } => Ok(Negamax::new(cfg.setup().await?).into()),
+            StrategyBuilder::Negamax { engine } => Ok(Negamax::new(engine.build().await?).into()),
             #[cfg(test)]
-            StrategyConfig::Mock() => Ok(crate::MockSearch::new().into()),
+            StrategyBuilder::Mock() => Ok(crate::MockSearch::new().into()),
         }
     }
 }
@@ -77,18 +77,18 @@ mod tests {
     use tokio::runtime;
 
     #[proptest]
-    fn negamax_config_is_deserializable() {
+    fn negamax_builder_is_deserializable() {
         assert_eq!(
             "negamax(engine:mock())".parse(),
-            Ok(StrategyConfig::Negamax {
-                engine: EngineConfig::Mock()
+            Ok(StrategyBuilder::Negamax {
+                engine: EngineBuilder::Mock()
             })
         );
     }
 
     #[proptest]
-    fn mock_config_is_deserializable() {
-        assert_eq!("mock()".parse(), Ok(StrategyConfig::Mock()));
+    fn mock_builder_is_deserializable() {
+        assert_eq!("mock()".parse(), Ok(StrategyBuilder::Mock()));
     }
 
     #[proptest]
@@ -97,10 +97,10 @@ mod tests {
 
         assert!(matches!(
             rt.block_on(
-                StrategyConfig::Negamax {
-                    engine: EngineConfig::Mock()
+                StrategyBuilder::Negamax {
+                    engine: EngineBuilder::Mock()
                 }
-                .setup()
+                .build()
             ),
             Ok(Strategy::Negamax(_))
         ));
@@ -111,7 +111,7 @@ mod tests {
         let rt = runtime::Builder::new_multi_thread().build()?;
 
         assert!(matches!(
-            rt.block_on(StrategyConfig::Mock().setup()),
+            rt.block_on(StrategyBuilder::Mock().build()),
             Ok(Strategy::Mock(_))
         ));
     }
