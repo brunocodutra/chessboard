@@ -50,10 +50,8 @@ pub use crate::square::*;
 
 pub mod engine;
 pub mod player;
-pub mod remote;
 pub mod strategy;
 
 pub use crate::engine::{Engine, EngineConfig};
 pub use crate::player::{Player, PlayerConfig};
-pub use crate::remote::{Remote, RemoteConfig};
 pub use crate::strategy::{Strategy, StrategyConfig};
