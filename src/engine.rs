@@ -1,4 +1,4 @@
-use crate::{Eval, Game, Setup};
+use crate::{Build, Eval, Game};
 use anyhow::Error as Anyhow;
 use async_trait::async_trait;
 use derive_more::{DebugCustom, Display, Error, From};
@@ -39,20 +39,20 @@ impl Eval for Engine {
 #[derive(Debug, Clone, Eq, PartialEq, Hash, Deserialize)]
 #[cfg_attr(test, derive(test_strategy::Arbitrary))]
 #[serde(deny_unknown_fields, rename_all = "lowercase")]
-pub enum EngineConfig {
+pub enum EngineBuilder {
     Random {},
     Heuristic {},
     #[cfg(test)]
     Mock(),
 }
 
-/// The reason why parsing [`EngineConfig`] failed.
+/// The reason why parsing [`EngineBuilder`] failed.
 #[derive(Debug, Display, PartialEq, Error, From)]
 #[display(fmt = "failed to parse engine configuration")]
-pub struct ParseConfigError(ron::de::Error);
+pub struct ParseBuilderError(ron::de::Error);
 
-impl FromStr for EngineConfig {
-    type Err = ParseConfigError;
+impl FromStr for EngineBuilder {
+    type Err = ParseBuilderError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         Ok(ron::de::from_str(s)?)
@@ -60,16 +60,16 @@ impl FromStr for EngineConfig {
 }
 
 #[async_trait]
-impl Setup for EngineConfig {
+impl Build for EngineBuilder {
     type Output = Engine;
 
     #[instrument(level = "trace", err, ret)]
-    async fn setup(self) -> Result<Self::Output, Anyhow> {
+    async fn build(self) -> Result<Self::Output, Anyhow> {
         match self {
-            EngineConfig::Random {} => Ok(Random::new().into()),
-            EngineConfig::Heuristic { .. } => Ok(Heuristic::new().into()),
+            EngineBuilder::Random {} => Ok(Random::new().into()),
+            EngineBuilder::Heuristic { .. } => Ok(Heuristic::new().into()),
             #[cfg(test)]
-            EngineConfig::Mock() => Ok(crate::MockEval::new().into()),
+            EngineBuilder::Mock() => Ok(crate::MockEval::new().into()),
         }
     }
 }
@@ -81,18 +81,18 @@ mod tests {
     use tokio::runtime;
 
     #[proptest]
-    fn random_config_is_deserializable() {
-        assert_eq!("random()".parse(), Ok(EngineConfig::Random {}));
+    fn random_builder_is_deserializable() {
+        assert_eq!("random()".parse(), Ok(EngineBuilder::Random {}));
     }
 
     #[proptest]
-    fn heuristic_config_is_deserializable() {
-        assert_eq!("heuristic()".parse(), Ok(EngineConfig::Heuristic {}));
+    fn heuristic_builder_is_deserializable() {
+        assert_eq!("heuristic()".parse(), Ok(EngineBuilder::Heuristic {}));
     }
 
     #[proptest]
-    fn mock_engine_config_is_deserializable() {
-        assert_eq!("mock()".parse(), Ok(EngineConfig::Mock()));
+    fn mock_engine_builder_is_deserializable() {
+        assert_eq!("mock()".parse(), Ok(EngineBuilder::Mock()));
     }
 
     #[proptest]
@@ -100,7 +100,7 @@ mod tests {
         let rt = runtime::Builder::new_multi_thread().build()?;
 
         assert!(matches!(
-            rt.block_on(EngineConfig::Random {}.setup()),
+            rt.block_on(EngineBuilder::Random {}.build()),
             Ok(Engine::Random(_))
         ));
     }
@@ -110,7 +110,7 @@ mod tests {
         let rt = runtime::Builder::new_multi_thread().build()?;
 
         assert!(matches!(
-            rt.block_on(EngineConfig::Heuristic {}.setup()),
+            rt.block_on(EngineBuilder::Heuristic {}.build()),
             Ok(Engine::Heuristic(_))
         ));
     }
@@ -120,7 +120,7 @@ mod tests {
         let rt = runtime::Builder::new_multi_thread().build()?;
 
         assert!(matches!(
-            rt.block_on(EngineConfig::Mock().setup()),
+            rt.block_on(EngineBuilder::Mock().build()),
             Ok(Engine::Mock(_))
         ));
     }

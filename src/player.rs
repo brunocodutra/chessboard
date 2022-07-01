@@ -1,5 +1,5 @@
 use crate::io::{Process, Terminal};
-use crate::{Act, Action, Game, Setup, Strategy, StrategyConfig};
+use crate::{Act, Action, Build, Game, Strategy, StrategyBuilder};
 use anyhow::Error as Anyhow;
 use async_trait::async_trait;
 use derive_more::{DebugCustom, Display, Error, From};
@@ -52,19 +52,19 @@ impl Act for Player {
 #[derive(Debug, Clone, Eq, PartialEq, Hash, Deserialize)]
 #[cfg_attr(test, derive(test_strategy::Arbitrary))]
 #[serde(deny_unknown_fields, rename_all = "lowercase")]
-pub enum PlayerConfig {
-    Ai(StrategyConfig),
+pub enum PlayerBuilder {
+    Ai(StrategyBuilder),
     Uci(String),
     Cli(),
 }
 
-/// The reason why parsing [`PlayerConfig`] failed.
+/// The reason why parsing [`PlayerBuilder`] failed.
 #[derive(Debug, Display, PartialEq, Error, From)]
 #[display(fmt = "failed to parse player configuration")]
-pub struct ParseConfigError(ron::de::Error);
+pub struct ParseBuilderError(ron::de::Error);
 
-impl FromStr for PlayerConfig {
-    type Err = ParseConfigError;
+impl FromStr for PlayerBuilder {
+    type Err = ParseBuilderError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         Ok(ron::de::from_str(s)?)
@@ -72,15 +72,15 @@ impl FromStr for PlayerConfig {
 }
 
 #[async_trait]
-impl Setup for PlayerConfig {
+impl Build for PlayerBuilder {
     type Output = Player;
 
     #[instrument(level = "trace", err, ret)]
-    async fn setup(self) -> Result<Self::Output, Anyhow> {
+    async fn build(self) -> Result<Self::Output, Anyhow> {
         match self {
-            PlayerConfig::Ai(cfg) => Ok(Ai::new(cfg.setup().await?).into()),
-            PlayerConfig::Uci(path) => Ok(Uci::new(Process::spawn(&path)?).into()),
-            PlayerConfig::Cli() => Ok(Cli::new(Terminal::new()).into()),
+            PlayerBuilder::Ai(strategy) => Ok(Ai::new(strategy.build().await?).into()),
+            PlayerBuilder::Uci(path) => Ok(Uci::new(Process::spawn(&path)?).into()),
+            PlayerBuilder::Cli() => Ok(Cli::new(Terminal::new()).into()),
         }
     }
 }
@@ -92,21 +92,21 @@ mod tests {
     use tokio::runtime;
 
     #[proptest]
-    fn ai_config_is_deserializable() {
+    fn ai_builder_is_deserializable() {
         assert_eq!(
             "ai(mock())".parse(),
-            Ok(PlayerConfig::Ai(StrategyConfig::Mock()))
+            Ok(PlayerBuilder::Ai(StrategyBuilder::Mock()))
         );
     }
 
     #[proptest]
-    fn cli_config_is_deserializable() {
-        assert_eq!("cli()".parse(), Ok(PlayerConfig::Cli()));
+    fn cli_builder_is_deserializable() {
+        assert_eq!("cli()".parse(), Ok(PlayerBuilder::Cli()));
     }
 
     #[proptest]
-    fn uci_config_is_deserializable(s: String) {
-        assert_eq!(format!("uci({:?})", s).parse(), Ok(PlayerConfig::Uci(s)));
+    fn uci_builder_is_deserializable(s: String) {
+        assert_eq!(format!("uci({:?})", s).parse(), Ok(PlayerBuilder::Uci(s)));
     }
 
     #[proptest]
@@ -114,7 +114,7 @@ mod tests {
         let rt = runtime::Builder::new_multi_thread().build()?;
 
         assert!(matches!(
-            rt.block_on(PlayerConfig::Ai(StrategyConfig::Mock()).setup()),
+            rt.block_on(PlayerBuilder::Ai(StrategyBuilder::Mock()).build()),
             Ok(Player::Ai(_))
         ));
     }
@@ -124,7 +124,7 @@ mod tests {
         let rt = runtime::Builder::new_multi_thread().build()?;
 
         assert!(matches!(
-            rt.block_on(PlayerConfig::Uci(s).setup()),
+            rt.block_on(PlayerBuilder::Uci(s).build()),
             Ok(Player::Uci(_))
         ));
     }
@@ -134,7 +134,7 @@ mod tests {
         let rt = runtime::Builder::new_multi_thread().build()?;
 
         assert!(matches!(
-            rt.block_on(PlayerConfig::Cli().setup()),
+            rt.block_on(PlayerBuilder::Cli().build()),
             Ok(Player::Cli(_))
         ));
     }
