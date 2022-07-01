@@ -2,6 +2,7 @@ use crate::{Act, Action, Game, Search, SearchControl};
 use async_trait::async_trait;
 use derive_more::{Constructor, From};
 use std::{convert::Infallible, fmt::Debug};
+use tokio::task::block_in_place;
 use tracing::instrument;
 
 /// A computed controlled player.
@@ -17,7 +18,7 @@ impl<S: Search + Debug + Send> Act for Ai<S> {
     #[instrument(level = "trace", err, ret)]
     async fn act(&mut self, game: &Game) -> Result<Action, Self::Error> {
         let ctrl = SearchControl::default();
-        Ok(self.strategy.search(game, ctrl).unwrap_or(Action::Resign))
+        Ok(block_in_place(|| self.strategy.search(game, ctrl)).unwrap_or(Action::Resign))
     }
 }
 
