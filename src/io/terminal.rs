@@ -19,14 +19,19 @@ pub struct Terminal {
 
 impl Terminal {
     /// Opens a terminal interface with the given prompt.
-    #[instrument(level = "trace")]
-    pub fn open() -> Self {
+    pub fn new() -> Self {
         Terminal {
             writer: stdout(),
             reader: Arc::new(Mutex::new(Editor::with_config(
                 Config::builder().auto_add_history(true).build(),
             ))),
         }
+    }
+}
+
+impl Default for Terminal {
+    fn default() -> Self {
+        Self::new()
     }
 }
 

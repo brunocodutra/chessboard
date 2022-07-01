@@ -80,7 +80,7 @@ impl Setup for PlayerConfig {
         match self {
             PlayerConfig::Ai(cfg) => Ok(Ai::new(cfg.setup().await?).into()),
             PlayerConfig::Uci(path) => Ok(Uci::new(Process::spawn(&path)?).into()),
-            PlayerConfig::Cli() => Ok(Cli::new(Terminal::open()).into()),
+            PlayerConfig::Cli() => Ok(Cli::new(Terminal::new()).into()),
         }
     }
 }
