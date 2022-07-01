@@ -1,4 +1,5 @@
-use crate::{Act, Action, Game, Remote, RemoteConfig, Setup, Strategy, StrategyConfig};
+use crate::io::{Process, Terminal};
+use crate::{Act, Action, Game, Setup, Strategy, StrategyConfig};
 use anyhow::Error as Anyhow;
 use async_trait::async_trait;
 use derive_more::{DebugCustom, Display, Error, From};
@@ -18,21 +19,22 @@ pub use uci::*;
 #[derive(Debug, Display, Error, From)]
 pub enum PlayerError {
     Ai(<Ai<Strategy> as Act>::Error),
-    Cli(<Cli<Remote> as Act>::Error),
-    Uci(<Uci<Remote> as Act>::Error),
+    Cli(<Cli<Terminal> as Act>::Error),
+    Uci(<Uci<Process> as Act>::Error),
     #[cfg(test)]
     Mock(#[error(not(source))] <crate::MockAct as Act>::Error),
 }
 
 /// A generic player.
 #[derive(DebugCustom, From)]
+#[allow(clippy::large_enum_variant)]
 pub enum Player {
     #[debug(fmt = "{:?}", _0)]
     Ai(Ai<Strategy>),
     #[debug(fmt = "{:?}", _0)]
-    Cli(Cli<Remote>),
+    Cli(Cli<Terminal>),
     #[debug(fmt = "{:?}", _0)]
-    Uci(Uci<Remote>),
+    Uci(Uci<Process>),
     #[cfg(test)]
     Mock(crate::MockAct),
 }
@@ -58,8 +60,8 @@ impl Act for Player {
 #[serde(deny_unknown_fields, rename_all = "lowercase")]
 pub enum PlayerConfig {
     Ai(StrategyConfig),
-    Cli(RemoteConfig),
-    Uci(RemoteConfig),
+    Uci(String),
+    Cli(),
     #[cfg(test)]
     Mock(),
 }
@@ -85,8 +87,8 @@ impl Setup for PlayerConfig {
     async fn setup(self) -> Result<Self::Output, Anyhow> {
         match self {
             PlayerConfig::Ai(cfg) => Ok(Ai::new(cfg.setup().await?).into()),
-            PlayerConfig::Uci(cfg) => Ok(Uci::new(cfg.setup().await?).into()),
-            PlayerConfig::Cli(cfg) => Ok(Cli::new(cfg.setup().await?).into()),
+            PlayerConfig::Uci(path) => Ok(Uci::new(Process::spawn(&path)?).into()),
+            PlayerConfig::Cli() => Ok(Cli::new(Terminal::open()).into()),
             #[cfg(test)]
             PlayerConfig::Mock() => Ok(crate::MockAct::new().into()),
         }
@@ -109,18 +111,12 @@ mod tests {
 
     #[proptest]
     fn cli_config_is_deserializable() {
-        assert_eq!(
-            "cli(mock())".parse(),
-            Ok(PlayerConfig::Cli(RemoteConfig::Mock()))
-        );
+        assert_eq!("cli()".parse(), Ok(PlayerConfig::Cli()));
     }
 
     #[proptest]
-    fn uci_config_is_deserializable() {
-        assert_eq!(
-            "uci(mock())".parse(),
-            Ok(PlayerConfig::Uci(RemoteConfig::Mock()))
-        );
+    fn uci_config_is_deserializable(s: String) {
+        assert_eq!(format!("uci({:?})", s).parse(), Ok(PlayerConfig::Uci(s)));
     }
 
     #[proptest]
@@ -139,11 +135,11 @@ mod tests {
     }
 
     #[proptest]
-    fn uci_can_be_configured_at_runtime() {
+    fn uci_can_be_configured_at_runtime(s: String) {
         let rt = runtime::Builder::new_multi_thread().build()?;
 
         assert!(matches!(
-            rt.block_on(PlayerConfig::Uci(RemoteConfig::Mock()).setup()),
+            rt.block_on(PlayerConfig::Uci(s).setup()),
             Ok(Player::Uci(_))
         ));
     }
@@ -153,7 +149,7 @@ mod tests {
         let rt = runtime::Builder::new_multi_thread().build()?;
 
         assert!(matches!(
-            rt.block_on(PlayerConfig::Cli(RemoteConfig::Mock()).setup()),
+            rt.block_on(PlayerConfig::Cli().setup()),
             Ok(Player::Cli(_))
         ));
     }

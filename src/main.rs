@@ -10,11 +10,11 @@ use tracing_subscriber::fmt::format::FmtSpan;
 #[clap(author, version, about, name = "Chessboard", setting = DeriveDisplayOrder)]
 struct Args {
     /// White pieces player.
-    #[clap(short, long, default_value = "cli(term)", parse(try_from_str))]
+    #[clap(short, long, default_value = "cli()", parse(try_from_str))]
     white: PlayerConfig,
 
     /// Black pieces player.
-    #[clap(short, long, default_value = "cli(term)", parse(try_from_str))]
+    #[clap(short, long, default_value = "cli()", parse(try_from_str))]
     black: PlayerConfig,
 
     /// Verbosity level.
