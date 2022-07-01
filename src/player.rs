@@ -21,8 +21,6 @@ pub enum PlayerError {
     Ai(<Ai<Strategy> as Act>::Error),
     Cli(<Cli<Terminal> as Act>::Error),
     Uci(<Uci<Process> as Act>::Error),
-    #[cfg(test)]
-    Mock(#[error(not(source))] <crate::MockAct as Act>::Error),
 }
 
 /// A generic player.
@@ -35,8 +33,6 @@ pub enum Player {
     Cli(Cli<Terminal>),
     #[debug(fmt = "{:?}", _0)]
     Uci(Uci<Process>),
-    #[cfg(test)]
-    Mock(crate::MockAct),
 }
 
 #[async_trait]
@@ -48,8 +44,6 @@ impl Act for Player {
             Player::Ai(p) => Ok(p.act(game).await?),
             Player::Cli(p) => Ok(p.act(game).await?),
             Player::Uci(p) => Ok(p.act(game).await?),
-            #[cfg(test)]
-            Player::Mock(p) => Ok(p.act(game).await?),
         }
     }
 }
@@ -62,8 +56,6 @@ pub enum PlayerConfig {
     Ai(StrategyConfig),
     Uci(String),
     Cli(),
-    #[cfg(test)]
-    Mock(),
 }
 
 /// The reason why parsing [`PlayerConfig`] failed.
@@ -89,8 +81,6 @@ impl Setup for PlayerConfig {
             PlayerConfig::Ai(cfg) => Ok(Ai::new(cfg.setup().await?).into()),
             PlayerConfig::Uci(path) => Ok(Uci::new(Process::spawn(&path)?).into()),
             PlayerConfig::Cli() => Ok(Cli::new(Terminal::open()).into()),
-            #[cfg(test)]
-            PlayerConfig::Mock() => Ok(crate::MockAct::new().into()),
         }
     }
 }
@@ -120,11 +110,6 @@ mod tests {
     }
 
     #[proptest]
-    fn mock_config_is_deserializable() {
-        assert_eq!("mock()".parse(), Ok(PlayerConfig::Mock()));
-    }
-
-    #[proptest]
     fn ai_can_be_configured_at_runtime() {
         let rt = runtime::Builder::new_multi_thread().build()?;
 
@@ -151,16 +136,6 @@ mod tests {
         assert!(matches!(
             rt.block_on(PlayerConfig::Cli().setup()),
             Ok(Player::Cli(_))
-        ));
-    }
-
-    #[proptest]
-    fn mock_can_be_configured_at_runtime() {
-        let rt = runtime::Builder::new_multi_thread().build()?;
-
-        assert!(matches!(
-            rt.block_on(PlayerConfig::Mock().setup()),
-            Ok(Player::Mock(_))
         ));
     }
 }
