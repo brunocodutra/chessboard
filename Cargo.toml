@@ -23,7 +23,7 @@ serde = { version = "1.0.137", default-features = false, features = ["derive", "
 shakmaty = { version = "0.21.1", default-features = false }
 tokio = { version = "1.19.2", default-features = false, features = ["io-std", "io-util", "macros", "process", "rt-multi-thread", "sync"] }
 tracing = { version = "0.1.26", default-features = false, features = ["attributes", "std"] }
-tracing-subscriber = { version = "0.3.11", default-features = false, features = ["ansi", "env-filter", "fmt", "std"] }
+tracing-subscriber = { version = "0.3.14", default-features = false, features = ["ansi", "env-filter", "fmt", "std"] }
 vampirc-uci = { version = "0.11.0", default-features = false }
 
 [dev-dependencies]
