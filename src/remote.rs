@@ -94,7 +94,7 @@ impl Setup for RemoteConfig {
     #[instrument(level = "trace", err, ret)]
     async fn setup(self) -> Result<Self::Output, Anyhow> {
         match self {
-            RemoteConfig::Process(path) => Ok(Process::spawn(&path).await?.into()),
+            RemoteConfig::Process(path) => Ok(Process::spawn(&path)?.into()),
             RemoteConfig::Terminal => Ok(Terminal::open().into()),
             #[cfg(test)]
             RemoteConfig::Mock() => Ok(crate::MockIo::new().into()),
@@ -133,7 +133,7 @@ mod tests {
         let rt = runtime::Builder::new_multi_thread().build()?;
 
         assert_eq!(
-            discriminant(&Remote::Process(rt.block_on(Process::spawn(&s))?)),
+            discriminant(&Remote::Process(Process::spawn(&s)?)),
             discriminant(&rt.block_on(RemoteConfig::Process(s).setup()).unwrap())
         );
     }
