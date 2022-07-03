@@ -1,10 +1,8 @@
 use crate::{Action, Build, Engine, EngineBuilder, Game, Search, SearchControl};
 use anyhow::Error as Anyhow;
-use async_trait::async_trait;
 use derive_more::{DebugCustom, Display, Error, From};
 use serde::Deserialize;
 use std::str::FromStr;
-use tracing::instrument;
 
 mod negamax;
 
@@ -56,14 +54,12 @@ impl FromStr for StrategyBuilder {
     }
 }
 
-#[async_trait]
 impl Build for StrategyBuilder {
     type Output = Strategy;
 
-    #[instrument(level = "trace", err, ret)]
-    async fn build(self) -> Result<Self::Output, Anyhow> {
+    fn build(self) -> Result<Self::Output, Anyhow> {
         match self {
-            StrategyBuilder::Negamax { engine } => Ok(Negamax::new(engine.build().await?).into()),
+            StrategyBuilder::Negamax { engine } => Ok(Negamax::new(engine.build()?).into()),
             #[cfg(test)]
             StrategyBuilder::Mock() => Ok(crate::MockSearch::new().into()),
         }
@@ -74,7 +70,6 @@ impl Build for StrategyBuilder {
 mod tests {
     use super::*;
     use test_strategy::proptest;
-    use tokio::runtime;
 
     #[proptest]
     fn negamax_builder_is_deserializable() {
@@ -93,25 +88,19 @@ mod tests {
 
     #[proptest]
     fn negamax_can_be_configured_at_runtime() {
-        let rt = runtime::Builder::new_multi_thread().build()?;
-
         assert!(matches!(
-            rt.block_on(
-                StrategyBuilder::Negamax {
-                    engine: EngineBuilder::Mock()
-                }
-                .build()
-            ),
+            StrategyBuilder::Negamax {
+                engine: EngineBuilder::Mock()
+            }
+            .build(),
             Ok(Strategy::Negamax(_))
         ));
     }
 
     #[proptest]
     fn mock_can_be_configured_at_runtime() {
-        let rt = runtime::Builder::new_multi_thread().build()?;
-
         assert!(matches!(
-            rt.block_on(StrategyBuilder::Mock().build()),
+            StrategyBuilder::Mock().build(),
             Ok(Strategy::Mock(_))
         ));
     }

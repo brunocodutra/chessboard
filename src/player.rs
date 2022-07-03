@@ -5,7 +5,6 @@ use async_trait::async_trait;
 use derive_more::{DebugCustom, Display, Error, From};
 use serde::Deserialize;
 use std::{fmt::Debug, str::FromStr};
-use tracing::instrument;
 
 mod ai;
 mod cli;
@@ -71,14 +70,12 @@ impl FromStr for PlayerBuilder {
     }
 }
 
-#[async_trait]
 impl Build for PlayerBuilder {
     type Output = Player;
 
-    #[instrument(level = "trace", err, ret)]
-    async fn build(self) -> Result<Self::Output, Anyhow> {
+    fn build(self) -> Result<Self::Output, Anyhow> {
         match self {
-            PlayerBuilder::Ai(strategy) => Ok(Ai::new(strategy.build().await?).into()),
+            PlayerBuilder::Ai(strategy) => Ok(Ai::new(strategy.build()?).into()),
             PlayerBuilder::Uci(path) => Ok(Uci::new(Process::spawn(&path)?).into()),
             PlayerBuilder::Cli() => Ok(Cli::new(Terminal::new()).into()),
         }
@@ -89,7 +86,6 @@ impl Build for PlayerBuilder {
 mod tests {
     use super::*;
     use test_strategy::proptest;
-    use tokio::runtime;
 
     #[proptest]
     fn ai_builder_is_deserializable() {
@@ -111,31 +107,19 @@ mod tests {
 
     #[proptest]
     fn ai_can_be_configured_at_runtime() {
-        let rt = runtime::Builder::new_multi_thread().build()?;
-
         assert!(matches!(
-            rt.block_on(PlayerBuilder::Ai(StrategyBuilder::Mock()).build()),
+            PlayerBuilder::Ai(StrategyBuilder::Mock()).build(),
             Ok(Player::Ai(_))
         ));
     }
 
     #[proptest]
     fn uci_can_be_configured_at_runtime(s: String) {
-        let rt = runtime::Builder::new_multi_thread().build()?;
-
-        assert!(matches!(
-            rt.block_on(PlayerBuilder::Uci(s).build()),
-            Ok(Player::Uci(_))
-        ));
+        assert!(matches!(PlayerBuilder::Uci(s).build(), Ok(Player::Uci(_))));
     }
 
     #[proptest]
     fn cli_can_be_configured_at_runtime() {
-        let rt = runtime::Builder::new_multi_thread().build()?;
-
-        assert!(matches!(
-            rt.block_on(PlayerBuilder::Cli().build()),
-            Ok(Player::Cli(_))
-        ));
+        assert!(matches!(PlayerBuilder::Cli().build(), Ok(Player::Cli(_))));
     }
 }
