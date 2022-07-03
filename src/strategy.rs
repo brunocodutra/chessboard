@@ -73,8 +73,6 @@ impl Setup for StrategyConfig {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{MockEval, MockSearch};
-    use std::mem::discriminant;
     use test_strategy::proptest;
     use tokio::runtime;
 
@@ -97,29 +95,24 @@ mod tests {
     fn negamax_can_be_configured_at_runtime() {
         let rt = runtime::Builder::new_multi_thread().build()?;
 
-        assert_eq!(
-            discriminant(&Strategy::Negamax(Negamax::new(Engine::Mock(
-                MockEval::new()
-            )))),
-            discriminant(
-                &rt.block_on(
-                    StrategyConfig::Negamax {
-                        engine: EngineConfig::Mock()
-                    }
-                    .setup()
-                )
-                .unwrap()
-            )
-        );
+        assert!(matches!(
+            rt.block_on(
+                StrategyConfig::Negamax {
+                    engine: EngineConfig::Mock()
+                }
+                .setup()
+            ),
+            Ok(Strategy::Negamax(_))
+        ));
     }
 
     #[proptest]
     fn mock_can_be_configured_at_runtime() {
         let rt = runtime::Builder::new_multi_thread().build()?;
 
-        assert_eq!(
-            discriminant(&Strategy::Mock(MockSearch::new())),
-            discriminant(&rt.block_on(StrategyConfig::Mock().setup()).unwrap())
-        );
+        assert!(matches!(
+            rt.block_on(StrategyConfig::Mock().setup()),
+            Ok(Strategy::Mock(_))
+        ));
     }
 }
