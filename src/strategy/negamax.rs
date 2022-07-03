@@ -1,16 +1,54 @@
-use crate::{Action, Eval, Game, Search, SearchControl};
-use derive_more::{Constructor, From};
+use crate::{Action, Eval, Game, Search};
+use derive_more::{Display, Error, From};
 use rayon::prelude::*;
-use std::fmt::Debug;
+use serde::{Deserialize, Serialize};
 use std::sync::atomic::{AtomicI16, Ordering};
+use std::{fmt::Debug, str::FromStr};
 
-#[derive(Debug, Clone, From, Constructor)]
+#[derive(Debug, Display, Copy, Clone, Eq, PartialEq, Hash, Deserialize, Serialize)]
+#[cfg_attr(test, derive(test_strategy::Arbitrary))]
+#[display(fmt = "{}", "ron::ser::to_string(self).unwrap()")]
+#[serde(deny_unknown_fields, rename = "config", default)]
+pub struct NegamaxConfig {
+    #[cfg_attr(test, strategy(0u8..=2))]
+    pub max_depth: u8,
+}
+
+impl Default for NegamaxConfig {
+    fn default() -> Self {
+        Self { max_depth: 5 }
+    }
+}
+
+/// The reason why parsing [`NegamaxConfig`] failed.
+#[derive(Debug, Display, PartialEq, Error, From)]
+#[display(fmt = "failed to parse negamax configuration")]
+pub struct ParseNegamaxConfigError(ron::de::Error);
+
+impl FromStr for NegamaxConfig {
+    type Err = ParseNegamaxConfigError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Ok(ron::de::from_str(s)?)
+    }
+}
+
+#[derive(Debug, Clone, From)]
 pub struct Negamax<E: Eval + Send + Sync> {
     engine: E,
+    config: NegamaxConfig,
 }
 
 impl<E: Eval + Send + Sync> Negamax<E> {
-    const DEPTH: u8 = 5;
+    /// Constructs [`Negamax`] with the default [`NegamaxConfig`].
+    pub fn new(engine: E) -> Self {
+        Self::with_config(engine, NegamaxConfig::default())
+    }
+
+    /// Constructs [`Negamax`] with the specified [`NegamaxConfig`].
+    pub fn with_config(engine: E, config: NegamaxConfig) -> Self {
+        Negamax { engine, config }
+    }
 
     fn negamax(&self, game: &Game, height: u8, alpha: i16, beta: i16) -> (Option<Action>, i16) {
         debug_assert!(alpha < beta);
@@ -51,9 +89,8 @@ impl<E: Eval + Send + Sync> Negamax<E> {
 }
 
 impl<E: Eval + Send + Sync> Search for Negamax<E> {
-    fn search(&self, game: &Game, ctrl: SearchControl) -> Option<Action> {
-        let depth = ctrl.depth.unwrap_or(Self::DEPTH);
-        let (best, _) = self.negamax(game, depth, i16::MIN, i16::MAX);
+    fn search(&self, game: &Game) -> Option<Action> {
+        let (best, _) = self.negamax(game, self.config.max_depth, i16::MIN, i16::MAX);
         best
     }
 }
@@ -65,6 +102,16 @@ mod tests {
     use mockall::predicate::*;
     use std::iter::repeat;
     use test_strategy::proptest;
+
+    #[proptest]
+    fn config_deserializes_missing_fields_to_default() {
+        assert_eq!("config()".parse(), Ok(NegamaxConfig::default()));
+    }
+
+    #[proptest]
+    fn parsing_printed_config_is_an_identity(c: NegamaxConfig) {
+        assert_eq!(c.to_string().parse(), Ok(c));
+    }
 
     #[proptest]
     #[should_panic]
@@ -134,13 +181,11 @@ mod tests {
     }
 
     #[proptest]
-    fn search_runs_negamax_with_max_depth(g: Game, #[strategy(0u8..=2)] d: u8) {
-        let engine = Random::new();
-        let ctrl = SearchControl { depth: Some(d) };
-        let strategy = Negamax::new(engine);
+    fn search_runs_negamax_with_max_depth(g: Game, cfg: NegamaxConfig) {
+        let strategy = Negamax::with_config(Random::new(), cfg);
         assert_eq!(
-            strategy.search(&g, ctrl),
-            strategy.negamax(&g, d, i16::MIN, i16::MAX).0
+            strategy.search(&g),
+            strategy.negamax(&g, cfg.max_depth, i16::MIN, i16::MAX).0
         );
     }
 }

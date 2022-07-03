@@ -1,4 +1,4 @@
-use crate::{Act, Action, Game, Search, SearchControl};
+use crate::{Act, Action, Game, Search};
 use async_trait::async_trait;
 use derive_more::{Constructor, From};
 use std::{convert::Infallible, fmt::Debug};
@@ -17,8 +17,7 @@ impl<S: Search + Debug + Send> Act for Ai<S> {
 
     #[instrument(level = "trace", err, ret)]
     async fn act(&mut self, game: &Game) -> Result<Action, Self::Error> {
-        let ctrl = SearchControl::default();
-        Ok(block_in_place(|| self.strategy.search(game, ctrl)).unwrap_or(Action::Resign))
+        Ok(block_in_place(|| self.strategy.search(game)).unwrap_or(Action::Resign))
     }
 }
 
@@ -26,7 +25,7 @@ impl<S: Search + Debug + Send> Act for Ai<S> {
 mod tests {
     use super::*;
     use crate::MockSearch;
-    use mockall::predicate::{always, eq};
+    use mockall::predicate::eq;
     use test_strategy::proptest;
     use tokio::runtime;
 
@@ -38,7 +37,7 @@ mod tests {
         strategy
             .expect_search()
             .once()
-            .with(eq(g.clone()), always())
+            .with(eq(g.clone()))
             .return_const(Some(a));
 
         let mut ai = Ai::new(strategy);
@@ -53,7 +52,7 @@ mod tests {
         strategy
             .expect_search()
             .once()
-            .with(eq(g.clone()), always())
+            .with(eq(g.clone()))
             .return_const(None);
 
         let mut ai = Ai::new(strategy);

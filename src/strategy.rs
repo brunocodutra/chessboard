@@ -1,4 +1,4 @@
-use crate::{Action, Build, Engine, EngineBuilder, Game, Search, SearchControl};
+use crate::{Action, Build, Engine, EngineBuilder, Game, Search};
 use anyhow::Error as Anyhow;
 use derive_more::{DebugCustom, Display, Error, From};
 use serde::Deserialize;
@@ -6,7 +6,7 @@ use std::str::FromStr;
 
 mod negamax;
 
-pub use negamax::Negamax;
+pub use negamax::*;
 
 /// A generic adversarial search algorithm.
 #[derive(DebugCustom, From)]
@@ -19,11 +19,11 @@ pub enum Strategy {
 }
 
 impl Search for Strategy {
-    fn search(&self, game: &Game, ctrl: SearchControl) -> Option<Action> {
+    fn search(&self, game: &Game) -> Option<Action> {
         match self {
-            Strategy::Negamax(s) => s.search(game, ctrl),
+            Strategy::Negamax(s) => s.search(game),
             #[cfg(test)]
-            Strategy::Mock(s) => s.search(game, ctrl),
+            Strategy::Mock(s) => s.search(game),
         }
     }
 }
@@ -33,9 +33,7 @@ impl Search for Strategy {
 #[cfg_attr(test, derive(test_strategy::Arbitrary))]
 #[serde(deny_unknown_fields, rename_all = "lowercase")]
 pub enum StrategyBuilder {
-    Negamax {
-        engine: EngineBuilder,
-    },
+    Negamax(EngineBuilder, #[serde(default)] NegamaxConfig),
 
     #[cfg(test)]
     Mock(),
@@ -59,7 +57,10 @@ impl Build for StrategyBuilder {
 
     fn build(self) -> Result<Self::Output, Anyhow> {
         match self {
-            StrategyBuilder::Negamax { engine } => Ok(Negamax::new(engine.build()?).into()),
+            StrategyBuilder::Negamax(engine, config) => {
+                Ok(Negamax::with_config(engine.build()?, config).into())
+            }
+
             #[cfg(test)]
             StrategyBuilder::Mock() => Ok(crate::MockSearch::new().into()),
         }
@@ -72,12 +73,18 @@ mod tests {
     use test_strategy::proptest;
 
     #[proptest]
-    fn negamax_builder_is_deserializable() {
+    fn negamax_builder_is_deserializable(c: NegamaxConfig) {
         assert_eq!(
-            "negamax(engine:mock())".parse(),
-            Ok(StrategyBuilder::Negamax {
-                engine: EngineBuilder::Mock()
-            })
+            "negamax(mock())".parse(),
+            Ok(StrategyBuilder::Negamax(
+                EngineBuilder::Mock(),
+                NegamaxConfig::default(),
+            ))
+        );
+
+        assert_eq!(
+            format!("negamax(mock(),{})", c).parse(),
+            Ok(StrategyBuilder::Negamax(EngineBuilder::Mock(), c))
         );
     }
 
@@ -87,12 +94,9 @@ mod tests {
     }
 
     #[proptest]
-    fn negamax_can_be_configured_at_runtime() {
+    fn negamax_can_be_configured_at_runtime(c: NegamaxConfig) {
         assert!(matches!(
-            StrategyBuilder::Negamax {
-                engine: EngineBuilder::Mock()
-            }
-            .build(),
+            StrategyBuilder::Negamax(EngineBuilder::Mock(), c).build(),
             Ok(Strategy::Negamax(_))
         ));
     }

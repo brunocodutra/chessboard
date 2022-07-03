@@ -7,8 +7,8 @@ use std::str::FromStr;
 mod heuristic;
 mod random;
 
-pub use heuristic::Heuristic;
-pub use random::Random;
+pub use heuristic::*;
+pub use random::*;
 
 /// A generic chess engine.
 #[derive(DebugCustom, From)]
