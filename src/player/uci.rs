@@ -1,11 +1,35 @@
 use crate::{Act, Action, Game, Io};
 use anyhow::{Context, Error as Anyhow};
 use async_trait::async_trait;
-use derive_more::{Display, Error, From};
-use std::{fmt::Debug, io};
+use derive_more::{DebugCustom, Display, Error, From};
+use std::{fmt::Debug, future::Future, io, pin::Pin};
 use tokio::{runtime, task::block_in_place};
 use tracing::{debug, instrument, warn};
 use vampirc_uci::{parse_one, Duration, UciFen, UciMessage, UciSearchControl, UciTimeControl};
+
+#[derive(DebugCustom)]
+#[debug(fmt = "Lazy({})")]
+enum Lazy<T: Debug, E> {
+    #[debug(fmt = "{:?}", _0)]
+    Initialized(T),
+    #[debug(fmt = "?")]
+    Uninitialized(Pin<Box<dyn Future<Output = Result<T, E>> + Send + 'static>>),
+}
+
+impl<T: Debug, E> Lazy<T, E> {
+    async fn get_or_init(&mut self) -> Result<&mut T, E> {
+        match self {
+            Lazy::Initialized(v) => Ok(v),
+            Lazy::Uninitialized(f) => {
+                *self = Lazy::Initialized(f.await?);
+                match self {
+                    Lazy::Initialized(v) => Ok(v),
+                    Lazy::Uninitialized(_) => unreachable!(),
+                }
+            }
+        }
+    }
+}
 
 /// The reason why an [`Action`] could not be received from the UCI server.
 #[derive(Debug, Display, Error, From)]
@@ -16,43 +40,26 @@ pub struct UciError(#[from(forward)] io::Error);
 /// A Universal Chess Interface client for a computer controlled player.
 #[derive(Debug)]
 pub struct Uci<T: Io + Debug> {
-    io: T,
+    io: Lazy<T, UciError>,
 }
 
-impl<T: Io + Debug> Uci<T> {
-    /// Establishes communication with UCI server.
-    #[instrument(level = "trace", err, ret)]
-    pub async fn init(io: T) -> Result<Self, UciError> {
-        let mut uci = Uci { io };
+impl<T: Io + Debug + Send + 'static> Uci<T> {
+    pub fn new(mut io: T) -> Self {
+        Uci {
+            io: Lazy::Uninitialized(Box::pin(async move {
+                io.send(&UciMessage::Uci.to_string()).await?;
+                io.flush().await?;
 
-        uci.io.send(&UciMessage::Uci.to_string()).await?;
-        uci.io.flush().await?;
+                while !matches!(recv_uci_message(&mut io).await?, UciMessage::UciOk) {}
 
-        while !matches!(uci.next_message().await?, UciMessage::UciOk) {}
+                io.send(&UciMessage::UciNewGame.to_string()).await?;
+                io.send(&UciMessage::IsReady.to_string()).await?;
+                io.flush().await?;
 
-        uci.io.send(&UciMessage::UciNewGame.to_string()).await?;
-        uci.io.send(&UciMessage::IsReady.to_string()).await?;
-        uci.io.flush().await?;
+                while !matches!(recv_uci_message(&mut io).await?, UciMessage::ReadyOk) {}
 
-        while !matches!(uci.next_message().await?, UciMessage::ReadyOk) {}
-
-        Ok(uci)
-    }
-
-    #[instrument(level = "trace", err, ret)]
-    async fn next_message(&mut self) -> Result<UciMessage, UciError> {
-        loop {
-            match parse_one(self.io.recv().await?.trim()) {
-                UciMessage::Unknown(m, cause) => {
-                    let error = cause.map(Anyhow::new).unwrap_or_else(|| Anyhow::msg(m));
-                    warn!("{:?}", error.context("failed to parse UCI message"));
-                }
-
-                msg => {
-                    debug!(received = %msg);
-                    return Ok(msg);
-                }
-            }
+                Ok(io)
+            })),
         }
     }
 }
@@ -62,9 +69,10 @@ impl<T: Io + Debug> Drop for Uci<T> {
     fn drop(&mut self) {
         let result: Result<(), Anyhow> = block_in_place(|| {
             runtime::Handle::try_current()?.block_on(async {
-                self.io.send(&UciMessage::Stop.to_string()).await?;
-                self.io.send(&UciMessage::Quit.to_string()).await?;
-                self.io.flush().await?;
+                let io = self.io.get_or_init().await?;
+                io.send(&UciMessage::Stop.to_string()).await?;
+                io.send(&UciMessage::Quit.to_string()).await?;
+                io.flush().await?;
                 Ok(())
             })
         });
@@ -93,18 +101,36 @@ impl<T: Io + Debug + Send> Act for Uci<T> {
             search_control: Some(UciSearchControl::depth(13)),
         };
 
-        self.io.send(&position.to_string()).await?;
-        self.io.send(&go.to_string()).await?;
-        self.io.flush().await?;
+        let io = self.io.get_or_init().await?;
+        io.send(&position.to_string()).await?;
+        io.send(&go.to_string()).await?;
+        io.flush().await?;
 
         let m = loop {
-            match self.next_message().await? {
+            match recv_uci_message(io).await? {
                 UciMessage::BestMove { best_move: m, .. } => break m.into(),
                 _ => continue,
             }
         };
 
         Ok(Action::Move(m))
+    }
+}
+
+#[instrument(level = "trace", err, ret)]
+async fn recv_uci_message<T: Io + Debug>(io: &mut T) -> Result<UciMessage, UciError> {
+    loop {
+        match parse_one(io.recv().await?.trim()) {
+            UciMessage::Unknown(m, cause) => {
+                let error = cause.map(Anyhow::new).unwrap_or_else(|| Anyhow::msg(m));
+                debug!("{:?}", error.context("failed to parse UCI message"));
+            }
+
+            msg => {
+                debug!(received = %msg);
+                return Ok(msg);
+            }
+        }
     }
 }
 
@@ -142,7 +168,13 @@ mod tests {
     }
 
     #[proptest]
-    fn init_shakes_hand_with_engine() {
+    fn new_schedules_engine_for_lazy_initialization() {
+        let io = MockIo::new();
+        assert!(matches!(Uci::new(io).io, Lazy::Uninitialized(_)));
+    }
+
+    #[proptest]
+    fn engine_is_lazily_initialized(g: Game, m: Move) {
         let rt = runtime::Builder::new_multi_thread().build()?;
         let mut io = MockIo::new();
         let mut seq = Sequence::new();
@@ -187,12 +219,18 @@ mod tests {
 
         io.expect_send().returning(|_| Ok(()));
         io.expect_flush().returning(|| Ok(()));
+        io.expect_recv()
+            .once()
+            .returning(move || Ok(UciMessage::best_move(m.into()).to_string()));
 
-        assert!(rt.block_on(Uci::init(io)).is_ok());
+        let mut uci = Uci::new(io);
+        assert!(rt.block_on(uci.act(&g)).is_ok());
     }
 
     #[proptest]
-    fn init_ignores_invalid_uci_messages(
+    fn initialization_ignores_invalid_uci_messages(
+        g: Game,
+        m: Move,
         #[by_ref]
         #[filter(matches!(parse_one(#msg.trim()), UciMessage::Unknown(_, _)))]
         msg: String,
@@ -213,11 +251,18 @@ mod tests {
             .once()
             .returning(move || Ok(UciMessage::ReadyOk.to_string()));
 
-        assert!(rt.block_on(Uci::init(io)).is_ok());
+        io.expect_recv()
+            .once()
+            .returning(move || Ok(UciMessage::best_move(m.into()).to_string()));
+
+        let mut uci = Uci::new(io);
+        assert!(rt.block_on(uci.act(&g)).is_ok());
     }
 
     #[proptest]
-    fn init_ignores_unexpected_uci_messages(
+    fn initialization_ignores_unexpected_uci_messages(
+        g: Game,
+        m: Move,
         #[by_ref]
         #[filter(!matches!(#msg, UciMessage::UciOk))]
         #[strategy(any_uci_message())]
@@ -241,11 +286,16 @@ mod tests {
             .once()
             .returning(move || Ok(UciMessage::ReadyOk.to_string()));
 
-        assert!(rt.block_on(Uci::init(io)).is_ok());
+        io.expect_recv()
+            .once()
+            .returning(move || Ok(UciMessage::best_move(m.into()).to_string()));
+
+        let mut uci = Uci::new(io);
+        assert!(rt.block_on(uci.act(&g)).is_ok());
     }
 
     #[proptest]
-    fn init_can_fail(e: io::Error) {
+    fn initialization_can_fail(g: Game, e: io::Error) {
         let rt = runtime::Builder::new_multi_thread().build()?;
         let mut io = MockIo::new();
 
@@ -255,14 +305,15 @@ mod tests {
         io.expect_send().returning(|_| Ok(()));
         io.expect_flush().returning(|| Ok(()));
 
+        let mut uci = Uci::new(io);
         assert_eq!(
-            rt.block_on(Uci::init(io)).err().map(|UciError(e)| e.kind()),
-            Some(kind)
+            rt.block_on(uci.act(&g)).map_err(|UciError(e)| e.kind()),
+            Err(kind)
         );
     }
 
     #[proptest]
-    fn drop_gracefully_stops_engine() {
+    fn drop_gracefully_quits_initialized_engine() {
         let rt = runtime::Builder::new_multi_thread().build()?;
         let mut io = MockIo::new();
 
@@ -286,7 +337,49 @@ mod tests {
             .returning(|| Ok(()));
 
         rt.block_on(async move {
-            drop(Uci { io });
+            drop(Uci {
+                io: Lazy::Initialized(io),
+            });
+        })
+    }
+
+    #[proptest]
+    fn drop_gracefully_quits_uninitialized_engine() {
+        let rt = runtime::Builder::new_multi_thread().build()?;
+        let mut io = MockIo::new();
+
+        io.expect_send().times(3).returning(|_| Ok(()));
+        io.expect_flush().times(2).returning(|| Ok(()));
+
+        io.expect_recv()
+            .once()
+            .returning(move || Ok(UciMessage::UciOk.to_string()));
+
+        io.expect_recv()
+            .once()
+            .returning(move || Ok(UciMessage::ReadyOk.to_string()));
+
+        let mut seq = Sequence::new();
+
+        io.expect_send()
+            .once()
+            .in_sequence(&mut seq)
+            .withf(|msg| msg == UciMessage::Stop.to_string())
+            .returning(|_| Ok(()));
+
+        io.expect_send()
+            .once()
+            .in_sequence(&mut seq)
+            .withf(|msg| msg == UciMessage::Quit.to_string())
+            .returning(|_| Ok(()));
+
+        io.expect_flush()
+            .once()
+            .in_sequence(&mut seq)
+            .returning(|| Ok(()));
+
+        rt.block_on(async move {
+            drop(Uci::new(io));
         })
     }
 
@@ -297,13 +390,17 @@ mod tests {
         io.expect_send().once().return_once(move |_| Err(e));
 
         rt.block_on(async move {
-            drop(Uci { io });
+            drop(Uci {
+                io: Lazy::Initialized(io),
+            });
         })
     }
 
     #[proptest]
     fn drop_recovers_from_missing_runtime() {
-        drop(Uci { io: MockIo::new() });
+        drop(Uci {
+            io: Lazy::Initialized(MockIo::new()),
+        });
     }
 
     #[proptest]
@@ -334,7 +431,10 @@ mod tests {
             .in_sequence(&mut seq)
             .returning(move || Ok(UciMessage::best_move(m.into()).to_string()));
 
-        let mut uci = Uci { io };
+        let mut uci = Uci {
+            io: Lazy::Initialized(io),
+        };
+
         assert_eq!(rt.block_on(uci.act(&g))?, Action::Move(m));
     }
 
@@ -358,7 +458,10 @@ mod tests {
             .once()
             .returning(move || Ok(UciMessage::best_move(m.into()).to_string()));
 
-        let mut uci = Uci { io };
+        let mut uci = Uci {
+            io: Lazy::Initialized(io),
+        };
+
         assert_eq!(rt.block_on(uci.act(&g))?, Action::Move(m));
     }
 
@@ -385,7 +488,10 @@ mod tests {
             .once()
             .returning(move || Ok(UciMessage::best_move(m.into()).to_string()));
 
-        let mut uci = Uci { io };
+        let mut uci = Uci {
+            io: Lazy::Initialized(io),
+        };
+
         assert_eq!(rt.block_on(uci.act(&g))?, Action::Move(m));
     }
 
@@ -400,7 +506,10 @@ mod tests {
         io.expect_send().returning(|_| Ok(()));
         io.expect_flush().returning(|| Ok(()));
 
-        let mut uci = Uci { io };
+        let mut uci = Uci {
+            io: Lazy::Initialized(io),
+        };
+
         assert_eq!(
             rt.block_on(uci.act(&g)).map_err(|UciError(e)| e.kind()),
             Err(kind)
@@ -418,7 +527,10 @@ mod tests {
         io.expect_flush().once().return_once(move || Err(e));
         io.expect_flush().returning(|| Ok(()));
 
-        let mut uci = Uci { io };
+        let mut uci = Uci {
+            io: Lazy::Initialized(io),
+        };
+
         assert_eq!(
             rt.block_on(uci.act(&g)).map_err(|UciError(e)| e.kind()),
             Err(kind)
@@ -436,7 +548,10 @@ mod tests {
         let kind = e.kind();
         io.expect_recv().once().return_once(move || Err(e));
 
-        let mut uci = Uci { io };
+        let mut uci = Uci {
+            io: Lazy::Initialized(io),
+        };
+
         assert_eq!(
             rt.block_on(uci.act(&g)).map_err(|UciError(e)| e.kind()),
             Err(kind)

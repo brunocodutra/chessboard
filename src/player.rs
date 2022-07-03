@@ -85,8 +85,8 @@ impl Setup for PlayerConfig {
     async fn setup(self) -> Result<Self::Output, Anyhow> {
         match self {
             PlayerConfig::Ai(cfg) => Ok(Ai::new(cfg.setup().await?).into()),
+            PlayerConfig::Uci(cfg) => Ok(Uci::new(cfg.setup().await?).into()),
             PlayerConfig::Cli(cfg) => Ok(Cli::new(cfg.setup().await?).into()),
-            PlayerConfig::Uci(cfg) => Ok(Uci::init(cfg.setup().await?).await?.into()),
             #[cfg(test)]
             PlayerConfig::Mock() => Ok(crate::MockAct::new().into()),
         }
@@ -96,8 +96,6 @@ impl Setup for PlayerConfig {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{MockAct, MockIo, MockSearch};
-    use std::mem::discriminant;
     use test_strategy::proptest;
     use tokio::runtime;
 
@@ -134,35 +132,39 @@ mod tests {
     fn ai_can_be_configured_at_runtime() {
         let rt = runtime::Builder::new_multi_thread().build()?;
 
-        assert_eq!(
-            discriminant(&Player::Ai(Ai::new(Strategy::Mock(MockSearch::new())))),
-            discriminant(
-                &rt.block_on(PlayerConfig::Ai(StrategyConfig::Mock()).setup())
-                    .unwrap()
-            )
-        );
+        assert!(matches!(
+            rt.block_on(PlayerConfig::Ai(StrategyConfig::Mock()).setup()),
+            Ok(Player::Ai(_))
+        ));
+    }
+
+    #[proptest]
+    fn uci_can_be_configured_at_runtime() {
+        let rt = runtime::Builder::new_multi_thread().build()?;
+
+        assert!(matches!(
+            rt.block_on(PlayerConfig::Uci(RemoteConfig::Mock()).setup()),
+            Ok(Player::Uci(_))
+        ));
     }
 
     #[proptest]
     fn cli_can_be_configured_at_runtime() {
         let rt = runtime::Builder::new_multi_thread().build()?;
 
-        assert_eq!(
-            discriminant(&Player::Cli(Cli::new(Remote::Mock(MockIo::new())))),
-            discriminant(
-                &rt.block_on(PlayerConfig::Cli(RemoteConfig::Mock()).setup())
-                    .unwrap()
-            )
-        );
+        assert!(matches!(
+            rt.block_on(PlayerConfig::Cli(RemoteConfig::Mock()).setup()),
+            Ok(Player::Cli(_))
+        ));
     }
 
     #[proptest]
     fn mock_can_be_configured_at_runtime() {
         let rt = runtime::Builder::new_multi_thread().build()?;
 
-        assert_eq!(
-            discriminant(&Player::Mock(MockAct::new())),
-            discriminant(&rt.block_on(PlayerConfig::Mock().setup()).unwrap())
-        );
+        assert!(matches!(
+            rt.block_on(PlayerConfig::Mock().setup()),
+            Ok(Player::Mock(_))
+        ));
     }
 }

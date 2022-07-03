@@ -77,8 +77,6 @@ impl Setup for EngineConfig {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::MockEval;
-    use std::mem::discriminant;
     use test_strategy::proptest;
     use tokio::runtime;
 
@@ -101,29 +99,29 @@ mod tests {
     fn random_can_be_configured_at_runtime() {
         let rt = runtime::Builder::new_multi_thread().build()?;
 
-        assert_eq!(
-            discriminant(&Engine::Random(Random::new())),
-            discriminant(&rt.block_on(EngineConfig::Random {}.setup()).unwrap())
-        );
+        assert!(matches!(
+            rt.block_on(EngineConfig::Random {}.setup()),
+            Ok(Engine::Random(_))
+        ));
     }
 
     #[proptest]
     fn heuristic_can_be_configured_at_runtime() {
         let rt = runtime::Builder::new_multi_thread().build()?;
 
-        assert_eq!(
-            discriminant(&Engine::Heuristic(Heuristic::new())),
-            discriminant(&rt.block_on(EngineConfig::Heuristic {}.setup()).unwrap())
-        );
+        assert!(matches!(
+            rt.block_on(EngineConfig::Heuristic {}.setup()),
+            Ok(Engine::Heuristic(_))
+        ));
     }
 
     #[proptest]
     fn mock_can_be_configured_at_runtime() {
         let rt = runtime::Builder::new_multi_thread().build()?;
 
-        assert_eq!(
-            discriminant(&Engine::Mock(MockEval::new())),
-            discriminant(&rt.block_on(EngineConfig::Mock().setup()).unwrap())
-        );
+        assert!(matches!(
+            rt.block_on(EngineConfig::Mock().setup()),
+            Ok(Engine::Mock(_))
+        ));
     }
 }
