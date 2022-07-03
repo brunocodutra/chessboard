@@ -77,13 +77,12 @@ impl Process {
 
     /// Spawns a remote process.
     #[instrument(level = "trace", err, ret)]
-    pub async fn spawn(path: &str) -> io::Result<Self> {
+    pub fn spawn(path: &str) -> io::Result<Self> {
         #[cfg(test)]
         {
             let mut child = MockChildProcess::new();
             child.expect_id().returning(|| None);
             child.expect_pipe().returning(|| Ok(tokio::io::duplex(1)));
-            child.expect_wait().returning(|| Ok(String::new()));
             Process::new(child)
         }
 
@@ -171,47 +170,34 @@ mod tests {
     }
 
     #[proptest]
-    fn drop_gracefully_terminates_child_process(id: Option<u32>, status: String) {
+    fn drop_gracefully_terminates_child_process(path: String, status: String) {
         let rt = runtime::Builder::new_multi_thread().build()?;
-        let mut child = MockChildProcess::new();
 
-        child.expect_id().once().return_once(move || id);
+        let mut process = Process::spawn(&path)?;
+        let child = &mut process.child;
         child.expect_wait().once().return_once(move || Ok(status));
 
-        let pipe = duplex(1);
-        child.expect_pipe().once().return_once(move || Ok(pipe));
-
         rt.block_on(async move {
-            drop(Process::new(child));
+            drop(process);
         })
     }
 
     #[proptest]
-    fn drop_recovers_from_errors(id: Option<u32>, e: io::Error) {
+    fn drop_recovers_from_errors(path: String, e: io::Error) {
         let rt = runtime::Builder::new_multi_thread().build()?;
-        let mut child = MockChildProcess::new();
 
-        child.expect_id().once().return_once(move || id);
+        let mut process = Process::spawn(&path)?;
+        let child = &mut process.child;
         child.expect_wait().once().return_once(move || Err(e));
 
-        let pipe = duplex(1);
-        child.expect_pipe().once().return_once(move || Ok(pipe));
-
         rt.block_on(async move {
-            drop(Process::new(child));
+            drop(process);
         })
     }
 
     #[proptest]
-    fn drop_recovers_from_missing_runtime(id: Option<u32>) {
-        let mut child = MockChildProcess::new();
-
-        child.expect_id().once().return_once(move || id);
-
-        let pipe = duplex(1);
-        child.expect_pipe().once().return_once(move || Ok(pipe));
-
-        drop(Process::new(child));
+    fn drop_recovers_from_missing_runtime(path: String) {
+        drop(Process::spawn(&path)?);
     }
 
     #[proptest]
