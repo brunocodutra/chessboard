@@ -1,18 +1,18 @@
 use crate::Io;
-use anyhow::{Context, Error as Anyhow};
+use anyhow::{bail, Context, Error as Anyhow};
 use async_trait::async_trait;
 use derive_more::DebugCustom;
-use std::io;
+use std::{io, time::Duration};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader, BufWriter, Lines};
-use tokio::{runtime, task::block_in_place};
+use tokio::{runtime, select, task::block_in_place, time::sleep};
 use tracing::{error, info, instrument, warn};
 
+#[async_trait]
 #[cfg_attr(test, mockall::automock(
     type Stdin = tokio::io::DuplexStream;
     type Stdout = tokio::io::DuplexStream;
     type Status = String;
 ))]
-#[async_trait]
 trait ChildProcess {
     fn id(&self) -> Option<u32>;
 
@@ -22,6 +22,8 @@ trait ChildProcess {
 
     type Status;
     async fn wait(&mut self) -> io::Result<Self::Status>;
+
+    async fn kill(&mut self) -> io::Result<()>;
 }
 
 #[async_trait]
@@ -45,6 +47,10 @@ impl ChildProcess for tokio::process::Child {
     async fn wait(&mut self) -> io::Result<Self::Status> {
         self.wait().await
     }
+
+    async fn kill(&mut self) -> io::Result<()> {
+        self.kill().await
+    }
 }
 
 #[cfg(test)]
@@ -63,6 +69,12 @@ pub struct Process {
 }
 
 impl Process {
+    #[cfg(test)]
+    const TIMEOUT: Duration = Duration::from_millis(0);
+
+    #[cfg(not(test))]
+    const TIMEOUT: Duration = Duration::from_millis(1000);
+
     fn new(mut child: Child) -> io::Result<Self> {
         let (stdin, stdout) = child.pipe()?;
 
@@ -107,7 +119,18 @@ impl Drop for Process {
         let result: Result<_, Anyhow> = block_in_place(|| {
             runtime::Handle::try_current()?.block_on(async {
                 self.writer.flush().await?;
-                Ok(self.child.wait().await?)
+
+                select! {
+                    status = self.child.wait() => {
+                        Ok(status?)
+                    }
+
+                    _ = sleep(Self::TIMEOUT) => {
+                        self.child.kill().await?;
+                        warn!(pid, "forcefully killed the remote process");
+                        bail!("the process still has not exited after {}s", Self::TIMEOUT.as_secs());
+                    }
+                }
             })
         });
 
@@ -170,12 +193,19 @@ mod tests {
     }
 
     #[proptest]
-    fn drop_gracefully_terminates_child_process(path: String, status: String) {
-        let rt = runtime::Builder::new_multi_thread().build()?;
+    fn drop_gracefully_terminates_child_process(status: String) {
+        let rt = runtime::Builder::new_multi_thread().enable_time().build()?;
 
-        let mut process = Process::spawn(&path)?;
+        let mut process = Process::spawn("")?;
         let child = &mut process.child;
-        child.expect_wait().once().return_once(move || Ok(status));
+
+        child
+            .expect_wait()
+            .return_once(move || Box::pin(async { Ok(status) }));
+
+        child
+            .expect_kill()
+            .return_once(move || Box::pin(async { Ok(()) }));
 
         rt.block_on(async move {
             drop(process);
@@ -183,12 +213,23 @@ mod tests {
     }
 
     #[proptest]
-    fn drop_recovers_from_errors(path: String, e: io::Error) {
-        let rt = runtime::Builder::new_multi_thread().build()?;
+    fn drop_kills_child_process_if_it_does_not_exit_gracefully(status: String) {
+        let rt = runtime::Builder::new_multi_thread().enable_time().build()?;
 
-        let mut process = Process::spawn(&path)?;
+        let mut process = Process::spawn("")?;
         let child = &mut process.child;
-        child.expect_wait().once().return_once(move || Err(e));
+
+        child.expect_wait().return_once(move || {
+            Box::pin(async {
+                sleep(Duration::from_secs(1)).await;
+                Ok(status)
+            })
+        });
+
+        child
+            .expect_kill()
+            .once()
+            .return_once(move || Box::pin(async { Ok(()) }));
 
         rt.block_on(async move {
             drop(process);
@@ -196,8 +237,28 @@ mod tests {
     }
 
     #[proptest]
-    fn drop_recovers_from_missing_runtime(path: String) {
-        drop(Process::spawn(&path)?);
+    fn drop_recovers_from_errors(a: io::Error, b: io::Error) {
+        let rt = runtime::Builder::new_multi_thread().enable_time().build()?;
+
+        let mut process = Process::spawn("")?;
+        let child = &mut process.child;
+
+        child
+            .expect_wait()
+            .return_once(move || Box::pin(async { Err(a) }));
+
+        child
+            .expect_kill()
+            .return_once(move || Box::pin(async { Err(b) }));
+
+        rt.block_on(async move {
+            drop(process);
+        })
+    }
+
+    #[proptest]
+    fn drop_recovers_from_missing_runtime() {
+        drop(Process::spawn("")?);
     }
 
     #[proptest]
