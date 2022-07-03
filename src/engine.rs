@@ -1,10 +1,8 @@
 use crate::{Build, Eval, Game};
 use anyhow::Error as Anyhow;
-use async_trait::async_trait;
 use derive_more::{DebugCustom, Display, Error, From};
 use serde::Deserialize;
 use std::str::FromStr;
-use tracing::instrument;
 
 mod heuristic;
 mod random;
@@ -59,12 +57,10 @@ impl FromStr for EngineBuilder {
     }
 }
 
-#[async_trait]
 impl Build for EngineBuilder {
     type Output = Engine;
 
-    #[instrument(level = "trace", err, ret)]
-    async fn build(self) -> Result<Self::Output, Anyhow> {
+    fn build(self) -> Result<Self::Output, Anyhow> {
         match self {
             EngineBuilder::Random {} => Ok(Random::new().into()),
             EngineBuilder::Heuristic { .. } => Ok(Heuristic::new().into()),
@@ -78,7 +74,6 @@ impl Build for EngineBuilder {
 mod tests {
     use super::*;
     use test_strategy::proptest;
-    use tokio::runtime;
 
     #[proptest]
     fn random_builder_is_deserializable() {
@@ -97,31 +92,22 @@ mod tests {
 
     #[proptest]
     fn random_can_be_configured_at_runtime() {
-        let rt = runtime::Builder::new_multi_thread().build()?;
-
         assert!(matches!(
-            rt.block_on(EngineBuilder::Random {}.build()),
+            EngineBuilder::Random {}.build(),
             Ok(Engine::Random(_))
         ));
     }
 
     #[proptest]
     fn heuristic_can_be_configured_at_runtime() {
-        let rt = runtime::Builder::new_multi_thread().build()?;
-
         assert!(matches!(
-            rt.block_on(EngineBuilder::Heuristic {}.build()),
+            EngineBuilder::Heuristic {}.build(),
             Ok(Engine::Heuristic(_))
         ));
     }
 
     #[proptest]
     fn mock_can_be_configured_at_runtime() {
-        let rt = runtime::Builder::new_multi_thread().build()?;
-
-        assert!(matches!(
-            rt.block_on(EngineBuilder::Mock().build()),
-            Ok(Engine::Mock(_))
-        ));
+        assert!(matches!(EngineBuilder::Mock().build(), Ok(Engine::Mock(_))));
     }
 }
