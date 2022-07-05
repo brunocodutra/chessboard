@@ -4,15 +4,15 @@ use derive_more::{DebugCustom, Display, Error, From};
 use serde::Deserialize;
 use std::str::FromStr;
 
-mod negamax;
+mod minimax;
 
-pub use negamax::*;
+pub use minimax::*;
 
 /// A generic adversarial search algorithm.
 #[derive(DebugCustom, From)]
 pub enum Strategy {
     #[debug(fmt = "{:?}", _0)]
-    Negamax(Negamax<Engine>),
+    Minimax(Minimax<Engine>),
     #[cfg(test)]
     #[debug(fmt = "{:?}", _0)]
     Mock(crate::MockSearch),
@@ -21,7 +21,7 @@ pub enum Strategy {
 impl Search for Strategy {
     fn search(&self, game: &Game) -> Option<Action> {
         match self {
-            Strategy::Negamax(s) => s.search(game),
+            Strategy::Minimax(s) => s.search(game),
             #[cfg(test)]
             Strategy::Mock(s) => s.search(game),
         }
@@ -33,7 +33,7 @@ impl Search for Strategy {
 #[cfg_attr(test, derive(test_strategy::Arbitrary))]
 #[serde(deny_unknown_fields, rename_all = "lowercase")]
 pub enum StrategyBuilder {
-    Negamax(EngineBuilder, #[serde(default)] NegamaxConfig),
+    Minimax(EngineBuilder, #[serde(default)] MinimaxConfig),
 
     #[cfg(test)]
     Mock(),
@@ -57,8 +57,8 @@ impl Build for StrategyBuilder {
 
     fn build(self) -> Result<Self::Output, Anyhow> {
         match self {
-            StrategyBuilder::Negamax(engine, config) => {
-                Ok(Negamax::with_config(engine.build()?, config).into())
+            StrategyBuilder::Minimax(engine, config) => {
+                Ok(Minimax::with_config(engine.build()?, config).into())
             }
 
             #[cfg(test)]
@@ -73,18 +73,18 @@ mod tests {
     use test_strategy::proptest;
 
     #[proptest]
-    fn negamax_builder_is_deserializable(c: NegamaxConfig) {
+    fn minimax_builder_is_deserializable(c: MinimaxConfig) {
         assert_eq!(
-            "negamax(mock())".parse(),
-            Ok(StrategyBuilder::Negamax(
+            "minimax(mock())".parse(),
+            Ok(StrategyBuilder::Minimax(
                 EngineBuilder::Mock(),
-                NegamaxConfig::default(),
+                MinimaxConfig::default(),
             ))
         );
 
         assert_eq!(
-            format!("negamax(mock(),{})", c).parse(),
-            Ok(StrategyBuilder::Negamax(EngineBuilder::Mock(), c))
+            format!("minimax(mock(),{})", c).parse(),
+            Ok(StrategyBuilder::Minimax(EngineBuilder::Mock(), c))
         );
     }
 
@@ -94,10 +94,10 @@ mod tests {
     }
 
     #[proptest]
-    fn negamax_can_be_configured_at_runtime(c: NegamaxConfig) {
+    fn minimax_can_be_configured_at_runtime(c: MinimaxConfig) {
         assert!(matches!(
-            StrategyBuilder::Negamax(EngineBuilder::Mock(), c).build(),
-            Ok(Strategy::Negamax(_))
+            StrategyBuilder::Minimax(EngineBuilder::Mock(), c).build(),
+            Ok(Strategy::Minimax(_))
         ));
     }
 

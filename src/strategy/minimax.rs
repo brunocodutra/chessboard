@@ -81,26 +81,26 @@ impl Binary for Option<SearchResult> {
     }
 }
 
-/// Configuration for [`Negamax`].
+/// Configuration for [`Minimax`].
 #[derive(Debug, Display, Copy, Clone, Eq, PartialEq, Hash, Deserialize, Serialize)]
 #[cfg_attr(test, derive(test_strategy::Arbitrary))]
 #[display(fmt = "{}", "ron::ser::to_string(self).unwrap()")]
 #[serde(deny_unknown_fields, rename = "config", default)]
-pub struct NegamaxConfig {
+pub struct MinimaxConfig {
     /// The maximum number of plies to search.
     ///
     /// This is an upper limit, the actual depth searched may be smaller.
-    #[cfg_attr(test, strategy(0u8..=NegamaxConfig::default().max_depth))]
+    #[cfg_attr(test, strategy(0u8..=MinimaxConfig::default().max_depth))]
     pub max_depth: u8,
 
     /// The size of the transposition table in bytes.
     ///
     /// This is an upper limit, the actual memory allocation may be smaller.
-    #[cfg_attr(test, strategy(8usize..=NegamaxConfig::default().table_size))]
+    #[cfg_attr(test, strategy(8usize..=MinimaxConfig::default().table_size))]
     pub table_size: usize,
 }
 
-impl Default for NegamaxConfig {
+impl Default for MinimaxConfig {
     fn default() -> Self {
         #[cfg(test)]
         {
@@ -120,41 +120,41 @@ impl Default for NegamaxConfig {
     }
 }
 
-/// The reason why parsing [`NegamaxConfig`] failed.
+/// The reason why parsing [`MinimaxConfig`] failed.
 #[derive(Debug, Display, PartialEq, Error, From)]
-#[display(fmt = "failed to parse negamax configuration")]
-pub struct ParseNegamaxConfigError(ron::de::Error);
+#[display(fmt = "failed to parse minimax configuration")]
+pub struct ParseMinimaxConfigError(ron::de::Error);
 
-impl FromStr for NegamaxConfig {
-    type Err = ParseNegamaxConfigError;
+impl FromStr for MinimaxConfig {
+    type Err = ParseMinimaxConfigError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         Ok(ron::de::from_str(s)?)
     }
 }
 
-/// An implementation of [negamax].
+/// An implementation of [minimax].
 ///
-/// [negamax]: https://en.wikipedia.org/wiki/Negamax
+/// [minimax]: https://en.wikipedia.org/wiki/Minimax
 #[derive(Debug)]
-pub struct Negamax<E: Eval + Send + Sync> {
+pub struct Minimax<E: Eval + Send + Sync> {
     engine: E,
-    config: NegamaxConfig,
+    config: MinimaxConfig,
     tt: Cache<Option<SearchResult>>,
 }
 
-impl<E: Eval + Send + Sync> Negamax<E> {
-    /// Constructs [`Negamax`] with the default [`NegamaxConfig`].
+impl<E: Eval + Send + Sync> Minimax<E> {
+    /// Constructs [`Minimax`] with the default [`MinimaxConfig`].
     pub fn new(engine: E) -> Self {
-        Self::with_config(engine, NegamaxConfig::default())
+        Self::with_config(engine, MinimaxConfig::default())
     }
 
-    /// Constructs [`Negamax`] with the specified [`NegamaxConfig`].
-    pub fn with_config(engine: E, config: NegamaxConfig) -> Self {
+    /// Constructs [`Minimax`] with the specified [`MinimaxConfig`].
+    pub fn with_config(engine: E, config: MinimaxConfig) -> Self {
         let entry_size = <Option<SearchResult> as Binary>::Register::SIZE;
         let cache_size = (config.table_size / entry_size / 2 + 1).next_power_of_two();
 
-        Negamax {
+        Minimax {
             engine,
             config,
             tt: Cache::new(cache_size),
@@ -170,7 +170,7 @@ impl<E: Eval + Send + Sync> Negamax<E> {
         }
     }
 
-    fn negamax(&self, game: &Game, height: i8, alpha: i16, beta: i16) -> i16 {
+    fn alpha_beta(&self, game: &Game, height: i8, alpha: i16, beta: i16) -> i16 {
         debug_assert!(alpha < beta);
 
         let (key, signature) = self.key_of(game);
@@ -203,7 +203,7 @@ impl<E: Eval + Send + Sync> Negamax<E> {
                 game.execute(a).expect("expected legal action");
 
                 let score = self
-                    .negamax(
+                    .alpha_beta(
                         &game,
                         height - 1,
                         beta.saturating_neg(),
@@ -244,10 +244,10 @@ impl<E: Eval + Send + Sync> Negamax<E> {
     }
 }
 
-impl<E: Eval + Send + Sync> Search for Negamax<E> {
+impl<E: Eval + Send + Sync> Search for Minimax<E> {
     fn search(&self, game: &Game) -> Option<Action> {
         let depth = self.config.max_depth.min(i8::MAX as u8) as i8;
-        self.negamax(game, depth, i16::MIN, i16::MAX);
+        self.alpha_beta(game, depth, i16::MIN, i16::MAX);
         let (key, _) = self.key_of(game);
         self.tt.load(key).map(|r| {
             debug_assert_eq!(r.kind, SearchResultKind::Exact);
@@ -286,27 +286,27 @@ mod tests {
 
     #[proptest]
     fn config_deserializes_missing_fields_to_default() {
-        assert_eq!("config()".parse(), Ok(NegamaxConfig::default()));
+        assert_eq!("config()".parse(), Ok(MinimaxConfig::default()));
     }
 
     #[proptest]
-    fn parsing_printed_config_is_an_identity(c: NegamaxConfig) {
+    fn parsing_printed_config_is_an_identity(c: MinimaxConfig) {
         assert_eq!(c.to_string().parse(), Ok(c));
     }
 
     #[proptest]
-    fn table_size_is_an_upper_limit(c: NegamaxConfig) {
-        let strategy = Negamax::with_config(MockEval::new(), c);
+    fn table_size_is_an_upper_limit(c: MinimaxConfig) {
+        let strategy = Minimax::with_config(MockEval::new(), c);
         assert!(strategy.tt.len() * 8 <= c.table_size);
     }
 
     #[proptest]
     fn table_size_is_exact_if_power_of_two(#[strategy(3usize..=10)] w: usize) {
-        let strategy = Negamax::with_config(
+        let strategy = Minimax::with_config(
             MockEval::new(),
-            NegamaxConfig {
+            MinimaxConfig {
                 table_size: 1 << w,
-                ..NegamaxConfig::default()
+                ..MinimaxConfig::default()
             },
         );
 
@@ -316,12 +316,12 @@ mod tests {
     #[proptest]
     #[should_panic]
     #[cfg(debug_assertions)]
-    fn negamax_panics_if_alpha_not_smaller_than_beta(g: Game, a: i16, b: i16) {
-        Negamax::new(MockEval::new()).negamax(&g, 0, a.max(b), a.min(b));
+    fn alpha_beta_panics_if_alpha_not_smaller_than_beta(g: Game, a: i16, b: i16) {
+        Minimax::new(MockEval::new()).alpha_beta(&g, 0, a.max(b), a.min(b));
     }
 
     #[proptest]
-    fn negamax_returns_none_if_depth_is_zero(g: Game, s: i16) {
+    fn alpha_beta_returns_none_if_depth_is_zero(g: Game, s: i16) {
         let mut engine = MockEval::new();
         engine
             .expect_eval()
@@ -329,12 +329,12 @@ mod tests {
             .with(eq(g.clone()))
             .return_const(s);
 
-        let strategy = Negamax::new(engine);
-        assert_eq!(strategy.negamax(&g, 0, i16::MIN, i16::MAX), s);
+        let strategy = Minimax::new(engine);
+        assert_eq!(strategy.alpha_beta(&g, 0, i16::MIN, i16::MAX), s);
     }
 
     #[proptest]
-    fn negamax_returns_none_if_game_has_ended(
+    fn alpha_beta_returns_none_if_game_has_ended(
         _o: Outcome,
         #[any(Some(#_o))] g: Game,
         d: i8,
@@ -347,18 +347,18 @@ mod tests {
             .with(eq(g.clone()))
             .return_const(s);
 
-        let strategy = Negamax::new(engine);
-        assert_eq!(strategy.negamax(&g, d, i16::MIN, i16::MAX), s);
+        let strategy = Minimax::new(engine);
+        assert_eq!(strategy.alpha_beta(&g, d, i16::MIN, i16::MAX), s);
     }
 
     #[proptest]
     #[cfg(not(tarpaulin))]
-    fn negamax_returns_best_score(c: NegamaxConfig, g: Game) {
+    fn alpha_beta_returns_best_score(c: MinimaxConfig, g: Game) {
         let depth = c.max_depth.try_into()?;
 
         assert_eq!(
             minimax(&Heuristic::new(), &g, depth),
-            Negamax::with_config(Heuristic::new(), c).negamax(&g, depth, i16::MIN, i16::MAX),
+            Minimax::with_config(Heuristic::new(), c).alpha_beta(&g, depth, i16::MIN, i16::MAX),
         );
     }
 
@@ -367,17 +367,17 @@ mod tests {
     fn result_does_not_depend_on_table_size(
         #[strategy(0usize..65536)] a: usize,
         #[strategy(0usize..65536)] b: usize,
-        c: NegamaxConfig,
+        c: MinimaxConfig,
         g: Game,
     ) {
-        let a = Negamax::with_config(Heuristic::new(), NegamaxConfig { table_size: a, ..c });
-        let b = Negamax::with_config(Heuristic::new(), NegamaxConfig { table_size: b, ..c });
+        let a = Minimax::with_config(Heuristic::new(), MinimaxConfig { table_size: a, ..c });
+        let b = Minimax::with_config(Heuristic::new(), MinimaxConfig { table_size: b, ..c });
 
         let depth = c.max_depth.try_into()?;
 
         assert_eq!(
-            a.negamax(&g, depth, i16::MIN, i16::MAX),
-            b.negamax(&g, depth, i16::MIN, i16::MAX)
+            a.alpha_beta(&g, depth, i16::MIN, i16::MAX),
+            b.alpha_beta(&g, depth, i16::MIN, i16::MAX)
         );
     }
 }

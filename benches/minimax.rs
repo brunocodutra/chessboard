@@ -1,4 +1,4 @@
-use chessboard::strategy::{Negamax, NegamaxConfig};
+use chessboard::strategy::{Minimax, MinimaxConfig};
 use chessboard::{engine::Heuristic, Game, Search};
 use criterion::{criterion_group, criterion_main, BatchSize, Criterion};
 use proptest::{prelude::*, sample::Selector, strategy::ValueTree, test_runner::TestRunner};
@@ -19,20 +19,20 @@ fn game() -> impl Strategy<Value = Game> {
 
 fn bench(c: &mut Criterion) {
     let mut runner = TestRunner::default();
-    let mut group = c.benchmark_group("negamax");
+    let mut group = c.benchmark_group("minimax");
     for max_depth in [2, 4, 6] {
-        let negamax = Negamax::with_config(
+        let minimax = Minimax::with_config(
             Heuristic::new(),
-            NegamaxConfig {
+            MinimaxConfig {
                 max_depth,
-                ..NegamaxConfig::default()
+                ..MinimaxConfig::default()
             },
         );
 
         group.bench_with_input(format!("depth={}", max_depth), &game(), |b, s| {
             b.iter_batched_ref(
                 || s.new_tree(&mut runner).unwrap().current(),
-                |game| negamax.search(game),
+                |game| minimax.search(game),
                 BatchSize::SmallInput,
             )
         });
