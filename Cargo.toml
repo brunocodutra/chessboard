@@ -37,5 +37,5 @@ test-strategy = "0.2.0"
 lto = "thin"
 
 [[bench]]
-name = "negamax"
+name = "minimax"
 harness = false
