@@ -103,6 +103,16 @@ pub struct MinimaxConfig {
 impl Default for MinimaxConfig {
     fn default() -> Self {
         #[cfg(test)]
+        #[cfg(tarpaulin)]
+        {
+            Self {
+                max_depth: 2,
+                table_size: 1 << 8,
+            }
+        }
+
+        #[cfg(test)]
+        #[cfg(not(tarpaulin))]
         {
             Self {
                 max_depth: 3,
@@ -170,8 +180,11 @@ impl<E: Eval + Send + Sync> Minimax<E> {
         }
     }
 
+    /// The [alpha-beta pruning] algorithm.
+    ///
+    /// [alpha-beta pruning]: https://en.wikipedia.org/wiki/Alpha%E2%80%93beta_pruning
     fn alpha_beta(&self, game: &Game, height: i8, alpha: i16, beta: i16) -> i16 {
-        debug_assert!(alpha < beta);
+        debug_assert!(alpha < beta, "{} < {}", alpha, beta);
 
         let (key, signature) = self.key_of(game);
         let (alpha, beta, score) = match self.tt.load(key) {
@@ -242,17 +255,33 @@ impl<E: Eval + Send + Sync> Minimax<E> {
 
         score
     }
+
+    /// The [mtd(f)] algorithm.
+    ///
+    /// [mtd(f)]: https://en.wikipedia.org/wiki/MTD(f)
+    fn mtdf(&self, game: &Game, depth: i8, mut score: i16) -> i16 {
+        let mut alpha = -i16::MAX;
+        let mut beta = i16::MAX;
+        while alpha < beta {
+            let target = score.max(alpha + 1);
+            score = self.alpha_beta(game, depth, target - 1, target);
+            if score < target {
+                beta = score;
+            } else {
+                alpha = score;
+            }
+        }
+
+        score
+    }
 }
 
 impl<E: Eval + Send + Sync> Search for Minimax<E> {
     fn search(&self, game: &Game) -> Option<Action> {
         let depth = self.config.max_depth.min(i8::MAX as u8) as i8;
-        self.alpha_beta(game, depth, i16::MIN, i16::MAX);
+        self.mtdf(game, depth, 0);
         let (key, _) = self.key_of(game);
-        self.tt.load(key).map(|r| {
-            debug_assert_eq!(r.kind, SearchResultKind::Exact);
-            r.action
-        })
+        self.tt.load(key).map(|r| r.action)
     }
 }
 
@@ -352,7 +381,6 @@ mod tests {
     }
 
     #[proptest]
-    #[cfg(not(tarpaulin))]
     fn alpha_beta_returns_best_score(c: MinimaxConfig, g: Game) {
         let depth = c.max_depth.try_into()?;
 
@@ -363,8 +391,7 @@ mod tests {
     }
 
     #[proptest]
-    #[cfg(not(tarpaulin))]
-    fn result_does_not_depend_on_table_size(
+    fn alpha_beta_does_not_depend_on_table_size(
         #[strategy(0usize..65536)] a: usize,
         #[strategy(0usize..65536)] b: usize,
         c: MinimaxConfig,
@@ -379,5 +406,45 @@ mod tests {
             a.alpha_beta(&g, depth, i16::MIN, i16::MAX),
             b.alpha_beta(&g, depth, i16::MIN, i16::MAX)
         );
+    }
+
+    #[proptest]
+    fn mtdf_returns_best_score(c: MinimaxConfig, g: Game) {
+        let depth = c.max_depth.try_into()?;
+
+        assert_eq!(
+            minimax(&Heuristic::new(), &g, depth),
+            Minimax::with_config(Heuristic::new(), c).mtdf(&g, depth, 0),
+        );
+    }
+
+    #[proptest]
+    fn mtdf_does_not_depend_on_initial_guess(c: MinimaxConfig, g: Game, s: i16) {
+        let a = Minimax::with_config(Heuristic::new(), c);
+        let b = Minimax::with_config(Heuristic::new(), c);
+
+        let depth = c.max_depth.try_into()?;
+
+        assert_eq!(a.mtdf(&g, depth, s), b.mtdf(&g, depth, 0));
+    }
+
+    #[proptest]
+    fn mtdf_is_equivalent_to_alphabeta(c: MinimaxConfig, g: Game) {
+        let a = Minimax::with_config(Heuristic::new(), c);
+        let b = Minimax::with_config(Heuristic::new(), c);
+
+        let depth = c.max_depth.try_into()?;
+
+        assert_eq!(
+            a.mtdf(&g, depth, 0),
+            b.alpha_beta(&g, depth, i16::MIN, i16::MAX),
+        );
+    }
+
+    #[proptest]
+    fn search_finds_the_best_action(c: MinimaxConfig, g: Game) {
+        let strategy = Minimax::with_config(Heuristic::new(), c);
+        let (key, _) = strategy.key_of(&g);
+        assert_eq!(strategy.search(&g), strategy.tt.load(key).map(|r| r.action));
     }
 }
