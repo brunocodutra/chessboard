@@ -278,8 +278,10 @@ impl<E: Eval + Send + Sync> Minimax<E> {
 
 impl<E: Eval + Send + Sync> Search for Minimax<E> {
     fn search(&self, game: &Game) -> Option<Action> {
-        let depth = self.config.max_depth.min(i8::MAX as u8) as i8;
-        self.mtdf(game, depth, 0);
+        let mut score = 0;
+        for d in 1..=self.config.max_depth.min(i8::MAX as u8) as i8 {
+            score = self.mtdf(game, d, score);
+        }
         let (key, _) = self.key_of(game);
         self.tt.load(key).map(|r| r.action)
     }
