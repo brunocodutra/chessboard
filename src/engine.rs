@@ -4,10 +4,10 @@ use derive_more::{DebugCustom, Display, Error, From};
 use serde::Deserialize;
 use std::str::FromStr;
 
-mod heuristic;
+mod materialist;
 mod random;
 
-pub use heuristic::*;
+pub use materialist::*;
 pub use random::*;
 
 /// A generic chess engine.
@@ -16,7 +16,7 @@ pub enum Engine {
     #[debug(fmt = "{:?}", _0)]
     Random(Random),
     #[debug(fmt = "{:?}", _0)]
-    Heuristic(Heuristic),
+    Materialist(Materialist),
     #[cfg(test)]
     #[debug(fmt = "{:?}", _0)]
     Mock(crate::MockEval),
@@ -26,7 +26,7 @@ impl Eval for Engine {
     fn eval(&self, game: &Game) -> i16 {
         match self {
             Engine::Random(e) => e.eval(game),
-            Engine::Heuristic(e) => e.eval(game),
+            Engine::Materialist(e) => e.eval(game),
             #[cfg(test)]
             Engine::Mock(e) => e.eval(game),
         }
@@ -39,7 +39,7 @@ impl Eval for Engine {
 #[serde(deny_unknown_fields, rename_all = "lowercase")]
 pub enum EngineBuilder {
     Random {},
-    Heuristic {},
+    Materialist {},
     #[cfg(test)]
     Mock(),
 }
@@ -63,7 +63,7 @@ impl Build for EngineBuilder {
     fn build(self) -> Result<Self::Output, Anyhow> {
         match self {
             EngineBuilder::Random {} => Ok(Random::new().into()),
-            EngineBuilder::Heuristic { .. } => Ok(Heuristic::new().into()),
+            EngineBuilder::Materialist { .. } => Ok(Materialist::new().into()),
             #[cfg(test)]
             EngineBuilder::Mock() => Ok(crate::MockEval::new().into()),
         }
@@ -81,8 +81,8 @@ mod tests {
     }
 
     #[proptest]
-    fn heuristic_builder_is_deserializable() {
-        assert_eq!("heuristic()".parse(), Ok(EngineBuilder::Heuristic {}));
+    fn materialist_builder_is_deserializable() {
+        assert_eq!("materialist()".parse(), Ok(EngineBuilder::Materialist {}));
     }
 
     #[proptest]
@@ -99,10 +99,10 @@ mod tests {
     }
 
     #[proptest]
-    fn heuristic_can_be_configured_at_runtime() {
+    fn materialist_can_be_configured_at_runtime() {
         assert!(matches!(
-            EngineBuilder::Heuristic {}.build(),
-            Ok(Engine::Heuristic(_))
+            EngineBuilder::Materialist {}.build(),
+            Ok(Engine::Materialist(_))
         ));
     }
 

@@ -1,16 +1,11 @@
 use crate::{Eval, Game, Piece, Role};
+use derive_more::Constructor;
 
-/// An engine that evaluates positions based on heuristics.
-#[derive(Debug, Default, Clone)]
-pub struct Heuristic {}
+/// An engine that evaluates positions purely based on material.
+#[derive(Debug, Default, Constructor)]
+pub struct Materialist {}
 
-impl Heuristic {
-    pub fn new() -> Self {
-        Self::default()
-    }
-}
-
-impl Eval for Heuristic {
+impl Eval for Materialist {
     fn eval(&self, game: &Game) -> i16 {
         match game.outcome() {
             Some(o) => match o.winner() {
@@ -47,7 +42,7 @@ mod tests {
 
     #[proptest]
     fn score_is_stable(g: Game) {
-        let engine = Heuristic::new();
+        let engine = Materialist::new();
         assert_eq!(engine.eval(&g), engine.eval(&g.clone()));
     }
 
@@ -56,7 +51,7 @@ mod tests {
         #[filter(#_o.is_draw())] _o: Outcome,
         #[any(Some(#_o))] g: Game,
     ) {
-        assert_eq!(Heuristic::new().eval(&g), 0);
+        assert_eq!(Materialist::new().eval(&g), 0);
     }
 
     #[proptest]
@@ -66,7 +61,7 @@ mod tests {
         #[filter(#_o.winner() != Some(#g.position().turn()))]
         g: Game,
     ) {
-        assert_eq!(Heuristic::new().eval(&g), i16::MIN);
+        assert_eq!(Materialist::new().eval(&g), i16::MIN);
     }
 
     #[proptest]
@@ -76,6 +71,6 @@ mod tests {
         #[filter(#_o.winner() == Some(#g.position().turn()))]
         g: Game,
     ) {
-        assert_eq!(Heuristic::new().eval(&g), i16::MAX);
+        assert_eq!(Materialist::new().eval(&g), i16::MAX);
     }
 }
