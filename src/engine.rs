@@ -5,9 +5,11 @@ use serde::Deserialize;
 use std::str::FromStr;
 
 mod materialist;
+mod pesto;
 mod random;
 
 pub use materialist::*;
+pub use pesto::*;
 pub use random::*;
 
 /// A generic chess engine.
@@ -17,6 +19,8 @@ pub enum Engine {
     Random(Random),
     #[debug(fmt = "{:?}", _0)]
     Materialist(Materialist),
+    #[debug(fmt = "{:?}", _0)]
+    Pesto(Pesto),
     #[cfg(test)]
     #[debug(fmt = "{:?}", _0)]
     Mock(crate::MockEval),
@@ -35,6 +39,7 @@ impl Eval for Engine {
         match self {
             Engine::Random(e) => e.eval(game),
             Engine::Materialist(e) => e.eval(game),
+            Engine::Pesto(e) => e.eval(game),
             #[cfg(test)]
             Engine::Mock(e) => e.eval(game),
         }
@@ -48,6 +53,7 @@ impl Eval for Engine {
 pub enum EngineBuilder {
     Random {},
     Materialist {},
+    Pesto {},
     #[cfg(test)]
     Mock(),
 }
@@ -72,6 +78,7 @@ impl Build for EngineBuilder {
         match self {
             EngineBuilder::Random {} => Ok(Random::new().into()),
             EngineBuilder::Materialist { .. } => Ok(Materialist::new().into()),
+            EngineBuilder::Pesto { .. } => Ok(Pesto::new().into()),
             #[cfg(test)]
             EngineBuilder::Mock() => Ok(crate::MockEval::new().into()),
         }
@@ -94,6 +101,11 @@ mod tests {
     }
 
     #[proptest]
+    fn pesto_builder_is_deserializable() {
+        assert_eq!("pesto()".parse(), Ok(EngineBuilder::Pesto {}));
+    }
+
+    #[proptest]
     fn mock_engine_builder_is_deserializable() {
         assert_eq!("mock()".parse(), Ok(EngineBuilder::Mock()));
     }
@@ -111,6 +123,14 @@ mod tests {
         assert!(matches!(
             EngineBuilder::Materialist {}.build(),
             Ok(Engine::Materialist(_))
+        ));
+    }
+
+    #[proptest]
+    fn pesto_can_be_configured_at_runtime() {
+        assert!(matches!(
+            EngineBuilder::Pesto {}.build(),
+            Ok(Engine::Pesto(_))
         ));
     }
 
