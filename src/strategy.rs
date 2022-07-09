@@ -19,6 +19,7 @@ pub enum Strategy {
 }
 
 impl Search for Strategy {
+    #[inline]
     fn search(&self, game: &Game) -> Option<Action> {
         match self {
             Strategy::Minimax(s) => s.search(game),

@@ -38,6 +38,7 @@ pub enum Player {
 impl Act for Player {
     type Error = PlayerError;
 
+    #[inline]
     async fn act(&mut self, game: &Game) -> Result<Action, Self::Error> {
         match self {
             Player::Ai(p) => Ok(p.act(game).await?),

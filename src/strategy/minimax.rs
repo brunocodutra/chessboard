@@ -290,7 +290,7 @@ impl<E: Eval + Send + Sync> Search for Minimax<E> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{engine::Materialist, MockEval, Outcome};
+    use crate::{Engine, MockEval, Outcome};
     use mockall::predicate::*;
     use test_strategy::proptest;
 
@@ -387,8 +387,8 @@ mod tests {
         let depth = c.max_depth.try_into()?;
 
         assert_eq!(
-            minimax(&Materialist::new(), &g, depth),
-            Minimax::with_config(Materialist::new(), c).alpha_beta(&g, depth, i16::MIN, i16::MAX),
+            minimax(&Engine::default(), &g, depth),
+            Minimax::with_config(Engine::default(), c).alpha_beta(&g, depth, i16::MIN, i16::MAX),
         );
     }
 
@@ -399,8 +399,8 @@ mod tests {
         c: MinimaxConfig,
         g: Game,
     ) {
-        let a = Minimax::with_config(Materialist::new(), MinimaxConfig { table_size: a, ..c });
-        let b = Minimax::with_config(Materialist::new(), MinimaxConfig { table_size: b, ..c });
+        let a = Minimax::with_config(Engine::default(), MinimaxConfig { table_size: a, ..c });
+        let b = Minimax::with_config(Engine::default(), MinimaxConfig { table_size: b, ..c });
 
         let depth = c.max_depth.try_into()?;
 
@@ -415,15 +415,15 @@ mod tests {
         let depth = c.max_depth.try_into()?;
 
         assert_eq!(
-            minimax(&Materialist::new(), &g, depth),
-            Minimax::with_config(Materialist::new(), c).mtdf(&g, depth, 0),
+            minimax(&Engine::default(), &g, depth),
+            Minimax::with_config(Engine::default(), c).mtdf(&g, depth, 0),
         );
     }
 
     #[proptest]
     fn mtdf_does_not_depend_on_initial_guess(c: MinimaxConfig, g: Game, s: i16) {
-        let a = Minimax::with_config(Materialist::new(), c);
-        let b = Minimax::with_config(Materialist::new(), c);
+        let a = Minimax::with_config(Engine::default(), c);
+        let b = Minimax::with_config(Engine::default(), c);
 
         let depth = c.max_depth.try_into()?;
 
@@ -432,8 +432,8 @@ mod tests {
 
     #[proptest]
     fn mtdf_is_equivalent_to_alphabeta(c: MinimaxConfig, g: Game) {
-        let a = Minimax::with_config(Materialist::new(), c);
-        let b = Minimax::with_config(Materialist::new(), c);
+        let a = Minimax::with_config(Engine::default(), c);
+        let b = Minimax::with_config(Engine::default(), c);
 
         let depth = c.max_depth.try_into()?;
 
@@ -445,7 +445,7 @@ mod tests {
 
     #[proptest]
     fn search_finds_the_best_action(c: MinimaxConfig, g: Game) {
-        let strategy = Minimax::with_config(Materialist::new(), c);
+        let strategy = Minimax::with_config(Engine::default(), c);
         let (key, _) = strategy.key_of(&g);
         assert_eq!(strategy.search(&g), strategy.tt.load(key).map(|r| r.action));
     }

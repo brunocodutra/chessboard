@@ -22,7 +22,15 @@ pub enum Engine {
     Mock(crate::MockEval),
 }
 
+impl Default for Engine {
+    #[inline]
+    fn default() -> Self {
+        Materialist::default().into()
+    }
+}
+
 impl Eval for Engine {
+    #[inline]
     fn eval(&self, game: &Game) -> i16 {
         match self {
             Engine::Random(e) => e.eval(game),
