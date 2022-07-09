@@ -52,6 +52,11 @@ impl Square {
     pub fn rank(&self) -> Rank {
         self.0.rank().into()
     }
+
+    /// Mirrors this square's [`Rank`].
+    pub fn mirror(&self) -> Self {
+        self.0.flip_vertical().into()
+    }
 }
 
 impl Binary for Square {
@@ -213,6 +218,11 @@ mod tests {
     #[proptest]
     fn square_has_an_index(s: Square) {
         assert_eq!(s.index().try_into(), Ok(s));
+    }
+
+    #[proptest]
+    fn square_has_a_mirror_on_the_same_file(s: Square) {
+        assert_eq!(s.mirror(), Square::new(s.file(), s.rank().mirror()));
     }
 
     #[proptest]
