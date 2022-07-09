@@ -27,7 +27,7 @@ tracing-subscriber = { version = "0.3.14", default-features = false, features = 
 vampirc-uci = { version = "0.11.0", default-features = false }
 
 [dev-dependencies]
-criterion = "0.3.5"
+criterion = "0.3.6"
 mockall = "0.11.0"
 pgn-reader = "0.20.0"
 proptest = "1.0.0"
