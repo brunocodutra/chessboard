@@ -32,6 +32,11 @@ impl Rank {
     pub fn iter() -> impl DoubleEndedIterator<Item = Self> + ExactSizeIterator {
         sm::Rank::ALL.into_iter().map(Rank)
     }
+
+    /// Mirrors this rank.
+    pub fn mirror(&self) -> Self {
+        self.0.flip_vertical().into()
+    }
 }
 
 impl Sub for Rank {
@@ -188,8 +193,13 @@ mod tests {
     }
 
     #[proptest]
-    fn rank_has_an_index(f: Rank) {
-        assert_eq!(f.index().try_into(), Ok(f));
+    fn rank_has_an_index(r: Rank) {
+        assert_eq!(r.index().try_into(), Ok(r));
+    }
+
+    #[proptest]
+    fn rank_has_a_mirror(r: Rank) {
+        assert_eq!(r.mirror().index(), 7 - r.index());
     }
 
     #[proptest]

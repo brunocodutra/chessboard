@@ -32,6 +32,11 @@ impl File {
     pub fn iter() -> impl DoubleEndedIterator<Item = Self> + ExactSizeIterator {
         sm::File::ALL.into_iter().map(File)
     }
+
+    /// Mirrors this file.
+    pub fn mirror(&self) -> Self {
+        self.0.flip_horizontal().into()
+    }
 }
 
 impl Sub for File {
@@ -198,6 +203,11 @@ mod tests {
     #[proptest]
     fn file_has_an_index(f: File) {
         assert_eq!(f.index().try_into(), Ok(f));
+    }
+
+    #[proptest]
+    fn file_has_a_mirror(f: File) {
+        assert_eq!(f.mirror().index(), 7 - f.index());
     }
 
     #[proptest]
