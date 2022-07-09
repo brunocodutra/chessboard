@@ -5,30 +5,33 @@ use derive_more::Constructor;
 #[derive(Debug, Default, Constructor)]
 pub struct Materialist {}
 
+impl Materialist {
+    // Fisher's system
+    const PIECE_VALUE: [i16; 5] = [100, 300, 325, 500, 900];
+}
+
 impl Eval for Materialist {
     fn eval(&self, game: &Game) -> i16 {
+        let pos = game.position();
+        let turn = pos.turn();
+
         match game.outcome() {
             Some(o) => match o.winner() {
-                Some(w) if w == game.position().turn() => i16::MAX,
+                Some(w) if w == turn => i16::MAX,
                 Some(_) => i16::MIN,
                 None => 0,
             },
 
             None => {
-                let pos = game.position();
-
-                // Fisher's system
-                [
-                    (Role::Pawn, 100),
-                    (Role::Knight, 300),
-                    (Role::Bishop, 325),
-                    (Role::Rook, 500),
-                    (Role::Queen, 900),
-                ]
-                .into_iter()
-                .map(|(r, s)| (Piece(pos.turn(), r), Piece(!pos.turn(), r), s))
-                .map(|(a, b, s)| (pos.pieces(a).len() as i16 - pos.pieces(b).len() as i16) * s)
-                .sum()
+                use Role::*;
+                [Pawn, Knight, Bishop, Rook, Queen]
+                    .into_iter()
+                    .map(|r| {
+                        let ours = pos.by_piece(Piece(turn, r)).len() as i16;
+                        let theirs = pos.by_piece(Piece(!turn, r)).len() as i16;
+                        (ours - theirs) * Self::PIECE_VALUE[r as usize]
+                    })
+                    .sum()
             }
         }
     }

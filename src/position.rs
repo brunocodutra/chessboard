@@ -58,8 +58,8 @@ impl Position {
             .into()
     }
 
-    /// The [`Square`]s occupied by [`Piece`]s of a kind.
-    pub fn pieces(&self, p: Piece) -> impl ExactSizeIterator<Item = Square> {
+    /// [`Square`]s occupied by a [`Piece`].
+    pub fn by_piece(&self, p: Piece) -> impl ExactSizeIterator<Item = Square> {
         sm::Position::board(&self.0)
             .by_piece(p.into())
             .into_iter()
@@ -256,8 +256,8 @@ mod tests {
     }
 
     #[proptest]
-    fn pieces_returns_squares_of_pieces_of_a_kind(pos: Position, p: Piece) {
-        for s in pos.pieces(p) {
+    fn by_piece_returns_squares_occupied_by_a_piece(pos: Position, p: Piece) {
+        for s in pos.by_piece(p) {
             assert_eq!(pos[s], Some(p));
         }
     }
@@ -294,7 +294,7 @@ mod tests {
     fn checkers_returns_squares_of_pieces_giving_check(pos: Position) {
         assert_eq!(
             pos.checkers().collect::<HashSet<_>>(),
-            pos.pieces(Piece(pos.turn(), Role::King))
+            pos.by_piece(Piece(pos.turn(), Role::King))
                 .flat_map(|s| pos.attackers(s, !pos.turn()))
                 .collect::<HashSet<_>>(),
         )
