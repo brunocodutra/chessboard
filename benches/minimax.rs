@@ -1,5 +1,5 @@
 use chessboard::strategy::{Minimax, MinimaxConfig};
-use chessboard::{engine::Materialist, Game, Search};
+use chessboard::{Engine, Game, Search};
 use criterion::{criterion_group, criterion_main, BatchSize, Criterion};
 use proptest::{prelude::*, sample::Selector, strategy::ValueTree, test_runner::TestRunner};
 
@@ -22,7 +22,7 @@ fn bench(c: &mut Criterion) {
     let mut group = c.benchmark_group("minimax");
     for max_depth in [2, 4, 6] {
         let minimax = Minimax::with_config(
-            Materialist::new(),
+            Engine::default(),
             MinimaxConfig {
                 max_depth,
                 ..MinimaxConfig::default()
