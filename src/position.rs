@@ -58,6 +58,30 @@ impl Position {
             .into()
     }
 
+    /// [`Square`]s occupied.
+    pub fn occupied(&self) -> impl ExactSizeIterator<Item = Square> {
+        sm::Position::board(&self.0)
+            .occupied()
+            .into_iter()
+            .map(Square::from)
+    }
+
+    /// [`Square`]s occupied by a [`Color`].
+    pub fn by_color(&self, c: Color) -> impl ExactSizeIterator<Item = Square> {
+        sm::Position::board(&self.0)
+            .by_color(c.into())
+            .into_iter()
+            .map(Square::from)
+    }
+
+    /// [`Square`]s occupied by a [`Role`].
+    pub fn by_role(&self, r: Role) -> impl ExactSizeIterator<Item = Square> {
+        sm::Position::board(&self.0)
+            .by_role(r.into())
+            .into_iter()
+            .map(Square::from)
+    }
+
     /// [`Square`]s occupied by a [`Piece`].
     pub fn by_piece(&self, p: Piece) -> impl ExactSizeIterator<Item = Square> {
         sm::Position::board(&self.0)
@@ -253,6 +277,27 @@ mod tests {
             pos.signature().load::<u64>(),
             sm::zobrist::ZobristHash::zobrist_hash(&pos.0)
         );
+    }
+
+    #[proptest]
+    fn occupied_returns_non_empty_squares(pos: Position) {
+        for s in pos.occupied() {
+            assert_ne!(pos[s], None);
+        }
+    }
+
+    #[proptest]
+    fn by_color_returns_squares_occupied_by_pieces_of_a_color(pos: Position, c: Color) {
+        for s in pos.by_color(c) {
+            assert_eq!(pos[s].map(|p| p.color()), Some(c));
+        }
+    }
+
+    #[proptest]
+    fn by_color_returns_squares_occupied_by_pieces_of_a_role(pos: Position, r: Role) {
+        for s in pos.by_role(r) {
+            assert_eq!(pos[s].map(|p| p.role()), Some(r));
+        }
     }
 
     #[proptest]
