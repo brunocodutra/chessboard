@@ -8,7 +8,7 @@ use std::{fmt::Debug, str::FromStr};
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
 #[cfg_attr(test, derive(test_strategy::Arbitrary))]
-enum SearchResultKind {
+enum TranspositionKind {
     Lower,
     Upper,
     Exact,
@@ -16,8 +16,8 @@ enum SearchResultKind {
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
 #[cfg_attr(test, derive(test_strategy::Arbitrary))]
-struct SearchResult {
-    kind: SearchResultKind,
+struct Transposition {
+    kind: TranspositionKind,
     score: i16,
     #[cfg_attr(test, strategy(0i8..))]
     height: i8,
@@ -25,15 +25,15 @@ struct SearchResult {
     signature: Bits<u32, 24>,
 }
 
-/// The reason why decoding [`SearchResult`] from binary failed.
+/// The reason why decoding [`Transposition`] from binary failed.
 #[derive(Debug, Display, Clone, Eq, PartialEq, Hash, Error)]
 #[cfg_attr(test, derive(test_strategy::Arbitrary))]
 #[display(fmt = "`{}` is not a valid search result", _0)]
-struct DecodeSearchResultError(#[error(not(source))] Bits<u64, 64>);
+struct DecodeTranspositionError(#[error(not(source))] Bits<u64, 64>);
 
-impl Binary for Option<SearchResult> {
+impl Binary for Option<Transposition> {
     type Register = Bits<u64, 64>;
-    type Error = DecodeSearchResultError;
+    type Error = DecodeTranspositionError;
 
     fn encode(&self) -> Self::Register {
         match self {
@@ -65,16 +65,16 @@ impl Binary for Option<SearchResult> {
             let (height, rest) = rest.split_at(7);
             let (action, signature) = rest.split_at(<Action as Binary>::Register::WIDTH);
 
-            use SearchResultKind::*;
-            Ok(Some(SearchResult {
+            use TranspositionKind::*;
+            Ok(Some(Transposition {
                 kind: [Lower, Upper, Exact]
                     .into_iter()
                     .nth(kind.load())
-                    .ok_or(DecodeSearchResultError(register))?,
+                    .ok_or(DecodeTranspositionError(register))?,
                 score: score.load(),
                 height: height.load::<u8>() as i8,
                 action: Action::decode(action.into())
-                    .map_err(|_| DecodeSearchResultError(register))?,
+                    .map_err(|_| DecodeTranspositionError(register))?,
                 signature: signature.into(),
             }))
         }
@@ -150,7 +150,7 @@ impl FromStr for MinimaxConfig {
 pub struct Minimax<E: Eval + Send + Sync> {
     engine: E,
     config: MinimaxConfig,
-    tt: Cache<Option<SearchResult>>,
+    tt: Cache<Option<Transposition>>,
 }
 
 impl<E: Eval + Send + Sync> Minimax<E> {
@@ -161,7 +161,7 @@ impl<E: Eval + Send + Sync> Minimax<E> {
 
     /// Constructs [`Minimax`] with the specified [`MinimaxConfig`].
     pub fn with_config(engine: E, config: MinimaxConfig) -> Self {
-        let entry_size = <Option<SearchResult> as Binary>::Register::SIZE;
+        let entry_size = <Option<Transposition> as Binary>::Register::SIZE;
         let cache_size = (config.table_size / entry_size / 2 + 1).next_power_of_two();
 
         Minimax {
@@ -183,28 +183,51 @@ impl<E: Eval + Send + Sync> Minimax<E> {
     /// The [alpha-beta pruning] algorithm.
     ///
     /// [alpha-beta pruning]: https://en.wikipedia.org/wiki/Alpha%E2%80%93beta_pruning
-    fn alpha_beta(&self, game: &Game, height: i8, alpha: i16, beta: i16) -> i16 {
+    fn alpha_beta(&self, game: &Game, height: i8, mut alpha: i16, mut beta: i16) -> i16 {
         debug_assert!(alpha < beta, "{} < {}", alpha, beta);
 
         let (key, signature) = self.key_of(game);
-        let (alpha, beta, score) = match self.tt.load(key) {
-            Some(r) if r.height >= height && r.signature == signature => match r.kind {
-                SearchResultKind::Lower => (alpha.max(r.score), beta, Some(r.score)),
-                SearchResultKind::Upper => (alpha, beta.min(r.score), Some(r.score)),
-                SearchResultKind::Exact => (r.score, r.score, Some(r.score)),
-            },
-            _ => (alpha, beta, None),
-        };
+        let transposition = self.tt.load(key).filter(|t| t.signature == signature);
 
-        if alpha >= beta || height <= 0 || game.outcome().is_some() {
-            return score.unwrap_or_else(|| self.engine.eval(game));
+        if let Some(t) = transposition.filter(|t| t.height >= height) {
+            match t.kind {
+                TranspositionKind::Lower => alpha = alpha.max(t.score),
+                TranspositionKind::Upper => beta = beta.min(t.score),
+                TranspositionKind::Exact => return t.score,
+            }
+
+            if alpha >= beta {
+                return t.score;
+            }
         }
+
+        if height <= 0 || game.outcome().is_some() {
+            return self.engine.eval(game);
+        }
+
+        let best = transposition.and_then(|t| {
+            let mut game = game.clone();
+            game.execute(t.action).ok()?;
+
+            let score = self
+                .alpha_beta(
+                    &game,
+                    height - 1,
+                    beta.saturating_neg(),
+                    alpha.saturating_neg(),
+                )
+                .saturating_neg();
+
+            alpha = alpha.max(score);
+            Some((t.action, score))
+        });
 
         let cutoff = AtomicI16::new(alpha);
 
         let (action, score) = game
             .actions()
             .par_bridge()
+            .filter(|a| Some(*a) != best.map(|(pv, _)| pv))
             .map(|a| {
                 let alpha = cutoff.load(Ordering::Relaxed);
 
@@ -229,18 +252,19 @@ impl<E: Eval + Send + Sync> Minimax<E> {
                 Some((a, score))
             })
             .while_some()
+            .chain(best)
             .max_by_key(|(_, s)| *s)
             .expect("expected at least one legal action");
 
         let kind = if score >= beta {
-            SearchResultKind::Lower
+            TranspositionKind::Lower
         } else if score <= alpha {
-            SearchResultKind::Upper
+            TranspositionKind::Upper
         } else {
-            SearchResultKind::Exact
+            TranspositionKind::Exact
         };
 
-        let result = SearchResult {
+        let transposition = Transposition {
             kind,
             score,
             height,
@@ -250,7 +274,7 @@ impl<E: Eval + Send + Sync> Minimax<E> {
 
         self.tt.update(key, |r| match r {
             Some(r) if (r.height, r.kind) > (height, kind) => None,
-            _ => Some(result.into()),
+            _ => Some(transposition.into()),
         });
 
         score
@@ -311,7 +335,7 @@ mod tests {
     }
 
     #[proptest]
-    fn decoding_encoded_search_result_is_an_identity(r: Option<SearchResult>) {
+    fn decoding_encoded_transposition_is_an_identity(r: Option<Transposition>) {
         assert_eq!(Option::decode(r.encode()), Ok(r));
     }
 
