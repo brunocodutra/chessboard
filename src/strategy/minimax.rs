@@ -302,12 +302,18 @@ impl<E: Eval + Send + Sync> Minimax<E> {
 
 impl<E: Eval + Send + Sync> Search for Minimax<E> {
     fn search(&self, game: &Game) -> Option<Action> {
-        let mut score = 0;
+        let (key, signature) = self.key_of(game);
+        let transposition = self.tt.load(key).filter(|t| t.signature == signature);
+        let mut score = transposition.map(|t| t.score).unwrap_or(0);
+
         for d in 1..=self.config.max_depth.min(i8::MAX as u8) as i8 {
             score = self.mtdf(game, d, score);
         }
-        let (key, _) = self.key_of(game);
-        self.tt.load(key).map(|r| r.action)
+
+        self.tt.load(key).map(|t| {
+            debug_assert_eq!(t.signature, signature);
+            t.action
+        })
     }
 }
 
