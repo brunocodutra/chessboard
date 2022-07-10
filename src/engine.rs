@@ -31,7 +31,7 @@ pub enum Engine {
 impl Default for Engine {
     #[inline]
     fn default() -> Self {
-        Materialist::default().into()
+        Pesto::default().into()
     }
 }
 
