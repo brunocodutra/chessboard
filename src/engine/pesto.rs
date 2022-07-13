@@ -147,19 +147,28 @@ impl PieceSquareTable for EndGamePesto {
 #[derive(Debug, Default, Constructor)]
 pub struct Pesto {}
 
+impl Pesto {
+    const END_GAME: i32 = 518;
+    const MID_GAME: i32 = 6192;
+}
+
 impl Eval for Pesto {
     fn eval(&self, game: &Game) -> i16 {
-        let mg = MidGamePesto.eval(game);
-        let eg = EndGamePesto.eval(game);
+        let pos = game.position();
+
+        let mg = MidGamePesto.eval(game) as i32;
+        let eg = EndGamePesto.eval(game) as i32;
 
         use Role::*;
-        let phase = [(Knight, 1), (Bishop, 1), (Rook, 2), (Queen, 4)]
+        let phase = [Knight, Bishop, Rook, Queen]
             .into_iter()
-            .map(|(r, w)| game.position().by_role(r).len() as i16 * w)
-            .sum::<i16>()
-            .min(24);
+            .map(|r| pos.by_role(r).len() as i32 * MidGamePesto::PIECE_VALUE[r as usize] as i32)
+            .sum::<i32>()
+            .max(Self::END_GAME)
+            .min(Self::MID_GAME);
 
-        eg + (mg - eg) * phase / 24
+        let score = eg + (mg - eg) * (phase - Self::END_GAME) / (Self::MID_GAME - Self::END_GAME);
+        score.max(i16::MIN as i32).min(i16::MAX as i32) as i16
     }
 }
 
