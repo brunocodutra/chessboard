@@ -1,52 +1,26 @@
-use crate::{Eval, Game, Piece, Role};
+use crate::engine::PieceSquareTable;
 use derive_more::Constructor;
 
-/// An engine that evaluates positions purely based on material.
+/// An engine that evaluates positions purely based on piece values.
 #[derive(Debug, Default, Constructor)]
 pub struct Materialist {}
 
-impl Materialist {
-    // Fisher's system
-    const PIECE_VALUE: [i16; 5] = [100, 300, 325, 500, 900];
-}
-
-impl Eval for Materialist {
-    fn eval(&self, game: &Game) -> i16 {
-        let pos = game.position();
-        let turn = pos.turn();
-
-        match game.outcome() {
-            Some(o) => match o.winner() {
-                Some(w) if w == turn => i16::MAX,
-                Some(_) => i16::MIN,
-                None => 0,
-            },
-
-            None => {
-                use Role::*;
-                [Pawn, Knight, Bishop, Rook, Queen]
-                    .into_iter()
-                    .map(|r| {
-                        let ours = pos.by_piece(Piece(turn, r)).len() as i16;
-                        let theirs = pos.by_piece(Piece(!turn, r)).len() as i16;
-                        (ours - theirs) * Self::PIECE_VALUE[r as usize]
-                    })
-                    .sum()
-            }
-        }
-    }
+impl PieceSquareTable for Materialist {
+    const PIECE_VALUE: [i16; 6] = [100, 300, 300, 500, 900, 0];
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::Outcome;
+    use crate::{Eval, Game, Outcome};
     use test_strategy::proptest;
 
     #[proptest]
     fn score_is_stable(g: Game) {
-        let engine = Materialist::new();
-        assert_eq!(engine.eval(&g), engine.eval(&g.clone()));
+        assert_eq!(
+            Materialist::new().eval(&g),
+            Materialist::new().eval(&g.clone())
+        );
     }
 
     #[proptest]

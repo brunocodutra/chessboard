@@ -6,10 +6,12 @@ use std::str::FromStr;
 
 mod materialist;
 mod pesto;
+mod pst;
 mod random;
 
 pub use materialist::*;
 pub use pesto::*;
+pub use pst::*;
 pub use random::*;
 
 /// A generic chess engine.
