@@ -19,7 +19,7 @@ derive_more = { version = "0.99.16", default-features = false, features = ["cons
 rayon = { version = "1.5.3", default-features = false }
 ron = { version = "0.7.1", default-features = false }
 rustyline = { version = "9.0.0", default-features = false }
-serde = { version = "1.0.138", default-features = false, features = ["derive", "std"] }
+serde = { version = "1.0.139", default-features = false, features = ["derive", "std"] }
 shakmaty = { version = "0.21.2", default-features = false }
 tokio = { version = "1.19.2", default-features = false, features = ["io-std", "io-util", "macros", "process", "rt-multi-thread", "sync", "time"] }
 tracing = { version = "0.1.35", default-features = false, features = ["attributes", "std"] }
