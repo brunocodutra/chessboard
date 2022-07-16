@@ -29,14 +29,12 @@ pub enum Engine {
 }
 
 impl Default for Engine {
-    #[inline]
     fn default() -> Self {
         Pesto::default().into()
     }
 }
 
 impl Eval for Engine {
-    #[inline]
     fn eval(&self, game: &Game) -> i16 {
         match self {
             Engine::Random(e) => e.eval(game),

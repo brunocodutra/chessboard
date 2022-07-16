@@ -23,7 +23,6 @@ impl<T: BitStore + BitRegister, const W: usize> Register for Bits<T, W> {
 
 impl<T: BitStore + BitRegister, const W: usize> Bits<T, W> {
     /// The largest possible value.
-    #[inline]
     pub fn max() -> Self {
         Bits(T::ALL >> (T::BITS - W as u32))
     }
@@ -44,7 +43,6 @@ impl<T: BitStore + BitRegister, U: BitStore, const W: usize> From<&BitSlice<U>> 
 impl<T: BitStore + BitRegister, const W: usize> Deref for Bits<T, W> {
     type Target = BitSlice<T>;
 
-    #[inline]
     fn deref(&self) -> &Self::Target {
         debug_assert!(self.0.view_bits::<Lsb0>()[W..].not_any());
         &self.0.view_bits()[..W]
@@ -52,7 +50,6 @@ impl<T: BitStore + BitRegister, const W: usize> Deref for Bits<T, W> {
 }
 
 impl<T: BitStore + BitRegister, const W: usize> DerefMut for Bits<T, W> {
-    #[inline]
     fn deref_mut(&mut self) -> &mut Self::Target {
         debug_assert!(self.0.view_bits::<Lsb0>()[W..].not_any());
         &mut self.0.view_bits_mut()[..W]

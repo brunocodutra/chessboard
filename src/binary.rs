@@ -20,12 +20,10 @@ impl<T: Register> Binary for T {
     type Register = Self;
     type Error = Infallible;
 
-    #[inline]
     fn encode(&self) -> Self::Register {
         *self
     }
 
-    #[inline]
     fn decode(register: Self::Register) -> Result<Self, Self::Error> {
         Ok(register)
     }

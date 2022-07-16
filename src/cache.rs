@@ -34,13 +34,11 @@ where
     }
 
     /// The [`Cache`] size.
-    #[inline]
     pub fn len(&self) -> usize {
         self.memory.len()
     }
 
     /// Whether the [`Cache`] is empty.
-    #[inline]
     pub fn is_empty(&self) -> bool {
         self.memory.is_empty()
     }
