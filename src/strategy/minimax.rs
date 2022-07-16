@@ -209,9 +209,12 @@ impl<E: Eval + Send + Sync> Minimax<E> {
 impl<E: Eval + Send + Sync> Search for Minimax<E> {
     fn search(&self, game: &Game) -> Option<Action> {
         let zobrist = game.position().zobrist();
-        let mut score = self.tt.get(zobrist).map(|t| t.score()).unwrap_or(0);
+        let (mut score, depth) = match self.tt.get(zobrist) {
+            Some(t) => (t.score(), t.draft()),
+            _ => (self.engine.eval(game), 1),
+        };
 
-        for d in 1..=self.config.max_depth.min(i8::MAX as u8) as i8 {
+        for d in depth..=self.config.max_depth.min(i8::MAX as u8) as i8 {
             score = self.mtdf(game, d, score);
         }
 
