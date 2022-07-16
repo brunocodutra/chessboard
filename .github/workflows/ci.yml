@@ -130,7 +130,7 @@ jobs:
         toolchain: stable
     - uses: actions-rs/tarpaulin@v0.1
       with:
-        args: --all-features
+        args: --all-features --profile cov --timeout 600
     - uses: codecov/codecov-action@v2
       with:
         token: ${{secrets.CODECOV_TOKEN}}
