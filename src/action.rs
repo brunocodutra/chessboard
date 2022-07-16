@@ -32,7 +32,7 @@ pub enum IllegalAction {
 #[derive(Debug, Display, Clone, Eq, PartialEq, Hash, Error)]
 #[cfg_attr(test, derive(test_strategy::Arbitrary))]
 #[display(fmt = "`{}` is not a valid Action", _0)]
-pub struct DecodeActionError(#[error(not(source))] Bits<u16, 15>);
+pub struct DecodeActionError(#[error(not(source))] <Action as Binary>::Register);
 
 impl Binary for Action {
     type Register = Bits<u16, 15>;
