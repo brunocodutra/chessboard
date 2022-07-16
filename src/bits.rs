@@ -1,5 +1,5 @@
 use crate::Register;
-use bitvec::{mem::BitRegister, prelude::*, slice::BitSlice};
+use bitvec::{field::BitField, mem::BitRegister, prelude::*, slice::BitSlice};
 use derive_more::{DebugCustom, Display};
 use std::ops::{Deref, DerefMut};
 
@@ -44,14 +44,14 @@ impl<T: BitStore + BitRegister, const W: usize> Deref for Bits<T, W> {
     type Target = BitSlice<T>;
 
     fn deref(&self) -> &Self::Target {
-        debug_assert!(self.0.view_bits::<Lsb0>()[W..].not_any());
+        debug_assert!(*self <= Self::max());
         &self.0.view_bits()[..W]
     }
 }
 
 impl<T: BitStore + BitRegister, const W: usize> DerefMut for Bits<T, W> {
     fn deref_mut(&mut self) -> &mut Self::Target {
-        debug_assert!(self.0.view_bits::<Lsb0>()[W..].not_any());
+        debug_assert!(*self <= Self::max());
         &mut self.0.view_bits_mut()[..W]
     }
 }
@@ -73,6 +73,7 @@ mod tests {
 
     #[proptest]
     #[should_panic]
+    #[cfg(debug_assertions)]
     fn converting_from_narrower_sequence_of_raw_bits_panics(b: Bits<u8, 8>) {
         let _: Bits<u16, 12> = (&*b).into();
     }

@@ -22,6 +22,7 @@ mod role;
 mod san;
 mod search;
 mod square;
+mod tt;
 
 pub use crate::act::*;
 pub use crate::action::*;
@@ -47,6 +48,7 @@ pub use crate::role::*;
 pub use crate::san::*;
 pub use crate::search::*;
 pub use crate::square::*;
+pub use crate::tt::*;
 
 pub mod engine;
 pub mod player;

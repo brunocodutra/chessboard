@@ -49,10 +49,10 @@ impl Position {
         sm::Position::fullmoves(&self.0)
     }
 
-    /// This position's [signature].
+    /// This position's [zobrist hash].
     ///
-    /// [signature]: https://en.wikipedia.org/wiki/Zobrist_hashing.
-    pub fn signature(&self) -> Bits<u64, 64> {
+    /// [zobrist hash]: https://en.wikipedia.org/wiki/Zobrist_hashing.
+    pub fn zobrist(&self) -> Bits<u64, 64> {
         sm::zobrist::ZobristHash::zobrist_hash::<u64>(&self.0)
             .view_bits::<Lsb0>()
             .into()
@@ -272,9 +272,9 @@ mod tests {
     }
 
     #[proptest]
-    fn signature_returns_the_zobrist_hash(pos: Position) {
+    fn zobrist_returns_the_zobrist_hash(pos: Position) {
         assert_eq!(
-            pos.signature().load::<u64>(),
+            pos.zobrist().load::<u64>(),
             sm::zobrist::ZobristHash::zobrist_hash(&pos.0)
         );
     }

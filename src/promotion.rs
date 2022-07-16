@@ -25,7 +25,7 @@ pub enum Promotion {
 #[derive(Debug, Display, Clone, Eq, PartialEq, Hash, Error)]
 #[cfg_attr(test, derive(test_strategy::Arbitrary))]
 #[display(fmt = "`{}` is not a valid promotion", _0)]
-pub struct DecodePromotionError(#[error(not(source))] Bits<u8, 3>);
+pub struct DecodePromotionError(#[error(not(source))] <Promotion as Binary>::Register);
 
 impl Binary for Promotion {
     type Register = Bits<u8, 3>;

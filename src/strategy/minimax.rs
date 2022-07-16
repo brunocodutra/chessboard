@@ -1,85 +1,9 @@
-use crate::{Action, Binary, Bits, Cache, Eval, Game, Register, Search};
-use bitvec::field::BitField;
+use crate::{Action, Eval, Game, Search, Transposition, TranspositionTable};
 use derive_more::{Display, Error, From};
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::sync::atomic::{AtomicI16, Ordering};
 use std::{fmt::Debug, str::FromStr};
-
-#[derive(Debug, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
-#[cfg_attr(test, derive(test_strategy::Arbitrary))]
-enum TranspositionKind {
-    Lower,
-    Upper,
-    Exact,
-}
-
-#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
-#[cfg_attr(test, derive(test_strategy::Arbitrary))]
-struct Transposition {
-    kind: TranspositionKind,
-    score: i16,
-    #[cfg_attr(test, strategy(0i8..))]
-    height: i8,
-    action: Action,
-    signature: Bits<u32, 24>,
-}
-
-/// The reason why decoding [`Transposition`] from binary failed.
-#[derive(Debug, Display, Clone, Eq, PartialEq, Hash, Error)]
-#[cfg_attr(test, derive(test_strategy::Arbitrary))]
-#[display(fmt = "`{}` is not a valid search result", _0)]
-struct DecodeTranspositionError(#[error(not(source))] Bits<u64, 64>);
-
-impl Binary for Option<Transposition> {
-    type Register = Bits<u64, 64>;
-    type Error = DecodeTranspositionError;
-
-    fn encode(&self) -> Self::Register {
-        match self {
-            None => Bits::max(),
-            Some(r) => {
-                let mut register = Bits::default();
-                let (kind, rest) = register.split_at_mut(2);
-                let (score, rest) = rest.split_at_mut(16);
-                let (height, rest) = rest.split_at_mut(7);
-                let (action, signature) = rest.split_at_mut(<Action as Binary>::Register::WIDTH);
-
-                kind.store(r.kind as u8);
-                score.store(r.score);
-                height.store(r.height);
-                action.clone_from_bitslice(&r.action.encode());
-                signature.clone_from_bitslice(&r.signature);
-
-                register
-            }
-        }
-    }
-
-    fn decode(register: Self::Register) -> Result<Self, Self::Error> {
-        if register == Bits::max() {
-            Ok(None)
-        } else {
-            let (kind, rest) = register.split_at(2);
-            let (score, rest) = rest.split_at(16);
-            let (height, rest) = rest.split_at(7);
-            let (action, signature) = rest.split_at(<Action as Binary>::Register::WIDTH);
-
-            use TranspositionKind::*;
-            Ok(Some(Transposition {
-                kind: [Lower, Upper, Exact]
-                    .into_iter()
-                    .nth(kind.load())
-                    .ok_or(DecodeTranspositionError(register))?,
-                score: score.load(),
-                height: height.load::<u8>() as i8,
-                action: Action::decode(action.into())
-                    .map_err(|_| DecodeTranspositionError(register))?,
-                signature: signature.into(),
-            }))
-        }
-    }
-}
 
 /// Configuration for [`Minimax`].
 #[derive(Debug, Display, Copy, Clone, Eq, PartialEq, Hash, Deserialize, Serialize)]
@@ -150,7 +74,7 @@ impl FromStr for MinimaxConfig {
 pub struct Minimax<E: Eval + Send + Sync> {
     engine: E,
     config: MinimaxConfig,
-    tt: Cache<Option<Transposition>>,
+    tt: TranspositionTable,
 }
 
 impl<E: Eval + Send + Sync> Minimax<E> {
@@ -161,65 +85,50 @@ impl<E: Eval + Send + Sync> Minimax<E> {
 
     /// Constructs [`Minimax`] with the specified [`MinimaxConfig`].
     pub fn with_config(engine: E, config: MinimaxConfig) -> Self {
-        let entry_size = <Option<Transposition> as Binary>::Register::SIZE;
-        let cache_size = (config.table_size / entry_size / 2 + 1).next_power_of_two();
-
         Minimax {
             engine,
             config,
-            tt: Cache::new(cache_size),
-        }
-    }
-
-    fn key_of(&self, game: &Game) -> (usize, Bits<u32, 24>) {
-        let zobrist = game.position().signature();
-        let signature = zobrist[40..].into();
-        match self.tt.len().trailing_zeros() as usize {
-            0 => (0, signature),
-            w => (zobrist[..w].load(), signature),
+            tt: TranspositionTable::new(config.table_size),
         }
     }
 
     /// The [alpha-beta pruning] algorithm.
     ///
     /// [alpha-beta pruning]: https://en.wikipedia.org/wiki/Alpha%E2%80%93beta_pruning
-    fn alpha_beta(&self, game: &Game, height: i8, mut alpha: i16, mut beta: i16) -> i16 {
+    fn alpha_beta(&self, game: &Game, draft: i8, mut alpha: i16, mut beta: i16) -> i16 {
         debug_assert!(alpha < beta, "{} < {}", alpha, beta);
 
-        let (key, signature) = self.key_of(game);
-        let transposition = self.tt.load(key).filter(|t| t.signature == signature);
+        let zobrist = game.position().zobrist();
+        let transposition = self.tt.get(zobrist);
 
-        if let Some(t) = transposition.filter(|t| t.height >= height) {
-            match t.kind {
-                TranspositionKind::Lower => alpha = alpha.max(t.score),
-                TranspositionKind::Upper => beta = beta.min(t.score),
-                TranspositionKind::Exact => return t.score,
-            }
+        if let Some(t) = transposition.filter(|t| t.draft() >= draft) {
+            let (lower, upper) = t.bounds();
+            (alpha, beta) = (alpha.max(lower), beta.min(upper));
 
             if alpha >= beta {
-                return t.score;
+                return t.score();
             }
         }
 
-        if height <= 0 || game.outcome().is_some() {
+        if draft <= 0 || game.outcome().is_some() {
             return self.engine.eval(game);
         }
 
         let pilot = transposition.and_then(|t| {
             let mut game = game.clone();
-            game.execute(t.action).ok()?;
+            game.execute(t.action()).ok()?;
 
             let score = self
                 .alpha_beta(
                     &game,
-                    height - 1,
+                    draft - 1,
                     beta.saturating_neg(),
                     alpha.saturating_neg(),
                 )
                 .saturating_neg();
 
             alpha = alpha.max(score);
-            Some((t.action, score))
+            Some((t.action(), score))
         });
 
         if alpha >= beta {
@@ -257,7 +166,7 @@ impl<E: Eval + Send + Sync> Minimax<E> {
                 let score = self
                     .alpha_beta(
                         &game,
-                        height - 1,
+                        draft - 1,
                         beta.saturating_neg(),
                         alpha.saturating_neg(),
                     )
@@ -271,26 +180,8 @@ impl<E: Eval + Send + Sync> Minimax<E> {
             .max_by_key(|(_, s)| *s)
             .expect("expected at least one legal action");
 
-        let kind = if score >= beta {
-            TranspositionKind::Lower
-        } else if score <= alpha {
-            TranspositionKind::Upper
-        } else {
-            TranspositionKind::Exact
-        };
-
-        let transposition = Transposition {
-            kind,
-            score,
-            height,
-            action,
-            signature,
-        };
-
-        self.tt.update(key, |r| match r {
-            Some(r) if (r.height, r.kind) > (height, kind) => None,
-            _ => Some(transposition.into()),
-        });
+        let transposition = Transposition::new(score, alpha, beta, draft, action);
+        self.tt.set(zobrist, transposition);
 
         score
     }
@@ -317,18 +208,14 @@ impl<E: Eval + Send + Sync> Minimax<E> {
 
 impl<E: Eval + Send + Sync> Search for Minimax<E> {
     fn search(&self, game: &Game) -> Option<Action> {
-        let (key, signature) = self.key_of(game);
-        let transposition = self.tt.load(key).filter(|t| t.signature == signature);
-        let mut score = transposition.map(|t| t.score).unwrap_or(0);
+        let zobrist = game.position().zobrist();
+        let mut score = self.tt.get(zobrist).map(|t| t.score()).unwrap_or(0);
 
         for d in 1..=self.config.max_depth.min(i8::MAX as u8) as i8 {
             score = self.mtdf(game, d, score);
         }
 
-        self.tt.load(key).map(|t| {
-            debug_assert_eq!(t.signature, signature);
-            t.action
-        })
+        self.tt.get(zobrist).map(|t| t.action())
     }
 }
 
@@ -339,8 +226,8 @@ mod tests {
     use mockall::predicate::*;
     use test_strategy::proptest;
 
-    fn minimax<E: Eval + Sync>(engine: &E, game: &Game, height: i8) -> i16 {
-        if height == 0 || game.outcome().is_some() {
+    fn minimax<E: Eval + Sync>(engine: &E, game: &Game, draft: i8) -> i16 {
+        if draft == 0 || game.outcome().is_some() {
             return engine.eval(game);
         }
 
@@ -349,15 +236,10 @@ mod tests {
             .map(|a| {
                 let mut game = game.clone();
                 game.execute(a).unwrap();
-                minimax(engine, &game, height - 1).saturating_neg()
+                minimax(engine, &game, draft - 1).saturating_neg()
             })
             .max()
             .unwrap()
-    }
-
-    #[proptest]
-    fn decoding_encoded_transposition_is_an_identity(r: Option<Transposition>) {
-        assert_eq!(Option::decode(r.encode()), Ok(r));
     }
 
     #[proptest]
@@ -373,20 +255,7 @@ mod tests {
     #[proptest]
     fn table_size_is_an_upper_limit(c: MinimaxConfig) {
         let strategy = Minimax::with_config(MockEval::new(), c);
-        assert!(strategy.tt.len() * 8 <= c.table_size);
-    }
-
-    #[proptest]
-    fn table_size_is_exact_if_power_of_two(#[strategy(3usize..=10)] w: usize) {
-        let strategy = Minimax::with_config(
-            MockEval::new(),
-            MinimaxConfig {
-                table_size: 1 << w,
-                ..MinimaxConfig::default()
-            },
-        );
-
-        assert_eq!(strategy.tt.len() * 8, 1 << w);
+        assert!(strategy.tt.size() <= c.table_size);
     }
 
     #[proptest]
@@ -491,7 +360,16 @@ mod tests {
     #[proptest]
     fn search_finds_the_best_action(c: MinimaxConfig, g: Game) {
         let strategy = Minimax::with_config(Engine::default(), c);
-        let (key, _) = strategy.key_of(&g);
-        assert_eq!(strategy.search(&g), strategy.tt.load(key).map(|r| r.action));
+        let zobrist = g.position().zobrist();
+        assert_eq!(
+            strategy.search(&g),
+            strategy.tt.get(zobrist).map(|r| r.action())
+        );
+    }
+
+    #[proptest]
+    fn search_is_stable(c: MinimaxConfig, g: Game) {
+        let strategy = Minimax::with_config(Engine::default(), c);
+        assert_eq!(strategy.search(&g), strategy.search(&g));
     }
 }
