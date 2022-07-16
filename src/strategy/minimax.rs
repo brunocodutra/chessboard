@@ -205,7 +205,7 @@ impl<E: Eval + Send + Sync> Minimax<E> {
             return self.engine.eval(game);
         }
 
-        let best = transposition.and_then(|t| {
+        let pilot = transposition.and_then(|t| {
             let mut game = game.clone();
             game.execute(t.action).ok()?;
 
@@ -222,21 +222,37 @@ impl<E: Eval + Send + Sync> Minimax<E> {
             Some((t.action, score))
         });
 
-        let cutoff = AtomicI16::new(alpha);
+        if alpha >= beta {
+            return alpha;
+        }
 
-        let (action, score) = game
+        let mut successors: Vec<_> = game
             .actions()
             .par_bridge()
-            .filter(|a| Some(*a) != best.map(|(pv, _)| pv))
-            .map(|a| {
+            .filter(|a| Some(*a) != pilot.map(|(pv, _)| pv))
+            .map(|action| {
+                let mut game = game.clone();
+                game.execute(action).expect("expected legal action");
+
+                let ordering =
+                    self.alpha_beta(&game, 0, beta.saturating_neg(), alpha.saturating_neg());
+
+                (action, game, ordering)
+            })
+            .collect();
+
+        successors.par_sort_unstable_by_key(|(_, _, o)| *o);
+
+        let cutoff = AtomicI16::new(alpha);
+
+        let (action, score) = successors
+            .into_par_iter()
+            .filter_map(|(action, game, _)| {
                 let alpha = cutoff.load(Ordering::Relaxed);
 
                 if alpha >= beta {
                     return None;
                 }
-
-                let mut game = game.clone();
-                game.execute(a).expect("expected legal action");
 
                 let score = self
                     .alpha_beta(
@@ -249,10 +265,9 @@ impl<E: Eval + Send + Sync> Minimax<E> {
 
                 cutoff.fetch_max(score, Ordering::Relaxed);
 
-                Some((a, score))
+                Some((action, score))
             })
-            .while_some()
-            .chain(best)
+            .chain(pilot)
             .max_by_key(|(_, s)| *s)
             .expect("expected at least one legal action");
 
