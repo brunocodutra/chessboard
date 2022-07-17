@@ -114,49 +114,36 @@ impl<E: Eval + Send + Sync> Minimax<E> {
             return self.engine.eval(game);
         }
 
-        let pilot = transposition.and_then(|t| {
+        if let Some(t) = transposition {
             let mut game = game.clone();
-            game.execute(t.action()).ok()?;
+            if game.execute(t.action()).is_ok() {
+                let score = self
+                    .alpha_beta(
+                        &game,
+                        draft - 1,
+                        beta.saturating_neg(),
+                        alpha.saturating_neg(),
+                    )
+                    .saturating_neg();
 
-            let score = self
-                .alpha_beta(
-                    &game,
-                    draft - 1,
-                    beta.saturating_neg(),
-                    alpha.saturating_neg(),
-                )
-                .saturating_neg();
+                alpha = alpha.max(score);
 
-            alpha = alpha.max(score);
-            Some((t.action(), score))
-        });
-
-        if alpha >= beta {
-            return alpha;
+                if alpha >= beta {
+                    return score;
+                }
+            }
         }
 
-        let mut successors: Vec<_> = game
-            .actions()
-            .par_bridge()
-            .filter(|a| Some(*a) != pilot.map(|(pv, _)| pv))
-            .map(|action| {
-                let mut game = game.clone();
-                game.execute(action).expect("expected legal action");
-
-                let ordering =
-                    self.alpha_beta(&game, 0, beta.saturating_neg(), alpha.saturating_neg());
-
-                (action, game, ordering)
-            })
-            .collect();
-
-        successors.par_sort_unstable_by_key(|(_, _, o)| *o);
+        let mut successors: Vec<_> = game.successors().collect();
+        successors.par_sort_by_cached_key(|(_, g)| {
+            self.alpha_beta(g, 0, beta.saturating_neg(), alpha.saturating_neg())
+        });
 
         let cutoff = AtomicI16::new(alpha);
 
         let (action, score) = successors
             .into_par_iter()
-            .filter_map(|(action, game, _)| {
+            .filter_map(|(action, game)| {
                 let alpha = cutoff.load(Ordering::Relaxed);
 
                 if alpha >= beta {
@@ -176,7 +163,6 @@ impl<E: Eval + Send + Sync> Minimax<E> {
 
                 Some((action, score))
             })
-            .chain(pilot)
             .max_by_key(|(_, s)| *s)
             .expect("expected at least one legal action");
 
@@ -234,13 +220,8 @@ mod tests {
             return engine.eval(game);
         }
 
-        game.actions()
-            .par_bridge()
-            .map(|a| {
-                let mut game = game.clone();
-                game.execute(a).unwrap();
-                minimax(engine, &game, draft - 1).saturating_neg()
-            })
+        game.successors()
+            .map(|(_, g)| minimax(engine, &g, draft - 1).saturating_neg())
             .max()
             .unwrap()
     }
