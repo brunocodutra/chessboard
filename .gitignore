@@ -3,3 +3,6 @@ cobertura.xml
 .vscode
 /proptest-regressions
 lcov.info
+perf.data
+perf.data.old
+flamegraph.svg
