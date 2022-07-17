@@ -62,17 +62,7 @@ impl Game {
         match action {
             Action::Move(m) => {
                 let san = self.position.play(m)?;
-
-                self.outcome = if sm::Position::is_insufficient_material(self.position.as_ref()) {
-                    Some(Outcome::DrawByInsufficientMaterial)
-                } else if self.position.moves().len() > 0 {
-                    None
-                } else if self.position.checkers().len() > 0 {
-                    Some(Outcome::Checkmate(!self.position.turn()))
-                } else {
-                    Some(Outcome::Stalemate)
-                };
-
+                self.outcome = outcome(self.position());
                 Ok(san)
             }
 
@@ -127,6 +117,27 @@ impl Game {
     }
 }
 
+impl From<Position> for Game {
+    fn from(pos: Position) -> Self {
+        Game {
+            outcome: outcome(&pos),
+            position: pos,
+        }
+    }
+}
+
+fn outcome(pos: &Position) -> Option<Outcome> {
+    if sm::Position::is_insufficient_material(pos.as_ref()) {
+        Some(Outcome::DrawByInsufficientMaterial)
+    } else if pos.moves().len() > 0 {
+        None
+    } else if pos.checkers().len() > 0 {
+        Some(Outcome::Checkmate(!pos.turn()))
+    } else {
+        Some(Outcome::Stalemate)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -143,6 +154,17 @@ mod tests {
     #[proptest]
     fn outcome_returns_some_result_if_game_has_ended(o: Outcome, #[any(Some(#o))] g: Game) {
         assert_eq!(g.outcome(), Some(o));
+    }
+
+    #[proptest]
+    fn game_can_be_created_from_position(pos: Position) {
+        assert_eq!(
+            Game::from(pos.clone()),
+            Game {
+                outcome: outcome(&pos),
+                position: pos
+            }
+        );
     }
 
     #[proptest]
