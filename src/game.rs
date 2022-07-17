@@ -2,7 +2,7 @@ use crate::{Act, Action, Color, GameReport, IllegalAction, Outcome, Position, Sa
 use anyhow::Context;
 use derive_more::{Display, Error};
 use shakmaty as sm;
-use std::iter::once;
+use std::iter::{once, once_with};
 use tracing::{info, instrument, warn};
 
 /// The reason why the [`Game`] was interrupted.
@@ -40,15 +40,26 @@ impl Game {
 
     /// An iterator over the legal [`Action`]s that can be played in this position.
     pub fn actions(&self) -> impl Iterator<Item = Action> {
-        let moves = self.position().moves().map(Action::Move);
+        let pos = self.position().clone();
+        once_with(move || pos.moves().map(Action::Move).chain(once(Action::Resign)))
+            .take(if self.outcome().is_none() { 1 } else { 0 })
+            .flatten()
+    }
 
-        let take = if self.outcome().is_none() {
-            moves.len() + 1
-        } else {
-            0
-        };
-
-        moves.chain(once(Action::Resign)).take(take)
+    /// All game states reachable after one [`Action`].
+    pub fn successors(&self) -> impl Iterator<Item = (Action, Self)> {
+        let mut game = self.clone();
+        once_with(move || {
+            game.position()
+                .successors()
+                .map(|(m, pos)| (m.into(), pos.into()))
+                .chain(once_with(move || {
+                    game.resign();
+                    (Action::Resign, game)
+                }))
+        })
+        .take(if self.outcome().is_none() { 1 } else { 0 })
+        .flatten()
     }
 
     /// Executes an [`Action`] if legal, otherwise returns the reason why not.
@@ -67,20 +78,23 @@ impl Game {
             }
 
             Action::Resign => {
-                self.outcome = Some(Outcome::Resignation(self.position.turn()));
-
-                let noop = sm::Move::Put {
-                    role: sm::Role::King,
-                    to: sm::Position::our(self.position.as_ref(), sm::Role::King)
-                        .first()
-                        .expect("expected king on the board"),
-                };
-
-                sm::Position::play_unchecked(self.position.as_mut(), &noop);
-
+                self.resign();
                 Ok(San::null())
             }
         }
+    }
+
+    fn resign(&mut self) {
+        self.outcome = Some(Outcome::Resignation(self.position.turn()));
+
+        let noop = sm::Move::Put {
+            role: sm::Role::King,
+            to: sm::Position::our(self.position.as_ref(), sm::Role::King)
+                .first()
+                .expect("expected king on the board"),
+        };
+
+        sm::Position::play_unchecked(self.position.as_mut(), &noop);
     }
 
     /// Challenge two players for a game of chess.
@@ -143,6 +157,7 @@ mod tests {
     use super::*;
     use crate::{MockAct, Move};
     use proptest::{prop_assume, sample::select};
+    use std::iter::repeat;
     use test_strategy::proptest;
     use tokio::runtime;
 
@@ -188,6 +203,20 @@ mod tests {
     #[proptest]
     fn there_are_no_further_actions_if_game_has_ended(_o: Outcome, #[any(Some(#_o))] g: Game) {
         assert_eq!(g.actions().count(), 0);
+    }
+
+    #[proptest]
+    fn successors_returns_the_game_states_reachable_from_the_current_state(g: Game) {
+        assert_eq!(
+            g.successors().collect::<Vec<_>>(),
+            g.actions()
+                .zip(repeat(g))
+                .map(|(a, mut g)| {
+                    g.execute(a).unwrap();
+                    (a, g)
+                })
+                .collect::<Vec<_>>()
+        );
     }
 
     #[proptest]
