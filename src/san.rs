@@ -15,21 +15,17 @@ use proptest::{prelude::*, sample::Selector};
 pub struct San(
     #[cfg_attr(test, strategy(
         (any::<crate::Position>(), any::<Selector>()).prop_filter_map("end position", |(pos, selector)| {
-            let chess: sm::Chess = pos.into();
-            let m = selector.try_select(sm::Position::legal_moves(&chess))?;
-            Some(sm::san::SanPlus::from_move(chess, &m))
+            let m = selector.try_select(sm::Position::legal_moves(pos.as_ref()))?;
+            Some(sm::san::San::from_move(pos.as_ref(), &m))
         })
     ))]
-    sm::san::SanPlus,
+    sm::san::San,
 );
 
 impl San {
     /// The null move, used to indicate the player's resignation.
     pub fn null() -> Self {
-        San(sm::san::SanPlus {
-            san: sm::san::San::Null,
-            suffix: None,
-        })
+        San(sm::san::San::Null)
     }
 }
 
@@ -47,14 +43,14 @@ impl FromStr for San {
 }
 
 #[doc(hidden)]
-impl From<sm::san::SanPlus> for San {
-    fn from(san: sm::san::SanPlus) -> Self {
+impl From<sm::san::San> for San {
+    fn from(san: sm::san::San) -> Self {
         San(san)
     }
 }
 
 #[doc(hidden)]
-impl From<San> for sm::san::SanPlus {
+impl From<San> for sm::san::San {
     fn from(san: San) -> Self {
         san.0
     }
@@ -73,7 +69,7 @@ mod test {
     #[proptest]
     fn parsing_invalid_san_fails(
         #[by_ref]
-        #[filter(#s.parse::<sm::san::SanPlus>().is_err())]
+        #[filter(#s.parse::<sm::san::San>().is_err())]
         s: String,
     ) {
         assert!(s.parse::<San>().is_err());
