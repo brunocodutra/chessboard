@@ -50,7 +50,7 @@ mod tests {
         type Result = Vec<San>;
 
         fn san(&mut self, sp: sm::san::SanPlus) {
-            self.moves.push(sp.into());
+            self.moves.push(sp.san.into());
         }
 
         fn end_game(&mut self) -> Self::Result {

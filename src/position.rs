@@ -125,7 +125,9 @@ impl Position {
     pub fn play(&mut self, m: Move) -> Result<San, IllegalMove> {
         match sm::uci::Uci::to_move(&m.into(), &self.0) {
             Ok(vm) if sm::Position::is_legal(&self.0, &vm) => {
-                Ok(sm::san::SanPlus::from_move_and_play_unchecked(&mut self.0, &vm).into())
+                let san = sm::san::San::from_move(&self.0, &vm).into();
+                sm::Position::play_unchecked(&mut self.0, &vm);
+                Ok(san)
             }
 
             _ => Err(IllegalMove(m, self.clone())),
@@ -364,7 +366,7 @@ mod tests {
         #[strategy(select(#pos.moves().collect::<Vec<_>>()))] m: Move,
     ) {
         let vm = sm::uci::Uci::to_move(&m.into(), &pos.0)?;
-        let san = sm::san::SanPlus::from_move(pos.0.clone(), &vm).into();
+        let san = sm::san::San::from_move(&pos.0, &vm).into();
         let after = sm::Position::play(pos.0.clone(), &vm)?.into();
         assert_eq!(pos.play(m), Ok(san));
         assert_eq!(pos, after);
