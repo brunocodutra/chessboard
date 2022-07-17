@@ -118,7 +118,19 @@ impl Position {
     pub fn moves(&self) -> impl ExactSizeIterator<Item = Move> {
         sm::Position::legal_moves(&self.0)
             .into_iter()
-            .map(|m| sm::uci::Uci::from_standard(&m).into())
+            .map(|vm| sm::uci::Uci::from_standard(&vm).into())
+    }
+
+    /// All positions reachable after one [`Move`].
+    pub fn successors(&self) -> impl ExactSizeIterator<Item = (Move, Self)> {
+        let p = self.0.clone();
+        sm::Position::legal_moves(&self.0)
+            .into_iter()
+            .map(move |vm| {
+                let mut p = p.clone();
+                sm::Position::play_unchecked(&mut p, &vm);
+                (sm::uci::Uci::from_standard(&vm).into(), p.into())
+            })
     }
 
     /// Play a [`Move`] if legal in this position.
@@ -255,7 +267,7 @@ mod tests {
     use super::*;
     use bitvec::field::BitField;
     use proptest::sample::select;
-    use std::collections::HashSet;
+    use std::{collections::HashSet, iter::repeat};
     use test_strategy::proptest;
 
     #[proptest]
@@ -356,6 +368,20 @@ mod tests {
             .collect();
 
         assert_eq!(pos.moves().collect::<Vec<_>>(), moves);
+    }
+
+    #[proptest]
+    fn successors_returns_the_legal_positions_reachable_from_this_position(pos: Position) {
+        assert_eq!(
+            pos.successors().collect::<Vec<_>>(),
+            pos.moves()
+                .zip(repeat(pos))
+                .map(|(m, mut pos)| {
+                    pos.play(m).unwrap();
+                    (m, pos)
+                })
+                .collect::<Vec<_>>()
+        );
     }
 
     #[proptest]
