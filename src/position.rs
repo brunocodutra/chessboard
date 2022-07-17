@@ -145,6 +145,24 @@ impl Position {
             _ => Err(IllegalMove(m, self.clone())),
         }
     }
+
+    /// Play a "null move".
+    ///
+    /// # Warning
+    ///
+    /// There's no guarantee that the resulting position is legal after skipping a turn.
+    pub fn skip_turn(&mut self) -> San {
+        let noop = sm::Move::Put {
+            role: sm::Role::King,
+            to: sm::Position::our(&self.0, sm::Role::King)
+                .first()
+                .expect("expected king on the board"),
+        };
+
+        sm::Position::play_unchecked(&mut self.0, &noop);
+
+        San::null()
+    }
 }
 
 /// Retrieves the [`Piece`] at a given [`Square`], if any.
@@ -252,13 +270,6 @@ impl From<Position> for sm::Chess {
 impl AsRef<sm::Chess> for Position {
     fn as_ref(&self) -> &sm::Chess {
         &self.0
-    }
-}
-
-#[doc(hidden)]
-impl AsMut<sm::Chess> for Position {
-    fn as_mut(&mut self) -> &mut sm::Chess {
-        &mut self.0
     }
 }
 
@@ -406,6 +417,11 @@ mod tests {
         let before = pos.clone();
         assert_eq!(pos.play(m), Err(IllegalMove(m, before.clone())));
         assert_eq!(pos, before);
+    }
+
+    #[proptest]
+    fn skipping_turn_changes_side_to_play(mut pos: Position) {
+        assert_eq!(pos.skip_turn(), San::null());
     }
 
     #[proptest]

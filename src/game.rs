@@ -54,7 +54,7 @@ impl Game {
                 .successors()
                 .map(|(m, pos)| (m.into(), pos.into()))
                 .chain(once_with(move || {
-                    game.resign();
+                    game.execute(Action::Resign).unwrap();
                     (Action::Resign, game)
                 }))
         })
@@ -78,23 +78,10 @@ impl Game {
             }
 
             Action::Resign => {
-                self.resign();
-                Ok(San::null())
+                self.outcome = Some(Outcome::Resignation(self.position.turn()));
+                Ok(self.position.skip_turn())
             }
         }
-    }
-
-    fn resign(&mut self) {
-        self.outcome = Some(Outcome::Resignation(self.position.turn()));
-
-        let noop = sm::Move::Put {
-            role: sm::Role::King,
-            to: sm::Position::our(self.position.as_ref(), sm::Role::King)
-                .first()
-                .expect("expected king on the board"),
-        };
-
-        sm::Position::play_unchecked(self.position.as_mut(), &noop);
     }
 
     /// Challenge two players for a game of chess.
