@@ -1,4 +1,4 @@
-use crate::{Color, Eval, Game, Piece, Role};
+use crate::{Color, Eval, Piece, Position, Role};
 
 /// A trait for types that can valuate material using a [Piece-Square Table].
 ///
@@ -29,35 +29,28 @@ trait PrecomputedPieceSquareTable: PieceSquareTable {
 impl<T: PieceSquareTable> PrecomputedPieceSquareTable for T {}
 
 impl<T: PieceSquareTable> Eval for T {
-    fn eval(&self, game: &Game) -> i16 {
-        let pos = game.position();
-        let turn = pos.turn();
+    fn eval(&self, pos: &Position) -> i16 {
+        if pos.moves().len() > 0 {
+            let mut score = [0; 2];
 
-        match game.outcome() {
-            Some(o) => match o.winner() {
-                Some(w) if w == turn => i16::MAX,
-                Some(_) => i16::MIN,
-                None => 0,
-            },
-
-            None => {
-                let mut score = [0; 2];
-
-                use Color::*;
-                for c in [White, Black] {
-                    use Role::*;
-                    for r in [Pawn, Knight, Bishop, Rook, Queen, King] {
-                        for s in pos.by_piece(Piece(c, r)) {
-                            score[c as usize] += Self::PIECE_SQUARE_VALUE[r as usize][match c {
-                                Color::White => s.mirror().index() as usize,
-                                Color::Black => s.index() as usize,
-                            }];
-                        }
+            use Color::*;
+            for c in [White, Black] {
+                use Role::*;
+                for r in [Pawn, Knight, Bishop, Rook, Queen, King] {
+                    for s in pos.by_piece(Piece(c, r)) {
+                        score[c as usize] += Self::PIECE_SQUARE_VALUE[r as usize][match c {
+                            Color::White => s.mirror().index() as usize,
+                            Color::Black => s.index() as usize,
+                        }];
                     }
                 }
-
-                score[turn as usize] - score[!turn as usize]
             }
+
+            score[pos.turn() as usize] - score[!pos.turn() as usize]
+        } else if pos.checkers().len() > 0 {
+            i16::MIN
+        } else {
+            0
         }
     }
 }

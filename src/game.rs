@@ -2,7 +2,6 @@ use crate::{Act, Action, Color, GameReport, IllegalAction, Outcome, Position, Sa
 use anyhow::Context;
 use derive_more::{Display, Error};
 use shakmaty as sm;
-use std::iter::{once, once_with};
 use tracing::{info, instrument, warn};
 
 /// The reason why the [`Game`] was interrupted.
@@ -23,7 +22,9 @@ pub enum GameInterrupted<W, B> {
 #[cfg_attr(test, arbitrary(args = Option<Outcome>))]
 pub struct Game {
     position: Position,
-    #[cfg_attr(test, strategy(proptest::strategy::Just(*args)))]
+    #[cfg_attr(test, strategy(
+        proptest::strategy::Just(args.or(infer_outcome_from_position(&#position))))
+    )]
     outcome: Option<Outcome>,
 }
 
@@ -38,30 +39,6 @@ impl Game {
         self.outcome
     }
 
-    /// An iterator over the legal [`Action`]s that can be played in this position.
-    pub fn actions(&self) -> impl Iterator<Item = Action> {
-        let pos = self.position().clone();
-        once_with(move || pos.moves().map(Action::Move).chain(once(Action::Resign)))
-            .take(if self.outcome().is_none() { 1 } else { 0 })
-            .flatten()
-    }
-
-    /// All game states reachable after one [`Action`].
-    pub fn successors(&self) -> impl Iterator<Item = (Action, Self)> {
-        let mut game = self.clone();
-        once_with(move || {
-            game.position()
-                .successors()
-                .map(|(m, pos)| (m.into(), pos.into()))
-                .chain(once_with(move || {
-                    game.execute(Action::Resign).unwrap();
-                    (Action::Resign, game)
-                }))
-        })
-        .take(if self.outcome().is_none() { 1 } else { 0 })
-        .flatten()
-    }
-
     /// Executes an [`Action`] if legal, otherwise returns the reason why not.
     ///
     /// If the action is legal, a [`San`] recording the move is returned.
@@ -73,13 +50,13 @@ impl Game {
         match action {
             Action::Move(m) => {
                 let san = self.position.play(m)?;
-                self.outcome = outcome(self.position());
+                self.outcome = infer_outcome_from_position(self.position());
                 Ok(san)
             }
 
             Action::Resign => {
                 self.outcome = Some(Outcome::Resignation(self.position.turn()));
-                Ok(self.position.skip_turn())
+                Ok(San::null())
             }
         }
     }
@@ -121,13 +98,13 @@ impl Game {
 impl From<Position> for Game {
     fn from(pos: Position) -> Self {
         Game {
-            outcome: outcome(&pos),
+            outcome: infer_outcome_from_position(&pos),
             position: pos,
         }
     }
 }
 
-fn outcome(pos: &Position) -> Option<Outcome> {
+fn infer_outcome_from_position(pos: &Position) -> Option<Outcome> {
     if sm::Position::is_insufficient_material(pos.as_ref()) {
         Some(Outcome::DrawByInsufficientMaterial)
     } else if pos.moves().len() > 0 {
@@ -144,7 +121,6 @@ mod tests {
     use super::*;
     use crate::{MockAct, Move};
     use proptest::{prop_assume, sample::select};
-    use std::iter::repeat;
     use test_strategy::proptest;
     use tokio::runtime;
 
@@ -163,65 +139,29 @@ mod tests {
         assert_eq!(
             Game::from(pos.clone()),
             Game {
-                outcome: outcome(&pos),
+                outcome: infer_outcome_from_position(&pos),
                 position: pos
             }
         );
     }
 
     #[proptest]
-    fn all_legal_moves_are_possible_before_game_has_ended(g: Game) {
-        assert_eq!(
-            g.actions()
-                .filter_map(|a| match a {
-                    Action::Move(m) => Some(m),
-                    Action::Resign => None,
-                })
-                .collect::<Vec<_>>(),
-            g.position().moves().collect::<Vec<_>>()
-        );
-    }
-
-    #[proptest]
-    fn resigning_is_always_possible_before_game_has_ended(g: Game) {
-        assert_eq!(g.actions().filter(|a| a == &Action::Resign).count(), 1);
-    }
-
-    #[proptest]
-    fn there_are_no_further_actions_if_game_has_ended(_o: Outcome, #[any(Some(#_o))] g: Game) {
-        assert_eq!(g.actions().count(), 0);
-    }
-
-    #[proptest]
-    fn successors_returns_the_game_states_reachable_from_the_current_state(g: Game) {
-        assert_eq!(
-            g.successors().collect::<Vec<_>>(),
-            g.actions()
-                .zip(repeat(g))
-                .map(|(a, mut g)| {
-                    g.execute(a).unwrap();
-                    (a, g)
-                })
-                .collect::<Vec<_>>()
-        );
-    }
-
-    #[proptest]
-    fn legal_actions_can_always_be_executed(
-        #[by_ref] mut g: Game,
-        #[strategy(select(#g.actions().collect::<Vec<_>>()))] a: Action,
+    fn legal_moves_can_always_be_executed_before_game_has_ended(
+        #[by_ref]
+        #[filter(#g.outcome().is_none())]
+        mut g: Game,
+        #[strategy(select(#g.position().moves().collect::<Vec<_>>()))] m: Move,
     ) {
-        assert_eq!(g.execute(a).err(), None);
+        assert_eq!(g.execute(Action::Move(m)).err(), None);
     }
 
     #[proptest]
-    fn legal_actions_always_change_the_side_to_play(
-        #[by_ref] mut g: Game,
-        #[strategy(select(#g.actions().collect::<Vec<_>>()))] a: Action,
+    fn resigning_is_always_legal_before_game_has_ended(
+        #[by_ref]
+        #[filter(#g.outcome().is_none())]
+        mut g: Game,
     ) {
-        let turn = !g.position.turn();
-        g.execute(a)?;
-        assert_eq!(g.position().turn(), turn);
+        assert_eq!(g.execute(Action::Resign).err(), None);
     }
 
     #[proptest]
@@ -234,12 +174,12 @@ mod tests {
     }
 
     #[proptest]
-    fn game_state_does_not_change_after_an_invalid_action(
+    fn game_state_does_not_change_after_an_illegal_action(
         #[by_ref] mut g: Game,
-        #[filter(#g.actions().all(|a| a != #a))] a: Action,
+        #[filter(#g.position().moves().all(|m| m != #m))] m: Move,
     ) {
         let before = g.clone();
-        assert_eq!(g.execute(a).ok(), None);
+        assert_eq!(g.execute(m.into()).ok(), None);
         assert_eq!(g, before);
     }
 
@@ -283,7 +223,11 @@ mod tests {
     }
 
     #[proptest]
-    fn game_executes_player_actions_in_their_turn(mut g: Game) {
+    fn game_executes_player_actions_in_their_turn(
+        #[by_ref]
+        #[filter(#g.outcome().is_none())]
+        mut g: Game,
+    ) {
         let rt = runtime::Builder::new_multi_thread().build()?;
 
         let turn = g.position.turn();
@@ -306,8 +250,10 @@ mod tests {
 
     #[proptest]
     fn game_ignores_illegal_player_actions(
-        #[by_ref] mut g: Game,
-        #[filter(#g.actions().all(|a| a != #a))] a: Action,
+        #[by_ref]
+        #[filter(#g.outcome().is_none())]
+        mut g: Game,
+        #[filter(#g.position().moves().all(|m| Action::Move(m) != #a))] a: Action,
     ) {
         let rt = runtime::Builder::new_multi_thread().build()?;
 
@@ -332,7 +278,12 @@ mod tests {
     }
 
     #[proptest]
-    fn game_interrupts_if_player_encounters_an_error(mut g: Game, e: String) {
+    fn game_interrupts_if_player_encounters_an_error(
+        #[by_ref]
+        #[filter(#g.outcome().is_none())]
+        mut g: Game,
+        e: String,
+    ) {
         let rt = runtime::Builder::new_multi_thread().build()?;
 
         let turn = g.position.turn();

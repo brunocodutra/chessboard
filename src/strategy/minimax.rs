@@ -1,4 +1,4 @@
-use crate::{Action, Eval, Game, Search, Transposition, TranspositionTable};
+use crate::{Eval, Move, Position, Search, Transposition, TranspositionTable};
 use derive_more::{Display, Error, From};
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
@@ -95,10 +95,10 @@ impl<E: Eval + Send + Sync> Minimax<E> {
     /// The [alpha-beta pruning] algorithm.
     ///
     /// [alpha-beta pruning]: https://en.wikipedia.org/wiki/Alpha%E2%80%93beta_pruning
-    fn alpha_beta(&self, game: &Game, draft: i8, mut alpha: i16, mut beta: i16) -> i16 {
+    fn alpha_beta(&self, pos: &Position, draft: i8, mut alpha: i16, mut beta: i16) -> i16 {
         debug_assert!(alpha < beta, "{} < {}", alpha, beta);
 
-        let zobrist = game.position().zobrist();
+        let zobrist = pos.zobrist();
         let transposition = self.tt.get(zobrist);
 
         if let Some(t) = transposition.filter(|t| t.draft() >= draft) {
@@ -110,16 +110,16 @@ impl<E: Eval + Send + Sync> Minimax<E> {
             }
         }
 
-        if draft <= 0 || game.outcome().is_some() {
-            return self.engine.eval(game);
+        if draft <= 0 {
+            return self.engine.eval(pos);
         }
 
         if let Some(t) = transposition {
-            let mut game = game.clone();
-            if game.execute(t.action()).is_ok() {
+            let mut pos = pos.clone();
+            if pos.play(t.best()).is_ok() {
                 let score = self
                     .alpha_beta(
-                        &game,
+                        &pos,
                         draft - 1,
                         beta.saturating_neg(),
                         alpha.saturating_neg(),
@@ -134,16 +134,20 @@ impl<E: Eval + Send + Sync> Minimax<E> {
             }
         }
 
-        let mut successors: Vec<_> = game.successors().collect();
-        successors.par_sort_by_cached_key(|(_, g)| {
-            self.alpha_beta(g, 0, beta.saturating_neg(), alpha.saturating_neg())
+        let mut successors: Vec<_> = pos.successors().collect();
+        successors.par_sort_by_cached_key(|(_, pos)| {
+            self.alpha_beta(pos, 0, beta.saturating_neg(), alpha.saturating_neg())
         });
+
+        if successors.is_empty() {
+            return self.engine.eval(pos);
+        }
 
         let cutoff = AtomicI16::new(alpha);
 
-        let (action, score) = successors
+        let (best, score) = successors
             .into_par_iter()
-            .filter_map(|(action, game)| {
+            .filter_map(|(m, pos)| {
                 let alpha = cutoff.load(Ordering::Relaxed);
 
                 if alpha >= beta {
@@ -152,7 +156,7 @@ impl<E: Eval + Send + Sync> Minimax<E> {
 
                 let score = self
                     .alpha_beta(
-                        &game,
+                        &pos,
                         draft - 1,
                         beta.saturating_neg(),
                         alpha.saturating_neg(),
@@ -161,12 +165,12 @@ impl<E: Eval + Send + Sync> Minimax<E> {
 
                 cutoff.fetch_max(score, Ordering::Relaxed);
 
-                Some((action, score))
+                Some((m, score))
             })
             .max_by_key(|(_, s)| *s)
-            .expect("expected at least one legal action");
+            .expect("expected at least one legal move");
 
-        let transposition = Transposition::new(score, alpha, beta, draft, action);
+        let transposition = Transposition::new(score, alpha, beta, draft, best);
         self.tt.set(zobrist, transposition);
 
         score
@@ -175,12 +179,12 @@ impl<E: Eval + Send + Sync> Minimax<E> {
     /// The [mtd(f)] algorithm.
     ///
     /// [mtd(f)]: https://en.wikipedia.org/wiki/MTD(f)
-    fn mtdf(&self, game: &Game, depth: i8, mut score: i16) -> i16 {
+    fn mtdf(&self, pos: &Position, depth: i8, mut score: i16) -> i16 {
         let mut alpha = -i16::MAX;
         let mut beta = i16::MAX;
         while alpha < beta {
             let target = score.max(alpha + 1);
-            score = self.alpha_beta(game, depth, target - 1, target);
+            score = self.alpha_beta(pos, depth, target - 1, target);
             if score < target {
                 beta = score;
             } else {
@@ -193,35 +197,37 @@ impl<E: Eval + Send + Sync> Minimax<E> {
 }
 
 impl<E: Eval + Send + Sync> Search for Minimax<E> {
-    fn search(&self, game: &Game) -> Option<Action> {
-        let zobrist = game.position().zobrist();
+    fn search(&self, pos: &Position) -> Option<Move> {
+        let zobrist = pos.zobrist();
         let (mut score, depth) = match self.tt.get(zobrist) {
             Some(t) => (t.score(), t.draft()),
-            _ => (self.engine.eval(game), 1),
+            _ => (self.engine.eval(pos), 1),
         };
 
         for d in depth..=self.config.max_depth.min(i8::MAX as u8) as i8 {
-            score = self.mtdf(game, d, score);
+            score = self.mtdf(pos, d, score);
         }
 
-        self.tt.get(zobrist).map(|t| t.action())
+        self.tt.get(zobrist).map(|t| t.best())
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{Engine, MockEval, Outcome};
+    use crate::{Engine, MockEval};
     use mockall::predicate::*;
     use test_strategy::proptest;
 
-    fn minimax<E: Eval + Sync>(engine: &E, game: &Game, draft: i8) -> i16 {
-        if draft == 0 || game.outcome().is_some() {
-            return engine.eval(game);
+    fn minimax<E: Eval + Sync>(engine: &E, pos: &Position, draft: i8) -> i16 {
+        let successors = pos.successors();
+
+        if draft == 0 || successors.len() == 0 {
+            return engine.eval(pos);
         }
 
-        game.successors()
-            .map(|(_, g)| minimax(engine, &g, draft - 1).saturating_neg())
+        successors
+            .map(|(_, pos)| minimax(engine, &pos, draft - 1).saturating_neg())
             .max()
             .unwrap()
     }
@@ -245,48 +251,30 @@ mod tests {
     #[proptest]
     #[should_panic]
     #[cfg(debug_assertions)]
-    fn alpha_beta_panics_if_alpha_not_smaller_than_beta(g: Game, a: i16, b: i16) {
-        Minimax::new(MockEval::new()).alpha_beta(&g, 0, a.max(b), a.min(b));
+    fn alpha_beta_panics_if_alpha_not_smaller_than_beta(pos: Position, a: i16, b: i16) {
+        Minimax::new(MockEval::new()).alpha_beta(&pos, 0, a.max(b), a.min(b));
     }
 
     #[proptest]
-    fn alpha_beta_returns_none_if_depth_is_zero(g: Game, s: i16) {
+    fn alpha_beta_returns_none_if_depth_is_zero(pos: Position, s: i16) {
         let mut engine = MockEval::new();
         engine
             .expect_eval()
             .once()
-            .with(eq(g.clone()))
+            .with(eq(pos.clone()))
             .return_const(s);
 
         let strategy = Minimax::new(engine);
-        assert_eq!(strategy.alpha_beta(&g, 0, i16::MIN, i16::MAX), s);
+        assert_eq!(strategy.alpha_beta(&pos, 0, i16::MIN, i16::MAX), s);
     }
 
     #[proptest]
-    fn alpha_beta_returns_none_if_game_has_ended(
-        _o: Outcome,
-        #[any(Some(#_o))] g: Game,
-        d: i8,
-        s: i16,
-    ) {
-        let mut engine = MockEval::new();
-        engine
-            .expect_eval()
-            .once()
-            .with(eq(g.clone()))
-            .return_const(s);
-
-        let strategy = Minimax::new(engine);
-        assert_eq!(strategy.alpha_beta(&g, d, i16::MIN, i16::MAX), s);
-    }
-
-    #[proptest]
-    fn alpha_beta_returns_best_score(c: MinimaxConfig, g: Game) {
+    fn alpha_beta_returns_best_score(c: MinimaxConfig, pos: Position) {
         let depth = c.max_depth.try_into()?;
 
         assert_eq!(
-            minimax(&Engine::default(), &g, depth),
-            Minimax::with_config(Engine::default(), c).alpha_beta(&g, depth, i16::MIN, i16::MAX),
+            minimax(&Engine::default(), &pos, depth),
+            Minimax::with_config(Engine::default(), c).alpha_beta(&pos, depth, i16::MIN, i16::MAX),
         );
     }
 
@@ -295,7 +283,7 @@ mod tests {
         #[strategy(0usize..65536)] a: usize,
         #[strategy(0usize..65536)] b: usize,
         c: MinimaxConfig,
-        g: Game,
+        pos: Position,
     ) {
         let a = Minimax::with_config(Engine::default(), MinimaxConfig { table_size: a, ..c });
         let b = Minimax::with_config(Engine::default(), MinimaxConfig { table_size: b, ..c });
@@ -303,57 +291,57 @@ mod tests {
         let depth = c.max_depth.try_into()?;
 
         assert_eq!(
-            a.alpha_beta(&g, depth, i16::MIN, i16::MAX),
-            b.alpha_beta(&g, depth, i16::MIN, i16::MAX)
+            a.alpha_beta(&pos, depth, i16::MIN, i16::MAX),
+            b.alpha_beta(&pos, depth, i16::MIN, i16::MAX)
         );
     }
 
     #[proptest]
-    fn mtdf_returns_best_score(c: MinimaxConfig, g: Game) {
+    fn mtdf_returns_best_score(c: MinimaxConfig, pos: Position) {
         let depth = c.max_depth.try_into()?;
 
         assert_eq!(
-            minimax(&Engine::default(), &g, depth),
-            Minimax::with_config(Engine::default(), c).mtdf(&g, depth, 0),
+            minimax(&Engine::default(), &pos, depth),
+            Minimax::with_config(Engine::default(), c).mtdf(&pos, depth, 0),
         );
     }
 
     #[proptest]
-    fn mtdf_does_not_depend_on_initial_guess(c: MinimaxConfig, g: Game, s: i16) {
+    fn mtdf_does_not_depend_on_initial_guess(c: MinimaxConfig, pos: Position, s: i16) {
         let a = Minimax::with_config(Engine::default(), c);
         let b = Minimax::with_config(Engine::default(), c);
 
         let depth = c.max_depth.try_into()?;
 
-        assert_eq!(a.mtdf(&g, depth, s), b.mtdf(&g, depth, 0));
+        assert_eq!(a.mtdf(&pos, depth, s), b.mtdf(&pos, depth, 0));
     }
 
     #[proptest]
-    fn mtdf_is_equivalent_to_alphabeta(c: MinimaxConfig, g: Game) {
+    fn mtdf_is_equivalent_to_alpha_beta(c: MinimaxConfig, pos: Position) {
         let a = Minimax::with_config(Engine::default(), c);
         let b = Minimax::with_config(Engine::default(), c);
 
         let depth = c.max_depth.try_into()?;
 
         assert_eq!(
-            a.mtdf(&g, depth, 0),
-            b.alpha_beta(&g, depth, i16::MIN, i16::MAX),
+            a.mtdf(&pos, depth, 0),
+            b.alpha_beta(&pos, depth, i16::MIN, i16::MAX),
         );
     }
 
     #[proptest]
-    fn search_finds_the_best_action(c: MinimaxConfig, g: Game) {
+    fn search_finds_the_best_move(c: MinimaxConfig, pos: Position) {
         let strategy = Minimax::with_config(Engine::default(), c);
-        let zobrist = g.position().zobrist();
+
         assert_eq!(
-            strategy.search(&g),
-            strategy.tt.get(zobrist).map(|r| r.action())
+            strategy.search(&pos),
+            strategy.tt.get(pos.zobrist()).map(|t| t.best())
         );
     }
 
     #[proptest]
-    fn search_is_stable(c: MinimaxConfig, g: Game) {
+    fn search_is_stable(c: MinimaxConfig, pos: Position) {
         let strategy = Minimax::with_config(Engine::default(), c);
-        assert_eq!(strategy.search(&g), strategy.search(&g));
+        assert_eq!(strategy.search(&pos), strategy.search(&pos));
     }
 }

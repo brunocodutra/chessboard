@@ -1,4 +1,4 @@
-use crate::{engine::PieceSquareTable, Eval, Game, Role};
+use crate::{engine::PieceSquareTable, Eval, Position, Role};
 use derive_more::Constructor;
 
 struct MidGamePesto;
@@ -153,11 +153,9 @@ impl Pesto {
 }
 
 impl Eval for Pesto {
-    fn eval(&self, game: &Game) -> i16 {
-        let pos = game.position();
-
-        let mg = MidGamePesto.eval(game) as i32;
-        let eg = EndGamePesto.eval(game) as i32;
+    fn eval(&self, pos: &Position) -> i16 {
+        let mg = MidGamePesto.eval(pos) as i32;
+        let eg = EndGamePesto.eval(pos) as i32;
 
         use Role::*;
         let phase = [Knight, Bishop, Rook, Queen]
@@ -178,18 +176,23 @@ mod tests {
     use test_strategy::proptest;
 
     #[proptest]
+    fn score_is_stable(pos: Position) {
+        assert_eq!(Pesto::new().eval(&pos), Pesto::new().eval(&pos));
+    }
+
+    #[proptest]
     fn starting_position_is_evaluated_as_mid_game() {
         assert_eq!(
-            Pesto::new().eval(&Game::default()),
-            MidGamePesto.eval(&Game::default())
+            Pesto::new().eval(&Position::default()),
+            MidGamePesto.eval(&Position::default())
         );
     }
 
     #[proptest]
-    fn scores_are_tapered_between_mid_and_end_game(g: Game) {
-        let min = MidGamePesto.eval(&g).min(EndGamePesto.eval(&g));
-        let max = MidGamePesto.eval(&g).max(EndGamePesto.eval(&g));
-        assert!(Pesto::new().eval(&g) >= min);
-        assert!(Pesto::new().eval(&g) <= max);
+    fn scores_are_tapered_between_mid_and_end_game(pos: Position) {
+        let min = MidGamePesto.eval(&pos).min(EndGamePesto.eval(&pos));
+        let max = MidGamePesto.eval(&pos).max(EndGamePesto.eval(&pos));
+        assert!(Pesto::new().eval(&pos) >= min);
+        assert!(Pesto::new().eval(&pos) <= max);
     }
 }

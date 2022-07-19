@@ -1,4 +1,4 @@
-use crate::{Action, Build, Engine, EngineBuilder, Game, Search};
+use crate::{Build, Engine, EngineBuilder, Move, Position, Search};
 use anyhow::Error as Anyhow;
 use derive_more::{DebugCustom, Display, Error, From};
 use serde::Deserialize;
@@ -19,11 +19,11 @@ pub enum Strategy {
 }
 
 impl Search for Strategy {
-    fn search(&self, game: &Game) -> Option<Action> {
+    fn search(&self, pos: &Position) -> Option<Move> {
         match self {
-            Strategy::Minimax(s) => s.search(game),
+            Strategy::Minimax(s) => s.search(pos),
             #[cfg(test)]
-            Strategy::Mock(s) => s.search(game),
+            Strategy::Mock(s) => s.search(pos),
         }
     }
 }

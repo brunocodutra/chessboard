@@ -1,4 +1,4 @@
-use crate::{Build, Eval, Game};
+use crate::{Build, Eval, Position};
 use anyhow::Error as Anyhow;
 use derive_more::{DebugCustom, Display, Error, From};
 use serde::Deserialize;
@@ -35,13 +35,13 @@ impl Default for Engine {
 }
 
 impl Eval for Engine {
-    fn eval(&self, game: &Game) -> i16 {
+    fn eval(&self, pos: &Position) -> i16 {
         match self {
-            Engine::Random(e) => e.eval(game),
-            Engine::Materialist(e) => e.eval(game),
-            Engine::Pesto(e) => e.eval(game),
+            Engine::Random(e) => e.eval(pos),
+            Engine::Materialist(e) => e.eval(pos),
+            Engine::Pesto(e) => e.eval(pos),
             #[cfg(test)]
-            Engine::Mock(e) => e.eval(game),
+            Engine::Mock(e) => e.eval(pos),
         }
     }
 }
