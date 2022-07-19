@@ -1,16 +1,16 @@
-use crate::{Eval, Game};
+use crate::{Eval, Position};
 use derive_more::Constructor;
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 
-/// A trivial engine that evaluates a [`Game`]s to random, but stable, scores.
+/// A trivial engine that evaluates a [`Position`]s to random, but stable, scores.
 #[derive(Debug, Default, Constructor)]
 pub struct Random {}
 
 impl Eval for Random {
-    fn eval(&self, game: &Game) -> i16 {
+    fn eval(&self, pos: &Position) -> i16 {
         let mut hashser = DefaultHasher::new();
-        game.hash(&mut hashser);
+        pos.hash(&mut hashser);
         hashser.finish() as i16
     }
 }
@@ -21,7 +21,7 @@ mod tests {
     use test_strategy::proptest;
 
     #[proptest]
-    fn score_is_stable(game: Game) {
-        assert_eq!(Random::new().eval(&game), Random::new().eval(&game.clone()));
+    fn score_is_stable(pos: Position) {
+        assert_eq!(Random::new().eval(&pos), Random::new().eval(&pos.clone()));
     }
 }

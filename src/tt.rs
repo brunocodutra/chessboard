@@ -1,4 +1,4 @@
-use crate::{Action, Binary, Bits, Cache, Register};
+use crate::{Binary, Bits, Cache, Move, Register};
 use bitvec::{field::BitField, mem::BitRegister, store::BitStore};
 use derive_more::{Display, Error};
 use std::{cmp::Ordering, fmt::Debug, ops::Deref};
@@ -22,13 +22,13 @@ pub struct Transposition {
     score: i16,
     #[cfg_attr(test, strategy(0i8..))]
     draft: i8,
-    action: Action,
+    best: Move,
 }
 
 impl Transposition {
     /// Constructs a [`Transposition`] given the partial score, known bounds,
-    /// remaining draft, and best [`Action`].
-    pub fn new(score: i16, lower: i16, upper: i16, draft: i8, action: Action) -> Self {
+    /// remaining draft, and best [`Move`].
+    pub fn new(score: i16, lower: i16, upper: i16, draft: i8, best: Move) -> Self {
         let kind = if score >= upper {
             TranspositionKind::Lower
         } else if score <= lower {
@@ -41,7 +41,7 @@ impl Transposition {
             kind,
             score,
             draft,
-            action,
+            best,
         }
     }
 
@@ -64,9 +64,9 @@ impl Transposition {
         self.score
     }
 
-    /// Best [`Action`] at this depth.
-    pub fn action(&self) -> Action {
-        self.action
+    /// Best [`Move`] at this depth.
+    pub fn best(&self) -> Move {
+        self.best
     }
 }
 
@@ -105,12 +105,12 @@ impl Binary for Option<SignedTransposition> {
                 let (kind, rest) = register.split_at_mut(2);
                 let (score, rest) = rest.split_at_mut(16);
                 let (draft, rest) = rest.split_at_mut(7);
-                let (action, rest) = rest.split_at_mut(<Action as Binary>::Register::WIDTH);
+                let (best, rest) = rest.split_at_mut(<Move as Binary>::Register::WIDTH);
 
                 kind.store(t.kind as u8 + 1);
                 score.store(t.score);
                 draft.store(t.draft);
-                action.clone_from_bitslice(&t.action.encode());
+                best.clone_from_bitslice(&t.best.encode());
                 rest.clone_from_bitslice(sig);
 
                 debug_assert_ne!(register, Bits::default());
@@ -127,7 +127,7 @@ impl Binary for Option<SignedTransposition> {
             let (kind, rest) = register.split_at(2);
             let (score, rest) = rest.split_at(16);
             let (draft, rest) = rest.split_at(7);
-            let (action, rest) = rest.split_at(<Action as Binary>::Register::WIDTH);
+            let (best, rest) = rest.split_at(<Move as Binary>::Register::WIDTH);
 
             use TranspositionKind::*;
             Ok(Some((
@@ -138,7 +138,7 @@ impl Binary for Option<SignedTransposition> {
                         .ok_or(DecodeTranspositionError(register))?,
                     score: score.load(),
                     draft: draft.load::<u8>() as i8,
-                    action: Action::decode(action.into())
+                    best: Move::decode(best.into())
                         .map_err(|_| DecodeTranspositionError(register))?,
                 },
                 rest.into(),

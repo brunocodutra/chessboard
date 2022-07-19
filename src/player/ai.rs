@@ -17,31 +17,34 @@ impl<S: Search + Debug + Send> Act for Ai<S> {
 
     #[instrument(level = "trace", err, ret)]
     async fn act(&mut self, game: &Game) -> Result<Action, Self::Error> {
-        Ok(block_in_place(|| self.strategy.search(game)).unwrap_or(Action::Resign))
+        match block_in_place(|| self.strategy.search(game.position())) {
+            Some(m) => Ok(m.into()),
+            None => Ok(Action::Resign),
+        }
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::MockSearch;
+    use crate::{MockSearch, Move};
     use mockall::predicate::eq;
     use test_strategy::proptest;
     use tokio::runtime;
 
     #[proptest]
-    fn searches_for_move(g: Game, a: Action) {
+    fn searches_for_move(g: Game, m: Move) {
         let rt = runtime::Builder::new_multi_thread().build()?;
 
         let mut strategy = MockSearch::new();
         strategy
             .expect_search()
             .once()
-            .with(eq(g.clone()))
-            .return_const(Some(a));
+            .with(eq(g.position().clone()))
+            .return_const(Some(m));
 
         let mut ai = Ai::new(strategy);
-        assert_eq!(rt.block_on(ai.act(&g))?, a);
+        assert_eq!(rt.block_on(ai.act(&g))?, Action::Move(m));
     }
 
     #[proptest]
@@ -52,7 +55,7 @@ mod tests {
         strategy
             .expect_search()
             .once()
-            .with(eq(g.clone()))
+            .with(eq(g.position().clone()))
             .return_const(None);
 
         let mut ai = Ai::new(strategy);
