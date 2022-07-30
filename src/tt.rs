@@ -22,27 +22,32 @@ pub struct Transposition {
     score: i16,
     #[cfg_attr(test, strategy(0i8..))]
     draft: i8,
-    best: Move,
+    best: Option<Move>,
 }
 
 impl Transposition {
-    /// Constructs a [`Transposition`] given the partial score, known bounds,
-    /// remaining draft, and best [`Move`].
-    pub fn new(score: i16, lower: i16, upper: i16, draft: i8, best: Move) -> Self {
-        let kind = if score >= upper {
-            TranspositionKind::Lower
-        } else if score <= lower {
-            TranspositionKind::Upper
-        } else {
-            TranspositionKind::Exact
-        };
-
+    fn new(kind: TranspositionKind, score: i16, draft: i8, best: Option<Move>) -> Self {
         Transposition {
             kind,
             score,
             draft,
             best,
         }
+    }
+
+    /// Constructs a [`Transposition`] given a lower bound for the score, remaining draft, and best [`Move`].
+    pub fn lower(score: i16, draft: i8, best: Option<Move>) -> Self {
+        Transposition::new(TranspositionKind::Lower, score, draft, best)
+    }
+
+    /// Constructs a [`Transposition`] given an upper bound for the score, remaining draft, and best [`Move`].
+    pub fn upper(score: i16, draft: i8, best: Option<Move>) -> Self {
+        Transposition::new(TranspositionKind::Upper, score, draft, best)
+    }
+
+    /// Constructs a [`Transposition`] given the exact score, remaining draft, and best [`Move`].
+    pub fn exact(score: i16, draft: i8, best: Option<Move>) -> Self {
+        Transposition::new(TranspositionKind::Exact, score, draft, best)
     }
 
     /// Bounds for the exact score.
@@ -65,7 +70,7 @@ impl Transposition {
     }
 
     /// Best [`Move`] at this depth.
-    pub fn best(&self) -> Move {
+    pub fn best(&self) -> Option<Move> {
         self.best
     }
 }
@@ -84,16 +89,16 @@ impl Ord for Transposition {
 
 type Key = Bits<u64, 64>;
 type Signature = Bits<u32, 24>;
-type SignedTransposition = (Transposition, Signature);
-type SignedTranspositionRegister = <Option<SignedTransposition> as Binary>::Register;
+type OptionalSignedTransposition = Option<(Transposition, Signature)>;
+type OptionalSignedTranspositionRegister = <OptionalSignedTransposition as Binary>::Register;
 
 /// The reason why decoding [`Transposition`] from binary failed.
 #[derive(Debug, Display, Clone, Eq, PartialEq, Hash, Error)]
 #[cfg_attr(test, derive(test_strategy::Arbitrary))]
 #[display(fmt = "`{}` is not a valid search result", _0)]
-pub struct DecodeTranspositionError(#[error(not(source))] SignedTranspositionRegister);
+pub struct DecodeTranspositionError(#[error(not(source))] OptionalSignedTranspositionRegister);
 
-impl Binary for Option<SignedTransposition> {
+impl Binary for OptionalSignedTransposition {
     type Register = Bits<u64, 64>;
     type Error = DecodeTranspositionError;
 
@@ -138,7 +143,7 @@ impl Binary for Option<SignedTransposition> {
                         .ok_or(DecodeTranspositionError(register))?,
                     score: score.load(),
                     draft: draft.load::<u8>() as i8,
-                    best: Move::decode(best.into())
+                    best: Binary::decode(best.into())
                         .map_err(|_| DecodeTranspositionError(register))?,
                 },
                 rest.into(),
@@ -150,10 +155,10 @@ impl Binary for Option<SignedTransposition> {
 /// A cache for [`Transposition`]s.
 #[derive(Debug)]
 #[cfg_attr(test, derive(test_strategy::Arbitrary))]
-#[cfg_attr(test, arbitrary(args = <Cache<Option<SignedTransposition>> as Arbitrary>::Parameters))]
+#[cfg_attr(test, arbitrary(args = <Cache<OptionalSignedTransposition> as Arbitrary>::Parameters))]
 pub struct TranspositionTable {
     #[cfg_attr(test, any((*args).clone()))]
-    cache: Cache<SignedTranspositionRegister>,
+    cache: Cache<OptionalSignedTranspositionRegister>,
 }
 
 impl TranspositionTable {
@@ -161,7 +166,7 @@ impl TranspositionTable {
     ///
     /// The `size` specifies an upper bound.
     pub fn new(size: usize) -> Self {
-        let entry_size = SignedTranspositionRegister::SIZE;
+        let entry_size = OptionalSignedTranspositionRegister::SIZE;
         let cache_size = (size / entry_size + 1).next_power_of_two() / 2;
 
         TranspositionTable {
@@ -171,7 +176,7 @@ impl TranspositionTable {
 
     /// The actual size of this [`TranspositionTable`] in bytes.
     pub fn size(&self) -> usize {
-        self.len() * SignedTranspositionRegister::SIZE
+        self.len() * OptionalSignedTranspositionRegister::SIZE
     }
 
     /// The actual size of this [`TranspositionTable`] in number of entries.
@@ -197,7 +202,7 @@ impl TranspositionTable {
     /// Loads the [`Transposition`] from the slot associated with `key`.
     pub fn get(&self, key: Key) -> Option<Transposition> {
         if !self.is_empty() {
-            Option::decode(self.cache.load(self.index_of(key)))
+            OptionalSignedTransposition::decode(self.cache.load(self.index_of(key)))
                 .expect("expected valid encoding")
                 .filter(|(_, sig)| sig.deref() == key[(Key::WIDTH - Signature::WIDTH)..])
                 .map(|(t, _)| t)
@@ -213,7 +218,7 @@ impl TranspositionTable {
         if !self.is_empty() {
             let sig = key[(Key::WIDTH - Signature::WIDTH)..].into();
             self.cache.update(self.index_of(key), |r| {
-                match Option::decode(r).expect("expected valid encoding") {
+                match Binary::decode(r).expect("expected valid encoding") {
                     Some((t, _)) if t > transposition => None,
                     _ => Some(Some((transposition, sig)).encode()),
                 }
@@ -256,15 +261,15 @@ mod tests {
     }
 
     #[proptest]
-    fn decoding_encoded_transposition_is_an_identity(r: Option<SignedTransposition>) {
-        assert_eq!(Option::decode(r.encode()), Ok(r));
+    fn decoding_encoded_transposition_is_an_identity(r: OptionalSignedTransposition) {
+        assert_eq!(Binary::decode(r.encode()), Ok(r));
     }
 
     #[proptest]
     fn size_returns_table_capacity_in_bytes(tt: TranspositionTable) {
         assert_eq!(
             tt.size(),
-            tt.cache.len() * SignedTranspositionRegister::SIZE
+            tt.cache.len() * OptionalSignedTranspositionRegister::SIZE
         );
     }
 

@@ -111,12 +111,15 @@ impl<E: Eval + Send + Sync> Minimax<E> {
         }
 
         if draft <= 0 {
-            return self.engine.eval(pos);
+            let score = self.engine.eval(pos);
+            let transposition = Transposition::exact(score, draft, None);
+            self.tt.set(zobrist, transposition);
+            return score;
         }
 
-        if let Some(t) = transposition {
+        if let Some(m) = transposition.and_then(|t| t.best()) {
             let mut pos = pos.clone();
-            if pos.play(t.best()).is_ok() {
+            if pos.play(m).is_ok() {
                 let score = self
                     .alpha_beta(
                         &pos,
@@ -129,6 +132,8 @@ impl<E: Eval + Send + Sync> Minimax<E> {
                 alpha = alpha.max(score);
 
                 if alpha >= beta {
+                    let transposition = Transposition::lower(score, draft, Some(m));
+                    self.tt.set(zobrist, transposition);
                     return score;
                 }
             }
@@ -140,7 +145,10 @@ impl<E: Eval + Send + Sync> Minimax<E> {
         });
 
         if successors.is_empty() {
-            return self.engine.eval(pos);
+            let score = self.engine.eval(pos);
+            let transposition = Transposition::exact(score, draft, None);
+            self.tt.set(zobrist, transposition);
+            return score;
         }
 
         let cutoff = AtomicI16::new(alpha);
@@ -170,7 +178,14 @@ impl<E: Eval + Send + Sync> Minimax<E> {
             .max_by_key(|(_, s)| *s)
             .expect("expected at least one legal move");
 
-        let transposition = Transposition::new(score, alpha, beta, draft, best);
+        let transposition = if score >= beta {
+            Transposition::lower(score, draft, Some(best))
+        } else if score <= alpha {
+            Transposition::upper(score, draft, Some(best))
+        } else {
+            Transposition::exact(score, draft, Some(best))
+        };
+
         self.tt.set(zobrist, transposition);
 
         score
@@ -200,7 +215,7 @@ impl<E: Eval + Send + Sync> Search for Minimax<E> {
     fn search(&self, pos: &Position) -> Option<Move> {
         let zobrist = pos.zobrist();
         let (mut score, depth) = match self.tt.get(zobrist) {
-            Some(t) => (t.score(), t.draft()),
+            Some(t) => (t.score(), t.draft() + 1),
             _ => (self.engine.eval(pos), 1),
         };
 
@@ -208,7 +223,7 @@ impl<E: Eval + Send + Sync> Search for Minimax<E> {
             score = self.mtdf(pos, d, score);
         }
 
-        self.tt.get(zobrist).map(|t| t.best())
+        self.tt.get(zobrist).and_then(|t| t.best())
     }
 }
 
@@ -335,7 +350,7 @@ mod tests {
 
         assert_eq!(
             strategy.search(&pos),
-            strategy.tt.get(pos.zobrist()).map(|t| t.best())
+            strategy.tt.get(pos.zobrist()).and_then(|t| t.best())
         );
     }
 

@@ -63,10 +63,34 @@ impl Binary for Move {
         let (promotion, _) = rest.split_at(<Promotion as Binary>::Register::WIDTH);
 
         Ok(Move(
-            Square::decode(whence.into()).map_err(|_| DecodeMoveError(register))?,
-            Square::decode(whither.into()).map_err(|_| DecodeMoveError(register))?,
-            Promotion::decode(promotion.into()).map_err(|_| DecodeMoveError(register))?,
+            Binary::decode(whence.into()).map_err(|_| DecodeMoveError(register))?,
+            Binary::decode(whither.into()).map_err(|_| DecodeMoveError(register))?,
+            Binary::decode(promotion.into()).map_err(|_| DecodeMoveError(register))?,
         ))
+    }
+}
+
+impl Binary for Option<Move> {
+    type Register = <Move as Binary>::Register;
+    type Error = <Move as Binary>::Error;
+
+    fn encode(&self) -> Self::Register {
+        match self {
+            None => Bits::max(),
+            Some(m) => {
+                let register = m.encode();
+                debug_assert_ne!(register, Bits::max());
+                register
+            }
+        }
+    }
+
+    fn decode(register: Self::Register) -> Result<Self, Self::Error> {
+        if register == Bits::max() {
+            Ok(None)
+        } else {
+            Ok(Some(Binary::decode(register)?))
+        }
     }
 }
 
@@ -166,6 +190,11 @@ mod tests {
     #[proptest]
     fn decoding_move_fails_for_invalid_register(#[any(64 * 64 * 5)] b: Bits<u16, 15>) {
         assert_eq!(Move::decode(b), Err(DecodeMoveError(b)));
+    }
+
+    #[proptest]
+    fn decoding_encoded_optional_move_is_an_identity(m: Option<Move>) {
+        assert_eq!(Binary::decode(m.encode()), Ok(m));
     }
 
     #[proptest]
