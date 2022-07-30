@@ -77,7 +77,7 @@ impl Build for PlayerBuilder {
         match self {
             PlayerBuilder::Ai(strategy) => Ok(Ai::new(strategy.build()?).into()),
             PlayerBuilder::Uci(path) => Ok(Uci::new(Process::spawn(&path)?).into()),
-            PlayerBuilder::Cli() => Ok(Cli::new(Terminal::new()).into()),
+            PlayerBuilder::Cli() => Ok(Cli::new(Terminal::open()?).into()),
         }
     }
 }

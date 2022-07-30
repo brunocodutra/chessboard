@@ -19,19 +19,14 @@ pub struct Terminal {
 
 impl Terminal {
     /// Opens a terminal interface with the given prompt.
-    pub fn new() -> Self {
-        Terminal {
+    pub fn open() -> io::Result<Self> {
+        Ok(Terminal {
             writer: stdout(),
-            reader: Arc::new(Mutex::new(Editor::with_config(
-                Config::builder().auto_add_history(true).build(),
-            ))),
-        }
-    }
-}
-
-impl Default for Terminal {
-    fn default() -> Self {
-        Self::new()
+            reader: Arc::new(Mutex::new(
+                Editor::with_config(Config::builder().auto_add_history(true).build())
+                    .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?,
+            )),
+        })
     }
 }
 
@@ -44,15 +39,7 @@ impl Io for Terminal {
             Err(ReadlineError::Io(e)) => Err(e),
             Err(ReadlineError::Eof) => Err(io::ErrorKind::UnexpectedEof.into()),
             Err(ReadlineError::Interrupted) => Err(io::ErrorKind::Interrupted.into()),
-
-            #[cfg(unix)]
-            Err(ReadlineError::Utf8Error) => Err(io::ErrorKind::InvalidData.into()),
-
-            #[cfg(windows)]
-            Err(ReadlineError::Decode(e)) => Err(io::Error::new(io::ErrorKind::InvalidData, e)),
-
             Err(e) => Err(io::Error::new(io::ErrorKind::Other, e)),
-
             Ok(r) => Ok(r),
         }
     }
