@@ -179,7 +179,7 @@ impl<E: Eval + Send + Sync> Search for Minimax<E> {
     fn search(&self, pos: &Position) -> Option<Move> {
         let zobrist = pos.zobrist();
         let (mut score, depth) = match self.tt.get(zobrist) {
-            Some(t) => (t.score(), t.draft()),
+            Some(t) => (t.score(), t.draft() + 1),
             _ => (self.engine.eval(pos), 1),
         };
 
