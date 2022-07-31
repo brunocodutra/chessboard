@@ -1,7 +1,7 @@
 use crate::{Binary, Bits, Cache, Move, Register};
 use bitvec::{field::BitField, mem::BitRegister, store::BitStore};
 use derive_more::{Display, Error};
-use std::{cmp::Ordering, fmt::Debug, ops::Deref};
+use std::{cmp::Ordering, fmt::Debug};
 
 #[cfg(test)]
 use proptest::prelude::*;
@@ -89,16 +89,16 @@ impl Ord for Transposition {
 
 type Key = Bits<u64, 64>;
 type Signature = Bits<u32, 24>;
-type SignedTransposition = (Transposition, Signature);
-type SignedTranspositionRegister = <Option<SignedTransposition> as Binary>::Register;
+type OptionalSignedTransposition = Option<(Transposition, Signature)>;
+type OptionalSignedTranspositionRegister = <OptionalSignedTransposition as Binary>::Register;
 
 /// The reason why decoding [`Transposition`] from binary failed.
 #[derive(Debug, Display, Clone, Eq, PartialEq, Hash, Error)]
 #[cfg_attr(test, derive(test_strategy::Arbitrary))]
-#[display(fmt = "`{}` is not a valid search result", _0)]
-pub struct DecodeTranspositionError(#[error(not(source))] SignedTranspositionRegister);
+#[display(fmt = "`{}` is not t valid search result", _0)]
+pub struct DecodeTranspositionError(#[error(not(source))] OptionalSignedTranspositionRegister);
 
-impl Binary for Option<SignedTransposition> {
+impl Binary for OptionalSignedTransposition {
     type Register = Bits<u64, 64>;
     type Error = DecodeTranspositionError;
 
@@ -143,7 +143,7 @@ impl Binary for Option<SignedTransposition> {
                         .ok_or(DecodeTranspositionError(register))?,
                     score: score.load(),
                     draft: draft.load::<u8>() as i8,
-                    best: Move::decode(best.into())
+                    best: Binary::decode(best.into())
                         .map_err(|_| DecodeTranspositionError(register))?,
                 },
                 rest.into(),
@@ -155,18 +155,18 @@ impl Binary for Option<SignedTransposition> {
 /// A cache for [`Transposition`]s.
 #[derive(Debug)]
 #[cfg_attr(test, derive(test_strategy::Arbitrary))]
-#[cfg_attr(test, arbitrary(args = <Cache<Option<SignedTransposition>> as Arbitrary>::Parameters))]
+#[cfg_attr(test, arbitrary(args = <Cache<OptionalSignedTransposition> as Arbitrary>::Parameters))]
 pub struct TranspositionTable {
     #[cfg_attr(test, any((*args).clone()))]
-    cache: Cache<SignedTranspositionRegister>,
+    cache: Cache<OptionalSignedTranspositionRegister>,
 }
 
 impl TranspositionTable {
-    /// Constructs a [`TranspositionTable`] of at most `size` many bytes.
+    /// Constructs t [`TranspositionTable`] of at most `size` many bytes.
     ///
     /// The `size` specifies an upper bound.
     pub fn new(size: usize) -> Self {
-        let entry_size = SignedTranspositionRegister::SIZE;
+        let entry_size = OptionalSignedTranspositionRegister::SIZE;
         let cache_size = (size / entry_size + 1).next_power_of_two() / 2;
 
         TranspositionTable {
@@ -176,7 +176,7 @@ impl TranspositionTable {
 
     /// The actual size of this [`TranspositionTable`] in bytes.
     pub fn size(&self) -> usize {
-        self.len() * SignedTranspositionRegister::SIZE
+        self.len() * OptionalSignedTranspositionRegister::SIZE
     }
 
     /// The actual size of this [`TranspositionTable`] in number of entries.
@@ -201,25 +201,27 @@ impl TranspositionTable {
 
     /// Loads the [`Transposition`] from the slot associated with `key`.
     pub fn get(&self, key: Key) -> Option<Transposition> {
-        if !self.is_empty() {
-            Option::decode(self.cache.load(self.index_of(key)))
-                .expect("expected valid encoding")
-                .filter(|(_, sig)| sig.deref() == key[(Key::WIDTH - Signature::WIDTH)..])
-                .map(|(t, _)| t)
-        } else {
+        if self.is_empty() {
             None
+        } else {
+            let sig = key[(Key::WIDTH - Signature::WIDTH)..].into();
+            let register = self.cache.load(self.index_of(key));
+            match Binary::decode(register).expect("expected valid encoding") {
+                Some((t, s)) if s == sig => Some(t),
+                _ => None,
+            }
         }
     }
 
-    /// Stores a [`Transposition`] in the slot associated with `key`.
+    /// Stores t [`Transposition`] in the slot associated with `key`.
     ///
     /// In the slot if not empty, the [`Ordering::Greater`] [`Transposition`] is chosen.
     pub fn set(&self, key: Key, transposition: Transposition) {
         if !self.is_empty() {
             let sig = key[(Key::WIDTH - Signature::WIDTH)..].into();
             self.cache.update(self.index_of(key), |r| {
-                match Option::decode(r).expect("expected valid encoding") {
-                    Some((t, _)) if t > transposition => None,
+                match Binary::decode(r).expect("expected valid encoding") {
+                    Some((t, s)) if t > transposition && s == sig => None,
                     _ => Some(Some((transposition, sig)).encode()),
                 }
             })
@@ -242,34 +244,34 @@ mod tests {
 
     #[proptest]
     fn transposition_with_larger_draft_is_larger(
-        a: Transposition,
-        #[filter(#a.draft != #b.draft)] b: Transposition,
+        t: Transposition,
+        #[filter(#t.draft != #u.draft)] u: Transposition,
     ) {
-        assert_eq!(a < b, a.draft < b.draft);
+        assert_eq!(t < u, t.draft < u.draft);
     }
 
     #[proptest]
     fn transposition_with_same_draft_is_compared_by_kind(
-        a: Transposition,
-        b: Transposition,
+        t: Transposition,
+        u: Transposition,
         d: i8,
     ) {
         assert_eq!(
-            Transposition { draft: d, ..a } < Transposition { draft: d, ..b },
-            a.kind < b.kind
+            Transposition { draft: d, ..t } < Transposition { draft: d, ..u },
+            t.kind < u.kind
         );
     }
 
     #[proptest]
-    fn decoding_encoded_transposition_is_an_identity(r: Option<SignedTransposition>) {
-        assert_eq!(Option::decode(r.encode()), Ok(r));
+    fn decoding_encoded_transposition_is_an_identity(t: OptionalSignedTransposition) {
+        assert_eq!(Binary::decode(t.encode()), Ok(t));
     }
 
     #[proptest]
     fn size_returns_table_capacity_in_bytes(tt: TranspositionTable) {
         assert_eq!(
             tt.size(),
-            tt.cache.len() * SignedTranspositionRegister::SIZE
+            tt.cache.len() * OptionalSignedTranspositionRegister::SIZE
         );
     }
 
@@ -313,7 +315,7 @@ mod tests {
         t: Transposition,
         k: Key,
     ) {
-        let sig = (!k.load::<u64>()).view_bits()[40..].into();
+        let sig = (!k.load::<u64>()).view_bits()[(Key::WIDTH - Signature::WIDTH)..].into();
         tt.cache.store(tt.index_of(k), Some((t, sig)).encode());
         assert_eq!(tt.get(k), None);
     }
@@ -326,8 +328,8 @@ mod tests {
         t: Transposition,
         k: Key,
     ) {
-        tt.cache
-            .store(tt.index_of(k), Some((t, k[40..].into())).encode());
+        let sig = k[(Key::WIDTH - Signature::WIDTH)..].into();
+        tt.cache.store(tt.index_of(k), Some((t, sig)).encode());
         assert_eq!(tt.get(k), Some(t));
     }
 
@@ -343,14 +345,14 @@ mod tests {
         #[by_ref]
         #[filter(!#tt.is_empty())]
         tt: TranspositionTable,
-        a: Transposition,
-        b: Transposition,
+        t: Transposition,
+        u: Transposition,
         k: Key,
     ) {
-        tt.cache
-            .store(tt.index_of(k), Some((a, k[40..].into())).encode());
-        tt.set(k, b);
-        assert_eq!(tt.get(k), if a > b { Some(a) } else { Some(b) });
+        let sig = k[(Key::WIDTH - Signature::WIDTH)..].into();
+        tt.cache.store(tt.index_of(k), Some((t, sig)).encode());
+        tt.set(k, u);
+        assert_eq!(tt.get(k), if t > u { Some(t) } else { Some(u) });
     }
 
     #[proptest]
@@ -362,6 +364,21 @@ mod tests {
         k: Key,
     ) {
         tt.cache.store(tt.index_of(k), Bits::default());
+        tt.set(k, t);
+        assert_eq!(tt.get(k), Some(t));
+    }
+
+    #[proptest]
+    fn set_stores_transposition_if_signature_does_not_match(
+        #[by_ref]
+        #[filter(!#tt.is_empty())]
+        tt: TranspositionTable,
+        t: Transposition,
+        u: Transposition,
+        k: Key,
+    ) {
+        let sig = (!k.load::<u64>()).view_bits()[(Key::WIDTH - Signature::WIDTH)..].into();
+        tt.cache.store(tt.index_of(k), Some((u, sig)).encode());
         tt.set(k, t);
         assert_eq!(tt.get(k), Some(t));
     }
