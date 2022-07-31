@@ -103,23 +103,14 @@ impl<E: Eval + Send + Sync> Minimax<E> {
         }
 
         if draft <= 0 {
-            return self.engine.eval(pos);
+            return self.engine.eval(pos).max(-i16::MAX);
         }
 
-        if let Some(t) = transposition {
+        if let Some(m) = transposition.map(|t| t.best()) {
             let mut pos = pos.clone();
-            if pos.play(t.best()).is_ok() {
-                let score = self
-                    .alpha_beta(
-                        &pos,
-                        draft - 1,
-                        beta.saturating_neg(),
-                        alpha.saturating_neg(),
-                    )
-                    .saturating_neg();
-
+            if pos.play(m).is_ok() {
+                let score = -self.alpha_beta(&pos, draft - 1, -beta, -alpha);
                 alpha = alpha.max(score);
-
                 if alpha >= beta {
                     return score;
                 }
@@ -127,12 +118,10 @@ impl<E: Eval + Send + Sync> Minimax<E> {
         }
 
         let mut successors: Vec<_> = pos.successors().collect();
-        successors.par_sort_by_cached_key(|(_, pos)| {
-            self.alpha_beta(pos, 0, beta.saturating_neg(), alpha.saturating_neg())
-        });
+        successors.par_sort_by_cached_key(|(_, pos)| self.alpha_beta(pos, 0, -beta, -alpha));
 
         if successors.is_empty() {
-            return self.engine.eval(pos);
+            return self.engine.eval(pos).max(-i16::MAX);
         }
 
         let cutoff = AtomicI16::new(alpha);
@@ -146,17 +135,8 @@ impl<E: Eval + Send + Sync> Minimax<E> {
                     return None;
                 }
 
-                let score = self
-                    .alpha_beta(
-                        &pos,
-                        draft - 1,
-                        beta.saturating_neg(),
-                        alpha.saturating_neg(),
-                    )
-                    .saturating_neg();
-
+                let score = -self.alpha_beta(&pos, draft - 1, -beta, -alpha);
                 cutoff.fetch_max(score, Ordering::Relaxed);
-
                 Some((m, score))
             })
             .max_by_key(|(_, s)| *s)
@@ -215,11 +195,11 @@ mod tests {
         let successors = pos.successors();
 
         if draft == 0 || successors.len() == 0 {
-            return engine.eval(pos);
+            return engine.eval(pos).max(-i16::MAX);
         }
 
         successors
-            .map(|(_, pos)| minimax(engine, &pos, draft - 1).saturating_neg())
+            .map(|(_, pos)| -minimax(engine, &pos, draft - 1))
             .max()
             .unwrap()
     }
@@ -257,7 +237,7 @@ mod tests {
             .return_const(s);
 
         let strategy = Minimax::new(engine);
-        assert_eq!(strategy.alpha_beta(&pos, 0, i16::MIN, i16::MAX), s);
+        assert_eq!(strategy.alpha_beta(&pos, 0, -i16::MAX, i16::MAX), s);
     }
 
     #[proptest]
@@ -266,7 +246,7 @@ mod tests {
 
         assert_eq!(
             minimax(&Engine::default(), &pos, depth),
-            Minimax::with_config(Engine::default(), c).alpha_beta(&pos, depth, i16::MIN, i16::MAX),
+            Minimax::with_config(Engine::default(), c).alpha_beta(&pos, depth, -i16::MAX, i16::MAX),
         );
     }
 
@@ -283,8 +263,8 @@ mod tests {
         let depth = c.max_depth.try_into()?;
 
         assert_eq!(
-            a.alpha_beta(&pos, depth, i16::MIN, i16::MAX),
-            b.alpha_beta(&pos, depth, i16::MIN, i16::MAX)
+            a.alpha_beta(&pos, depth, -i16::MAX, i16::MAX),
+            b.alpha_beta(&pos, depth, -i16::MAX, i16::MAX)
         );
     }
 
@@ -317,7 +297,7 @@ mod tests {
 
         assert_eq!(
             a.mtdf(&pos, depth, 0),
-            b.alpha_beta(&pos, depth, i16::MIN, i16::MAX),
+            b.alpha_beta(&pos, depth, -i16::MAX, i16::MAX),
         );
     }
 
