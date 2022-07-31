@@ -117,16 +117,16 @@ impl<E: Eval + Send + Sync> Minimax<E> {
             }
         }
 
-        let mut successors: Vec<_> = pos.successors().collect();
-        successors.par_sort_by_cached_key(|(_, pos)| self.alpha_beta(pos, 0, -beta, -alpha));
+        let mut children: Vec<_> = pos.children().collect();
+        children.par_sort_by_cached_key(|(_, pos)| self.alpha_beta(pos, 0, -beta, -alpha));
 
-        if successors.is_empty() {
+        if children.is_empty() {
             return self.engine.eval(pos).max(-i16::MAX);
         }
 
         let cutoff = AtomicI16::new(alpha);
 
-        let (best, score) = successors
+        let (best, score) = children
             .into_par_iter()
             .filter_map(|(m, pos)| {
                 let alpha = cutoff.load(Ordering::Relaxed);
@@ -192,13 +192,13 @@ mod tests {
     use test_strategy::proptest;
 
     fn minimax<E: Eval + Sync>(engine: &E, pos: &Position, draft: i8) -> i16 {
-        let successors = pos.successors();
+        let children = pos.children();
 
-        if draft == 0 || successors.len() == 0 {
+        if draft == 0 || children.len() == 0 {
             return engine.eval(pos).max(-i16::MAX);
         }
 
-        successors
+        children
             .map(|(_, pos)| -minimax(engine, &pos, draft - 1))
             .max()
             .unwrap()
