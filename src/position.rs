@@ -122,7 +122,7 @@ impl Position {
     }
 
     /// All positions reachable after one [`Move`].
-    pub fn successors(&self) -> impl ExactSizeIterator<Item = (Move, Self)> {
+    pub fn children(&self) -> impl ExactSizeIterator<Item = (Move, Self)> {
         let p = self.0.clone();
         sm::Position::legal_moves(&self.0)
             .into_iter()
@@ -364,9 +364,9 @@ mod tests {
     }
 
     #[proptest]
-    fn successors_returns_the_legal_positions_reachable_from_this_position(pos: Position) {
+    fn children_returns_the_legal_positions_reachable_after_one_move(pos: Position) {
         assert_eq!(
-            pos.successors().collect::<Vec<_>>(),
+            pos.children().collect::<Vec<_>>(),
             pos.moves()
                 .zip(repeat(pos))
                 .map(|(m, mut pos)| {
