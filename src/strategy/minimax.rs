@@ -26,30 +26,22 @@ pub struct MinimaxConfig {
 
 impl Default for MinimaxConfig {
     fn default() -> Self {
+        let table_size = 1 << 24;
+
         #[cfg(test)]
         #[cfg(tarpaulin)]
-        {
-            Self {
-                max_depth: 2,
-                table_size: 1 << 8,
-            }
-        }
+        let max_depth = 2;
 
         #[cfg(test)]
         #[cfg(not(tarpaulin))]
-        {
-            Self {
-                max_depth: 3,
-                table_size: 1 << 16,
-            }
-        }
+        let max_depth = 3;
 
         #[cfg(not(test))]
-        {
-            Self {
-                max_depth: 6,
-                table_size: 1 << 32,
-            }
+        let max_depth = 6;
+
+        Self {
+            max_depth,
+            table_size,
         }
     }
 }
