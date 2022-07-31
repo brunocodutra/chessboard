@@ -35,17 +35,17 @@ impl Transposition {
         }
     }
 
-    /// Constructs t [`Transposition`] given t lower bound for the score, remaining draft, and best [`Move`].
+    /// Constructs a [`Transposition`] given a lower bound for the score, remaining draft, and best [`Move`].
     pub fn lower(score: i16, draft: i8, best: Move) -> Self {
         Transposition::new(TranspositionKind::Lower, score, draft, best)
     }
 
-    /// Constructs t [`Transposition`] given an upper bound for the score, remaining draft, and best [`Move`].
+    /// Constructs a [`Transposition`] given an upper bound for the score, remaining draft, and best [`Move`].
     pub fn upper(score: i16, draft: i8, best: Move) -> Self {
         Transposition::new(TranspositionKind::Upper, score, draft, best)
     }
 
-    /// Constructs t [`Transposition`] given the exact score, remaining draft, and best [`Move`].
+    /// Constructs a [`Transposition`] given the exact score, remaining draft, and best [`Move`].
     pub fn exact(score: i16, draft: i8, best: Move) -> Self {
         Transposition::new(TranspositionKind::Exact, score, draft, best)
     }
@@ -95,7 +95,7 @@ type OptionalSignedTranspositionRegister = <OptionalSignedTransposition as Binar
 /// The reason why decoding [`Transposition`] from binary failed.
 #[derive(Debug, Display, Clone, Eq, PartialEq, Hash, Error)]
 #[cfg_attr(test, derive(test_strategy::Arbitrary))]
-#[display(fmt = "`{}` is not t valid search result", _0)]
+#[display(fmt = "`{}` is not a valid search result", _0)]
 pub struct DecodeTranspositionError(#[error(not(source))] OptionalSignedTranspositionRegister);
 
 impl Binary for OptionalSignedTransposition {
@@ -162,7 +162,7 @@ pub struct TranspositionTable {
 }
 
 impl TranspositionTable {
-    /// Constructs t [`TranspositionTable`] of at most `size` many bytes.
+    /// Constructs a [`TranspositionTable`] of at most `size` many bytes.
     ///
     /// The `size` specifies an upper bound.
     pub fn new(size: usize) -> Self {
@@ -213,7 +213,7 @@ impl TranspositionTable {
         }
     }
 
-    /// Stores t [`Transposition`] in the slot associated with `key`.
+    /// Stores a [`Transposition`] in the slot associated with `key`.
     ///
     /// In the slot if not empty, the [`Ordering::Greater`] [`Transposition`] is chosen.
     pub fn set(&self, key: Key, transposition: Transposition) {
