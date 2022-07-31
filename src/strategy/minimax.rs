@@ -112,6 +112,8 @@ impl<E: Eval + Send + Sync> Minimax<E> {
                 let score = -self.alpha_beta(&pos, draft - 1, -beta, -alpha);
                 alpha = alpha.max(score);
                 if alpha >= beta {
+                    let transposition = Transposition::lower(score, draft, m);
+                    self.tt.set(zobrist, transposition);
                     return score;
                 }
             }
