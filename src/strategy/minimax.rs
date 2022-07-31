@@ -142,7 +142,14 @@ impl<E: Eval + Send + Sync> Minimax<E> {
             .max_by_key(|(_, s)| *s)
             .expect("expected at least one legal move");
 
-        let transposition = Transposition::new(score, alpha, beta, draft, best);
+        let transposition = if score >= beta {
+            Transposition::lower(score, draft, best)
+        } else if score <= alpha {
+            Transposition::upper(score, draft, best)
+        } else {
+            Transposition::exact(score, draft, best)
+        };
+
         self.tt.set(zobrist, transposition);
 
         score
