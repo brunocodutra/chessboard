@@ -26,23 +26,28 @@ pub struct Transposition {
 }
 
 impl Transposition {
-    /// Constructs a [`Transposition`] given the partial score, known bounds,
-    /// remaining draft, and best [`Move`].
-    pub fn new(score: i16, lower: i16, upper: i16, draft: i8, best: Move) -> Self {
-        let kind = if score >= upper {
-            TranspositionKind::Lower
-        } else if score <= lower {
-            TranspositionKind::Upper
-        } else {
-            TranspositionKind::Exact
-        };
-
+    fn new(kind: TranspositionKind, score: i16, draft: i8, best: Move) -> Self {
         Transposition {
             kind,
             score,
             draft,
             best,
         }
+    }
+
+    /// Constructs t [`Transposition`] given t lower bound for the score, remaining draft, and best [`Move`].
+    pub fn lower(score: i16, draft: i8, best: Move) -> Self {
+        Transposition::new(TranspositionKind::Lower, score, draft, best)
+    }
+
+    /// Constructs t [`Transposition`] given an upper bound for the score, remaining draft, and best [`Move`].
+    pub fn upper(score: i16, draft: i8, best: Move) -> Self {
+        Transposition::new(TranspositionKind::Upper, score, draft, best)
+    }
+
+    /// Constructs t [`Transposition`] given the exact score, remaining draft, and best [`Move`].
+    pub fn exact(score: i16, draft: i8, best: Move) -> Self {
+        Transposition::new(TranspositionKind::Exact, score, draft, best)
     }
 
     /// Bounds for the exact score.
