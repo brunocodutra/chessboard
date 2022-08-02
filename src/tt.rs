@@ -93,7 +93,7 @@ type OptionalSignedTransposition = Option<(Transposition, Signature)>;
 type OptionalSignedTranspositionRegister = <OptionalSignedTransposition as Binary>::Register;
 
 /// The reason why decoding [`Transposition`] from binary failed.
-#[derive(Debug, Display, Clone, Eq, PartialEq, Hash, Error)]
+#[derive(Debug, Display, Clone, Eq, PartialEq, Error)]
 #[cfg_attr(test, derive(test_strategy::Arbitrary))]
 #[display(fmt = "`{}` is not a valid search result", _0)]
 pub struct DecodeTranspositionError(#[error(not(source))] OptionalSignedTranspositionRegister);
