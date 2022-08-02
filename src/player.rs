@@ -48,7 +48,7 @@ impl Act for Player {
 }
 
 /// Runtime configuration for an [`Player`].
-#[derive(Debug, Clone, Eq, PartialEq, Hash, Deserialize)]
+#[derive(Debug, Clone, Eq, PartialEq, Deserialize)]
 #[cfg_attr(test, derive(test_strategy::Arbitrary))]
 #[serde(deny_unknown_fields, rename_all = "lowercase")]
 pub enum PlayerBuilder {
