@@ -29,13 +29,13 @@ impl Move {
 }
 
 /// Represents an illegal [`Move`] in a given [`Position`].
-#[derive(Debug, Display, Clone, Eq, PartialEq, Hash, Error)]
+#[derive(Debug, Display, Clone, Eq, PartialEq, Error)]
 #[cfg_attr(test, derive(test_strategy::Arbitrary))]
 #[display(fmt = "move `{}` is illegal in position `{}`", _0, _1)]
 pub struct IllegalMove(pub Move, pub Position);
 
 /// The reason why decoding [`Move`] from binary failed.
-#[derive(Debug, Display, Clone, Eq, PartialEq, Hash, Error)]
+#[derive(Debug, Display, Clone, Eq, PartialEq, Error)]
 #[cfg_attr(test, derive(test_strategy::Arbitrary))]
 #[display(fmt = "`{}` is not a valid Move", _0)]
 pub struct DecodeMoveError(#[error(not(source))] <Move as Binary>::Register);

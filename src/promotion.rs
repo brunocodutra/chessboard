@@ -22,7 +22,7 @@ pub enum Promotion {
 }
 
 /// The reason why decoding [`Promotion`] from binary failed.
-#[derive(Debug, Display, Clone, Eq, PartialEq, Hash, Error)]
+#[derive(Debug, Display, Clone, Eq, PartialEq, Error)]
 #[cfg_attr(test, derive(test_strategy::Arbitrary))]
 #[display(fmt = "`{}` is not a valid promotion", _0)]
 pub struct DecodePromotionError(#[error(not(source))] <Promotion as Binary>::Register);
