@@ -8,7 +8,7 @@ use std::{error::Error, io, str::FromStr};
 use tracing::instrument;
 
 /// Command Line Interface
-#[derive(Debug, Display, Copy, Clone, Eq, PartialEq, Hash, Parser)]
+#[derive(Debug, Display, Copy, Clone, Eq, PartialEq, Parser)]
 #[cfg_attr(test, derive(test_strategy::Arbitrary))]
 #[clap(
     name = "",
@@ -92,7 +92,7 @@ impl<T: Io + Debug + Send> Act for Cli<T> {
     }
 }
 
-#[derive(Debug, Clone, Eq, PartialEq, Hash, Deref)]
+#[derive(Deref)]
 struct Board<'a>(&'a Position);
 
 impl<'a> Display for Board<'a> {
