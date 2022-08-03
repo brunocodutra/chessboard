@@ -1,5 +1,5 @@
-use chessboard::strategy::MinimaxConfig;
-use chessboard::{strategy::Minimax, Engine, Position, Search};
+use chessboard::strategy::{Minimax, MinimaxConfig};
+use chessboard::{Engine, Position, Search, SearchLimits};
 use criterion::measurement::{Measurement, WallTime};
 use criterion::{criterion_group, criterion_main, Criterion, SamplingMode};
 use std::time::Duration;
@@ -13,10 +13,15 @@ fn bench(c: &mut Criterion) {
         .bench_function("minimax", |b| {
             b.iter_custom(|iters| {
                 let mut pos = Position::default();
+                let limits = SearchLimits {
+                    time: Duration::MAX,
+                    depth: 5,
+                };
+
                 let minimax = Minimax::with_config(
                     Engine::default(),
                     MinimaxConfig {
-                        max_depth: 5,
+                        search: limits,
                         ..MinimaxConfig::default()
                     },
                 );
