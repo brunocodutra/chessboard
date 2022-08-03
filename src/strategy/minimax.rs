@@ -97,7 +97,7 @@ impl<E: Eval + Send + Sync> Minimax<E> {
         Self::with_config(engine, MinimaxConfig::default())
     }
 
-    /// Constructs [`Minimax`] with the specified [`MinimaxConfig`].
+    /// Constructs [`Minimax`] with some [`MinimaxConfig`].
     pub fn with_config(engine: E, config: MinimaxConfig) -> Self {
         Minimax {
             engine,
