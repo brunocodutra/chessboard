@@ -16,6 +16,9 @@ pub enum Outcome {
 
     #[display(fmt = "draw by insufficient material")]
     DrawByInsufficientMaterial,
+
+    #[display(fmt = "draw by the 75-move rule")]
+    DrawBy75MoveRule,
 }
 
 impl Outcome {
@@ -23,8 +26,7 @@ impl Outcome {
     ///
     /// [draw]: https://en.wikipedia.org/wiki/Glossary_of_chess#draw
     pub fn is_draw(&self) -> bool {
-        use Outcome::*;
-        matches!(self, Stalemate | DrawByInsufficientMaterial)
+        !self.is_decisive()
     }
 
     /// Whether the outcome is a decisive and one of the sides has won.
