@@ -53,7 +53,7 @@ impl Act for Player {
 #[serde(deny_unknown_fields, rename_all = "lowercase")]
 pub enum PlayerBuilder {
     Ai(StrategyBuilder),
-    Uci(String),
+    Uci(String, #[serde(default)] UciConfig),
     Cli(),
 }
 
@@ -76,7 +76,9 @@ impl Build for PlayerBuilder {
     fn build(self) -> Result<Self::Output, Anyhow> {
         match self {
             PlayerBuilder::Ai(strategy) => Ok(Ai::new(strategy.build()?).into()),
-            PlayerBuilder::Uci(path) => Ok(Uci::new(Process::spawn(&path)?).into()),
+            PlayerBuilder::Uci(path, cfg) => {
+                Ok(Uci::with_config(Process::spawn(&path)?, cfg).into())
+            }
             PlayerBuilder::Cli() => Ok(Cli::new(Terminal::open()?).into()),
         }
     }
@@ -101,8 +103,16 @@ mod tests {
     }
 
     #[proptest]
-    fn uci_builder_is_deserializable(s: String) {
-        assert_eq!(format!("uci({:?})", s).parse(), Ok(PlayerBuilder::Uci(s)));
+    fn uci_builder_is_deserializable(s: String, c: UciConfig) {
+        assert_eq!(
+            format!("uci({:?})", s).parse(),
+            Ok(PlayerBuilder::Uci(s.clone(), UciConfig::default()))
+        );
+
+        assert_eq!(
+            format!("uci({:?}, {})", s, c).parse(),
+            Ok(PlayerBuilder::Uci(s, c))
+        );
     }
 
     #[proptest]
@@ -114,8 +124,11 @@ mod tests {
     }
 
     #[proptest]
-    fn uci_can_be_configured_at_runtime(s: String) {
-        assert!(matches!(PlayerBuilder::Uci(s).build(), Ok(Player::Uci(_))));
+    fn uci_can_be_configured_at_runtime(s: String, c: UciConfig) {
+        assert!(matches!(
+            PlayerBuilder::Uci(s, c).build(),
+            Ok(Player::Uci(_))
+        ));
     }
 
     #[proptest]
