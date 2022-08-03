@@ -15,13 +15,12 @@ use proptest::{prelude::*, sample::Selector};
 #[debug(fmt = "Position(\"{}\")", self)]
 #[display(fmt = "{}", "Fen::from(self.clone())")]
 pub struct Position(
-    #[cfg_attr(test, strategy((0..32, any::<Selector>()).prop_map(|(depth, selector)| {
+    #[cfg_attr(test, strategy((0..256, any::<Selector>()).prop_map(|(moves, selector)| {
         let mut chess = sm::Chess::default();
-        for _ in 0..depth {
-            if let Some(m) = selector.try_select(sm::Position::legal_moves(&chess)) {
-                sm::Position::play_unchecked(&mut chess, &m);
-            } else {
-                break;
+        for _ in 0..moves {
+            match selector.try_select(sm::Position::legal_moves(&chess)) {
+                Some(m) => sm::Position::play_unchecked(&mut chess, &m),
+                _ => break,
             }
         }
         chess

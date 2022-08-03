@@ -105,14 +105,16 @@ impl From<Position> for Game {
 }
 
 fn infer_outcome_from_position(pos: &Position) -> Option<Outcome> {
-    if sm::Position::is_insufficient_material(pos.as_ref()) {
-        Some(Outcome::DrawByInsufficientMaterial)
-    } else if pos.moves().len() > 0 {
-        None
-    } else if pos.checkers().len() > 0 {
+    if sm::Position::is_checkmate(pos.as_ref()) {
         Some(Outcome::Checkmate(!pos.turn()))
-    } else {
+    } else if sm::Position::is_stalemate(pos.as_ref()) {
         Some(Outcome::Stalemate)
+    } else if sm::Position::is_insufficient_material(pos.as_ref()) {
+        Some(Outcome::DrawByInsufficientMaterial)
+    } else if pos.halfmoves() >= 150 {
+        Some(Outcome::DrawBy75MoveRule)
+    } else {
+        None
     }
 }
 
