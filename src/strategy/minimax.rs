@@ -1,4 +1,4 @@
-use crate::{Eval, Move, Position, Search, Transposition, TranspositionTable};
+use crate::{Eval, Move, Position, Search, SearchLimits, Transposition, TranspositionTable};
 use derive_more::{Display, Error, From};
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
@@ -11,6 +11,7 @@ use std::{cmp::max_by_key, fmt::Debug, str::FromStr};
 pub struct Timeout;
 
 #[derive(Debug, Default, Copy, Clone, Eq, PartialEq, Hash)]
+#[cfg_attr(test, derive(test_strategy::Arbitrary))]
 struct Timer {
     deadline: Option<Instant>,
 }
@@ -37,42 +38,21 @@ impl Timer {
 #[display(fmt = "{}", "ron::ser::to_string(self).unwrap()")]
 #[serde(deny_unknown_fields, rename = "config", default)]
 pub struct MinimaxConfig {
-    /// The maximum number of plies to search.
-    ///
-    /// This is an upper limit, the actual depth searched may be smaller.
-    #[cfg_attr(test, strategy(0u8..=MinimaxConfig::default().max_depth))]
-    pub max_depth: u8,
-
-    /// The maximum amount of time to spend searching.
-    ///
-    /// This is an upper limit, the actual time searched may be smaller.
-    #[serde(with = "humantime_serde")]
-    pub max_time: Duration,
+    /// Search limits.
+    pub search: SearchLimits,
 
     /// The size of the transposition table in bytes.
     ///
     /// This is an upper limit, the actual memory allocation may be smaller.
-    #[cfg_attr(test, strategy(0usize..=MinimaxConfig::default().table_size))]
+    #[cfg_attr(test, strategy(0usize..=65535))]
     pub table_size: usize,
 }
 
 impl Default for MinimaxConfig {
     fn default() -> Self {
-        #[cfg(test)]
-        #[cfg(tarpaulin)]
-        let max_depth = 2;
-
-        #[cfg(test)]
-        #[cfg(not(tarpaulin))]
-        let max_depth = 3;
-
-        #[cfg(not(test))]
-        let max_depth = 6;
-
         Self {
-            max_depth,
-            max_time: Duration::MAX,
             table_size: 1 << 24,
+            search: SearchLimits::default(),
         }
     }
 }
@@ -96,11 +76,22 @@ impl FromStr for MinimaxConfig {
 #[derive(Debug)]
 pub struct Minimax<E: Eval + Send + Sync> {
     engine: E,
-    config: MinimaxConfig,
+    limits: SearchLimits,
     tt: TranspositionTable,
 }
 
 impl<E: Eval + Send + Sync> Minimax<E> {
+    #[cfg(test)]
+    #[cfg(tarpaulin)]
+    const MAX_DEPTH: i8 = 2;
+
+    #[cfg(test)]
+    #[cfg(not(tarpaulin))]
+    const MAX_DEPTH: i8 = 3;
+
+    #[cfg(not(test))]
+    const MAX_DEPTH: i8 = i8::MAX;
+
     /// Constructs [`Minimax`] with the default [`MinimaxConfig`].
     pub fn new(engine: E) -> Self {
         Self::with_config(engine, MinimaxConfig::default())
@@ -110,7 +101,7 @@ impl<E: Eval + Send + Sync> Minimax<E> {
     pub fn with_config(engine: E, config: MinimaxConfig) -> Self {
         Minimax {
             engine,
-            config,
+            limits: config.search,
             tt: TranspositionTable::new(config.table_size),
         }
     }
@@ -225,7 +216,7 @@ impl<E: Eval + Send + Sync> Minimax<E> {
 
 impl<E: Eval + Send + Sync> Search for Minimax<E> {
     fn search(&self, pos: &Position) -> Option<Move> {
-        let timer = Timer::start(self.config.max_time);
+        let timer = Timer::start(self.limits.time);
 
         let zobrist = pos.zobrist();
         let (mut best, mut score, depth) = match self.tt.get(zobrist) {
@@ -233,7 +224,7 @@ impl<E: Eval + Send + Sync> Search for Minimax<E> {
             _ => (None, self.engine.eval(pos), 0),
         };
 
-        for d in depth..self.config.max_depth.min(i8::MAX as u8) as i8 {
+        for d in depth..self.limits.depth.min(Self::MAX_DEPTH as u8) as i8 {
             match self.mtdf(pos, d + 1, timer, score) {
                 Ok(s) => (best, score) = (self.tt.get(zobrist).map(|t| t.best()), s),
                 Err(_) => break,
@@ -275,6 +266,14 @@ mod tests {
     }
 
     #[proptest]
+    fn new_applies_default_search_limits() {
+        assert_eq!(
+            Minimax::new(MockEval::new()).limits,
+            SearchLimits::default()
+        );
+    }
+
+    #[proptest]
     fn table_size_is_an_upper_limit(c: MinimaxConfig) {
         let strategy = Minimax::with_config(MockEval::new(), c);
         assert!(strategy.tt.size() <= c.table_size);
@@ -284,13 +283,12 @@ mod tests {
     #[should_panic]
     #[cfg(debug_assertions)]
     fn alpha_beta_panics_if_alpha_not_smaller_than_beta(
-        c: MinimaxConfig,
         pos: Position,
+        d: i8,
+        t: Timer,
         a: i16,
         b: i16,
     ) {
-        let t = Timer::start(c.max_time);
-        let d = c.max_depth.try_into()?;
         Minimax::new(MockEval::new()).alpha_beta(&pos, d, t, a.max(b), a.min(b))?;
     }
 
@@ -309,12 +307,11 @@ mod tests {
     }
 
     #[proptest]
-    fn alpha_beta_aborts_if_time_is_up(c: MinimaxConfig, pos: Position) {
+    fn alpha_beta_aborts_if_time_is_up(pos: Position, d: i8) {
         let t = Timer {
             deadline: Some(Instant::now() - Duration::from_nanos(1)),
         };
 
-        let d = c.max_depth.try_into()?;
         let strategy = Minimax::new(MockEval::new());
 
         assert_eq!(
@@ -326,7 +323,7 @@ mod tests {
     #[proptest]
     fn alpha_beta_returns_best_score(c: MinimaxConfig, pos: Position) {
         let t = Timer::default();
-        let d = c.max_depth.try_into()?;
+        let d = (c.search.depth % Minimax::<Engine>::MAX_DEPTH as u8) as i8;
         let strategy = Minimax::with_config(Engine::default(), c);
 
         assert_eq!(
@@ -343,7 +340,7 @@ mod tests {
         pos: Position,
     ) {
         let t = Timer::default();
-        let d = c.max_depth.try_into()?;
+        let d = (c.search.depth % Minimax::<Engine>::MAX_DEPTH as u8) as i8;
 
         let a = Minimax::with_config(Engine::default(), MinimaxConfig { table_size: a, ..c });
         let b = Minimax::with_config(Engine::default(), MinimaxConfig { table_size: b, ..c });
@@ -357,7 +354,7 @@ mod tests {
     #[proptest]
     fn mtdf_returns_best_score(c: MinimaxConfig, pos: Position) {
         let t = Timer::default();
-        let d = c.max_depth.try_into()?;
+        let d = (c.search.depth % Minimax::<Engine>::MAX_DEPTH as u8) as i8;
         let strategy = Minimax::with_config(Engine::default(), c);
 
         assert_eq!(
@@ -372,7 +369,7 @@ mod tests {
             deadline: Some(Instant::now() - Duration::from_nanos(1)),
         };
 
-        let d = c.max_depth.try_into()?;
+        let d = (c.search.depth % Minimax::<Engine>::MAX_DEPTH as u8) as i8;
         let strategy = Minimax::with_config(Engine::default(), c);
 
         assert_eq!(strategy.mtdf(&pos, d, t, s), Err(Timeout));
@@ -381,7 +378,7 @@ mod tests {
     #[proptest]
     fn mtdf_does_not_depend_on_initial_guess(c: MinimaxConfig, pos: Position, s: i16) {
         let t = Timer::default();
-        let d = c.max_depth.try_into()?;
+        let d = (c.search.depth % Minimax::<Engine>::MAX_DEPTH as u8) as i8;
 
         let a = Minimax::with_config(Engine::default(), c);
         let b = Minimax::with_config(Engine::default(), c);
@@ -392,7 +389,7 @@ mod tests {
     #[proptest]
     fn mtdf_is_equivalent_to_alpha_beta(c: MinimaxConfig, pos: Position) {
         let t = Timer::default();
-        let d = c.max_depth.try_into()?;
+        let d = (c.search.depth % Minimax::<Engine>::MAX_DEPTH as u8) as i8;
 
         let a = Minimax::with_config(Engine::default(), c);
         let b = Minimax::with_config(Engine::default(), c);
@@ -420,11 +417,10 @@ mod tests {
     }
 
     #[proptest]
-    fn search_can_be_limited_by_time(pos: Position, us: u16) {
-        let c = MinimaxConfig {
-            max_depth: u8::MAX,
-            max_time: Duration::from_micros(us.into()),
-            ..MinimaxConfig::default()
+    fn search_can_be_limited_by_time(mut c: MinimaxConfig, pos: Position, us: u16) {
+        c.search = SearchLimits {
+            time: Duration::from_micros(us.into()),
+            depth: u8::MAX,
         };
 
         // should not hang
