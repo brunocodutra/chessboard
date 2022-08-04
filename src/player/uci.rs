@@ -3,19 +3,22 @@ use anyhow::{Context, Error as Anyhow};
 use async_trait::async_trait;
 use derive_more::{DebugCustom, Display, Error, From};
 use serde::{Deserialize, Serialize};
-use std::{fmt::Debug, future::Future, io, pin::Pin, str::FromStr};
+use std::{collections::HashMap, fmt::Debug, future::Future, io, pin::Pin, str::FromStr};
 use tokio::{runtime, task::block_in_place};
 use tracing::{debug, instrument, warn};
 use vampirc_uci::{self as uci, UciFen, UciMessage, UciSearchControl, UciTimeControl};
 
 /// Configuration for [`Uci`].
-#[derive(Debug, Display, Default, Copy, Clone, Eq, PartialEq, Deserialize, Serialize)]
+#[derive(Debug, Display, Default, Clone, Eq, PartialEq, Deserialize, Serialize)]
 #[cfg_attr(test, derive(test_strategy::Arbitrary))]
 #[display(fmt = "{}", "ron::ser::to_string(self).unwrap()")]
 #[serde(deny_unknown_fields, rename = "config", default)]
 pub struct UciConfig {
     /// Search limits.
     pub search: SearchLimits,
+
+    /// Engine options.
+    pub options: HashMap<String, Option<String>>,
 }
 
 /// The reason why parsing [`UciConfig`] failed.
@@ -83,6 +86,11 @@ impl<T: Io + Debug + Send + 'static> Uci<T> {
                 io.flush().await?;
 
                 while !matches!(recv_uci_message(&mut io).await?, UciMessage::UciOk) {}
+
+                for (name, value) in config.options {
+                    let set_option = UciMessage::SetOption { name, value };
+                    io.send(&set_option.to_string()).await?;
+                }
 
                 io.send(&UciMessage::UciNewGame.to_string()).await?;
                 io.send(&UciMessage::IsReady.to_string()).await?;
@@ -229,7 +237,7 @@ mod tests {
     }
 
     #[proptest]
-    fn engine_is_lazily_initialized(g: Game, m: Move) {
+    fn engine_is_lazily_initialized_with_the_options_configured(c: UciConfig, g: Game, m: Move) {
         let rt = runtime::Builder::new_multi_thread().build()?;
         let mut io = MockIo::new();
         let mut seq = Sequence::new();
@@ -249,6 +257,15 @@ mod tests {
             .once()
             .in_sequence(&mut seq)
             .returning(move || Ok(UciMessage::UciOk.to_string()));
+
+        for (name, value) in c.options.clone() {
+            let set_option = UciMessage::SetOption { name, value };
+            io.expect_send()
+                .once()
+                .in_sequence(&mut seq)
+                .withf(move |msg| msg == set_option.to_string())
+                .returning(|_| Ok(()));
+        }
 
         io.expect_send()
             .once()
@@ -278,7 +295,7 @@ mod tests {
             .once()
             .returning(move || Ok(UciMessage::best_move(m.into()).to_string()));
 
-        let mut uci = Uci::new(io);
+        let mut uci = Uci::with_config(io, c);
         assert!(rt.block_on(uci.act(&g)).is_ok());
     }
 
