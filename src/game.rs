@@ -131,9 +131,10 @@ mod tests {
         #[by_ref]
         #[filter(#g.outcome().is_none())]
         mut g: Game,
-        #[strategy(select(#g.position().moves().collect::<Vec<_>>()))] m: Move,
+        #[strategy(select(#g.position().moves().collect::<Vec<_>>()))] child: (Move, Position),
     ) {
-        assert_eq!(g.execute(Action::Move(m)).err(), None);
+        assert_eq!(g.execute(Action::Move(child.0)).err(), None);
+        assert_eq!(g.position, child.1);
     }
 
     #[proptest]
@@ -157,7 +158,7 @@ mod tests {
     #[proptest]
     fn game_state_does_not_change_after_an_illegal_action(
         #[by_ref] mut g: Game,
-        #[filter(#g.position().moves().all(|m| m != #m))] m: Move,
+        #[filter(#g.position().moves().all(|(m, _)| m != #m))] m: Move,
     ) {
         let before = g.clone();
         assert_eq!(g.execute(m.into()).ok(), None);
@@ -179,12 +180,12 @@ mod tests {
         #[by_ref]
         #[filter(#g.position.moves().len() > 0)]
         mut g: Game,
-        #[strategy(select(#g.position.moves().collect::<Vec<_>>()))] m: Move,
+        #[strategy(select(#g.position.moves().collect::<Vec<_>>()))] child: (Move, Position),
     ) {
         let rt = runtime::Builder::new_multi_thread().build()?;
 
         let turn = g.position.turn();
-        let san = g.position.clone().play(m)?;
+        let san = g.position.clone().play(child.0)?;
 
         let mut w = MockAct::new();
         let mut b = MockAct::new();
@@ -194,7 +195,7 @@ mod tests {
             Color::Black => (&mut b, &mut w),
         };
 
-        p.expect_act().return_const(Ok(Action::Move(m)));
+        p.expect_act().return_const(Ok(Action::Move(child.0)));
         q.expect_act().return_const(Ok(Action::Resign));
 
         let report = rt.block_on(g.run(w, b));
@@ -234,7 +235,7 @@ mod tests {
         #[by_ref]
         #[filter(#g.outcome().is_none())]
         mut g: Game,
-        #[filter(#g.position().moves().all(|m| Action::Move(m) != #a))] a: Action,
+        #[filter(#g.position().moves().all(|(m, _)| Action::Move(m) != #a))] a: Action,
     ) {
         let rt = runtime::Builder::new_multi_thread().build()?;
 

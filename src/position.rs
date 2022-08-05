@@ -134,15 +134,8 @@ impl Position {
         sm::Position::is_insufficient_material(&self.0)
     }
 
-    // An iterator over the legal [`Move`]s that can be played in this position.
-    pub fn moves(&self) -> impl ExactSizeIterator<Item = Move> {
-        sm::Position::legal_moves(&self.0)
-            .into_iter()
-            .map(|vm| sm::uci::Uci::from_standard(&vm).into())
-    }
-
-    /// All positions reachable after one [`Move`].
-    pub fn children(&self) -> impl ExactSizeIterator<Item = (Move, Self)> {
+    /// An iterator over the legal [`Move`]s that can be played in this position.
+    pub fn moves(&self) -> impl ExactSizeIterator<Item = (Move, Self)> {
         let p = self.0.clone();
         sm::Position::legal_moves(&self.0)
             .into_iter()
@@ -281,7 +274,7 @@ mod tests {
     use super::*;
     use bitvec::field::BitField;
     use proptest::sample::select;
-    use std::{collections::HashSet, iter::repeat};
+    use std::collections::HashSet;
     use test_strategy::proptest;
 
     #[proptest]
@@ -379,28 +372,11 @@ mod tests {
     }
 
     #[proptest]
-    fn moves_returns_the_legal_moves_from_this_position(pos: Position) {
-        let moves: Vec<Move> = sm::Position::legal_moves(&pos.0)
-            .iter()
-            .map(sm::uci::Uci::from_standard)
-            .map(Into::into)
-            .collect();
-
-        assert_eq!(pos.moves().collect::<Vec<_>>(), moves);
-    }
-
-    #[proptest]
-    fn children_returns_the_legal_positions_reachable_after_one_move(pos: Position) {
-        assert_eq!(
-            pos.children().collect::<Vec<_>>(),
-            pos.moves()
-                .zip(repeat(pos))
-                .map(|(m, mut pos)| {
-                    pos.play(m).unwrap();
-                    (m, pos)
-                })
-                .collect::<Vec<_>>()
-        );
+    fn moves_returns_all_legal_moves_from_this_position(pos: Position) {
+        for (m, _) in pos.moves() {
+            let vm = sm::uci::Uci::to_move(&m.into(), &pos.0)?;
+            assert!(sm::Position::is_legal(&pos.0, &vm));
+        }
     }
 
     #[proptest]
@@ -408,19 +384,18 @@ mod tests {
         #[by_ref]
         #[filter(#pos.moves().len() > 0)]
         mut pos: Position,
-        #[strategy(select(#pos.moves().collect::<Vec<_>>()))] m: Move,
+        #[strategy(select(#pos.moves().collect::<Vec<_>>()))] child: (Move, Position),
     ) {
-        let vm = sm::uci::Uci::to_move(&m.into(), &pos.0)?;
+        let vm = sm::uci::Uci::to_move(&child.0.into(), &pos.0)?;
         let san = sm::san::San::from_move(&pos.0, &vm).into();
-        let after = sm::Position::play(pos.0.clone(), &vm)?.into();
-        assert_eq!(pos.play(m), Ok(san));
-        assert_eq!(pos, after);
+        assert_eq!(pos.play(child.0), Ok(san));
+        assert_eq!(pos, child.1);
     }
 
     #[proptest]
     fn playing_illegal_move_fails(
         #[by_ref] mut pos: Position,
-        #[filter(!#pos.moves().any(|n| n == #m))] m: Move,
+        #[filter(!#pos.moves().any(|(m, _)| m == #m))] m: Move,
     ) {
         let before = pos.clone();
         assert_eq!(pos.play(m), Err(IllegalMove(m, before.clone())));
