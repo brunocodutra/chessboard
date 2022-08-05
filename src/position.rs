@@ -113,6 +113,27 @@ impl Position {
             .map(Square::from)
     }
 
+    /// Whether this position is a [checkmate].
+    ///
+    /// [checkmate]: https://en.wikipedia.org/wiki/Glossary_of_chess#checkmate
+    pub fn is_checkmate(&self) -> bool {
+        sm::Position::is_checkmate(&self.0)
+    }
+
+    /// Whether this position is a [stalemate].
+    ///
+    /// [stalemate]: https://en.wikipedia.org/wiki/Glossary_of_chess#stalemate
+    pub fn is_stalemate(&self) -> bool {
+        sm::Position::is_stalemate(&self.0)
+    }
+
+    /// Whether this position has [insufficient material].
+    ///
+    /// [insufficient material]: https://en.wikipedia.org/wiki/Glossary_of_chess#insufficient_material
+    pub fn is_material_insufficient(&self) -> bool {
+        sm::Position::is_insufficient_material(&self.0)
+    }
+
     // An iterator over the legal [`Move`]s that can be played in this position.
     pub fn moves(&self) -> impl ExactSizeIterator<Item = Move> {
         sm::Position::legal_moves(&self.0)
@@ -247,6 +268,7 @@ impl From<Position> for sm::Chess {
     }
 }
 
+#[cfg(test)]
 #[doc(hidden)]
 impl AsRef<sm::Chess> for Position {
     fn as_ref(&self) -> &sm::Chess {
@@ -349,6 +371,11 @@ mod tests {
                 .flat_map(|s| pos.attackers(s, !pos.turn()))
                 .collect::<HashSet<_>>(),
         )
+    }
+
+    #[proptest]
+    fn checkmate_and_stalemate_are_mutually_exclusive(pos: Position) {
+        assert!(!(pos.is_checkmate() && pos.is_stalemate()))
     }
 
     #[proptest]
