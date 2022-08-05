@@ -30,7 +30,11 @@ impl<T: PieceSquareTable> PrecomputedPieceSquareTable for T {}
 
 impl<T: PieceSquareTable> Eval for T {
     fn eval(&self, pos: &Position) -> i16 {
-        if pos.moves().len() > 0 {
+        if pos.is_stalemate() || pos.is_material_insufficient() {
+            0
+        } else if pos.is_checkmate() {
+            i16::MIN
+        } else {
             let mut score = [0; 2];
 
             use Color::*;
@@ -47,10 +51,6 @@ impl<T: PieceSquareTable> Eval for T {
             }
 
             score[pos.turn() as usize] - score[!pos.turn() as usize]
-        } else if pos.checkers().len() > 0 {
-            i16::MIN
-        } else {
-            0
         }
     }
 }
