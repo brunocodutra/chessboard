@@ -151,7 +151,7 @@ impl<E: Eval + Send + Sync> Minimax<E> {
         }
 
         let mut moves: Vec<_> = pos.moves().collect();
-        moves.par_sort_by_cached_key(|(_, pos)| self.alpha_beta(pos, 0, timer, -beta, -alpha));
+        moves.sort_by_cached_key(|(_, pos)| self.engine.eval(pos));
 
         if moves.is_empty() {
             return Ok(self.engine.eval(pos).max(-i16::MAX));
