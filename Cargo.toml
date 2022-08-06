@@ -21,7 +21,7 @@ libm = { version = "0.2.3", default-features = false }
 rayon = { version = "1.5.3", default-features = false }
 ron = { version = "0.7.1", default-features = false }
 rustyline = { version = "10.0.0", default-features = false }
-serde = { version = "1.0.140", default-features = false, features = ["derive", "std"] }
+serde = { version = "1.0.142", default-features = false, features = ["derive", "std"] }
 shakmaty = { version = "0.21.2", default-features = false }
 tokio = { version = "1.20.1", default-features = false, features = ["io-std", "io-util", "macros", "process", "rt-multi-thread", "sync", "time"] }
 tracing = { version = "0.1.36", default-features = false, features = ["attributes", "std"] }
