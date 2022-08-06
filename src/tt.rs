@@ -20,13 +20,19 @@ enum TranspositionKind {
 pub struct Transposition {
     kind: TranspositionKind,
     score: i16,
-    #[cfg_attr(test, strategy(0i8..))]
+    #[cfg_attr(test, strategy(Self::MIN_DRAFT..=Self::MAX_DRAFT))]
     draft: i8,
     best: Move,
 }
 
 impl Transposition {
+    pub const MIN_DRAFT: i8 = (i8::MIN >> 1) + 32;
+    pub const MAX_DRAFT: i8 = (i8::MAX >> 1) + 32;
+
     fn new(kind: TranspositionKind, score: i16, draft: i8, best: Move) -> Self {
+        assert!(draft >= Self::MIN_DRAFT, "{} >= {}", draft, Self::MIN_DRAFT);
+        assert!(draft <= Self::MAX_DRAFT, "{} <= {}", draft, Self::MAX_DRAFT);
+
         Transposition {
             kind,
             score,
@@ -114,7 +120,7 @@ impl Binary for OptionalSignedTransposition {
 
                 kind.store(t.kind as u8 + 1);
                 score.store(t.score);
-                draft.store(t.draft);
+                draft.store(t.draft - 32);
                 best.clone_from_bitslice(&t.best.encode());
                 rest.clone_from_bitslice(sig);
 
@@ -142,7 +148,7 @@ impl Binary for OptionalSignedTransposition {
                         .nth((kind.load::<usize>() + 2) % 3)
                         .ok_or(DecodeTranspositionError(register))?,
                     score: score.load(),
-                    draft: draft.load::<u8>() as i8,
+                    draft: draft.load::<i8>() + 32,
                     best: Binary::decode(best.into())
                         .map_err(|_| DecodeTranspositionError(register))?,
                 },
@@ -234,6 +240,54 @@ mod tests {
     use super::*;
     use bitvec::view::BitView;
     use test_strategy::proptest;
+
+    #[proptest]
+    fn lower_constructs_lower_bound_transposition(
+        s: i16,
+        #[strategy(Transposition::MIN_DRAFT..=Transposition::MAX_DRAFT)] d: i8,
+        m: Move,
+    ) {
+        assert_eq!(
+            Transposition::lower(s, d, m),
+            Transposition::new(TranspositionKind::Lower, s, d, m)
+        );
+    }
+
+    #[proptest]
+    fn upper_constructs_lower_bound_transposition(
+        s: i16,
+        #[strategy(Transposition::MIN_DRAFT..=Transposition::MAX_DRAFT)] d: i8,
+        m: Move,
+    ) {
+        assert_eq!(
+            Transposition::upper(s, d, m),
+            Transposition::new(TranspositionKind::Upper, s, d, m)
+        );
+    }
+
+    #[proptest]
+    fn exact_constructs_lower_bound_transposition(
+        s: i16,
+        #[strategy(Transposition::MIN_DRAFT..=Transposition::MAX_DRAFT)] d: i8,
+        m: Move,
+    ) {
+        assert_eq!(
+            Transposition::exact(s, d, m),
+            Transposition::new(TranspositionKind::Exact, s, d, m)
+        );
+    }
+
+    #[proptest]
+    #[cfg(debug_assertions)]
+    #[should_panic]
+    fn panics_for_draft_grater_than_max(
+        k: TranspositionKind,
+        s: i16,
+        #[strategy((Transposition::MAX_DRAFT + 1)..)] d: i8,
+        m: Move,
+    ) {
+        Transposition::new(k, s, d, m);
+    }
 
     #[proptest]
     fn transposition_score_is_between_bounds(t: Transposition) {

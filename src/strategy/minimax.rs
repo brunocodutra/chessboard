@@ -39,6 +39,7 @@ impl Timer {
 #[serde(deny_unknown_fields, rename = "config", default)]
 pub struct MinimaxConfig {
     /// Search limits.
+    #[cfg_attr(test, any((Some(0), Some(Minimax::<crate::MockEval>::MAX_DRAFT as u8))))]
     pub search: SearchLimits,
 
     /// The size of the transposition table in bytes.
@@ -83,14 +84,22 @@ pub struct Minimax<E: Eval + Send + Sync> {
 impl<E: Eval + Send + Sync> Minimax<E> {
     #[cfg(test)]
     #[cfg(tarpaulin)]
-    const MAX_DEPTH: i8 = 2;
+    const MIN_DRAFT: i8 = -1;
+    #[cfg(test)]
+    #[cfg(tarpaulin)]
+    const MAX_DRAFT: i8 = 1;
 
     #[cfg(test)]
     #[cfg(not(tarpaulin))]
-    const MAX_DEPTH: i8 = 3;
+    const MIN_DRAFT: i8 = -2;
+    #[cfg(test)]
+    #[cfg(not(tarpaulin))]
+    const MAX_DRAFT: i8 = 2;
 
     #[cfg(not(test))]
-    const MAX_DEPTH: i8 = i8::MAX;
+    const MIN_DRAFT: i8 = Transposition::MIN_DRAFT;
+    #[cfg(not(test))]
+    const MAX_DRAFT: i8 = Transposition::MAX_DRAFT;
 
     /// Constructs [`Minimax`] with the default [`MinimaxConfig`].
     pub fn new(engine: E) -> Self {
@@ -127,35 +136,46 @@ impl<E: Eval + Send + Sync> Minimax<E> {
         if let Some(t) = transposition.filter(|t| t.draft() >= draft) {
             let (lower, upper) = t.bounds();
             (alpha, beta) = (alpha.max(lower), beta.min(upper));
-
             if alpha >= beta {
                 return Ok(t.score());
             }
         }
 
-        if draft <= 0 {
+        if draft <= Self::MIN_DRAFT {
             return Ok(self.engine.eval(pos).max(-i16::MAX));
-        }
-
-        if let Some(m) = transposition.map(|t| t.best()) {
+        } else if draft <= 0 {
+            #[cfg(not(test))]
+            {
+                // This heuristic is not exact.
+                let stand_pat = self.engine.eval(pos).max(-i16::MAX);
+                alpha = alpha.max(stand_pat);
+                if alpha >= beta {
+                    return Ok(stand_pat);
+                }
+            }
+        } else if let Some(m) = transposition.map(|t| t.best()) {
             let mut pos = pos.clone();
             if pos.play(m).is_ok() {
                 let score = -self.alpha_beta(&pos, draft - 1, timer, -beta, -alpha)?;
                 alpha = alpha.max(score);
                 if alpha >= beta {
-                    let transposition = Transposition::lower(score, draft, m);
-                    self.tt.set(zobrist, transposition);
+                    self.tt.set(zobrist, Transposition::lower(score, draft, m));
                     return Ok(score);
                 }
             }
         }
 
-        let mut moves: Vec<_> = pos.moves().collect();
-        moves.sort_by_cached_key(|(_, pos)| self.engine.eval(pos));
+        let mut moves: Vec<_> = if draft <= 0 {
+            pos.captures().collect()
+        } else {
+            pos.moves().collect()
+        };
 
         if moves.is_empty() {
             return Ok(self.engine.eval(pos).max(-i16::MAX));
         }
+
+        moves.sort_by_cached_key(|(_, pos)| self.engine.eval(pos));
 
         let cutoff = AtomicI16::new(alpha);
 
@@ -175,15 +195,16 @@ impl<E: Eval + Send + Sync> Minimax<E> {
             .try_reduce(|| None, |a, b| Ok(max_by_key(a, b, |x| x.map(|(_, s)| s))))?
             .expect("expected at least one legal move");
 
-        let transposition = if score >= beta {
-            Transposition::lower(score, draft, best)
-        } else if score <= alpha {
-            Transposition::upper(score, draft, best)
-        } else {
-            Transposition::exact(score, draft, best)
-        };
-
-        self.tt.set(zobrist, transposition);
+        self.tt.set(
+            zobrist,
+            if score >= beta {
+                Transposition::lower(score, draft, best)
+            } else if score <= alpha {
+                Transposition::upper(score, draft, best)
+            } else {
+                Transposition::exact(score, draft, best)
+            },
+        );
 
         Ok(score)
     }
@@ -220,12 +241,12 @@ impl<E: Eval + Send + Sync> Search for Minimax<E> {
 
         let zobrist = pos.zobrist();
         let (mut best, mut score, depth) = match self.tt.get(zobrist) {
-            Some(t) => (Some(t.best()), t.score(), t.draft()),
+            Some(t) if t.draft() >= 0 => (Some(t.best()), t.score(), t.draft() + 1),
             _ => (None, self.engine.eval(pos), 0),
         };
 
-        for d in depth..self.limits.depth.min(Self::MAX_DEPTH as u8) as i8 {
-            match self.mtdf(pos, d + 1, timer, score) {
+        for d in depth..=self.limits.depth.min(Self::MAX_DRAFT as u8) as i8 {
+            match self.mtdf(pos, d, timer, score) {
                 Ok(s) => (best, score) = (self.tt.get(zobrist).map(|t| t.best()), s),
                 Err(_) => break,
             }
@@ -242,17 +263,28 @@ mod tests {
     use mockall::predicate::*;
     use test_strategy::proptest;
 
-    fn minimax<E: Eval + Sync>(engine: &E, pos: &Position, draft: i8) -> i16 {
-        let moves = pos.moves();
+    fn quiesce<E: Eval + Send + Sync>(engine: &E, pos: &Position, draft: i8) -> i16 {
+        let moves = pos.captures();
 
-        if draft == 0 || moves.len() == 0 {
+        if draft <= Minimax::<E>::MIN_DRAFT || moves.len() == 0 {
             return engine.eval(pos).max(-i16::MAX);
         }
 
-        moves
-            .map(|(_, pos)| -minimax(engine, &pos, draft - 1))
+        pos.captures()
+            .map(|(_, pos)| -quiesce(engine, &pos, draft - 1))
             .max()
             .unwrap()
+    }
+
+    fn negamax<E: Eval + Send + Sync>(engine: &E, pos: &Position, draft: i8) -> i16 {
+        if draft <= 0 {
+            quiesce(engine, pos, draft)
+        } else {
+            pos.moves()
+                .map(|(_, pos)| -negamax(engine, &pos, draft - 1))
+                .max()
+                .unwrap_or_else(|| engine.eval(pos).max(-i16::MAX))
+        }
     }
 
     #[proptest]
@@ -293,7 +325,11 @@ mod tests {
     }
 
     #[proptest]
-    fn alpha_beta_evaluates_position_if_depth_is_zero(pos: Position, s: i16) {
+    fn alpha_beta_evaluates_position_if_draft_is_lower_than_minimum(
+        pos: Position,
+        #[strategy(i8::MIN..Minimax::<MockEval>::MIN_DRAFT)] d: i8,
+        s: i16,
+    ) {
         let mut engine = MockEval::new();
         engine
             .expect_eval()
@@ -303,7 +339,7 @@ mod tests {
 
         let t = Timer::default();
         let strategy = Minimax::new(engine);
-        assert_eq!(strategy.alpha_beta(&pos, 0, t, -i16::MAX, i16::MAX), Ok(s));
+        assert_eq!(strategy.alpha_beta(&pos, d, t, -i16::MAX, i16::MAX), Ok(s));
     }
 
     #[proptest]
@@ -323,12 +359,12 @@ mod tests {
     #[proptest]
     fn alpha_beta_returns_best_score(c: MinimaxConfig, pos: Position) {
         let t = Timer::default();
-        let d = (c.search.depth % Minimax::<Engine>::MAX_DEPTH as u8) as i8;
+        let d = c.search.depth.try_into()?;
         let strategy = Minimax::with_config(Engine::default(), c);
 
         assert_eq!(
             strategy.alpha_beta(&pos, d, t, -i16::MAX, i16::MAX),
-            Ok(minimax(&Engine::default(), &pos, d)),
+            Ok(negamax(&Engine::default(), &pos, d)),
         );
     }
 
@@ -340,7 +376,7 @@ mod tests {
         pos: Position,
     ) {
         let t = Timer::default();
-        let d = (c.search.depth % Minimax::<Engine>::MAX_DEPTH as u8) as i8;
+        let d = c.search.depth.try_into()?;
 
         let a = Minimax::with_config(Engine::default(), MinimaxConfig { table_size: a, ..c });
         let b = Minimax::with_config(Engine::default(), MinimaxConfig { table_size: b, ..c });
@@ -354,12 +390,12 @@ mod tests {
     #[proptest]
     fn mtdf_returns_best_score(c: MinimaxConfig, pos: Position) {
         let t = Timer::default();
-        let d = (c.search.depth % Minimax::<Engine>::MAX_DEPTH as u8) as i8;
+        let d = c.search.depth.try_into()?;
         let strategy = Minimax::with_config(Engine::default(), c);
 
         assert_eq!(
             strategy.mtdf(&pos, d, t, 0),
-            Ok(minimax(&Engine::default(), &pos, d)),
+            Ok(negamax(&Engine::default(), &pos, d)),
         );
     }
 
@@ -369,7 +405,7 @@ mod tests {
             deadline: Some(Instant::now() - Duration::from_nanos(1)),
         };
 
-        let d = (c.search.depth % Minimax::<Engine>::MAX_DEPTH as u8) as i8;
+        let d = c.search.depth.try_into()?;
         let strategy = Minimax::with_config(Engine::default(), c);
 
         assert_eq!(strategy.mtdf(&pos, d, t, s), Err(Timeout));
@@ -378,7 +414,7 @@ mod tests {
     #[proptest]
     fn mtdf_does_not_depend_on_initial_guess(c: MinimaxConfig, pos: Position, s: i16) {
         let t = Timer::default();
-        let d = (c.search.depth % Minimax::<Engine>::MAX_DEPTH as u8) as i8;
+        let d = c.search.depth.try_into()?;
 
         let a = Minimax::with_config(Engine::default(), c);
         let b = Minimax::with_config(Engine::default(), c);
@@ -389,7 +425,7 @@ mod tests {
     #[proptest]
     fn mtdf_is_equivalent_to_alpha_beta(c: MinimaxConfig, pos: Position) {
         let t = Timer::default();
-        let d = (c.search.depth % Minimax::<Engine>::MAX_DEPTH as u8) as i8;
+        let d = c.search.depth.try_into()?;
 
         let a = Minimax::with_config(Engine::default(), c);
         let b = Minimax::with_config(Engine::default(), c);
