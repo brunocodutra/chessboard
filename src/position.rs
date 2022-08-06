@@ -146,6 +146,18 @@ impl Position {
             })
     }
 
+    /// An iterator over the legal capture [`Move`]s that can be played in this position.
+    pub fn captures(&self) -> impl ExactSizeIterator<Item = (Move, Self)> {
+        let p = self.0.clone();
+        sm::Position::capture_moves(&self.0)
+            .into_iter()
+            .map(move |vm| {
+                let mut p = p.clone();
+                sm::Position::play_unchecked(&mut p, &vm);
+                (sm::uci::Uci::from_standard(&vm).into(), p.into())
+            })
+    }
+
     /// Play a [`Move`] if legal in this position.
     pub fn play(&mut self, m: Move) -> Result<San, IllegalMove> {
         match sm::uci::Uci::to_move(&m.into(), &self.0) {
@@ -373,9 +385,25 @@ mod tests {
 
     #[proptest]
     fn moves_returns_all_legal_moves_from_this_position(pos: Position) {
-        for (m, _) in pos.moves() {
-            let vm = sm::uci::Uci::to_move(&m.into(), &pos.0)?;
-            assert!(sm::Position::is_legal(&pos.0, &vm));
+        for (m, p) in pos.moves() {
+            let mut pos = pos.clone();
+            assert_eq!(pos[m.whence()].map(|p| p.color()), Some(pos.turn()));
+            assert_eq!(pos.play(m).err(), None);
+            assert_eq!(pos, p);
+        }
+    }
+
+    #[proptest]
+    fn captures_returns_a_subset_of_legal_moves_from_this_position(pos: Position) {
+        let moves: HashSet<_> = pos.moves().collect();
+        let captures: HashSet<_> = pos.moves().collect();
+        assert!(captures.is_subset(&moves));
+    }
+
+    #[proptest]
+    fn captures_returns_capture_moves(pos: Position) {
+        for (_, p) in pos.captures() {
+            assert!(p.by_color(p.turn()).len() < pos.by_color(p.turn()).len());
         }
     }
 
