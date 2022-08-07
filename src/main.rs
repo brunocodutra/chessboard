@@ -56,7 +56,6 @@ async fn main() -> Result<(), Anyhow> {
         let white = white.clone().build()?;
         let black = black.clone().build()?;
         let report = Game::default().run(white, black).await?;
-        info!(outcome = %report.outcome);
 
         match report.outcome.winner() {
             Some(Color::White) => wins += 1.,

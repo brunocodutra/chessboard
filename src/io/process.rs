@@ -5,7 +5,7 @@ use derive_more::DebugCustom;
 use std::{io, time::Duration};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader, BufWriter, Lines};
 use tokio::{runtime, select, task::block_in_place, time::sleep};
-use tracing::{error, info, instrument, warn};
+use tracing::{debug, error, instrument, warn};
 
 #[async_trait]
 #[cfg_attr(test, mockall::automock(
@@ -78,7 +78,7 @@ impl Process {
     fn new(mut child: Child) -> io::Result<Self> {
         let (stdin, stdout) = child.pipe()?;
 
-        info!(pid = child.id());
+        debug!(pid = child.id());
 
         Ok(Process {
             child,
@@ -135,7 +135,7 @@ impl Drop for Process {
         });
 
         match result.context("failed to gracefully terminate the remote process") {
-            Ok(s) => info!(pid, "{}", s),
+            Ok(s) => debug!(pid, "{}", s),
             Err(e) => error!(pid, "{:?}", e),
         }
     }
