@@ -1,7 +1,7 @@
 use crate::{Act, Action, Color, GameReport, IllegalAction, Outcome, Position, San};
 use anyhow::Context;
 use derive_more::{Display, Error};
-use tracing::{info, instrument, warn};
+use tracing::{debug, instrument, warn};
 
 /// The reason why the [`Game`] was interrupted.
 #[derive(Debug, Display, Clone, Eq, PartialEq, Error)]
@@ -71,7 +71,10 @@ impl Game {
 
         loop {
             match self.outcome() {
-                Some(outcome) => break Ok(GameReport { outcome, moves }),
+                Some(outcome) => {
+                    debug!(outcome = %outcome);
+                    break Ok(GameReport { outcome, moves });
+                }
 
                 None => {
                     let turn = self.position.turn();
@@ -82,7 +85,7 @@ impl Game {
                         Color::Black => black.act(self).await.map_err(Black)?,
                     };
 
-                    info!(position = %self.position, player = %turn, %action);
+                    debug!(position = %self.position, player = %turn, %action);
 
                     match self.execute(action).context("illegal player action") {
                         Err(e) => warn!("{:?}", e),
