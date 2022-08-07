@@ -1,7 +1,7 @@
 use crate::{Binary, Bits, Cache, Move, Register};
 use bitvec::{field::BitField, mem::BitRegister, store::BitStore};
 use derive_more::{Display, Error};
-use std::{cmp::Ordering, fmt::Debug};
+use std::ops::RangeInclusive;
 
 #[cfg(test)]
 use proptest::prelude::*;
@@ -11,7 +11,6 @@ use proptest::prelude::*;
 enum TranspositionKind {
     Lower,
     Upper,
-    Exact,
 }
 
 /// A partial search result.
@@ -51,17 +50,11 @@ impl Transposition {
         Transposition::new(TranspositionKind::Upper, score, draft, best)
     }
 
-    /// Constructs a [`Transposition`] given the exact score, remaining draft, and best [`Move`].
-    pub fn exact(score: i16, draft: i8, best: Move) -> Self {
-        Transposition::new(TranspositionKind::Exact, score, draft, best)
-    }
-
     /// Bounds for the exact score.
-    pub fn bounds(&self) -> (i16, i16) {
+    pub fn bounds(&self) -> RangeInclusive<i16> {
         match self.kind {
-            TranspositionKind::Lower => (self.score, i16::MAX),
-            TranspositionKind::Upper => (i16::MIN, self.score),
-            TranspositionKind::Exact => (self.score, self.score),
+            TranspositionKind::Lower => self.score..=i16::MAX,
+            TranspositionKind::Upper => i16::MIN..=self.score,
         }
     }
 
@@ -81,20 +74,8 @@ impl Transposition {
     }
 }
 
-impl PartialOrd for Transposition {
-    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        (self.draft, self.kind).partial_cmp(&(other.draft, other.kind))
-    }
-}
-
-impl Ord for Transposition {
-    fn cmp(&self, other: &Self) -> Ordering {
-        (self.draft, self.kind).cmp(&(other.draft, other.kind))
-    }
-}
-
 type Key = Bits<u64, 64>;
-type Signature = Bits<u32, 24>;
+type Signature = Bits<u32, 25>;
 type OptionalSignedTransposition = Option<(Transposition, Signature)>;
 type OptionalSignedTranspositionRegister = <OptionalSignedTransposition as Binary>::Register;
 
@@ -113,12 +94,12 @@ impl Binary for OptionalSignedTransposition {
             None => Bits::default(),
             Some((t, sig)) => {
                 let mut register = Bits::default();
-                let (kind, rest) = register.split_at_mut(2);
+                let (kind, rest) = register.split_at_mut(1);
                 let (score, rest) = rest.split_at_mut(16);
                 let (draft, rest) = rest.split_at_mut(7);
                 let (best, rest) = rest.split_at_mut(<Move as Binary>::Register::WIDTH);
 
-                kind.store(t.kind as u8 + 1);
+                kind.store(t.kind as u8);
                 score.store(t.score);
                 draft.store(t.draft - 32);
                 best.clone_from_bitslice(&t.best.encode());
@@ -135,7 +116,7 @@ impl Binary for OptionalSignedTransposition {
         if register == Bits::default() {
             Ok(None)
         } else {
-            let (kind, rest) = register.split_at(2);
+            let (kind, rest) = register.split_at(1);
             let (score, rest) = rest.split_at(16);
             let (draft, rest) = rest.split_at(7);
             let (best, rest) = rest.split_at(<Move as Binary>::Register::WIDTH);
@@ -143,10 +124,7 @@ impl Binary for OptionalSignedTransposition {
             use TranspositionKind::*;
             Ok(Some((
                 Transposition {
-                    kind: [Lower, Upper, Exact]
-                        .into_iter()
-                        .nth((kind.load::<usize>() + 2) % 3)
-                        .ok_or(DecodeTranspositionError(register))?,
+                    kind: [Lower, Upper][kind.load::<usize>()],
                     score: score.load(),
                     draft: draft.load::<i8>() + 32,
                     best: Binary::decode(best.into())
@@ -224,11 +202,12 @@ impl TranspositionTable {
     /// In the slot if not empty, the [`Ordering::Greater`] [`Transposition`] is chosen.
     pub fn set(&self, key: Key, transposition: Transposition) {
         if !self.is_empty() {
-            let sig = key[(Key::WIDTH - Signature::WIDTH)..].into();
             self.cache.update(self.index_of(key), |r| {
                 match Binary::decode(r).expect("expected valid encoding") {
-                    Some((t, s)) if t > transposition && s == sig => None,
-                    _ => Some(Some((transposition, sig)).encode()),
+                    Some((t, _)) if t.draft() > transposition.draft() => None,
+                    _ => Some((transposition, key[(Key::WIDTH - Signature::WIDTH)..].into()))
+                        .encode()
+                        .into(),
                 }
             })
         }
@@ -266,18 +245,6 @@ mod tests {
     }
 
     #[proptest]
-    fn exact_constructs_lower_bound_transposition(
-        s: i16,
-        #[strategy(Transposition::MIN_DRAFT..=Transposition::MAX_DRAFT)] d: i8,
-        m: Move,
-    ) {
-        assert_eq!(
-            Transposition::exact(s, d, m),
-            Transposition::new(TranspositionKind::Exact, s, d, m)
-        );
-    }
-
-    #[proptest]
     #[cfg(debug_assertions)]
     #[should_panic]
     fn panics_for_draft_grater_than_max(
@@ -291,29 +258,7 @@ mod tests {
 
     #[proptest]
     fn transposition_score_is_between_bounds(t: Transposition) {
-        let (lower, upper) = t.bounds();
-        assert!(lower <= t.score());
-        assert!(t.score() <= upper);
-    }
-
-    #[proptest]
-    fn transposition_with_larger_draft_is_larger(
-        t: Transposition,
-        #[filter(#t.draft != #u.draft)] u: Transposition,
-    ) {
-        assert_eq!(t < u, t.draft < u.draft);
-    }
-
-    #[proptest]
-    fn transposition_with_same_draft_is_compared_by_kind(
-        t: Transposition,
-        u: Transposition,
-        d: i8,
-    ) {
-        assert_eq!(
-            Transposition { draft: d, ..t } < Transposition { draft: d, ..u },
-            t.kind < u.kind
-        );
+        assert!(t.bounds().contains(&t.score()));
     }
 
     #[proptest]
@@ -395,7 +340,7 @@ mod tests {
     }
 
     #[proptest]
-    fn set_keeps_transposition_with_higher_rank_or_newer(
+    fn set_keeps_transposition_with_larger_draft(
         #[by_ref]
         #[filter(!#tt.is_empty())]
         tt: TranspositionTable,
@@ -406,7 +351,27 @@ mod tests {
         let sig = k[(Key::WIDTH - Signature::WIDTH)..].into();
         tt.cache.store(tt.index_of(k), Some((t, sig)).encode());
         tt.set(k, u);
-        assert_eq!(tt.get(k), if t > u { Some(t) } else { Some(u) });
+
+        if t.draft() > u.draft() {
+            assert_eq!(tt.get(k), Some(t));
+        } else {
+            assert_eq!(tt.get(k), Some(u));
+        }
+    }
+
+    #[proptest]
+    fn set_ignores_the_signature_mismatch(
+        #[by_ref]
+        #[filter(!#tt.is_empty())]
+        tt: TranspositionTable,
+        t: Transposition,
+        #[filter(#u.draft() > #t.draft())] u: Transposition,
+        k: Key,
+    ) {
+        let sig = (!k.load::<u64>()).view_bits()[(Key::WIDTH - Signature::WIDTH)..].into();
+        tt.cache.store(tt.index_of(k), Some((t, sig)).encode());
+        tt.set(k, u);
+        assert_eq!(tt.get(k), Some(u));
     }
 
     #[proptest]
@@ -418,21 +383,6 @@ mod tests {
         k: Key,
     ) {
         tt.cache.store(tt.index_of(k), Bits::default());
-        tt.set(k, t);
-        assert_eq!(tt.get(k), Some(t));
-    }
-
-    #[proptest]
-    fn set_stores_transposition_if_signature_does_not_match(
-        #[by_ref]
-        #[filter(!#tt.is_empty())]
-        tt: TranspositionTable,
-        t: Transposition,
-        u: Transposition,
-        k: Key,
-    ) {
-        let sig = (!k.load::<u64>()).view_bits()[(Key::WIDTH - Signature::WIDTH)..].into();
-        tt.cache.store(tt.index_of(k), Some((u, sig)).encode());
         tt.set(k, t);
         assert_eq!(tt.get(k), Some(t));
     }
