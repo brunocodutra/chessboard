@@ -2,7 +2,7 @@ use crate::{Eval, Move, Position, Search, SearchLimits, Transposition, Transposi
 use derive_more::{Display, Error, From};
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
-use std::sync::atomic::{AtomicI16, Ordering};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 use std::{cmp::max_by_key, fmt::Debug, str::FromStr};
 
@@ -115,18 +115,11 @@ impl<E: Eval + Send + Sync> Minimax<E> {
         }
     }
 
-    /// The [alpha-beta pruning] algorithm.
+    /// A null-window implementation of the [alpha-beta pruning] algorithm.
     ///
     /// [alpha-beta pruning]: https://en.wikipedia.org/wiki/Alpha%E2%80%93beta_pruning
-    fn alpha_beta(
-        &self,
-        pos: &Position,
-        draft: i8,
-        timer: Timer,
-        mut alpha: i16,
-        mut beta: i16,
-    ) -> Result<i16, Timeout> {
-        debug_assert!(alpha < beta, "{} < {}", alpha, beta);
+    fn nw(&self, pos: &Position, draft: i8, timer: Timer, beta: i16) -> Result<i16, Timeout> {
+        assert!(beta > -i16::MAX, "{} > {}", beta, -i16::MAX);
 
         timer.elapsed()?;
 
@@ -134,36 +127,31 @@ impl<E: Eval + Send + Sync> Minimax<E> {
         let transposition = self.tt.get(zobrist);
 
         match transposition.filter(|t| t.draft() >= draft) {
+            None => (),
             #[cfg(test)] // Probing larger draft is not exact.
             Some(t) if t.draft() != draft => (),
             Some(t) => {
-                let (lower, upper) = t.bounds();
-                (alpha, beta) = (alpha.max(lower), beta.min(upper));
-                if alpha >= beta {
+                let (lower, upper) = t.bounds().into_inner();
+                if beta <= lower || beta > upper {
                     return Ok(t.score());
                 }
             }
-            _ => (),
         }
 
         if draft <= Self::MIN_DRAFT {
             return Ok(self.engine.eval(pos).max(-i16::MAX));
         } else if draft <= 0 {
-            #[cfg(not(test))]
-            // The stand pat heuristic is not exact.
-            {
-                let stand_pat = self.engine.eval(pos).max(-i16::MAX);
-                alpha = alpha.max(stand_pat);
-                if alpha >= beta {
-                    return Ok(stand_pat);
-                }
+            let stand_pat = self.engine.eval(pos).max(-i16::MAX);
+            if stand_pat >= beta {
+                #[cfg(not(test))]
+                // The stand pat heuristic is not exact.
+                return Ok(stand_pat);
             }
         } else if let Some(m) = transposition.map(|t| t.best()) {
             let mut pos = pos.clone();
             if pos.play(m).is_ok() {
-                let score = -self.alpha_beta(&pos, draft - 1, timer, -beta, -alpha)?;
-                alpha = alpha.max(score);
-                if alpha >= beta {
+                let score = -self.nw(&pos, draft - 1, timer, -beta + 1)?;
+                if score >= beta {
                     self.tt.set(zobrist, Transposition::lower(score, draft, m));
                     return Ok(score);
                 }
@@ -182,20 +170,18 @@ impl<E: Eval + Send + Sync> Minimax<E> {
 
         moves.sort_by_cached_key(|(_, pos)| self.engine.eval(pos));
 
-        let cutoff = AtomicI16::new(alpha);
+        let cutoff = AtomicBool::new(false);
 
         let (best, score) = moves
             .into_par_iter()
             .map(|(m, pos)| {
-                let alpha = cutoff.load(Ordering::Relaxed);
-
-                if alpha >= beta {
-                    return Ok(None);
+                if cutoff.load(Ordering::Relaxed) {
+                    Ok(None)
+                } else {
+                    let score = -self.nw(&pos, draft - 1, timer, -beta + 1)?;
+                    cutoff.fetch_or(score >= beta, Ordering::Relaxed);
+                    Ok(Some((m, score)))
                 }
-
-                let score = -self.alpha_beta(&pos, draft - 1, timer, -beta, -alpha)?;
-                cutoff.fetch_max(score, Ordering::Relaxed);
-                Ok(Some((m, score)))
             })
             .try_reduce(|| None, |a, b| Ok(max_by_key(a, b, |x| x.map(|(_, s)| s))))?
             .expect("expected at least one legal move");
@@ -204,10 +190,8 @@ impl<E: Eval + Send + Sync> Minimax<E> {
             zobrist,
             if score >= beta {
                 Transposition::lower(score, draft, best)
-            } else if score <= alpha {
-                Transposition::upper(score, draft, best)
             } else {
-                Transposition::exact(score, draft, best)
+                Transposition::upper(score, draft, best)
             },
         );
 
@@ -228,7 +212,7 @@ impl<E: Eval + Send + Sync> Minimax<E> {
         let mut beta = i16::MAX;
         while alpha < beta {
             let target = score.max(alpha + 1);
-            score = self.alpha_beta(pos, depth, timer, target - 1, target)?;
+            score = self.nw(pos, depth, timer, target)?;
             if score < target {
                 beta = score;
             } else {
@@ -245,16 +229,16 @@ impl<E: Eval + Send + Sync> Search for Minimax<E> {
         let timer = Timer::start(self.limits.time);
 
         let zobrist = pos.zobrist();
-        let (mut best, mut score, depth) = match self.tt.get(zobrist) {
-            Some(t) if t.draft() >= 0 => (Some(t.best()), t.score(), t.draft() + 1),
-            _ => (None, self.engine.eval(pos), 0),
+        let (mut score, mut best, depth) = match self.tt.get(zobrist) {
+            Some(t) if t.draft() >= 0 => (t.score(), Some(t.best()), t.draft() + 1),
+            _ => (self.engine.eval(pos), None, 0),
         };
 
         for d in depth..=self.limits.depth.min(Self::MAX_DRAFT as u8) as i8 {
-            match self.mtdf(pos, d, timer, score) {
-                Ok(s) => (best, score) = (self.tt.get(zobrist).map(|t| t.best()), s),
+            (score, best) = match self.mtdf(pos, d, timer, score) {
+                Ok(s) => (s, self.tt.get(zobrist).map(|t| t.best())),
                 Err(_) => break,
-            }
+            };
         }
 
         best
@@ -317,21 +301,21 @@ mod tests {
     #[proptest]
     #[should_panic]
     #[cfg(debug_assertions)]
-    fn alpha_beta_panics_if_alpha_not_smaller_than_beta(
+    fn nw_panics_if_beta_is_too_small(
         pos: Position,
         d: i8,
         t: Timer,
-        a: i16,
-        b: i16,
+        #[strategy(..=-i16::MAX)] b: i16,
     ) {
-        Minimax::new(MockEval::new()).alpha_beta(&pos, d, t, a.max(b), a.min(b))?;
+        Minimax::new(MockEval::new()).nw(&pos, d, t, b)?;
     }
 
     #[proptest]
-    fn alpha_beta_evaluates_position_if_draft_is_lower_than_minimum(
+    fn nw_evaluates_position_if_draft_is_lower_than_minimum(
         pos: Position,
-        #[strategy(i8::MIN..Minimax::<MockEval>::MIN_DRAFT)] d: i8,
+        #[strategy(i8::MIN..=Minimax::<MockEval>::MIN_DRAFT)] d: i8,
         s: i16,
+        #[strategy(-i16::MAX + 1..)] b: i16,
     ) {
         let mut engine = MockEval::new();
         engine
@@ -342,63 +326,28 @@ mod tests {
 
         let t = Timer::default();
         let strategy = Minimax::new(engine);
-        assert_eq!(strategy.alpha_beta(&pos, d, t, -i16::MAX, i16::MAX), Ok(s));
+        assert_eq!(strategy.nw(&pos, d, t, b), Ok(s));
     }
 
     #[proptest]
-    fn alpha_beta_aborts_if_time_is_up(pos: Position, d: i8) {
+    fn nw_aborts_if_time_is_up(pos: Position, d: i8, #[strategy(-i16::MAX + 1..)] b: i16) {
         let t = Timer {
             deadline: Some(Instant::now() - Duration::from_nanos(1)),
         };
 
         let strategy = Minimax::new(MockEval::new());
-
-        assert_eq!(
-            strategy.alpha_beta(&pos, d, t, -i16::MAX, i16::MAX),
-            Err(Timeout)
-        );
+        assert_eq!(strategy.nw(&pos, d, t, b), Err(Timeout));
     }
 
     #[proptest]
-    fn alpha_beta_returns_best_score(c: MinimaxConfig, pos: Position) {
+    fn mtdf_finds_best_score(c: MinimaxConfig, pos: Position, s: i16) {
         let t = Timer::default();
         let d = c.search.depth.try_into()?;
         let strategy = Minimax::with_config(Engine::default(), c);
 
         assert_eq!(
-            strategy.alpha_beta(&pos, d, t, -i16::MAX, i16::MAX),
-            Ok(negamax(&Engine::default(), &pos, d)),
-        );
-    }
-
-    #[proptest]
-    fn alpha_beta_does_not_depend_on_table_size(
-        #[strategy(0usize..=65536)] a: usize,
-        #[strategy(0usize..=65536)] b: usize,
-        c: MinimaxConfig,
-        pos: Position,
-    ) {
-        let t = Timer::default();
-        let d = c.search.depth.try_into()?;
-
-        let a = Minimax::with_config(Engine::default(), MinimaxConfig { table_size: a, ..c });
-        let b = Minimax::with_config(Engine::default(), MinimaxConfig { table_size: b, ..c });
-
-        assert_eq!(
-            a.alpha_beta(&pos, d, t, -i16::MAX, i16::MAX),
-            b.alpha_beta(&pos, d, t, -i16::MAX, i16::MAX)
-        );
-    }
-
-    #[proptest]
-    fn mtdf_returns_best_score(c: MinimaxConfig, pos: Position) {
-        let t = Timer::default();
-        let d = c.search.depth.try_into()?;
-        let strategy = Minimax::with_config(Engine::default(), c);
-
-        assert_eq!(
-            strategy.mtdf(&pos, d, t, 0),
-            Ok(negamax(&Engine::default(), &pos, d)),
+            strategy.mtdf(&pos, d, t, s),
+            Ok(negamax(&strategy.engine, &pos, d)),
         );
     }
 
@@ -426,17 +375,20 @@ mod tests {
     }
 
     #[proptest]
-    fn mtdf_is_equivalent_to_alpha_beta(c: MinimaxConfig, pos: Position) {
+    fn mtdf_does_not_depend_on_table_size(
+        #[strategy(0usize..65536)] x: usize,
+        #[strategy(0usize..65536)] y: usize,
+        c: MinimaxConfig,
+        pos: Position,
+        s: i16,
+    ) {
         let t = Timer::default();
         let d = c.search.depth.try_into()?;
 
-        let a = Minimax::with_config(Engine::default(), c);
-        let b = Minimax::with_config(Engine::default(), c);
+        let x = Minimax::with_config(Engine::default(), MinimaxConfig { table_size: x, ..c });
+        let y = Minimax::with_config(Engine::default(), MinimaxConfig { table_size: y, ..c });
 
-        assert_eq!(
-            a.mtdf(&pos, d, t, 0),
-            b.alpha_beta(&pos, d, t, -i16::MAX, i16::MAX),
-        );
+        assert_eq!(x.mtdf(&pos, d, t, s), y.mtdf(&pos, d, t, s));
     }
 
     #[proptest]
