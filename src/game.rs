@@ -161,10 +161,10 @@ mod tests {
     #[proptest]
     fn game_state_does_not_change_after_an_illegal_action(
         #[by_ref] mut g: Game,
-        #[filter(#g.position().moves().all(|(m, _)| m != #m))] m: Move,
+        #[filter(#g.clone().execute(#a).is_err())] a: Action,
     ) {
         let before = g.clone();
-        assert_eq!(g.execute(m.into()).ok(), None);
+        assert_eq!(g.execute(a).ok(), None);
         assert_eq!(g, before);
     }
 
@@ -238,7 +238,7 @@ mod tests {
         #[by_ref]
         #[filter(#g.outcome().is_none())]
         mut g: Game,
-        #[filter(#g.position().moves().all(|(m, _)| Action::Move(m) != #a))] a: Action,
+        #[filter(#g.clone().execute(#a).is_err())] a: Action,
     ) {
         let rt = runtime::Builder::new_multi_thread().build()?;
 

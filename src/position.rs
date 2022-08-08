@@ -24,7 +24,7 @@ pub struct Position(
             }
         }
         chess
-    })))]
+    }).no_shrink()))]
     sm::Chess,
 );
 
