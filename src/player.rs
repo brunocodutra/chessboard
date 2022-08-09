@@ -4,7 +4,7 @@ use anyhow::Error as Anyhow;
 use async_trait::async_trait;
 use derive_more::{DebugCustom, Display, Error, From};
 use serde::Deserialize;
-use std::{fmt::Debug, str::FromStr};
+use std::str::FromStr;
 
 mod ai;
 mod cli;
@@ -98,11 +98,6 @@ mod tests {
     }
 
     #[proptest]
-    fn cli_builder_is_deserializable() {
-        assert_eq!("cli()".parse(), Ok(PlayerBuilder::Cli()));
-    }
-
-    #[proptest]
     fn uci_builder_is_deserializable(s: String, c: UciConfig) {
         assert_eq!(
             format!("uci({:?})", s).parse(),
@@ -113,6 +108,11 @@ mod tests {
             format!("uci({:?}, {})", s, c).parse(),
             Ok(PlayerBuilder::Uci(s, c))
         );
+    }
+
+    #[proptest]
+    fn cli_builder_is_deserializable() {
+        assert_eq!("cli()".parse(), Ok(PlayerBuilder::Cli()));
     }
 
     #[proptest]

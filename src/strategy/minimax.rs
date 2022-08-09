@@ -4,7 +4,7 @@ use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
-use std::{cmp::max_by_key, fmt::Debug, str::FromStr};
+use std::{cmp::max_by_key, str::FromStr};
 
 #[derive(Debug, Display, Clone, Eq, PartialEq, Ord, PartialOrd, Error)]
 #[display(fmt = "time is up!")]

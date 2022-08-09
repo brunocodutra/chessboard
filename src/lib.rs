@@ -57,5 +57,5 @@ pub mod player;
 pub mod strategy;
 
 pub use crate::engine::{Engine, EngineBuilder};
-pub use crate::player::{Player, PlayerBuilder};
+pub use crate::player::{Player, PlayerBuilder, PlayerError};
 pub use crate::strategy::{Strategy, StrategyBuilder};

@@ -1,7 +1,6 @@
 use crate::Io;
 use anyhow::{bail, Context, Error as Anyhow};
 use async_trait::async_trait;
-use derive_more::DebugCustom;
 use std::{io, time::Duration};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader, BufWriter, Lines};
 use tokio::{runtime, select, task::block_in_place, time::sleep};
@@ -14,8 +13,6 @@ use tracing::{debug, error, instrument, warn};
     type Status = String;
 ))]
 trait ChildProcess {
-    fn id(&self) -> Option<u32>;
-
     type Stdin;
     type Stdout;
     fn pipe(&mut self) -> io::Result<(Self::Stdin, Self::Stdout)>;
@@ -28,10 +25,6 @@ trait ChildProcess {
 
 #[async_trait]
 impl ChildProcess for tokio::process::Child {
-    fn id(&self) -> Option<u32> {
-        self.id()
-    }
-
     type Stdin = tokio::process::ChildStdin;
     type Stdout = tokio::process::ChildStdout;
     fn pipe(&mut self) -> io::Result<(Self::Stdin, Self::Stdout)> {
@@ -60,8 +53,7 @@ type Child = MockChildProcess;
 type Child = tokio::process::Child;
 
 /// An [`Io`] interface for a remote process.
-#[derive(DebugCustom)]
-#[debug(fmt = "Process({})", "child.id().map(i64::from).unwrap_or(-1)")]
+#[derive(Debug)]
 pub struct Process {
     child: Child,
     writer: BufWriter<<Child as ChildProcess>::Stdin>,
@@ -78,8 +70,6 @@ impl Process {
     fn new(mut child: Child) -> io::Result<Self> {
         let (stdin, stdout) = child.pipe()?;
 
-        debug!(pid = child.id());
-
         Ok(Process {
             child,
             writer: BufWriter::new(stdin),
@@ -93,7 +83,6 @@ impl Process {
         #[cfg(test)]
         {
             let mut child = MockChildProcess::new();
-            child.expect_id().returning(|| None);
             child.expect_pipe().returning(|| Ok(tokio::io::duplex(1)));
             Process::new(child)
         }
@@ -114,8 +103,6 @@ impl Process {
 impl Drop for Process {
     #[instrument(level = "trace")]
     fn drop(&mut self) {
-        let pid = self.child.id();
-
         let result: Result<_, Anyhow> = block_in_place(|| {
             runtime::Handle::try_current()?.block_on(async {
                 self.writer.flush().await?;
@@ -127,7 +114,7 @@ impl Drop for Process {
 
                     _ = sleep(Self::TIMEOUT) => {
                         self.child.kill().await?;
-                        warn!(pid, "forcefully killed the remote process");
+                        warn!("forcefully killed the remote process");
                         bail!("the process still has not exited after {}s", Self::TIMEOUT.as_secs());
                     }
                 }
@@ -135,8 +122,8 @@ impl Drop for Process {
         });
 
         match result.context("failed to gracefully terminate the remote process") {
-            Ok(s) => debug!(pid, "{}", s),
-            Err(e) => error!(pid, "{:?}", e),
+            Ok(s) => debug!("{}", s),
+            Err(e) => error!("{:?}", e),
         }
     }
 }
@@ -171,10 +158,8 @@ mod tests {
     use tokio::io::{duplex, AsyncReadExt};
 
     #[proptest]
-    fn new_expects_stdin_and_stdout(id: Option<u32>) {
+    fn new_expects_stdin_and_stdout() {
         let mut child = MockChildProcess::new();
-
-        child.expect_id().once().return_once(move || id);
 
         let pipe = duplex(1);
         child.expect_pipe().once().return_once(move || Ok(pipe));
@@ -262,11 +247,9 @@ mod tests {
     }
 
     #[proptest]
-    fn recv_waits_for_line_break(id: Option<u32>, #[strategy("[^\r\n]")] s: String) {
+    fn recv_waits_for_line_break(#[strategy("[^\r\n]")] s: String) {
         let rt = runtime::Builder::new_multi_thread().build()?;
         let mut child = MockChildProcess::new();
-
-        child.expect_id().once().return_once(move || id);
 
         let (stdin, _) = duplex(1);
         let (mut tx, stdout) = duplex(s.len() + 1);
@@ -281,11 +264,9 @@ mod tests {
     }
 
     #[proptest]
-    fn send_appends_line_break(id: Option<u32>, s: String) {
+    fn send_appends_line_break(s: String) {
         let rt = runtime::Builder::new_multi_thread().build()?;
         let mut child = MockChildProcess::new();
-
-        child.expect_id().once().return_once(move || id);
 
         let (stdin, mut rx) = duplex(s.len() + 1);
         let (_, stdout) = duplex(1);
