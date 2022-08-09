@@ -1,6 +1,5 @@
 use crate::Io;
 use async_trait::async_trait;
-use derive_more::DebugCustom;
 use rustyline::{error::ReadlineError, Config, Editor};
 use std::{io, sync::Arc};
 use tokio::io::{stdout, AsyncWriteExt, Stdout};
@@ -10,8 +9,7 @@ use tracing::instrument;
 /// A prompt interface based on [rustyline].
 ///
 /// [rustyline]: https://crates.io/crates/rustyline
-#[derive(DebugCustom)]
-#[debug(fmt = "Terminal")]
+#[derive(Debug)]
 pub struct Terminal {
     writer: Stdout,
     reader: Arc<Mutex<Editor<()>>>,

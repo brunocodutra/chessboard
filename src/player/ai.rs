@@ -1,7 +1,7 @@
 use crate::{Act, Action, Game, Search};
 use async_trait::async_trait;
 use derive_more::{Constructor, From};
-use std::{convert::Infallible, fmt::Debug};
+use std::convert::Infallible;
 use tokio::task::block_in_place;
 use tracing::instrument;
 
@@ -12,10 +12,10 @@ pub struct Ai<S: Search> {
 }
 
 #[async_trait]
-impl<S: Search + Debug + Send> Act for Ai<S> {
+impl<S: Search + Send> Act for Ai<S> {
     type Error = Infallible;
 
-    #[instrument(level = "trace", err, ret)]
+    #[instrument(level = "trace", err, ret, skip(self))]
     async fn act(&mut self, game: &Game) -> Result<Action, Self::Error> {
         match block_in_place(|| self.strategy.search(game.position())) {
             Some(m) => Ok(m.into()),

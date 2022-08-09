@@ -3,7 +3,7 @@ use anyhow::{Context, Error as Anyhow};
 use async_trait::async_trait;
 use derive_more::{DebugCustom, Display, Error, From};
 use serde::{Deserialize, Serialize};
-use std::{collections::HashMap, fmt::Debug, future::Future, io, pin::Pin, str::FromStr};
+use std::{collections::HashMap, future::Future, io, pin::Pin, str::FromStr};
 use tokio::{runtime, task::block_in_place};
 use tracing::{debug, instrument, warn};
 use vampirc_uci::{self as uci, UciFen, UciMessage, UciSearchControl, UciTimeControl};
@@ -35,15 +35,16 @@ impl FromStr for UciConfig {
 }
 
 #[derive(DebugCustom)]
+#[debug(bound = "T: std::fmt::Debug")]
 #[debug(fmt = "Lazy({})")]
-enum Lazy<T: Debug, E> {
+enum Lazy<T, E> {
     #[debug(fmt = "{:?}", _0)]
     Initialized(T),
     #[debug(fmt = "?")]
     Uninitialized(Pin<Box<dyn Future<Output = Result<T, E>> + Send + 'static>>),
 }
 
-impl<T: Debug, E> Lazy<T, E> {
+impl<T, E> Lazy<T, E> {
     async fn get_or_init(&mut self) -> Result<&mut T, E> {
         match self {
             Lazy::Initialized(v) => Ok(v),
@@ -66,12 +67,12 @@ pub struct UciError(#[from(forward)] io::Error);
 
 /// A Universal Chess Interface client for a computer controlled player.
 #[derive(Debug)]
-pub struct Uci<T: Io + Debug> {
+pub struct Uci<T: Io> {
     io: Lazy<T, UciError>,
     limits: SearchLimits,
 }
 
-impl<T: Io + Debug + Send + 'static> Uci<T> {
+impl<T: Io + Send + 'static> Uci<T> {
     /// Constructs [`Uci`] with the default [`UciConfig`].
     pub fn new(io: T) -> Self {
         Self::with_config(io, UciConfig::default())
@@ -104,8 +105,8 @@ impl<T: Io + Debug + Send + 'static> Uci<T> {
     }
 }
 
-impl<T: Io + Debug> Drop for Uci<T> {
-    #[instrument(level = "trace")]
+impl<T: Io> Drop for Uci<T> {
+    #[instrument(level = "trace", skip(self))]
     fn drop(&mut self) {
         let result: Result<(), Anyhow> = block_in_place(|| {
             runtime::Handle::try_current()?.block_on(async {
@@ -124,11 +125,11 @@ impl<T: Io + Debug> Drop for Uci<T> {
 }
 
 #[async_trait]
-impl<T: Io + Debug + Send> Act for Uci<T> {
+impl<T: Io + Send> Act for Uci<T> {
     type Error = UciError;
 
     /// Request an action from the CLI server.
-    #[instrument(level = "trace", err, ret)]
+    #[instrument(level = "trace", err, ret, skip(self))]
     async fn act(&mut self, game: &Game) -> Result<Action, Self::Error> {
         let position = UciMessage::Position {
             startpos: false,
@@ -160,8 +161,8 @@ impl<T: Io + Debug + Send> Act for Uci<T> {
     }
 }
 
-#[instrument(level = "trace", err, ret)]
-async fn recv_uci_message<T: Io + Debug>(io: &mut T) -> Result<UciMessage, UciError> {
+#[instrument(level = "trace", err, ret, skip(io))]
+async fn recv_uci_message<T: Io>(io: &mut T) -> Result<UciMessage, UciError> {
     loop {
         match uci::parse_one(io.recv().await?.trim()) {
             UciMessage::Unknown(m, cause) => {

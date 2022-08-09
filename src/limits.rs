@@ -1,5 +1,5 @@
 use serde::{Deserialize, Serialize};
-use std::{fmt::Debug, time::Duration};
+use std::time::Duration;
 
 /// Configuration for the limits of search engines.
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Deserialize, Serialize)]

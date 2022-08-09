@@ -3,7 +3,7 @@ use anyhow::Error as Anyhow;
 use async_trait::async_trait;
 use clap::Parser;
 use derive_more::{Constructor, Deref, Display, Error, From};
-use std::fmt::{self, Debug, Display};
+use std::fmt::{self, Display};
 use std::{error::Error, io, str::FromStr};
 use tracing::instrument;
 
@@ -67,16 +67,16 @@ pub struct CliError(#[from(forward)] io::Error);
 
 /// A Command Line Interface for a human player.
 #[derive(Debug, From, Constructor)]
-pub struct Cli<T: Io + Debug> {
+pub struct Cli<T: Io> {
     io: T,
 }
 
 #[async_trait]
-impl<T: Io + Debug + Send> Act for Cli<T> {
+impl<T: Io + Send> Act for Cli<T> {
     type Error = CliError;
 
     /// Prompt the user for an action.
-    #[instrument(level = "trace", err, ret)]
+    #[instrument(level = "trace", err, ret, skip(self))]
     async fn act(&mut self, game: &Game) -> Result<Action, CliError> {
         self.io.send(&Board(game.position()).to_string()).await?;
 
