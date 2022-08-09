@@ -59,21 +59,3 @@ pub mod strategy;
 pub use crate::engine::{Engine, EngineBuilder};
 pub use crate::player::{Player, PlayerBuilder};
 pub use crate::strategy::{Strategy, StrategyBuilder};
-
-#[cfg(test)]
-mod tests {
-    use shakmaty as sm;
-
-    #[test]
-    fn repro() {
-        let fen: sm::fen::Fen = "r2qk2r/2bn4/8/ppppp2p/P2PP2p/2B3p1/N4P2/R2Q2KR b kq - 57 61"
-            .parse()
-            .unwrap();
-
-        let pos: sm::Chess = fen.into_position(sm::CastlingMode::Standard).unwrap();
-        let uci = sm::uci::Uci::from_ascii("e8h8".as_bytes()).unwrap();
-        println!("{}", uci);
-        let mv = uci.to_move(&pos).unwrap();
-        println!("{}", mv);
-    }
-}
