@@ -1,4 +1,4 @@
-use crate::{Act, Action, Color, GameReport, IllegalAction, Outcome, Position, San};
+use crate::{Act, Action, Color, IllegalAction, Outcome, Pgn, Position, San};
 use anyhow::Context;
 use derive_more::{Display, Error};
 use tracing::{debug, instrument, warn};
@@ -66,14 +66,14 @@ impl Game {
         &mut self,
         mut white: W,
         mut black: B,
-    ) -> Result<GameReport, GameInterrupted<W::Error, B::Error>> {
+    ) -> Result<Pgn, GameInterrupted<W::Error, B::Error>> {
         let mut moves = Vec::new();
 
         loop {
             match self.outcome() {
                 Some(outcome) => {
                     debug!(outcome = %outcome);
-                    break Ok(GameReport { outcome, moves });
+                    break Ok(Pgn { outcome, moves });
                 }
 
                 None => {
@@ -201,10 +201,10 @@ mod tests {
         p.expect_act().return_const(Ok(Action::Move(child.0)));
         q.expect_act().return_const(Ok(Action::Resign));
 
-        let report = rt.block_on(g.run(w, b));
+        let pgn = rt.block_on(g.run(w, b));
 
         prop_assume!(g.outcome() == Some(Outcome::Resignation(!turn)));
-        assert_eq!(report.map(|r| r.moves), Ok(vec![san, San::null()]));
+        assert_eq!(pgn.map(|r| r.moves), Ok(vec![san, San::null()]));
     }
 
     #[proptest]

@@ -32,14 +32,14 @@ pub struct Play {
 impl Execute for Play {
     async fn execute(&self) -> Result<(), Anyhow> {
         let (mut wins, mut losses, mut draws) = (0f64, 0f64, 0f64);
-        let mut reports = Vec::with_capacity(self.games.into());
+        let mut pgns = Vec::with_capacity(self.games.into());
 
         for n in 0..self.games.into() {
             let white = self.white.clone().build()?;
             let black = self.black.clone().build()?;
-            let report = Game::default().run(white, black).await?;
+            let pgn = Game::default().run(white, black).await?;
 
-            match report.outcome.winner() {
+            match pgn.outcome.winner() {
                 Some(Color::White) => wins += 1.,
                 Some(Color::Black) => losses += 1.,
                 None => draws += 1.,
@@ -53,11 +53,11 @@ impl Execute for Play {
                 LOS = (1. + erf((wins - losses) / (2. * (wins + losses)).sqrt())) / 2.
             );
 
-            reports.push(report);
+            pgns.push(pgn);
         }
 
-        for report in reports {
-            println!("{}\n", report);
+        for pgn in pgns {
+            println!("{}\n", pgn);
         }
 
         Ok(())

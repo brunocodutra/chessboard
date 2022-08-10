@@ -4,7 +4,7 @@ use std::fmt::{self, Debug, Display};
 /// The description of a [`crate::Game`] played to completion.
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
 #[cfg_attr(test, derive(test_strategy::Arbitrary))]
-pub struct GameReport {
+pub struct Pgn {
     pub outcome: Outcome,
     pub moves: Vec<San>,
 }
@@ -12,7 +12,7 @@ pub struct GameReport {
 /// Prints a simplified [PGN] description of the game
 ///
 /// [PGN]: https://en.wikipedia.org/wiki/Portable_Game_Notation.
-impl Display for GameReport {
+impl Display for Pgn {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         for (i, san) in self.moves.iter().enumerate() {
             if i % 2 == 0 {
@@ -60,9 +60,9 @@ mod tests {
     }
 
     #[proptest(cases = 10)]
-    fn report_prints_simplified_pgn(r: GameReport) {
-        let mut reader = BufferedReader::new_cursor(r.to_string());
+    fn prints_simplified_pgn(pgn: Pgn) {
+        let mut reader = BufferedReader::new_cursor(pgn.to_string());
         let mut visitor = PgnVisitor::default();
-        assert_eq!(reader.read_game(&mut visitor)?, Some(r.moves));
+        assert_eq!(reader.read_game(&mut visitor)?, Some(pgn.moves));
     }
 }
