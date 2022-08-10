@@ -1,7 +1,7 @@
 use crate::{Build, Eval, Position};
 use anyhow::Error as Anyhow;
 use derive_more::{DebugCustom, Display, Error, From};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use std::str::FromStr;
 
 mod materialist;
@@ -23,9 +23,6 @@ pub enum Engine {
     Materialist(Materialist),
     #[debug(fmt = "{:?}", _0)]
     Pesto(Pesto),
-    #[cfg(test)]
-    #[debug(fmt = "{:?}", _0)]
-    Mock(crate::MockEval),
 }
 
 impl Default for Engine {
@@ -40,22 +37,18 @@ impl Eval for Engine {
             Engine::Random(e) => e.eval(pos),
             Engine::Materialist(e) => e.eval(pos),
             Engine::Pesto(e) => e.eval(pos),
-            #[cfg(test)]
-            Engine::Mock(e) => e.eval(pos),
         }
     }
 }
 
 /// Runtime configuration for an [`Engine`].
-#[derive(Debug, Clone, Eq, PartialEq, Deserialize)]
+#[derive(Debug, Clone, Eq, PartialEq, Deserialize, Serialize)]
 #[cfg_attr(test, derive(test_strategy::Arbitrary))]
 #[serde(deny_unknown_fields, rename_all = "lowercase")]
 pub enum EngineBuilder {
     Random {},
     Materialist {},
     Pesto {},
-    #[cfg(test)]
-    Mock(),
 }
 
 /// The reason why parsing [`EngineBuilder`] failed.
@@ -79,8 +72,6 @@ impl Build for EngineBuilder {
             EngineBuilder::Random {} => Ok(Random::new().into()),
             EngineBuilder::Materialist { .. } => Ok(Materialist::new().into()),
             EngineBuilder::Pesto { .. } => Ok(Pesto::new().into()),
-            #[cfg(test)]
-            EngineBuilder::Mock() => Ok(crate::MockEval::new().into()),
         }
     }
 }
@@ -106,11 +97,6 @@ mod tests {
     }
 
     #[proptest]
-    fn mock_engine_builder_is_deserializable() {
-        assert_eq!("mock()".parse(), Ok(EngineBuilder::Mock()));
-    }
-
-    #[proptest]
     fn random_can_be_configured_at_runtime() {
         assert!(matches!(
             EngineBuilder::Random {}.build(),
@@ -132,10 +118,5 @@ mod tests {
             EngineBuilder::Pesto {}.build(),
             Ok(Engine::Pesto(_))
         ));
-    }
-
-    #[proptest]
-    fn mock_can_be_configured_at_runtime() {
-        assert!(matches!(EngineBuilder::Mock().build(), Ok(Engine::Mock(_))));
     }
 }

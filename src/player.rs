@@ -3,7 +3,7 @@ use crate::{Act, Action, Build, Game, Strategy, StrategyBuilder};
 use anyhow::Error as Anyhow;
 use async_trait::async_trait;
 use derive_more::{DebugCustom, Display, Error, From};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use std::str::FromStr;
 
 mod ai;
@@ -48,7 +48,7 @@ impl Act for Player {
 }
 
 /// Runtime configuration for an [`Player`].
-#[derive(Debug, Clone, Eq, PartialEq, Deserialize)]
+#[derive(Debug, Clone, Eq, PartialEq, Deserialize, Serialize)]
 #[cfg_attr(test, derive(test_strategy::Arbitrary))]
 #[serde(deny_unknown_fields, rename_all = "lowercase")]
 pub enum PlayerBuilder {
@@ -90,10 +90,10 @@ mod tests {
     use test_strategy::proptest;
 
     #[proptest]
-    fn ai_builder_is_deserializable() {
+    fn ai_builder_is_deserializable(s: StrategyBuilder) {
         assert_eq!(
-            "ai(mock())".parse(),
-            Ok(PlayerBuilder::Ai(StrategyBuilder::Mock()))
+            format!("ai({})", ron::ser::to_string(&s)?).parse(),
+            Ok(PlayerBuilder::Ai(s))
         );
     }
 
@@ -116,11 +116,8 @@ mod tests {
     }
 
     #[proptest]
-    fn ai_can_be_configured_at_runtime() {
-        assert!(matches!(
-            PlayerBuilder::Ai(StrategyBuilder::Mock()).build(),
-            Ok(Player::Ai(_))
-        ));
+    fn ai_can_be_configured_at_runtime(s: StrategyBuilder) {
+        assert!(matches!(PlayerBuilder::Ai(s).build(), Ok(Player::Ai(_))));
     }
 
     #[proptest]
