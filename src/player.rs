@@ -1,6 +1,5 @@
 use crate::io::{Process, Terminal};
 use crate::{Act, Action, Build, Game, Strategy, StrategyBuilder};
-use anyhow::Error as Anyhow;
 use async_trait::async_trait;
 use derive_more::{DebugCustom, Display, Error, From};
 use serde::{Deserialize, Serialize};
@@ -72,14 +71,24 @@ impl FromStr for PlayerBuilder {
 
 impl Build for PlayerBuilder {
     type Output = Player;
+    type Error = PlayerError;
 
-    fn build(self) -> Result<Self::Output, Anyhow> {
+    fn build(self) -> Result<Self::Output, Self::Error> {
         match self {
-            PlayerBuilder::Ai(strategy) => Ok(Ai::new(strategy.build()?).into()),
-            PlayerBuilder::Uci(path, cfg) => {
-                Ok(Uci::with_config(Process::spawn(&path)?, cfg).into())
+            PlayerBuilder::Ai(strategy) => {
+                let strategy = strategy.build()?;
+                Ok(Ai::new(strategy).into())
             }
-            PlayerBuilder::Cli() => Ok(Cli::new(Terminal::open()?).into()),
+
+            PlayerBuilder::Uci(path, cfg) => {
+                let io = Process::spawn(&path).map_err(UciError::from)?;
+                Ok(Uci::with_config(io, cfg).into())
+            }
+
+            PlayerBuilder::Cli() => {
+                let io = Terminal::open().map_err(CliError::from)?;
+                Ok(Cli::new(io).into())
+            }
         }
     }
 }

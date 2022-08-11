@@ -1,10 +1,11 @@
-use anyhow::Error as Anyhow;
-
-/// Trait for types that encode runtime configuration.
+/// Trait for types that build other types.
 pub trait Build {
-    /// The type setup from this configuration.
+    /// The type to be built.
     type Output;
 
-    /// Consume this configuration to setup [`Build::Output`].
-    fn build(self) -> Result<Self::Output, Anyhow>;
+    /// The reason why [`Build::Output`] could not be built.
+    type Error;
+
+    /// Build an instance of [`Build::Output`].
+    fn build(self) -> Result<Self::Output, Self::Error>;
 }

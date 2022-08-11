@@ -1,8 +1,7 @@
 use crate::{Build, Eval, Position};
-use anyhow::Error as Anyhow;
 use derive_more::{DebugCustom, Display, Error, From};
 use serde::{Deserialize, Serialize};
-use std::str::FromStr;
+use std::{convert::Infallible, str::FromStr};
 
 mod materialist;
 mod pesto;
@@ -66,8 +65,9 @@ impl FromStr for EngineBuilder {
 
 impl Build for EngineBuilder {
     type Output = Engine;
+    type Error = Infallible;
 
-    fn build(self) -> Result<Self::Output, Anyhow> {
+    fn build(self) -> Result<Self::Output, Self::Error> {
         match self {
             EngineBuilder::Random {} => Ok(Random::new().into()),
             EngineBuilder::Materialist { .. } => Ok(Materialist::new().into()),
