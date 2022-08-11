@@ -41,7 +41,7 @@ impl Game {
     /// Executes an [`Action`] if legal, otherwise returns the reason why not.
     ///
     /// If the action is legal, a [`San`] recording the move is returned.
-    pub fn execute(&mut self, action: Action) -> Result<San, IllegalAction> {
+    fn execute(&mut self, action: Action) -> Result<San, IllegalAction> {
         if let Some(result) = self.outcome() {
             return Err(IllegalAction::GameHasEnded(result));
         }
@@ -81,8 +81,8 @@ impl Game {
 
                     use GameInterrupted::*;
                     let action = match turn {
-                        Color::White => white.act(self).await.map_err(White)?,
-                        Color::Black => black.act(self).await.map_err(Black)?,
+                        Color::White => white.act(self.position()).await.map_err(White)?,
+                        Color::Black => black.act(self.position()).await.map_err(Black)?,
                     };
 
                     debug!(position = %self.position, player = %turn, %action);

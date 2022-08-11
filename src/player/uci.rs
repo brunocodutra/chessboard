@@ -1,4 +1,4 @@
-use crate::{Act, Action, Game, Io, SearchLimits};
+use crate::{Act, Action, Io, Position, SearchLimits};
 use anyhow::{Context, Error as Anyhow};
 use async_trait::async_trait;
 use derive_more::{DebugCustom, Display, Error, From};
@@ -130,10 +130,10 @@ impl<T: Io + Send> Act for Uci<T> {
 
     /// Request an action from the CLI server.
     #[instrument(level = "trace", err, ret, skip(self))]
-    async fn act(&mut self, game: &Game) -> Result<Action, Self::Error> {
+    async fn act(&mut self, pos: &Position) -> Result<Action, Self::Error> {
         let position = UciMessage::Position {
             startpos: false,
-            fen: Some(UciFen(game.position().to_string())),
+            fen: Some(UciFen(pos.to_string())),
             moves: Vec::new(),
         };
 
@@ -238,7 +238,11 @@ mod tests {
     }
 
     #[proptest]
-    fn engine_is_lazily_initialized_with_the_options_configured(c: UciConfig, g: Game, m: Move) {
+    fn engine_is_lazily_initialized_with_the_options_configured(
+        c: UciConfig,
+        pos: Position,
+        m: Move,
+    ) {
         let rt = runtime::Builder::new_multi_thread().build()?;
         let mut io = MockIo::new();
         let mut seq = Sequence::new();
@@ -297,12 +301,12 @@ mod tests {
             .returning(move || Ok(UciMessage::best_move(m.into()).to_string()));
 
         let mut uci = Uci::with_config(io, c);
-        assert!(rt.block_on(uci.act(&g)).is_ok());
+        assert!(rt.block_on(uci.act(&pos)).is_ok());
     }
 
     #[proptest]
     fn initialization_ignores_invalid_uci_messages(
-        g: Game,
+        pos: Position,
         m: Move,
         #[by_ref]
         #[filter(matches!(uci::parse_one(#msg.trim()), UciMessage::Unknown(_, _)))]
@@ -329,12 +333,12 @@ mod tests {
             .returning(move || Ok(UciMessage::best_move(m.into()).to_string()));
 
         let mut uci = Uci::new(io);
-        assert!(rt.block_on(uci.act(&g)).is_ok());
+        assert!(rt.block_on(uci.act(&pos)).is_ok());
     }
 
     #[proptest]
     fn initialization_ignores_unexpected_uci_messages(
-        g: Game,
+        pos: Position,
         m: Move,
         #[by_ref]
         #[filter(!matches!(#msg, UciMessage::UciOk))]
@@ -364,11 +368,11 @@ mod tests {
             .returning(move || Ok(UciMessage::best_move(m.into()).to_string()));
 
         let mut uci = Uci::new(io);
-        assert!(rt.block_on(uci.act(&g)).is_ok());
+        assert!(rt.block_on(uci.act(&pos)).is_ok());
     }
 
     #[proptest]
-    fn initialization_can_fail(g: Game, e: io::Error) {
+    fn initialization_can_fail(pos: Position, e: io::Error) {
         let rt = runtime::Builder::new_multi_thread().build()?;
         let mut io = MockIo::new();
 
@@ -380,7 +384,7 @@ mod tests {
 
         let mut uci = Uci::new(io);
         assert_eq!(
-            rt.block_on(uci.act(&g)).map_err(|UciError(e)| e.kind()),
+            rt.block_on(uci.act(&pos)).map_err(|UciError(e)| e.kind()),
             Err(kind)
         );
     }
@@ -480,21 +484,21 @@ mod tests {
     }
 
     #[proptest]
-    fn play_instructs_engine_to_make_move(l: SearchLimits, g: Game, m: Move) {
+    fn play_instructs_engine_to_make_move(l: SearchLimits, pos: Position, m: Move) {
         let rt = runtime::Builder::new_multi_thread().build()?;
         let mut io = MockIo::new();
         let mut seq = Sequence::new();
 
-        let pos = UciMessage::Position {
+        let p = UciMessage::Position {
             startpos: false,
-            fen: Some(UciFen(g.position().to_string())),
+            fen: Some(UciFen(pos.to_string())),
             moves: Vec::new(),
         };
 
         io.expect_send()
             .once()
             .in_sequence(&mut seq)
-            .withf(move |msg| msg == pos.to_string())
+            .withf(move |msg| msg == p.to_string())
             .returning(|_| Ok(()));
 
         let go = UciMessage::Go {
@@ -525,13 +529,13 @@ mod tests {
             limits: l,
         };
 
-        assert_eq!(rt.block_on(uci.act(&g))?, Action::Move(m));
+        assert_eq!(rt.block_on(uci.act(&pos))?, Action::Move(m));
     }
 
     #[proptest]
     fn play_ignores_invalid_uci_messages(
         l: SearchLimits,
-        g: Game,
+        pos: Position,
         m: Move,
         #[by_ref]
         #[filter(matches!(uci::parse_one(#msg.trim()), UciMessage::Unknown(_, _)))]
@@ -554,13 +558,13 @@ mod tests {
             limits: l,
         };
 
-        assert_eq!(rt.block_on(uci.act(&g))?, Action::Move(m));
+        assert_eq!(rt.block_on(uci.act(&pos))?, Action::Move(m));
     }
 
     #[proptest]
     fn play_ignores_unexpected_uci_messages(
         l: SearchLimits,
-        g: Game,
+        pos: Position,
         m: Move,
         #[by_ref]
         #[filter(!matches!(#msg, UciMessage::BestMove { .. }))]
@@ -586,11 +590,11 @@ mod tests {
             limits: l,
         };
 
-        assert_eq!(rt.block_on(uci.act(&g))?, Action::Move(m));
+        assert_eq!(rt.block_on(uci.act(&pos))?, Action::Move(m));
     }
 
     #[proptest]
-    fn play_can_fail_writing(l: SearchLimits, g: Game, e: io::Error) {
+    fn play_can_fail_writing(l: SearchLimits, pos: Position, e: io::Error) {
         let rt = runtime::Builder::new_multi_thread().build()?;
         let mut io = MockIo::new();
 
@@ -606,13 +610,13 @@ mod tests {
         };
 
         assert_eq!(
-            rt.block_on(uci.act(&g)).map_err(|UciError(e)| e.kind()),
+            rt.block_on(uci.act(&pos)).map_err(|UciError(e)| e.kind()),
             Err(kind)
         );
     }
 
     #[proptest]
-    fn play_can_fail_flushing(l: SearchLimits, g: Game, e: io::Error) {
+    fn play_can_fail_flushing(l: SearchLimits, pos: Position, e: io::Error) {
         let rt = runtime::Builder::new_multi_thread().build()?;
         let mut io = MockIo::new();
 
@@ -628,13 +632,13 @@ mod tests {
         };
 
         assert_eq!(
-            rt.block_on(uci.act(&g)).map_err(|UciError(e)| e.kind()),
+            rt.block_on(uci.act(&pos)).map_err(|UciError(e)| e.kind()),
             Err(kind)
         );
     }
 
     #[proptest]
-    fn play_can_fail_reading(l: SearchLimits, g: Game, e: io::Error) {
+    fn play_can_fail_reading(l: SearchLimits, pos: Position, e: io::Error) {
         let rt = runtime::Builder::new_multi_thread().build()?;
         let mut io = MockIo::new();
 
@@ -650,7 +654,7 @@ mod tests {
         };
 
         assert_eq!(
-            rt.block_on(uci.act(&g)).map_err(|UciError(e)| e.kind()),
+            rt.block_on(uci.act(&pos)).map_err(|UciError(e)| e.kind()),
             Err(kind)
         );
     }

@@ -1,5 +1,5 @@
 use crate::io::{Process, Terminal};
-use crate::{Act, Action, Build, Game, Strategy, StrategyBuilder};
+use crate::{Act, Action, Build, Position, Strategy, StrategyBuilder};
 use async_trait::async_trait;
 use derive_more::{DebugCustom, Display, Error, From};
 use serde::{Deserialize, Serialize};
@@ -37,11 +37,11 @@ pub enum Player {
 impl Act for Player {
     type Error = PlayerError;
 
-    async fn act(&mut self, game: &Game) -> Result<Action, Self::Error> {
+    async fn act(&mut self, pos: &Position) -> Result<Action, Self::Error> {
         match self {
-            Player::Ai(p) => Ok(p.act(game).await?),
-            Player::Cli(p) => Ok(p.act(game).await?),
-            Player::Uci(p) => Ok(p.act(game).await?),
+            Player::Ai(p) => Ok(p.act(pos).await?),
+            Player::Cli(p) => Ok(p.act(pos).await?),
+            Player::Uci(p) => Ok(p.act(pos).await?),
         }
     }
 }
