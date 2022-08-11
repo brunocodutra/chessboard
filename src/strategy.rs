@@ -1,5 +1,4 @@
 use crate::{Build, Engine, EngineBuilder, Move, Position, Search};
-use anyhow::Error as Anyhow;
 use derive_more::{DebugCustom, Display, Error, From};
 use serde::{Deserialize, Serialize};
 use std::str::FromStr;
@@ -46,8 +45,9 @@ impl FromStr for StrategyBuilder {
 
 impl Build for StrategyBuilder {
     type Output = Strategy;
+    type Error = <EngineBuilder as Build>::Error;
 
-    fn build(self) -> Result<Self::Output, Anyhow> {
+    fn build(self) -> Result<Self::Output, Self::Error> {
         match self {
             StrategyBuilder::Minimax(engine, config) => {
                 Ok(Minimax::with_config(engine.build()?, config).into())
