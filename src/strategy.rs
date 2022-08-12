@@ -23,10 +23,11 @@ impl Search for Strategy {
 }
 
 /// Runtime configuration for [`Search`].
-#[derive(Debug, Clone, Eq, PartialEq, Deserialize, Serialize)]
+#[derive(Debug, Display, Clone, Eq, PartialEq, Deserialize, Serialize)]
 #[cfg_attr(test, derive(test_strategy::Arbitrary))]
 #[serde(deny_unknown_fields, rename_all = "lowercase")]
 pub enum StrategyBuilder {
+    #[display(fmt = "{}", "ron::ser::to_string(self).unwrap()")]
     Minimax(EngineBuilder, #[serde(default)] MinimaxConfig),
 }
 
@@ -60,6 +61,11 @@ impl Build for StrategyBuilder {
 mod tests {
     use super::*;
     use test_strategy::proptest;
+
+    #[proptest]
+    fn parsing_printed_strategy_builder_is_an_identity(b: StrategyBuilder) {
+        assert_eq!(b.to_string().parse(), Ok(b));
+    }
 
     #[proptest]
     fn minimax_builder_is_deserializable(e: EngineBuilder, c: MinimaxConfig) {

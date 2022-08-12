@@ -41,12 +41,15 @@ impl Eval for Engine {
 }
 
 /// Runtime configuration for an [`Engine`].
-#[derive(Debug, Clone, Eq, PartialEq, Deserialize, Serialize)]
+#[derive(Debug, Display, Clone, Eq, PartialEq, Deserialize, Serialize)]
 #[cfg_attr(test, derive(test_strategy::Arbitrary))]
 #[serde(deny_unknown_fields, rename_all = "lowercase")]
 pub enum EngineBuilder {
+    #[display(fmt = "{}", "ron::ser::to_string(self).unwrap()")]
     Random {},
+    #[display(fmt = "{}", "ron::ser::to_string(self).unwrap()")]
     Materialist {},
+    #[display(fmt = "{}", "ron::ser::to_string(self).unwrap()")]
     Pesto {},
 }
 
@@ -80,6 +83,11 @@ impl Build for EngineBuilder {
 mod tests {
     use super::*;
     use test_strategy::proptest;
+
+    #[proptest]
+    fn parsing_printed_engine_builder_is_an_identity(b: EngineBuilder) {
+        assert_eq!(b.to_string().parse(), Ok(b));
+    }
 
     #[proptest]
     fn random_builder_is_deserializable() {
