@@ -45,7 +45,7 @@ pub struct MinimaxConfig {
     /// The size of the transposition table in bytes.
     ///
     /// This is an upper limit, the actual memory allocation may be smaller.
-    #[cfg_attr(test, strategy(0usize..=65535))]
+    #[cfg_attr(test, strategy(0usize..=65536))]
     pub table_size: usize,
 }
 
@@ -133,20 +133,25 @@ impl<E: Eval + Send + Sync> Minimax<E> {
         let zobrist = pos.zobrist();
         let transposition = self.tt.get(zobrist);
 
-        if let Some(t) = transposition.filter(|t| t.draft() >= draft) {
-            let (lower, upper) = t.bounds();
-            (alpha, beta) = (alpha.max(lower), beta.min(upper));
-            if alpha >= beta {
-                return Ok(t.score());
+        match transposition.filter(|t| t.draft() >= draft) {
+            #[cfg(test)] // Probing larger draft is not exact.
+            Some(t) if t.draft() != draft => (),
+            Some(t) => {
+                let (lower, upper) = t.bounds();
+                (alpha, beta) = (alpha.max(lower), beta.min(upper));
+                if alpha >= beta {
+                    return Ok(t.score());
+                }
             }
+            _ => (),
         }
 
         if draft <= Self::MIN_DRAFT {
             return Ok(self.engine.eval(pos).max(-i16::MAX));
         } else if draft <= 0 {
             #[cfg(not(test))]
+            // The stand pat heuristic is not exact.
             {
-                // This heuristic is not exact.
                 let stand_pat = self.engine.eval(pos).max(-i16::MAX);
                 alpha = alpha.max(stand_pat);
                 if alpha >= beta {
@@ -264,16 +269,14 @@ mod tests {
     use test_strategy::proptest;
 
     fn quiesce<E: Eval + Send + Sync>(engine: &E, pos: &Position, draft: i8) -> i16 {
-        let moves = pos.captures();
-
-        if draft <= Minimax::<E>::MIN_DRAFT || moves.len() == 0 {
-            return engine.eval(pos).max(-i16::MAX);
+        if draft <= Minimax::<E>::MIN_DRAFT {
+            engine.eval(pos).max(-i16::MAX)
+        } else {
+            pos.captures()
+                .map(|(_, pos)| -quiesce(engine, &pos, draft - 1))
+                .max()
+                .unwrap_or_else(|| engine.eval(pos).max(-i16::MAX))
         }
-
-        pos.captures()
-            .map(|(_, pos)| -quiesce(engine, &pos, draft - 1))
-            .max()
-            .unwrap()
     }
 
     fn negamax<E: Eval + Send + Sync>(engine: &E, pos: &Position, draft: i8) -> i16 {
@@ -370,8 +373,8 @@ mod tests {
 
     #[proptest]
     fn alpha_beta_does_not_depend_on_table_size(
-        #[strategy(0usize..65536)] a: usize,
-        #[strategy(0usize..65536)] b: usize,
+        #[strategy(0usize..=65536)] a: usize,
+        #[strategy(0usize..=65536)] b: usize,
         c: MinimaxConfig,
         pos: Position,
     ) {
