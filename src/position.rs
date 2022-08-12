@@ -159,7 +159,7 @@ impl Position {
     }
 
     /// Play a [`Move`] if legal in this position.
-    pub fn play(&mut self, m: Move) -> Result<San, IllegalMove> {
+    pub fn make(&mut self, m: Move) -> Result<San, IllegalMove> {
         match sm::uci::Uci::to_move(&m.into(), &self.0) {
             Ok(vm) if sm::Position::is_legal(&self.0, &vm) => {
                 let san = sm::san::San::from_move(&self.0, &vm).into();
@@ -388,7 +388,7 @@ mod tests {
         for (m, p) in pos.moves() {
             let mut pos = pos.clone();
             assert_eq!(pos[m.whence()].map(|p| p.color()), Some(pos.turn()));
-            assert_eq!(pos.play(m).err(), None);
+            assert_eq!(pos.make(m).err(), None);
             assert_eq!(pos, p);
         }
     }
@@ -408,7 +408,7 @@ mod tests {
     }
 
     #[proptest]
-    fn playing_legal_move_updates_position(
+    fn legal_move_updates_position(
         #[by_ref]
         #[filter(#pos.moves().len() > 0)]
         mut pos: Position,
@@ -416,17 +416,17 @@ mod tests {
     ) {
         let vm = sm::uci::Uci::to_move(&child.0.into(), &pos.0)?;
         let san = sm::san::San::from_move(&pos.0, &vm).into();
-        assert_eq!(pos.play(child.0), Ok(san));
+        assert_eq!(pos.make(child.0), Ok(san));
         assert_eq!(pos, child.1);
     }
 
     #[proptest]
-    fn playing_illegal_move_fails(
+    fn illegal_move_fails_without_changing_position(
         #[by_ref] mut pos: Position,
         #[filter(!#pos.moves().any(|(m, _)| m == #m))] m: Move,
     ) {
         let before = pos.clone();
-        assert_eq!(pos.play(m), Err(IllegalMove(m, before.clone())));
+        assert_eq!(pos.make(m), Err(IllegalMove(m, before.clone())));
         assert_eq!(pos, before);
     }
 
