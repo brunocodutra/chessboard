@@ -149,7 +149,7 @@ impl<E: Eval + Send + Sync> Minimax<E> {
             }
         } else if let Some(m) = transposition.map(|t| t.best()) {
             let mut pos = pos.clone();
-            if pos.play(m).is_ok() {
+            if pos.make(m).is_ok() {
                 let score = -self.nw(&pos, draft - 1, timer, -beta + 1)?;
                 if score >= beta {
                     self.tt.set(zobrist, Transposition::lower(score, draft, m));

@@ -48,7 +48,7 @@ impl Game {
 
         match action {
             Action::Move(m) => {
-                let san = self.position.play(m)?;
+                let san = self.position.make(m)?;
                 self.outcome = infer_outcome_from_position(self.position());
                 Ok(san)
             }
@@ -188,7 +188,7 @@ mod tests {
         let rt = runtime::Builder::new_multi_thread().build()?;
 
         let turn = g.position.turn();
-        let san = g.position.clone().play(child.0)?;
+        let san = g.position.clone().make(child.0)?;
 
         let mut w = MockAct::new();
         let mut b = MockAct::new();

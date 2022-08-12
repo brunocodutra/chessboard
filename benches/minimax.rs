@@ -31,8 +31,8 @@ fn bench(c: &mut Criterion) {
                 for i in 0..iters {
                     match minimax.search(&pos) {
                         None => return WallTime.end(timer).mul_f64(iters as f64 / i as f64),
-                        Some(a) => {
-                            pos.play(a).unwrap();
+                        Some(m) => {
+                            pos.make(m).unwrap();
                         }
                     }
                 }
