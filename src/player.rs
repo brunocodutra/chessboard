@@ -47,12 +47,15 @@ impl Act for Player {
 }
 
 /// Runtime configuration for an [`Player`].
-#[derive(Debug, Clone, Eq, PartialEq, Deserialize, Serialize)]
+#[derive(Debug, Display, Clone, Eq, PartialEq, Deserialize, Serialize)]
 #[cfg_attr(test, derive(test_strategy::Arbitrary))]
 #[serde(deny_unknown_fields, rename_all = "lowercase")]
 pub enum PlayerBuilder {
+    #[display(fmt = "{}", "ron::ser::to_string(self).unwrap()")]
     Ai(StrategyBuilder),
+    #[display(fmt = "{}", "ron::ser::to_string(self).unwrap()")]
     Uci(String, #[serde(default)] UciConfig),
+    #[display(fmt = "{}", "ron::ser::to_string(self).unwrap()")]
     Cli(),
 }
 
@@ -97,6 +100,11 @@ impl Build for PlayerBuilder {
 mod tests {
     use super::*;
     use test_strategy::proptest;
+
+    #[proptest]
+    fn parsing_printed_player_builder_is_an_identity(b: PlayerBuilder) {
+        assert_eq!(b.to_string().parse(), Ok(b));
+    }
 
     #[proptest]
     fn ai_builder_is_deserializable(s: StrategyBuilder) {
