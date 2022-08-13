@@ -1,14 +1,14 @@
 use super::Execute;
 use anyhow::Error as Anyhow;
 use async_trait::async_trait;
-use chessboard::{Build, Color, Game, PlayerBuilder};
+use chessboard::{Color, Game, PlayerBuilder, Position};
 use clap::{AppSettings::DeriveDisplayOrder, Parser};
 use libm::erf;
 use std::num::NonZeroUsize;
-use tracing::info;
+use tracing::{info, instrument};
 
 /// A match of chess between two players.
-#[derive(Parser)]
+#[derive(Debug, Parser)]
 #[clap(
     disable_help_flag = true,
     disable_version_flag = true,
@@ -30,14 +30,14 @@ pub struct Play {
 
 #[async_trait]
 impl Execute for Play {
-    async fn execute(&self) -> Result<(), Anyhow> {
+    #[instrument(level = "trace", err, ret)]
+    async fn execute(self) -> Result<(), Anyhow> {
         let (mut wins, mut losses, mut draws) = (0f64, 0f64, 0f64);
         let mut pgns = Vec::with_capacity(self.games.into());
 
         for n in 0..self.games.into() {
-            let white = self.white.clone().build()?;
-            let black = self.black.clone().build()?;
-            let pgn = Game::default().run(white, black).await?;
+            let game = Game::new(self.white.clone(), self.black.clone());
+            let pgn = game.play(Position::default()).await?;
 
             match pgn.outcome.winner() {
                 Some(Color::White) => wins += 1.,

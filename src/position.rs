@@ -285,7 +285,7 @@ impl AsRef<sm::Chess> for Position {
 mod tests {
     use super::*;
     use bitvec::field::BitField;
-    use proptest::sample::select;
+    use proptest::sample::Selector;
     use std::collections::HashSet;
     use test_strategy::proptest;
 
@@ -412,12 +412,13 @@ mod tests {
         #[by_ref]
         #[filter(#pos.moves().len() > 0)]
         mut pos: Position,
-        #[strategy(select(#pos.moves().collect::<Vec<_>>()))] child: (Move, Position),
+        selector: Selector,
     ) {
-        let vm = sm::uci::Uci::to_move(&child.0.into(), &pos.0)?;
+        let (m, next) = selector.select(pos.moves());
+        let vm = sm::uci::Uci::to_move(&m.into(), &pos.0)?;
         let san = sm::san::San::from_move(&pos.0, &vm).into();
-        assert_eq!(pos.make(child.0), Ok(san));
-        assert_eq!(pos, child.1);
+        assert_eq!(pos.make(m), Ok(san));
+        assert_eq!(pos, next);
     }
 
     #[proptest]
