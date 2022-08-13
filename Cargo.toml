@@ -29,11 +29,11 @@ tracing-subscriber = { version = "0.3.15", default-features = false, features = 
 vampirc-uci = { version = "0.11.0", default-features = false }
 
 [dev-dependencies]
-criterion = "0.3.6"
-mockall = "0.11.2"
-pgn-reader = "0.20.0"
-proptest = "1.0.0"
-test-strategy = "0.2.0"
+criterion = { version = "0.3.6", default-features = false }
+mockall = { version = "0.11.2", default-features = false }
+pgn-reader = { version = "0.20.0", default-features = false }
+proptest = { version = "1.0.0", default-features = false, features = ["std"] }
+test-strategy = { version = "0.2.0", default-features = false }
 
 [profile.release]
 lto = "thin"
