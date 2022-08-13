@@ -371,10 +371,10 @@ mod tests {
     #[proptest]
     fn checkers_returns_squares_of_pieces_giving_check(pos: Position) {
         assert_eq!(
-            pos.checkers().collect::<HashSet<_>>(),
+            pos.checkers().collect::<Vec<_>>(),
             pos.by_piece(Piece(pos.turn(), Role::King))
                 .flat_map(|s| pos.attackers(s, !pos.turn()))
-                .collect::<HashSet<_>>(),
+                .collect::<Vec<_>>(),
         )
     }
 
