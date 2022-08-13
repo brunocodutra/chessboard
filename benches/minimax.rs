@@ -29,10 +29,10 @@ fn bench(c: &mut Criterion) {
                 let timer = WallTime.start();
 
                 for i in 0..iters {
-                    match minimax.search(&pos) {
+                    match minimax.search(&pos).next() {
                         None => return WallTime.end(timer).mul_f64(iters as f64 / i as f64),
-                        Some(m) => {
-                            pos.make(m).unwrap();
+                        Some(t) => {
+                            pos.make(t.best()).unwrap();
                         }
                     }
                 }

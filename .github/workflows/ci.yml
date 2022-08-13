@@ -131,6 +131,8 @@ jobs:
     - uses: actions-rs/tarpaulin@v0.1
       with:
         args: --all-features --profile cov --timeout 600
+      env:
+        PROPTEST_CASES: 32
     - uses: codecov/codecov-action@v2
       with:
         token: ${{secrets.CODECOV_TOKEN}}

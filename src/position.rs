@@ -7,6 +7,8 @@ use std::{convert::TryFrom, num::NonZeroU32, ops::Index};
 #[cfg(test)]
 use proptest::{prelude::*, sample::Selector};
 
+pub type Zobrist = Bits<u64, 64>;
+
 /// The current position on the chess board.
 ///
 /// This type guarantees that it only holds valid positions.
@@ -15,16 +17,19 @@ use proptest::{prelude::*, sample::Selector};
 #[debug(fmt = "Position(\"{}\")", self)]
 #[display(fmt = "{}", "Fen::from(self.clone())")]
 pub struct Position(
-    #[cfg_attr(test, strategy((0..256, any::<Selector>()).prop_map(|(moves, selector)| {
-        let mut chess = sm::Chess::default();
-        for _ in 0..moves {
-            match selector.try_select(sm::Position::legal_moves(&chess)) {
-                Some(m) => sm::Position::play_unchecked(&mut chess, &m),
-                _ => break,
+    #[cfg_attr(test, strategy(
+        (0..256, any::<Selector>()).prop_map(|(moves, selector)| {
+            let mut chess = sm::Chess::default();
+            for _ in 0..moves {
+                match selector.try_select(sm::Position::legal_moves(&chess)) {
+                    Some(m) => sm::Position::play_unchecked(&mut chess, &m),
+                    _ => break,
+                }
             }
-        }
-        chess
-    }).no_shrink()))]
+            chess
+        })
+        .no_shrink()
+    ))]
     sm::Chess,
 );
 
@@ -51,7 +56,7 @@ impl Position {
     /// This position's [zobrist hash].
     ///
     /// [zobrist hash]: https://en.wikipedia.org/wiki/Zobrist_hashing.
-    pub fn zobrist(&self) -> Bits<u64, 64> {
+    pub fn zobrist(&self) -> Zobrist {
         sm::zobrist::ZobristHash::zobrist_hash::<u64>(&self.0)
             .view_bits::<Lsb0>()
             .into()
