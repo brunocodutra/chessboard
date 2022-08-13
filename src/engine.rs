@@ -80,6 +80,16 @@ impl Build for EngineBuilder {
 }
 
 #[cfg(test)]
+mockall::mock! {
+    pub EngineBuilder {}
+    impl Build for EngineBuilder {
+        type Output = crate::MockEval;
+        type Error = String;
+        fn build(self) -> Result<crate::MockEval, String>;
+    }
+}
+
+#[cfg(test)]
 mod tests {
     use super::*;
     use test_strategy::proptest;

@@ -97,6 +97,16 @@ impl Build for PlayerBuilder {
 }
 
 #[cfg(test)]
+mockall::mock! {
+    pub PlayerBuilder {}
+    impl Build for PlayerBuilder {
+        type Output = crate::MockAct;
+        type Error = String;
+        fn build(self) -> Result<crate::MockAct, String>;
+    }
+}
+
+#[cfg(test)]
 mod tests {
     use super::*;
     use test_strategy::proptest;

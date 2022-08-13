@@ -58,6 +58,16 @@ impl Build for StrategyBuilder {
 }
 
 #[cfg(test)]
+mockall::mock! {
+    pub StrategyBuilder {}
+    impl Build for StrategyBuilder {
+        type Output = crate::MockSearch;
+        type Error = String;
+        fn build(self) -> Result<crate::MockSearch, String>;
+    }
+}
+
+#[cfg(test)]
 mod tests {
     use super::*;
     use test_strategy::proptest;
