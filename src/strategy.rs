@@ -59,11 +59,19 @@ impl Build for StrategyBuilder {
 
 #[cfg(test)]
 mockall::mock! {
+    #[derive(Debug)]
     pub StrategyBuilder {}
     impl Build for StrategyBuilder {
         type Output = crate::MockSearch;
         type Error = String;
         fn build(self) -> Result<crate::MockSearch, String>;
+    }
+}
+
+#[cfg(test)]
+impl std::fmt::Display for MockStrategyBuilder {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        std::fmt::Debug::fmt(&self, f)
     }
 }
 

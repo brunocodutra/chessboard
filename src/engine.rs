@@ -81,11 +81,19 @@ impl Build for EngineBuilder {
 
 #[cfg(test)]
 mockall::mock! {
+    #[derive(Debug)]
     pub EngineBuilder {}
     impl Build for EngineBuilder {
         type Output = crate::MockEval;
         type Error = String;
         fn build(self) -> Result<crate::MockEval, String>;
+    }
+}
+
+#[cfg(test)]
+impl std::fmt::Display for MockEngineBuilder {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        std::fmt::Debug::fmt(&self, f)
     }
 }
 
