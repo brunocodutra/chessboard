@@ -98,11 +98,19 @@ impl Build for PlayerBuilder {
 
 #[cfg(test)]
 mockall::mock! {
+    #[derive(Debug)]
     pub PlayerBuilder {}
     impl Build for PlayerBuilder {
         type Output = crate::MockAct;
         type Error = String;
         fn build(self) -> Result<crate::MockAct, String>;
+    }
+}
+
+#[cfg(test)]
+impl std::fmt::Display for MockPlayerBuilder {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        std::fmt::Debug::fmt(&self, f)
     }
 }
 

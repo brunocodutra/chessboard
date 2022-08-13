@@ -1,6 +1,7 @@
 use crate::{Act, Action, Build, Color, Outcome, Pgn, Position, San};
 use anyhow::Context;
 use derive_more::{Constructor, Display, Error};
+use std::fmt::Display;
 use tracing::{debug, instrument, warn};
 
 /// The reason why the [`Game`] was interrupted.
@@ -25,8 +26,8 @@ pub struct Game<W, B> {
 
 impl<W, B> Game<W, B>
 where
-    W: Build,
-    B: Build,
+    W: Build + Display,
+    B: Build + Display,
     W::Output: Act<Error = W::Error>,
     B::Output: Act<Error = B::Error>,
 {
@@ -34,6 +35,9 @@ where
     #[instrument(level = "trace", err, ret, skip(self))]
     pub async fn play(self, mut pos: Position) -> Result<Pgn, GameInterrupted<W::Error, B::Error>> {
         use GameInterrupted::*;
+
+        let white_config = self.white.to_string();
+        let black_config = self.black.to_string();
 
         let mut white = self.white.build().map_err(White)?;
         let mut black = self.black.build().map_err(Black)?;
@@ -68,7 +72,12 @@ where
             }
         };
 
-        Ok(Pgn { outcome, moves })
+        Ok(Pgn {
+            white: white_config,
+            black: black_config,
+            outcome,
+            moves,
+        })
     }
 }
 
@@ -111,6 +120,9 @@ mod tests {
         let mut bb = MockPlayerBuilder::new();
         bb.expect_build().once().return_once(move || Ok(b));
 
+        let wc = wb.to_string();
+        let bc = bb.to_string();
+
         let g = Game::new(wb, bb);
 
         let outcome = is_game_over(&pos).unwrap();
@@ -118,6 +130,8 @@ mod tests {
         assert_eq!(
             rt.block_on(g.play(pos)),
             Ok(Pgn {
+                white: wc,
+                black: bc,
                 outcome,
                 moves: vec![]
             })
@@ -155,11 +169,16 @@ mod tests {
         let mut bb = MockPlayerBuilder::new();
         bb.expect_build().once().return_once(move || Ok(b));
 
+        let wc = wb.to_string();
+        let bc = bb.to_string();
+
         let g = Game::new(wb, bb);
 
         assert_eq!(
             rt.block_on(g.play(pos)),
             Ok(Pgn {
+                white: wc,
+                black: bc,
                 outcome: Outcome::Resignation(next.turn()),
                 moves: vec![san, San::null()]
             })
@@ -195,11 +214,16 @@ mod tests {
         let mut bb = MockPlayerBuilder::new();
         bb.expect_build().once().return_once(move || Ok(b));
 
+        let wc = wb.to_string();
+        let bc = bb.to_string();
+
         let g = Game::new(wb, bb);
 
         assert_eq!(
             rt.block_on(g.play(pos)),
             Ok(Pgn {
+                white: wc,
+                black: bc,
                 outcome: Outcome::Resignation(turn),
                 moves: vec![San::null()]
             })

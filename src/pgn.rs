@@ -1,10 +1,12 @@
 use crate::{Color, Outcome, San};
-use std::fmt::{self, Debug, Display};
+use std::fmt::{self, Display};
 
 /// The description of a [`crate::Game`] played to completion.
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
 #[cfg_attr(test, derive(test_strategy::Arbitrary))]
 pub struct Pgn {
+    pub white: String,
+    pub black: String,
     pub outcome: Outcome,
     pub moves: Vec<San>,
 }
@@ -14,6 +16,9 @@ pub struct Pgn {
 /// [PGN]: https://en.wikipedia.org/wiki/Portable_Game_Notation.
 impl Display for Pgn {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        writeln!(f, "[White {:?}]", self.white)?;
+        writeln!(f, "[Black {:?}]", self.black)?;
+
         for (i, san) in self.moves.iter().enumerate() {
             if i % 2 == 0 {
                 write!(f, "{}. ", i / 2 + 1)?;
