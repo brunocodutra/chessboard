@@ -15,6 +15,7 @@ pub use random::*;
 
 /// A generic chess engine.
 #[derive(DebugCustom, From)]
+#[cfg_attr(test, derive(test_strategy::Arbitrary))]
 pub enum Engine {
     #[debug(fmt = "{:?}", _0)]
     Random(Random),
@@ -76,24 +77,6 @@ impl Build for EngineBuilder {
             EngineBuilder::Materialist { .. } => Ok(Materialist::new().into()),
             EngineBuilder::Pesto { .. } => Ok(Pesto::new().into()),
         }
-    }
-}
-
-#[cfg(test)]
-mockall::mock! {
-    #[derive(Debug)]
-    pub EngineBuilder {}
-    impl Build for EngineBuilder {
-        type Output = crate::MockEval;
-        type Error = String;
-        fn build(self) -> Result<crate::MockEval, String>;
-    }
-}
-
-#[cfg(test)]
-impl std::fmt::Display for MockEngineBuilder {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        std::fmt::Debug::fmt(&self, f)
     }
 }
 

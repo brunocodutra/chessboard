@@ -1,4 +1,4 @@
-use crate::{Build, Engine, EngineBuilder, Move, Position, Search};
+use crate::{Build, Engine, EngineBuilder, Position, Pv, Search};
 use derive_more::{DebugCustom, Display, Error, From};
 use serde::{Deserialize, Serialize};
 use std::str::FromStr;
@@ -9,13 +9,20 @@ pub use minimax::*;
 
 /// A generic adversarial search algorithm.
 #[derive(DebugCustom, From)]
+#[cfg_attr(test, derive(test_strategy::Arbitrary))]
 pub enum Strategy {
     #[debug(fmt = "{:?}", _0)]
     Minimax(Minimax<Engine>),
 }
 
+impl Default for Strategy {
+    fn default() -> Self {
+        Minimax::default().into()
+    }
+}
+
 impl Search for Strategy {
-    fn search(&self, pos: &Position) -> Option<Move> {
+    fn search(&self, pos: &Position) -> Pv {
         match self {
             Strategy::Minimax(s) => s.search(pos),
         }
@@ -54,24 +61,6 @@ impl Build for StrategyBuilder {
                 Ok(Minimax::with_config(engine.build()?, config).into())
             }
         }
-    }
-}
-
-#[cfg(test)]
-mockall::mock! {
-    #[derive(Debug)]
-    pub StrategyBuilder {}
-    impl Build for StrategyBuilder {
-        type Output = crate::MockSearch;
-        type Error = String;
-        fn build(self) -> Result<crate::MockSearch, String>;
-    }
-}
-
-#[cfg(test)]
-impl std::fmt::Display for MockStrategyBuilder {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        std::fmt::Debug::fmt(&self, f)
     }
 }
 
