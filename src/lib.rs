@@ -59,3 +59,12 @@ pub mod strategy;
 pub use crate::engine::{Engine, EngineBuilder};
 pub use crate::player::{Player, PlayerBuilder, PlayerError};
 pub use crate::strategy::{Strategy, StrategyBuilder};
+
+#[cfg(test)]
+pub use crate::engine::MockEngineBuilder;
+
+#[cfg(test)]
+pub use crate::player::MockPlayerBuilder;
+
+#[cfg(test)]
+pub use crate::strategy::MockStrategyBuilder;
