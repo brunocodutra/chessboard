@@ -1,5 +1,5 @@
-use crate::{IllegalMove, Move, Outcome};
-use derive_more::{DebugCustom, Display, Error, From};
+use crate::Move;
+use derive_more::{DebugCustom, Display, From};
 
 /// The possible actions a player can take.
 #[derive(DebugCustom, Display, Copy, Clone, Eq, PartialEq, Hash, From)]
@@ -16,18 +16,6 @@ pub enum Action {
     Resign,
 }
 
-/// The reason why the player [`Action`] was rejected.
-#[derive(Debug, Display, Clone, Eq, PartialEq, Error, From)]
-#[cfg_attr(test, derive(test_strategy::Arbitrary))]
-#[error(ignore)]
-pub enum IllegalAction {
-    #[display(fmt = "the game has already ended in a {}", _0)]
-    GameHasEnded(Outcome),
-
-    #[display(fmt = "{}", _0)]
-    PlayerAttemptedIllegalMove(IllegalMove),
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -36,18 +24,5 @@ mod tests {
     #[proptest]
     fn action_can_be_converted_from_move(m: Move) {
         assert_eq!(Action::from(m), Action::Move(m));
-    }
-
-    #[proptest]
-    fn illegal_action_can_be_converted_from_outcome(o: Outcome) {
-        assert_eq!(IllegalAction::from(o), IllegalAction::GameHasEnded(o));
-    }
-
-    #[proptest]
-    fn illegal_action_can_be_converted_from_illegal_move(im: IllegalMove) {
-        assert_eq!(
-            IllegalAction::from(im.clone()),
-            IllegalAction::PlayerAttemptedIllegalMove(im)
-        );
     }
 }
