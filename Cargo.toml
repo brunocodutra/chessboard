@@ -10,7 +10,7 @@ readme = "README.md"
 keywords = ["chess"]
 
 [dependencies]
-anyhow = { version = "1.0.60", default-features = false, features = ["std"] }
+anyhow = { version = "1.0.61", default-features = false, features = ["std"] }
 async-trait = { version = "0.1.57", default-features = false }
 atomic = { version = "0.5.1", default-features = false, features = ["std"] }
 bitvec = { version = "1.0.1", default-features = false, features = ["atomic", "std"] }
