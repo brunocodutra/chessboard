@@ -28,7 +28,7 @@ impl Search for Strategy {
         }
     }
 
-    fn search(&self, pos: &Position) -> Pv {
+    fn search(&mut self, pos: &Position) -> Pv {
         match self {
             Strategy::Minimax(s) => s.search(pos),
         }

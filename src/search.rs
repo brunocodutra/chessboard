@@ -6,5 +6,5 @@ pub trait Search {
     fn limits(&self) -> SearchLimits;
 
     /// Searches for the strongest [variation][`Pv`].
-    fn search(&self, pos: &Position) -> Pv<'_>;
+    fn search(&mut self, pos: &Position) -> Pv<'_>;
 }
