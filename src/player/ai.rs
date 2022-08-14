@@ -33,7 +33,7 @@ mod tests {
     use tokio::runtime;
 
     #[proptest]
-    fn searches_for_best_move(s: Strategy, pos: Position) {
+    fn searches_for_best_move(mut s: Strategy, pos: Position) {
         let rt = runtime::Builder::new_multi_thread().build()?;
 
         let t = s.search(&pos).next();

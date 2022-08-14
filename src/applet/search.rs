@@ -25,7 +25,7 @@ pub struct Search {
 impl Execute for Search {
     #[instrument(level = "trace", skip(self), err)]
     async fn execute(self) -> Result<(), Anyhow> {
-        let strategy = self.strategy.build()?;
+        let mut strategy = self.strategy.build()?;
         let pos = self.fen.try_into()?;
         let pv: Vec<_> = strategy.search(&pos).collect();
 
