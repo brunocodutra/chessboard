@@ -233,6 +233,10 @@ impl<E: Eval + Send + Sync> Minimax<E> {
 }
 
 impl<E: Eval + Send + Sync> Search for Minimax<E> {
+    fn limits(&self) -> SearchLimits {
+        self.limits
+    }
+
     fn search(&self, pos: &Position) -> Pv {
         let timer = Timer::start(self.limits.time);
 

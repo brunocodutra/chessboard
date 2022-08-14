@@ -1,4 +1,4 @@
-use crate::{Build, Engine, EngineBuilder, Position, Pv, Search};
+use crate::{Build, Engine, EngineBuilder, Position, Pv, Search, SearchLimits};
 use derive_more::{DebugCustom, Display, Error, From};
 use serde::{Deserialize, Serialize};
 use std::str::FromStr;
@@ -22,6 +22,12 @@ impl Default for Strategy {
 }
 
 impl Search for Strategy {
+    fn limits(&self) -> SearchLimits {
+        match self {
+            Strategy::Minimax(s) => s.limits(),
+        }
+    }
+
     fn search(&self, pos: &Position) -> Pv {
         match self {
             Strategy::Minimax(s) => s.search(pos),
