@@ -4,7 +4,7 @@ use async_trait::async_trait;
 use std::{io, time::Duration};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader, BufWriter, Lines};
 use tokio::{runtime, select, task::block_in_place, time::sleep};
-use tracing::{debug, error, instrument, warn};
+use tracing::{error, field::display, instrument, Span};
 
 #[async_trait]
 #[cfg_attr(test, mockall::automock(
@@ -78,7 +78,7 @@ impl Process {
     }
 
     /// Spawns a remote process.
-    #[instrument(level = "trace", err, ret)]
+    #[instrument(level = "trace", err)]
     pub fn spawn(path: &str) -> io::Result<Self> {
         #[cfg(test)]
         {
@@ -101,7 +101,7 @@ impl Process {
 
 /// Flushes the outbound buffer and waits for the remote process to exit.
 impl Drop for Process {
-    #[instrument(level = "trace")]
+    #[instrument(level = "trace", skip(self), fields(status))]
     fn drop(&mut self) {
         let result: Result<_, Anyhow> = block_in_place(|| {
             runtime::Handle::try_current()?.block_on(async {
@@ -114,36 +114,37 @@ impl Drop for Process {
 
                     _ = sleep(Self::TIMEOUT) => {
                         self.child.kill().await?;
-                        warn!("forcefully killed the remote process");
-                        bail!("the process still has not exited after {}s", Self::TIMEOUT.as_secs());
+                        bail!("forcefully killed the remote after {}s", Self::TIMEOUT.as_secs());
                     }
                 }
             })
         });
 
         match result.context("failed to gracefully terminate the remote process") {
-            Ok(s) => debug!("{}", s),
             Err(e) => error!("{:?}", e),
+            Ok(s) => {
+                Span::current().record("outcome", display(s));
+            }
         }
     }
 }
 
 #[async_trait]
 impl Io for Process {
-    #[instrument(level = "trace", err, ret)]
+    #[instrument(level = "trace", skip(self), ret, err)]
     async fn recv(&mut self) -> io::Result<String> {
         use io::ErrorKind::UnexpectedEof;
         Ok(self.reader.next_line().await?.ok_or(UnexpectedEof)?)
     }
 
-    #[instrument(level = "trace", err)]
+    #[instrument(level = "trace", skip(self), ret, err)]
     async fn send(&mut self, msg: &str) -> io::Result<()> {
         self.writer.write_all(msg.as_bytes()).await?;
         self.writer.write_u8(b'\n').await?;
         Ok(())
     }
 
-    #[instrument(level = "trace", err)]
+    #[instrument(level = "trace", skip(self), ret, err)]
     async fn flush(&mut self) -> io::Result<()> {
         self.writer.flush().await?;
         Ok(())

@@ -23,7 +23,7 @@ pub struct Search {
 
 #[async_trait]
 impl Execute for Search {
-    #[instrument(level = "trace", err, ret)]
+    #[instrument(level = "trace", skip(self), err)]
     async fn execute(self) -> Result<(), Anyhow> {
         let strategy = self.strategy.build()?;
         let pos = self.fen.try_into()?;

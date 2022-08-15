@@ -1,8 +1,8 @@
-use anyhow::{Context, Error as Anyhow};
+use anyhow::Error as Anyhow;
 use clap::{AppSettings::DeriveDisplayOrder, Parser};
 use std::{cmp::min, io::stderr};
 use tracing::Level;
-use tracing_subscriber::fmt::format::FmtSpan;
+use tracing_subscriber::{filter::Targets, fmt, prelude::*, registry, util::SubscriberInitExt};
 
 mod applet;
 
@@ -25,17 +25,16 @@ struct Chessboard {
 async fn main() -> Result<(), Anyhow> {
     let Chessboard { verbosity, applet } = Parser::parse();
 
-    let filter = format!("{},chessboard={}", min(Level::WARN, verbosity), verbosity);
+    let filter = Targets::new()
+        .with_target("chessboard", verbosity)
+        .with_default(min(Level::WARN, verbosity));
 
-    tracing_subscriber::fmt()
+    let writer = fmt::layer()
         .pretty()
-        .with_thread_ids(true)
-        .with_env_filter(filter)
-        .with_writer(stderr)
-        .with_span_events(FmtSpan::FULL)
-        .try_init()
-        .map_err(|e| Anyhow::msg(e.to_string()))
-        .context("failed to initialize the tracing infrastructure")?;
+        .with_thread_names(true)
+        .with_writer(stderr);
+
+    registry().with(filter).with(writer).init();
 
     applet.execute().await
 }

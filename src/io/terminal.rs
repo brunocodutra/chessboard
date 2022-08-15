@@ -30,7 +30,7 @@ impl Terminal {
 
 #[async_trait]
 impl Io for Terminal {
-    #[instrument(level = "trace", err, ret)]
+    #[instrument(level = "trace", skip(self), ret, err)]
     async fn recv(&mut self) -> io::Result<String> {
         let mut reader = self.reader.clone().lock_owned().await;
         match block_in_place(move || reader.readline("> ")) {
@@ -42,14 +42,14 @@ impl Io for Terminal {
         }
     }
 
-    #[instrument(level = "trace", err)]
+    #[instrument(level = "trace", skip(self), ret, err)]
     async fn send(&mut self, msg: &str) -> io::Result<()> {
         self.writer.write_all(msg.as_bytes()).await?;
         self.writer.write_u8(b'\n').await?;
         Ok(())
     }
 
-    #[instrument(level = "trace", err)]
+    #[instrument(level = "trace", skip(self), ret, err)]
     async fn flush(&mut self) -> io::Result<()> {
         self.writer.flush().await?;
         Ok(())
