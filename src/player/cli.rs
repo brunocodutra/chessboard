@@ -76,7 +76,7 @@ impl<T: Io + Send> Act for Cli<T> {
     type Error = CliError;
 
     /// Prompt the user for an action.
-    #[instrument(level = "trace", err, ret, skip(self))]
+    #[instrument(level = "debug", skip(self, pos), ret(Display), err, fields(%pos))]
     async fn act(&mut self, pos: &Position) -> Result<Action, CliError> {
         self.io.send(&Board(pos).to_string()).await?;
 

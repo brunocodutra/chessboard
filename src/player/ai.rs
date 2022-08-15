@@ -15,7 +15,7 @@ pub struct Ai<S: Search> {
 impl<S: Search + Send> Act for Ai<S> {
     type Error = Infallible;
 
-    #[instrument(level = "trace", err, ret, skip(self))]
+    #[instrument(level = "debug", skip(self, pos), ret(Display), err, fields(%pos))]
     async fn act(&mut self, pos: &Position) -> Result<Action, Self::Error> {
         match block_in_place(|| self.strategy.search(pos).next()) {
             Some(t) => Ok(Action::Move(t.best())),

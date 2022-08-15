@@ -28,7 +28,7 @@ pub struct Play {
 
 #[async_trait]
 impl Execute for Play {
-    #[instrument(level = "trace", err, ret)]
+    #[instrument(level = "trace", skip(self), err)]
     async fn execute(self) -> Result<(), Anyhow> {
         let players = [self.challenger, self.defender];
         let (mut wins, mut losses, mut draws) = (0f64, 0f64, 0f64);

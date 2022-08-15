@@ -5,7 +5,7 @@ use derive_more::{DebugCustom, Display, Error, From};
 use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, future::Future, io, pin::Pin, str::FromStr};
 use tokio::{runtime, task::block_in_place};
-use tracing::{debug, instrument, warn};
+use tracing::{debug, error, instrument};
 use vampirc_uci::{self as uci, UciFen, UciMessage, UciSearchControl, UciTimeControl};
 
 /// Configuration for [`Uci`].
@@ -119,7 +119,7 @@ impl<T: Io> Drop for Uci<T> {
         });
 
         if let Err(e) = result.context("failed to gracefully shutdown the uci engine") {
-            warn!("{:?}", e);
+            error!("{:?}", e);
         }
     }
 }
@@ -129,7 +129,7 @@ impl<T: Io + Send> Act for Uci<T> {
     type Error = UciError;
 
     /// Request an action from the CLI server.
-    #[instrument(level = "trace", err, ret, skip(self))]
+    #[instrument(level = "debug", skip(self, pos), ret(Display), err, fields(%pos))]
     async fn act(&mut self, pos: &Position) -> Result<Action, Self::Error> {
         let position = UciMessage::Position {
             startpos: false,
@@ -161,7 +161,7 @@ impl<T: Io + Send> Act for Uci<T> {
     }
 }
 
-#[instrument(level = "trace", err, ret, skip(io))]
+#[instrument(level = "trace", skip(io), err)]
 async fn recv_uci_message<T: Io>(io: &mut T) -> Result<UciMessage, UciError> {
     loop {
         match uci::parse_one(io.recv().await?.trim()) {
@@ -170,10 +170,7 @@ async fn recv_uci_message<T: Io>(io: &mut T) -> Result<UciMessage, UciError> {
                 debug!("{:?}", error.context("failed to parse UCI message"));
             }
 
-            msg => {
-                debug!(received = %msg);
-                return Ok(msg);
-            }
+            msg => return Ok(msg),
         }
     }
 }

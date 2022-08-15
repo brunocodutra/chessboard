@@ -2,7 +2,7 @@ use crate::{Act, Action, Build, Color, Outcome, Pgn, Position, San};
 use anyhow::Context;
 use derive_more::{Constructor, Display, Error};
 use std::fmt::Display;
-use tracing::{debug, instrument, warn};
+use tracing::{field::display, instrument, warn, Span};
 
 /// The reason why the [`Game`] was interrupted.
 #[derive(Debug, Display, Clone, Eq, PartialEq, Error)]
@@ -32,7 +32,8 @@ where
     B::Output: Act<Error = B::Error>,
 {
     /// Play a game of chess from the given starting [`Position`].
-    #[instrument(level = "trace", err, ret, skip(self))]
+    #[instrument(level = "debug", skip(self), err,
+        fields(white = %self.white, black = %self.black, %pos, outcome))]
     pub async fn play(self, mut pos: Position) -> Result<Pgn, GameInterrupted<W::Error, B::Error>> {
         use GameInterrupted::*;
 
@@ -46,7 +47,7 @@ where
 
         let outcome = loop {
             if let Some(o) = is_game_over(&pos) {
-                debug!(outcome = %o);
+                Span::current().record("outcome", display(o));
                 break o;
             }
 
@@ -54,8 +55,6 @@ where
                 Color::White => white.act(&pos).await.map_err(White)?,
                 Color::Black => black.act(&pos).await.map_err(Black)?,
             };
-
-            debug!(position = %pos, %action);
 
             match action {
                 Action::Move(m) => match pos.make(m).context("illegal player action") {
