@@ -1,6 +1,9 @@
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
 
+#[cfg(test)]
+use proptest::prelude::*;
+
 /// Configuration for the limits of search engines.
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Deserialize, Serialize)]
 #[cfg_attr(test, derive(test_strategy::Arbitrary))]
@@ -12,6 +15,7 @@ pub struct SearchLimits {
     pub depth: u8,
 
     /// The maximum amount of time to spend searching.
+    #[cfg_attr(test, strategy(Just(Duration::MAX)))]
     #[serde(with = "humantime_serde")]
     pub time: Duration,
 }

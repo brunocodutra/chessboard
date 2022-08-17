@@ -7,6 +7,9 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::{cmp::max_by_key, str::FromStr};
 use tracing::debug;
 
+#[cfg(test)]
+use proptest::prelude::*;
+
 #[derive(Debug, Display, Clone, Eq, PartialEq, Ord, PartialOrd, Error)]
 #[display(fmt = "time is up!")]
 pub struct Timeout;
@@ -59,7 +62,11 @@ pub struct Minimax<E: Eval + Send + Sync> {
     engine: E,
     #[cfg_attr(test, any((Some(0), Some(Self::MAX_DRAFT as u8))))]
     limits: SearchLimits,
+    #[cfg_attr(test, strategy(Just(SearchMetrics::default())))]
     metrics: SearchMetrics,
+    #[cfg_attr(test, strategy(any::<MinimaxConfig>()
+        .prop_map(|c| TranspositionTable::new(c.table_size)))
+    )]
     tt: TranspositionTable,
 }
 
@@ -440,6 +447,12 @@ mod tests {
 
     #[proptest]
     fn search_finds_the_principal_variation(mut mm: Minimax<Engine>, pos: Position) {
+        assert_eq!(mm.search(&pos).next(), mm.tt.get(pos.zobrist()));
+    }
+
+    #[proptest]
+    fn search_avoids_tt_collisions(mut mm: Minimax<Engine>, pos: Position, t: Transposition) {
+        mm.tt.set(pos.zobrist(), t);
         assert_eq!(mm.search(&pos).next(), mm.tt.get(pos.zobrist()));
     }
 
