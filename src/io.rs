@@ -2,10 +2,8 @@ use async_trait::async_trait;
 use std::io;
 
 mod process;
-mod terminal;
 
 pub use process::*;
-pub use terminal::*;
 
 /// Trait for types that communicate via message-passing.
 #[cfg_attr(test, mockall::automock)]
