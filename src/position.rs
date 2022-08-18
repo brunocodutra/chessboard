@@ -1,4 +1,4 @@
-use crate::{Bits, Color, Fen, IllegalMove, Move, Piece, Role, San, Square};
+use crate::{Bits, Color, Fen, Move, Piece, Role, San, Square};
 use bitvec::{order::Lsb0, view::BitView};
 use derive_more::{DebugCustom, Display, Error};
 use shakmaty as sm;
@@ -8,6 +8,12 @@ use std::{convert::TryFrom, num::NonZeroU32, ops::Index};
 use proptest::{prelude::*, sample::Selector};
 
 pub type Zobrist = Bits<u64, 64>;
+
+/// Represents an illegal [`Move`] in a given [`Position`].
+#[derive(Debug, Display, Clone, Eq, PartialEq, Error)]
+#[cfg_attr(test, derive(test_strategy::Arbitrary))]
+#[display(fmt = "move `{}` is illegal in position `{}`", _0, _1)]
+pub struct IllegalMove(pub Move, pub Position);
 
 /// The current position on the chess board.
 ///
