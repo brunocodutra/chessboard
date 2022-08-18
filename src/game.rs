@@ -97,8 +97,8 @@ fn is_game_over(pos: &Position) -> Option<Outcome> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{MockAct, MockPlayerBuilder, Move};
-    use proptest::{prop_assume, sample::Selector};
+    use crate::{MockAct, MockPlayerBuilder};
+    use proptest::sample::Selector;
     use test_strategy::proptest;
     use tokio::runtime;
 
@@ -138,29 +138,33 @@ mod tests {
     }
 
     #[proptest]
-    fn game_returns_pgn(
-        #[by_ref]
-        #[filter(is_game_over(#pos).is_none())]
-        pos: Position,
-        selector: Selector,
-    ) {
+    fn game_returns_pgn(pos: Position, selector: Selector) {
         let rt = runtime::Builder::new_multi_thread().build()?;
 
-        let (m, next) = selector.select(pos.moves());
-        prop_assume!(is_game_over(&next).is_none());
+        let mut next = pos.clone();
+        let mut sans = Vec::new();
+        let mut moves = Vec::new();
 
-        let san = pos.clone().make(m)?;
+        let o = loop {
+            match is_game_over(&next) {
+                Some(o) => break o,
+                _ => {
+                    let (m, _) = selector.select(next.moves());
+                    moves.push(m);
+                    sans.push(next.make(m)?);
+                }
+            }
+        };
+
+        moves.reverse();
 
         let mut w = MockAct::new();
         let mut b = MockAct::new();
 
-        let (p, q) = match pos.turn() {
-            Color::White => (&mut w, &mut b),
-            Color::Black => (&mut b, &mut w),
-        };
+        let act = move |_: &Position| Ok(Action::Move(moves.pop().unwrap()));
 
-        p.expect_act().return_const(Ok(Action::Move(m)));
-        q.expect_act().return_const(Ok(Action::Resign));
+        w.expect_act().returning(act.clone());
+        b.expect_act().returning(act);
 
         let mut wb = MockPlayerBuilder::new();
         wb.expect_build().once().return_once(move || Ok(w));
@@ -178,18 +182,17 @@ mod tests {
             Ok(Pgn {
                 white: wc,
                 black: bc,
-                outcome: Outcome::Resignation(next.turn()),
-                moves: vec![san, San::null()]
+                outcome: o,
+                moves: sans
             })
         );
     }
 
     #[proptest]
-    fn game_ignores_illegal_player_actions(
+    fn players_can_resign_the_game(
         #[by_ref]
         #[filter(is_game_over(#pos).is_none())]
         pos: Position,
-        #[filter(#pos.clone().make(#m).is_err())] m: Move,
     ) {
         let rt = runtime::Builder::new_multi_thread().build()?;
 
@@ -203,9 +206,7 @@ mod tests {
             Color::Black => &mut b,
         };
 
-        p.expect_act()
-            .return_const(Ok(Action::Move(m)))
-            .return_const(Ok(Action::Resign));
+        p.expect_act().return_const(Ok(Action::Resign));
 
         let mut wb = MockPlayerBuilder::new();
         wb.expect_build().once().return_once(move || Ok(w));
