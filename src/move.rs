@@ -1,5 +1,4 @@
-use crate::{Binary, Bits, Register};
-use crate::{ParsePromotionError, ParseSquareError, Position, Promotion, Square};
+use crate::{Binary, Bits, ParsePromotionError, ParseSquareError, Promotion, Register, Square};
 use derive_more::{Display, Error, From};
 use shakmaty as sm;
 use std::str::FromStr;
@@ -28,12 +27,6 @@ impl Move {
         self.2
     }
 }
-
-/// Represents an illegal [`Move`] in a given [`Position`].
-#[derive(Debug, Display, Clone, Eq, PartialEq, Error)]
-#[cfg_attr(test, derive(test_strategy::Arbitrary))]
-#[display(fmt = "move `{}` is illegal in position `{}`", _0, _1)]
-pub struct IllegalMove(pub Move, pub Position);
 
 /// The reason why decoding [`Move`] from binary failed.
 #[derive(Debug, Display, Clone, Eq, PartialEq, Error)]
