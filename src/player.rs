@@ -1,4 +1,4 @@
-use crate::io::{Process, Terminal};
+use crate::io::Process;
 use crate::{Act, Action, Build, Position, Strategy, StrategyBuilder};
 use async_trait::async_trait;
 use derive_more::{DebugCustom, Display, Error, From};
@@ -6,18 +6,15 @@ use serde::{Deserialize, Serialize};
 use std::str::FromStr;
 
 mod ai;
-mod cli;
 mod uci;
 
 pub use ai::*;
-pub use cli::*;
 pub use uci::*;
 
 /// The reason why [`Player`] failed to perform an action.
 #[derive(Debug, Display, Error, From)]
 pub enum PlayerError {
     Ai(<Ai<Strategy> as Act>::Error),
-    Cli(<Cli<Terminal> as Act>::Error),
     Uci(<Uci<Process> as Act>::Error),
 }
 
@@ -27,8 +24,6 @@ pub enum PlayerError {
 pub enum Player {
     #[debug(fmt = "{:?}", _0)]
     Ai(Ai<Strategy>),
-    #[debug(fmt = "{:?}", _0)]
-    Cli(Cli<Terminal>),
     #[debug(fmt = "{:?}", _0)]
     Uci(Uci<Process>),
 }
@@ -40,7 +35,6 @@ impl Act for Player {
     async fn act(&mut self, pos: &Position) -> Result<Action, Self::Error> {
         match self {
             Player::Ai(p) => Ok(p.act(pos).await?),
-            Player::Cli(p) => Ok(p.act(pos).await?),
             Player::Uci(p) => Ok(p.act(pos).await?),
         }
     }
@@ -55,8 +49,6 @@ pub enum PlayerBuilder {
     Ai(StrategyBuilder),
     #[display(fmt = "{}", "ron::ser::to_string(self).unwrap()")]
     Uci(String, #[serde(default)] UciConfig),
-    #[display(fmt = "{}", "ron::ser::to_string(self).unwrap()")]
-    Cli(),
 }
 
 /// The reason why parsing [`PlayerBuilder`] failed.
@@ -86,11 +78,6 @@ impl Build for PlayerBuilder {
             PlayerBuilder::Uci(path, cfg) => {
                 let io = Process::spawn(&path).map_err(UciError::from)?;
                 Ok(Uci::with_config(io, cfg).into())
-            }
-
-            PlayerBuilder::Cli() => {
-                let io = Terminal::open().map_err(CliError::from)?;
-                Ok(Cli::new(io).into())
             }
         }
     }
@@ -146,11 +133,6 @@ mod tests {
     }
 
     #[proptest]
-    fn cli_builder_is_deserializable() {
-        assert_eq!("cli()".parse(), Ok(PlayerBuilder::Cli()));
-    }
-
-    #[proptest]
     fn ai_can_be_configured_at_runtime(s: StrategyBuilder) {
         assert!(matches!(PlayerBuilder::Ai(s).build(), Ok(Player::Ai(_))));
     }
@@ -161,10 +143,5 @@ mod tests {
             PlayerBuilder::Uci(s, c).build(),
             Ok(Player::Uci(_))
         ));
-    }
-
-    #[proptest]
-    fn cli_can_be_configured_at_runtime() {
-        assert!(matches!(PlayerBuilder::Cli().build(), Ok(Player::Cli(_))));
     }
 }
