@@ -113,9 +113,9 @@ impl<T: Io + Send> Play for Uci<T> {
         };
 
         let go = UciMessage::Go {
-            search_control: Some(UciSearchControl::depth(self.limits.depth)),
+            search_control: Some(UciSearchControl::depth(self.limits.depth())),
             time_control: Some(UciTimeControl::MoveTime(
-                uci::Duration::from_std(self.limits.time)
+                uci::Duration::from_std(self.limits.time())
                     .unwrap_or_else(|_| uci::Duration::max_value()),
             )),
         };
@@ -463,9 +463,9 @@ mod tests {
             .returning(|_| Ok(()));
 
         let go = UciMessage::Go {
-            search_control: Some(UciSearchControl::depth(l.depth)),
+            search_control: Some(UciSearchControl::depth(l.depth())),
             time_control: Some(UciTimeControl::MoveTime(
-                uci::Duration::from_std(l.time).unwrap_or_else(|_| uci::Duration::max_value()),
+                uci::Duration::from_std(l.time()).unwrap_or_else(|_| uci::Duration::max_value()),
             )),
         };
 

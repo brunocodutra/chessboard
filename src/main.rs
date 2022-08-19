@@ -12,7 +12,7 @@ use applet::{Applet, Execute};
 #[clap(author, version, about, name = "Chessboard", setting = DeriveDisplayOrder)]
 struct Chessboard {
     /// Verbosity level.
-    #[clap(short, long, value_name = "level", parse(try_from_str))]
+    #[clap(short, long, parse(try_from_str))]
     #[cfg_attr(not(debug_assertions), clap(default_value = "info"))]
     #[cfg_attr(debug_assertions, clap(default_value = "debug"))]
     verbosity: Level,

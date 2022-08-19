@@ -16,7 +16,7 @@ use tracing::{info, instrument};
 )]
 pub struct Play {
     /// How many games to play.
-    #[clap(short = 'n', long, value_name = "number", default_value = "1")]
+    #[clap(short = 'n', long, default_value = "1")]
     games: NonZeroUsize,
 
     /// The challenging player starts with the white pieces.

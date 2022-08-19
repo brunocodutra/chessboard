@@ -1,11 +1,10 @@
-use std::time::Duration;
-
 use super::Execute;
 use anyhow::{Context, Error as Anyhow};
 use async_trait::async_trait;
-use chessboard::{Build, Color, Fen, Search as _, SearchLimits, StrategyBuilder};
+use chessboard::Search as _;
+use chessboard::{Build, Color, Fen, Position, SearchLimits, Strategy, StrategyBuilder};
 use clap::{AppSettings::DeriveDisplayOrder, Parser};
-
+use tokio::task::block_in_place;
 use tracing::{info, instrument};
 
 /// Searches for the principal variation in a position.
@@ -16,10 +15,11 @@ use tracing::{info, instrument};
     setting = DeriveDisplayOrder
 )]
 pub struct Search {
-    #[clap(short, long, value_name = "depth", default_value = "255")]
-    depth: u8,
+    /// How deep/long to search.
+    #[clap(short, long, default_value = "none")]
+    limits: SearchLimits,
 
-    /// The search algorithm to use.
+    /// The search strategy.
     strategy: StrategyBuilder,
 
     /// The position to search in FEN notation.
@@ -33,27 +33,33 @@ impl Execute for Search {
         let mut strategy = self.strategy.build()?;
         let pos = self.fen.try_into()?;
 
-        for depth in 0..=self.depth {
-            let limits = SearchLimits {
-                depth,
-                time: Duration::MAX,
-            };
-
-            let pv: Vec<_> = strategy.search(&pos, limits).collect();
-
-            let head = *pv.first().context("no principal variation found")?;
-            let moves: Vec<_> = pv.into_iter().map(|t| t.best().to_string()).collect();
-
-            info!(
-                depth = head.draft(),
-                score = match pos.turn() {
-                    Color::White => head.score(),
-                    Color::Black => -head.score(),
-                },
-                pv = %moves.join(" ")
-            );
+        match self.limits {
+            l @ SearchLimits::Time(_) => block_in_place(|| search(&mut strategy, &pos, l))?,
+            l => {
+                for d in 0..=l.depth() {
+                    block_in_place(|| search(&mut strategy, &pos, SearchLimits::Depth(d)))?
+                }
+            }
         }
 
         Ok(())
     }
+}
+
+fn search(strategy: &mut Strategy, pos: &Position, limits: SearchLimits) -> Result<(), Anyhow> {
+    let pv: Vec<_> = strategy.search(pos, limits).collect();
+
+    let head = *pv.first().context("no principal variation found")?;
+    let moves: Vec<_> = pv.into_iter().map(|t| t.best().to_string()).collect();
+
+    info!(
+        depth = head.draft(),
+        score = match pos.turn() {
+            Color::White => head.score(),
+            Color::Black => -head.score(),
+        },
+        pv = %moves.join(" ")
+    );
+
+    Ok(())
 }
