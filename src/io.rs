@@ -1,8 +1,10 @@
 use async_trait::async_trait;
 use std::io;
 
+mod pipe;
 mod process;
 
+pub use pipe::*;
 pub use process::*;
 
 /// Trait for types that communicate via message-passing.
