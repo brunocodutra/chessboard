@@ -1,4 +1,4 @@
-use crate::{Act, Action, Io, Position, SearchLimits};
+use crate::{Io, Move, Play, Position, SearchLimits};
 use anyhow::{Context, Error as Anyhow};
 use async_trait::async_trait;
 use derive_more::{DebugCustom, Display, Error, From};
@@ -59,7 +59,7 @@ impl<T, E> Lazy<T, E> {
     }
 }
 
-/// The reason why an [`Action`] could not be received from the UCI server.
+/// The reason why an [`Move`] could not be received from the UCI server.
 #[derive(Debug, Display, Error, From)]
 #[cfg_attr(test, derive(test_strategy::Arbitrary))]
 #[display(fmt = "the UCI server encountered an error")]
@@ -125,12 +125,12 @@ impl<T: Io> Drop for Uci<T> {
 }
 
 #[async_trait]
-impl<T: Io + Send> Act for Uci<T> {
+impl<T: Io + Send> Play for Uci<T> {
     type Error = UciError;
 
-    /// Request an action from the CLI server.
+    /// Request a move from the UCI server.
     #[instrument(level = "debug", skip(self, pos), ret(Display), err, fields(%pos))]
-    async fn act(&mut self, pos: &Position) -> Result<Action, Self::Error> {
+    async fn play(&mut self, pos: &Position) -> Result<Move, Self::Error> {
         let position = UciMessage::Position {
             startpos: false,
             fen: Some(UciFen(pos.to_string())),
@@ -150,14 +150,12 @@ impl<T: Io + Send> Act for Uci<T> {
         io.send(&go.to_string()).await?;
         io.flush().await?;
 
-        let m = loop {
+        loop {
             match recv_uci_message(io).await? {
-                UciMessage::BestMove { best_move: m, .. } => break m.into(),
+                UciMessage::BestMove { best_move: m, .. } => break Ok(m.into()),
                 _ => continue,
             }
-        };
-
-        Ok(Action::Move(m))
+        }
     }
 }
 
@@ -298,7 +296,7 @@ mod tests {
             .returning(move || Ok(UciMessage::best_move(m.into()).to_string()));
 
         let mut uci = Uci::with_config(io, c);
-        assert!(rt.block_on(uci.act(&pos)).is_ok());
+        assert!(rt.block_on(uci.play(&pos)).is_ok());
     }
 
     #[proptest]
@@ -330,7 +328,7 @@ mod tests {
             .returning(move || Ok(UciMessage::best_move(m.into()).to_string()));
 
         let mut uci = Uci::new(io);
-        assert!(rt.block_on(uci.act(&pos)).is_ok());
+        assert!(rt.block_on(uci.play(&pos)).is_ok());
     }
 
     #[proptest]
@@ -365,7 +363,7 @@ mod tests {
             .returning(move || Ok(UciMessage::best_move(m.into()).to_string()));
 
         let mut uci = Uci::new(io);
-        assert!(rt.block_on(uci.act(&pos)).is_ok());
+        assert!(rt.block_on(uci.play(&pos)).is_ok());
     }
 
     #[proptest]
@@ -381,7 +379,7 @@ mod tests {
 
         let mut uci = Uci::new(io);
         assert_eq!(
-            rt.block_on(uci.act(&pos)).map_err(|UciError(e)| e.kind()),
+            rt.block_on(uci.play(&pos)).map_err(|UciError(e)| e.kind()),
             Err(kind)
         );
     }
@@ -526,7 +524,7 @@ mod tests {
             limits: l,
         };
 
-        assert_eq!(rt.block_on(uci.act(&pos))?, Action::Move(m));
+        assert_eq!(rt.block_on(uci.play(&pos))?, m);
     }
 
     #[proptest]
@@ -555,7 +553,7 @@ mod tests {
             limits: l,
         };
 
-        assert_eq!(rt.block_on(uci.act(&pos))?, Action::Move(m));
+        assert_eq!(rt.block_on(uci.play(&pos))?, m);
     }
 
     #[proptest]
@@ -587,7 +585,7 @@ mod tests {
             limits: l,
         };
 
-        assert_eq!(rt.block_on(uci.act(&pos))?, Action::Move(m));
+        assert_eq!(rt.block_on(uci.play(&pos))?, m);
     }
 
     #[proptest]
@@ -607,7 +605,7 @@ mod tests {
         };
 
         assert_eq!(
-            rt.block_on(uci.act(&pos)).map_err(|UciError(e)| e.kind()),
+            rt.block_on(uci.play(&pos)).map_err(|UciError(e)| e.kind()),
             Err(kind)
         );
     }
@@ -629,7 +627,7 @@ mod tests {
         };
 
         assert_eq!(
-            rt.block_on(uci.act(&pos)).map_err(|UciError(e)| e.kind()),
+            rt.block_on(uci.play(&pos)).map_err(|UciError(e)| e.kind()),
             Err(kind)
         );
     }
@@ -651,7 +649,7 @@ mod tests {
         };
 
         assert_eq!(
-            rt.block_on(uci.act(&pos)).map_err(|UciError(e)| e.kind()),
+            rt.block_on(uci.play(&pos)).map_err(|UciError(e)| e.kind()),
             Err(kind)
         );
     }

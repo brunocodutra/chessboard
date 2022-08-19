@@ -1,4 +1,4 @@
-use crate::{Act, Action, Position, Search};
+use crate::{Move, Play, Position, Search};
 use async_trait::async_trait;
 use derive_more::{Constructor, From};
 use std::convert::Infallible;
@@ -12,15 +12,13 @@ pub struct Ai<S: Search> {
 }
 
 #[async_trait]
-impl<S: Search + Send> Act for Ai<S> {
+impl<S: Search + Send> Play for Ai<S> {
     type Error = Infallible;
 
     #[instrument(level = "debug", skip(self, pos), ret(Display), err, fields(%pos))]
-    async fn act(&mut self, pos: &Position) -> Result<Action, Self::Error> {
-        match block_in_place(|| self.strategy.search(pos).next()) {
-            Some(t) => Ok(Action::Move(t.best())),
-            None => Ok(Action::Resign),
-        }
+    async fn play(&mut self, pos: &Position) -> Result<Move, Self::Error> {
+        let best = block_in_place(|| Some(self.strategy.search(pos).next()?.best()));
+        Ok(best.expect("expected non-terminal position"))
     }
 }
 
@@ -41,19 +39,18 @@ mod tests {
 
         let best = t.unwrap().best();
         let mut ai = Ai::new(s);
-        assert_eq!(rt.block_on(ai.act(&pos))?, Action::Move(best));
+        assert_eq!(rt.block_on(ai.play(&pos))?, best);
     }
 
     #[proptest]
-    fn resigns_if_there_are_no_moves(
+    #[should_panic]
+    fn panics_if_there_are_no_moves(
         s: Strategy,
         #[by_ref]
         #[filter(#pos.moves().len() == 0)]
         pos: Position,
     ) {
         let rt = runtime::Builder::new_multi_thread().build()?;
-
-        let mut ai = Ai::new(s);
-        assert_eq!(rt.block_on(ai.act(&pos))?, Action::Resign);
+        rt.block_on(Ai::new(s).play(&pos))?;
     }
 }

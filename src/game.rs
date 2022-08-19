@@ -1,5 +1,4 @@
-use crate::{Act, Action, Build, Color, Outcome, Pgn, Position, San};
-use anyhow::Context;
+use crate::{Build, Color, Outcome, Pgn, Play, Position};
 use derive_more::{Constructor, Display, Error};
 use std::fmt::Display;
 use tracing::{field::display, instrument, warn, Span};
@@ -28,8 +27,8 @@ impl<W, B> Game<W, B>
 where
     W: Build + Display,
     B: Build + Display,
-    W::Output: Act<Error = W::Error>,
-    B::Output: Act<Error = B::Error>,
+    W::Output: Play<Error = W::Error>,
+    B::Output: Play<Error = B::Error>,
 {
     /// Play a game of chess from the given starting [`Position`].
     #[instrument(level = "debug", skip(self), err,
@@ -51,23 +50,14 @@ where
                 break o;
             }
 
-            let action = match pos.turn() {
-                Color::White => white.act(&pos).await.map_err(White)?,
-                Color::Black => black.act(&pos).await.map_err(Black)?,
+            let m = match pos.turn() {
+                Color::White => white.play(&pos).await.map_err(White)?,
+                Color::Black => black.play(&pos).await.map_err(Black)?,
             };
 
-            match action {
-                Action::Move(m) => match pos.make(m).context("illegal player action") {
-                    Err(e) => warn!("{:?}", e),
-                    Ok(san) => {
-                        moves.push(san);
-                    }
-                },
-
-                Action::Resign => {
-                    moves.push(San::null());
-                    break Outcome::Resignation(pos.turn());
-                }
+            match pos.make(m) {
+                Err(e) => warn!("{:?}", e),
+                Ok(san) => moves.push(san),
             }
         };
 
@@ -97,7 +87,7 @@ fn is_game_over(pos: &Position) -> Option<Outcome> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{MockAct, MockPlayerBuilder};
+    use crate::{MockPlay, MockPlayerBuilder};
     use proptest::sample::Selector;
     use test_strategy::proptest;
     use tokio::runtime;
@@ -110,8 +100,8 @@ mod tests {
     ) {
         let rt = runtime::Builder::new_multi_thread().build()?;
 
-        let w = MockAct::new();
-        let b = MockAct::new();
+        let w = MockPlay::new();
+        let b = MockPlay::new();
 
         let mut wb = MockPlayerBuilder::new();
         wb.expect_build().once().return_once(move || Ok(w));
@@ -158,13 +148,13 @@ mod tests {
 
         moves.reverse();
 
-        let mut w = MockAct::new();
-        let mut b = MockAct::new();
+        let mut w = MockPlay::new();
+        let mut b = MockPlay::new();
 
-        let act = move |_: &Position| Ok(Action::Move(moves.pop().unwrap()));
+        let act = move |_: &Position| Ok(moves.pop().unwrap());
 
-        w.expect_act().returning(act.clone());
-        b.expect_act().returning(act);
+        w.expect_play().returning(act.clone());
+        b.expect_play().returning(act);
 
         let mut wb = MockPlayerBuilder::new();
         wb.expect_build().once().return_once(move || Ok(w));
@@ -184,48 +174,6 @@ mod tests {
                 black: bc,
                 outcome: o,
                 moves: sans
-            })
-        );
-    }
-
-    #[proptest]
-    fn players_can_resign_the_game(
-        #[by_ref]
-        #[filter(is_game_over(#pos).is_none())]
-        pos: Position,
-    ) {
-        let rt = runtime::Builder::new_multi_thread().build()?;
-
-        let turn = pos.turn();
-
-        let mut w = MockAct::new();
-        let mut b = MockAct::new();
-
-        let p = match turn {
-            Color::White => &mut w,
-            Color::Black => &mut b,
-        };
-
-        p.expect_act().return_const(Ok(Action::Resign));
-
-        let mut wb = MockPlayerBuilder::new();
-        wb.expect_build().once().return_once(move || Ok(w));
-
-        let mut bb = MockPlayerBuilder::new();
-        bb.expect_build().once().return_once(move || Ok(b));
-
-        let wc = wb.to_string();
-        let bc = bb.to_string();
-
-        let g = Game::new(wb, bb);
-
-        assert_eq!(
-            rt.block_on(g.play(pos)),
-            Ok(Pgn {
-                white: wc,
-                black: bc,
-                outcome: Outcome::Resignation(turn),
-                moves: vec![San::null()]
             })
         );
     }
@@ -257,15 +205,15 @@ mod tests {
 
         let turn = pos.turn();
 
-        let mut w = MockAct::new();
-        let mut b = MockAct::new();
+        let mut w = MockPlay::new();
+        let mut b = MockPlay::new();
 
         let p = match turn {
             Color::White => &mut w,
             Color::Black => &mut b,
         };
 
-        p.expect_act().return_const(Err(e.clone()));
+        p.expect_play().return_const(Err(e.clone()));
 
         let mut wb = MockPlayerBuilder::new();
         wb.expect_build().once().return_once(move || Ok(w));

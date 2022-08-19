@@ -23,7 +23,6 @@ pub struct San(
 );
 
 impl San {
-    /// The null move, used to indicate the player's resignation.
     pub fn null() -> Self {
         San(sm::san::San::Null)
     }

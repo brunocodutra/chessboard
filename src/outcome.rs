@@ -5,9 +5,6 @@ use derive_more::Display;
 #[derive(Debug, Display, Copy, Clone, Eq, PartialEq, Hash)]
 #[cfg_attr(test, derive(test_strategy::Arbitrary))]
 pub enum Outcome {
-    #[display(fmt = "resignation by the {} player", _0)]
-    Resignation(Color),
-
     #[display(fmt = "checkmate by the {} player", _0)]
     Checkmate(Color),
 
@@ -32,14 +29,13 @@ impl Outcome {
     /// Whether the outcome is a decisive and one of the sides has won.
     pub fn is_decisive(&self) -> bool {
         use Outcome::*;
-        matches!(self, Resignation(_) | Checkmate(_))
+        matches!(self, Checkmate(_))
     }
 
     /// The winning side, if the outcome is [decisive](`Self::is_decisive`).
     pub fn winner(&self) -> Option<Color> {
         match *self {
             Outcome::Checkmate(c) => Some(c),
-            Outcome::Resignation(c) => Some(!c),
             _ => None,
         }
     }
@@ -68,10 +64,5 @@ mod tests {
     #[proptest]
     fn side_that_checkmates_wins(c: Color) {
         assert_eq!(Outcome::Checkmate(c).winner(), Some(c));
-    }
-
-    #[proptest]
-    fn side_that_resigns_loses(c: Color) {
-        assert_eq!(Outcome::Resignation(c).winner(), Some(!c));
     }
 }

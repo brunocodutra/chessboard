@@ -33,8 +33,6 @@ impl Display for Pgn {
             Outcome::Stalemate => write!(f, "{{stalemate}} 1/2-1/2"),
             Outcome::Checkmate(Color::Black) => write!(f, "0-1"),
             Outcome::Checkmate(Color::White) => write!(f, "1-0"),
-            Outcome::Resignation(Color::White) => write!(f, "{{white resigns}} 0-1"),
-            Outcome::Resignation(Color::Black) => write!(f, "{{black resigns}} 1-0"),
         }
     }
 }
