@@ -180,6 +180,11 @@ impl TranspositionTable {
         self.cache.len()
     }
 
+    /// Clears the table.
+    pub fn clear(&mut self) {
+        self.cache.clear()
+    }
+
     fn signature_of(&self, key: Zobrist) -> Signature {
         key[(Zobrist::WIDTH - Signature::WIDTH)..].into()
     }
@@ -212,7 +217,7 @@ impl TranspositionTable {
     }
 
     /// Clears the [`Transposition`] from the slot associated with `key`.
-    pub fn clear(&self, key: Zobrist) {
+    pub fn unset(&self, key: Zobrist) {
         self.cache.store(self.index_of(key), None.encode())
     }
 
@@ -387,8 +392,14 @@ mod tests {
     }
 
     #[proptest]
-    fn clear_erases_transposition(tt: TranspositionTable, k: Zobrist) {
-        tt.clear(k);
+    fn unset_erases_transposition(tt: TranspositionTable, k: Zobrist) {
+        tt.unset(k);
+        assert_eq!(tt.get(k), None);
+    }
+
+    #[proptest]
+    fn clear_resets_cache(mut tt: TranspositionTable, k: Zobrist) {
+        tt.clear();
         assert_eq!(tt.get(k), None);
     }
 }

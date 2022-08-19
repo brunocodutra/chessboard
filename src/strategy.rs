@@ -33,6 +33,12 @@ impl Search for Strategy {
             Strategy::Minimax(s) => s.search(pos),
         }
     }
+
+    fn clear(&mut self) {
+        match self {
+            Strategy::Minimax(s) => s.clear(),
+        }
+    }
 }
 
 /// Runtime configuration for [`Search`].

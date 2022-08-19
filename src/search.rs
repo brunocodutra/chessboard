@@ -7,4 +7,7 @@ pub trait Search {
 
     /// Searches for the strongest [variation][`Pv`].
     fn search(&mut self, pos: &Position) -> Pv<'_>;
+
+    /// Clear the transposition table.
+    fn clear(&mut self);
 }
