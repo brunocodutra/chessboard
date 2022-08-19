@@ -14,7 +14,7 @@ pub use pst::*;
 pub use random::*;
 
 /// A generic chess engine.
-#[derive(DebugCustom, From)]
+#[derive(DebugCustom, Clone, From)]
 #[cfg_attr(test, derive(test_strategy::Arbitrary))]
 pub enum Engine {
     #[debug(fmt = "{:?}", _0)]

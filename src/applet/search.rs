@@ -1,7 +1,9 @@
+use std::time::Duration;
+
 use super::Execute;
 use anyhow::{Context, Error as Anyhow};
 use async_trait::async_trait;
-use chessboard::{Build, Color, Fen, Search as _, StrategyBuilder};
+use chessboard::{Build, Color, Fen, Search as _, SearchLimits, StrategyBuilder};
 use clap::{AppSettings::DeriveDisplayOrder, Parser};
 
 use tracing::{info, instrument};
@@ -14,6 +16,9 @@ use tracing::{info, instrument};
     setting = DeriveDisplayOrder
 )]
 pub struct Search {
+    #[clap(short, long, value_name = "depth", default_value = "255")]
+    depth: u8,
+
     /// The search algorithm to use.
     strategy: StrategyBuilder,
 
@@ -27,24 +32,27 @@ impl Execute for Search {
     async fn execute(self) -> Result<(), Anyhow> {
         let mut strategy = self.strategy.build()?;
         let pos = self.fen.try_into()?;
-        let pv: Vec<_> = strategy.search(&pos).collect();
 
-        let head = pv
-            .first()
-            .copied()
-            .with_context(|| format!("search limits may be too low\n{:#?}", strategy.limits()))
-            .context("no principal variation found")?;
+        for depth in 0..=self.depth {
+            let limits = SearchLimits {
+                depth,
+                time: Duration::MAX,
+            };
 
-        let moves: Vec<_> = pv.into_iter().map(|t| t.best().to_string()).collect();
+            let pv: Vec<_> = strategy.search(&pos, limits).collect();
 
-        info!(
-            depth = head.draft(),
-            score = match pos.turn() {
-                Color::White => head.score(),
-                Color::Black => -head.score(),
-            },
-            pv = %moves.join(" ")
-        );
+            let head = *pv.first().context("no principal variation found")?;
+            let moves: Vec<_> = pv.into_iter().map(|t| t.best().to_string()).collect();
+
+            info!(
+                depth = head.draft(),
+                score = match pos.turn() {
+                    Color::White => head.score(),
+                    Color::Black => -head.score(),
+                },
+                pv = %moves.join(" ")
+            );
+        }
 
         Ok(())
     }

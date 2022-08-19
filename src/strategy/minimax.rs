@@ -4,7 +4,7 @@ use derive_more::{Display, Error, From};
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::{cmp::max_by_key, str::FromStr};
+use std::{cmp::max_by_key, str::FromStr, time::Duration};
 use tracing::debug;
 
 #[cfg(test)]
@@ -20,10 +20,6 @@ pub struct Timeout;
 #[display(fmt = "{}", "ron::ser::to_string(self).unwrap()")]
 #[serde(deny_unknown_fields, rename = "config", default)]
 pub struct MinimaxConfig {
-    /// Search limits.
-    #[cfg_attr(test, any((Some(0), Some(Minimax::<crate::MockEval>::MAX_DRAFT as u8))))]
-    pub search: SearchLimits,
-
     /// The size of the transposition table in bytes.
     ///
     /// This is an upper limit, the actual memory allocation may be smaller.
@@ -35,7 +31,6 @@ impl Default for MinimaxConfig {
     fn default() -> Self {
         Self {
             table_size: 1 << 24,
-            search: SearchLimits::default(),
         }
     }
 }
@@ -60,8 +55,6 @@ impl FromStr for MinimaxConfig {
 #[cfg_attr(test, derive(test_strategy::Arbitrary))]
 pub struct Minimax<E: Eval + Send + Sync> {
     engine: E,
-    #[cfg_attr(test, any((Some(0), Some(Self::MAX_DRAFT as u8))))]
-    limits: SearchLimits,
     #[cfg_attr(test, strategy(Just(SearchMetrics::default())))]
     metrics: SearchMetrics,
     #[cfg_attr(test, strategy(any::<MinimaxConfig>()
@@ -111,7 +104,6 @@ impl<E: Eval + Send + Sync> Minimax<E> {
     pub fn with_config(engine: E, config: MinimaxConfig) -> Self {
         Minimax {
             engine,
-            limits: config.search,
             metrics: SearchMetrics::default(),
             tt: TranspositionTable::new(config.table_size),
         }
@@ -123,13 +115,14 @@ impl<E: Eval + Send + Sync> Minimax<E> {
     fn nw(
         &self,
         pos: &Position,
-        draft: i8,
         beta: i16,
+        draft: i8,
+        time: Duration,
         counters: &SearchMetricsCounters,
     ) -> Result<i16, Timeout> {
         assert!(beta > -i16::MAX, "{} > {}", beta, -i16::MAX);
 
-        if counters.time() >= self.limits.time {
+        if counters.time() >= time {
             return Err(Timeout);
         }
 
@@ -168,7 +161,7 @@ impl<E: Eval + Send + Sync> Minimax<E> {
         } else if let Some(m) = transposition.map(|t| t.best()) {
             let mut pos = pos.clone();
             if pos.make(m).is_ok() {
-                let score = -self.nw(&pos, draft - 1, -beta + 1, counters)?;
+                let score = -self.nw(&pos, -beta + 1, draft - 1, time, counters)?;
                 if score >= beta {
                     counters.pv_cut();
                     self.tt.set(zobrist, Transposition::lower(score, draft, m));
@@ -197,7 +190,7 @@ impl<E: Eval + Send + Sync> Minimax<E> {
                 if cutoff.load(Ordering::Relaxed) {
                     Ok(None)
                 } else {
-                    let score = -self.nw(&pos, draft - 1, -beta + 1, counters)?;
+                    let score = -self.nw(&pos, -beta + 1, draft - 1, time, counters)?;
                     cutoff.fetch_or(score >= beta, Ordering::Relaxed);
                     Ok(Some((m, score)))
                 }
@@ -223,15 +216,16 @@ impl<E: Eval + Send + Sync> Minimax<E> {
     fn mtdf(
         &self,
         pos: &Position,
-        depth: i8,
         mut score: i16,
+        depth: i8,
+        time: Duration,
         counters: &SearchMetricsCounters,
     ) -> Result<i16, Timeout> {
         let mut alpha = -i16::MAX;
         let mut beta = i16::MAX;
         while alpha < beta {
             let target = score.max(alpha + 1);
-            score = self.nw(pos, depth, target, counters)?;
+            score = self.nw(pos, target, depth, time, counters)?;
             if score < target {
                 beta = score;
             } else {
@@ -244,11 +238,7 @@ impl<E: Eval + Send + Sync> Minimax<E> {
 }
 
 impl<E: Eval + Send + Sync> Search for Minimax<E> {
-    fn limits(&self) -> SearchLimits {
-        self.limits
-    }
-
-    fn search(&mut self, pos: &Position) -> Pv {
+    fn search(&mut self, pos: &Position, limits: SearchLimits) -> Pv {
         let (mut score, start) = match self.tt.pv(pos.clone()).next() {
             Some(t) if t.draft() >= 0 => (t.score(), t.draft() + 1),
             _ => {
@@ -259,8 +249,8 @@ impl<E: Eval + Send + Sync> Search for Minimax<E> {
 
         let mut metrics = SearchMetrics::default();
         let mut counters = SearchMetricsCounters::default();
-        for d in start..=self.limits.depth.min(Self::MAX_DRAFT as u8) as i8 {
-            let result = self.mtdf(pos, d, score, &counters);
+        for d in start..=limits.depth.min(Self::MAX_DRAFT as u8) as i8 {
+            let result = self.mtdf(pos, score, d, limits.time, &counters);
             metrics = counters.snapshot() - metrics;
 
             debug!(depth = d, %metrics);
@@ -289,6 +279,7 @@ mod tests {
     use proptest::prop_assume;
     use std::time::Duration;
     use test_strategy::proptest;
+    use tokio::{runtime, select, time::sleep};
 
     fn quiesce<E: Eval + Send + Sync>(engine: &E, pos: &Position, draft: i8) -> i16 {
         if draft <= Minimax::<E>::MIN_DRAFT {
@@ -323,14 +314,6 @@ mod tests {
     }
 
     #[proptest]
-    fn new_applies_default_search_limits() {
-        assert_eq!(
-            Minimax::new(MockEval::new()).limits(),
-            SearchLimits::default()
-        );
-    }
-
-    #[proptest]
     fn table_size_is_an_upper_limit(c: MinimaxConfig) {
         let mm = Minimax::with_config(MockEval::new(), c);
         prop_assume!(mm.tt.capacity() > 1);
@@ -340,16 +323,17 @@ mod tests {
     #[proptest]
     #[should_panic]
     #[cfg(debug_assertions)]
-    fn nw_panics_if_beta_is_too_small(pos: Position, d: i8, #[strategy(..=-i16::MAX)] b: i16) {
-        Minimax::new(MockEval::new()).nw(&pos, d, b, &SearchMetricsCounters::default())?;
+    fn nw_panics_if_beta_is_too_small(pos: Position, #[strategy(..=-i16::MAX)] b: i16, d: i8) {
+        let mm = Minimax::new(MockEval::new());
+        mm.nw(&pos, b, d, Duration::MAX, &SearchMetricsCounters::default())?;
     }
 
     #[proptest]
     fn nw_evaluates_position_if_draft_is_lower_than_minimum(
         pos: Position,
+        #[strategy(-i16::MAX + 1..)] b: i16,
         #[strategy(i8::MIN..=Minimax::<MockEval>::MIN_DRAFT)] d: i8,
         s: i16,
-        #[strategy(-i16::MAX + 1..)] b: i16,
     ) {
         let mut engine = MockEval::new();
         engine
@@ -359,120 +343,127 @@ mod tests {
             .return_const(s);
 
         let mm = Minimax::new(engine);
-        assert_eq!(mm.nw(&pos, d, b, &SearchMetricsCounters::default()), Ok(s));
+        let counters = SearchMetricsCounters::default();
+        assert_eq!(mm.nw(&pos, b, d, Duration::MAX, &counters), Ok(s));
     }
 
     #[proptest]
     fn nw_aborts_if_time_is_up(
-        c: MinimaxConfig,
+        mm: Minimax<Engine>,
         pos: Position,
         #[strategy(-i16::MAX + 1..)] b: i16,
+        d: i8,
     ) {
-        let d = c.search.depth.try_into()?;
-
-        let mm = Minimax::with_config(
-            MockEval::new(),
-            MinimaxConfig {
-                search: SearchLimits {
-                    time: Duration::ZERO,
-                    ..c.search
-                },
-                ..c
-            },
-        );
-
-        assert_eq!(
-            mm.nw(&pos, d, b, &SearchMetricsCounters::default()),
-            Err(Timeout)
-        );
+        let counters = SearchMetricsCounters::default();
+        assert_eq!(mm.nw(&pos, b, d, Duration::ZERO, &counters), Err(Timeout));
     }
 
     #[proptest]
-    fn mtdf_finds_best_score(mm: Minimax<Engine>, pos: Position, s: i16) {
-        let d = mm.limits.depth.try_into()?;
+    fn mtdf_finds_best_score(
+        mm: Minimax<Engine>,
+        pos: Position,
+        s: i16,
+        #[strategy(Minimax::<Engine>::MIN_DRAFT..=Minimax::<Engine>::MAX_DRAFT)] d: i8,
+    ) {
+        let counters = SearchMetricsCounters::default();
         assert_eq!(
-            mm.mtdf(&pos, d, s, &SearchMetricsCounters::default()),
+            mm.mtdf(&pos, s, d, Duration::MAX, &counters),
             Ok(negamax(&mm.engine, &pos, d))
         );
     }
 
     #[proptest]
-    fn mtdf_aborts_if_time_is_up(c: MinimaxConfig, pos: Position, s: i16) {
-        let d = c.search.depth.try_into()?;
-
-        let mm = Minimax::with_config(
-            MockEval::new(),
-            MinimaxConfig {
-                search: SearchLimits {
-                    time: Duration::ZERO,
-                    ..c.search
-                },
-                ..c
-            },
-        );
-
-        assert_eq!(
-            mm.mtdf(&pos, d, s, &SearchMetricsCounters::default()),
-            Err(Timeout)
-        );
+    fn mtdf_aborts_if_time_is_up(
+        mm: Minimax<Engine>,
+        pos: Position,
+        s: i16,
+        #[strategy(Minimax::<Engine>::MIN_DRAFT..=Minimax::<Engine>::MAX_DRAFT)] d: i8,
+    ) {
+        let counters = SearchMetricsCounters::default();
+        assert_eq!(mm.mtdf(&pos, s, d, Duration::ZERO, &counters), Err(Timeout));
     }
 
     #[proptest]
-    fn mtdf_does_not_depend_on_initial_guess(c: MinimaxConfig, pos: Position, s: i16) {
-        let d = c.search.depth.try_into()?;
-
-        let a = Minimax::with_config(Engine::default(), c);
-        let b = Minimax::with_config(Engine::default(), c);
+    fn mtdf_does_not_depend_on_initial_guess(
+        e: Engine,
+        c: MinimaxConfig,
+        pos: Position,
+        s: i16,
+        #[strategy(Minimax::<Engine>::MIN_DRAFT..=Minimax::<Engine>::MAX_DRAFT)] d: i8,
+    ) {
+        let a = Minimax::with_config(e.clone(), c);
+        let b = Minimax::with_config(e, c);
 
         assert_eq!(
-            a.mtdf(&pos, d, s, &SearchMetricsCounters::default()),
-            b.mtdf(&pos, d, 0, &SearchMetricsCounters::default())
+            a.mtdf(&pos, s, d, Duration::MAX, &SearchMetricsCounters::default()),
+            b.mtdf(&pos, 0, d, Duration::MAX, &SearchMetricsCounters::default())
         );
     }
 
     #[proptest]
     fn mtdf_does_not_depend_on_table_size(
-        #[strategy(0usize..=1024)] x: usize,
-        #[strategy(0usize..=1024)] y: usize,
-        c: MinimaxConfig,
+        e: Engine,
+        a: MinimaxConfig,
+        b: MinimaxConfig,
         pos: Position,
         s: i16,
+        #[strategy(Minimax::<Engine>::MIN_DRAFT..=Minimax::<Engine>::MAX_DRAFT)] d: i8,
     ) {
-        let d = c.search.depth.try_into()?;
-
-        let x = Minimax::with_config(Engine::default(), MinimaxConfig { table_size: x, ..c });
-        let y = Minimax::with_config(Engine::default(), MinimaxConfig { table_size: y, ..c });
+        let a = Minimax::with_config(e.clone(), a);
+        let b = Minimax::with_config(e, b);
 
         assert_eq!(
-            x.mtdf(&pos, d, s, &SearchMetricsCounters::default()),
-            y.mtdf(&pos, d, s, &SearchMetricsCounters::default())
+            a.mtdf(&pos, s, d, Duration::MAX, &SearchMetricsCounters::default()),
+            b.mtdf(&pos, s, d, Duration::MAX, &SearchMetricsCounters::default())
         );
     }
 
     #[proptest]
-    fn search_finds_the_principal_variation(mut mm: Minimax<Engine>, pos: Position) {
-        assert_eq!(mm.search(&pos).next(), mm.tt.get(pos.zobrist()));
+    fn search_finds_the_principal_variation(
+        mut mm: Minimax<Engine>,
+        pos: Position,
+        l: SearchLimits,
+    ) {
+        assert_eq!(mm.search(&pos, l).next(), mm.tt.get(pos.zobrist()));
     }
 
     #[proptest]
-    fn search_avoids_tt_collisions(mut mm: Minimax<Engine>, pos: Position, t: Transposition) {
+    fn search_avoids_tt_collisions(
+        mut mm: Minimax<Engine>,
+        pos: Position,
+        l: SearchLimits,
+        t: Transposition,
+    ) {
         mm.tt.set(pos.zobrist(), t);
-        assert_eq!(mm.search(&pos).next(), mm.tt.get(pos.zobrist()));
+        assert_eq!(mm.search(&pos, l).next(), mm.tt.get(pos.zobrist()));
     }
 
     #[proptest]
-    fn search_is_stable(mut mm: Minimax<Engine>, pos: Position) {
-        assert_eq!(mm.search(&pos).next(), mm.search(&pos).next());
+    fn search_is_stable(mut mm: Minimax<Engine>, pos: Position, l: SearchLimits) {
+        assert_eq!(mm.search(&pos, l).next(), mm.search(&pos, l).next());
     }
 
     #[proptest]
-    fn search_can_be_limited_by_time(e: Engine, mut c: MinimaxConfig, pos: Position, us: u16) {
-        c.search = SearchLimits {
+    fn search_can_be_limited_by_time(
+        mut mm: Minimax<Engine>,
+        pos: Position,
+        l: SearchLimits,
+        us: u16,
+    ) {
+        let rt = runtime::Builder::new_multi_thread().enable_time().build()?;
+
+        let l = SearchLimits {
             time: Duration::from_micros(us.into()),
-            depth: u8::MAX,
+            ..l
         };
 
-        // should not hang
-        Minimax::with_config(e, c).search(&pos);
+        rt.block_on(async {
+            select! {
+                _ = async { mm.search(&pos, l) } => {}
+                _ = sleep(Duration::from_millis(1)) => {
+                    panic!()
+                }
+            }
+        });
     }
 }

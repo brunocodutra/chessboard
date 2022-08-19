@@ -2,7 +2,7 @@ use crate::engine::PieceSquareTable;
 use derive_more::Constructor;
 
 /// An engine that evaluates positions purely based on piece values.
-#[derive(Debug, Default, Constructor)]
+#[derive(Debug, Default, Clone, Constructor)]
 #[cfg_attr(test, derive(test_strategy::Arbitrary))]
 pub struct Materialist {}
 

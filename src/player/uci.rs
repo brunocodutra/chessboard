@@ -2,37 +2,12 @@ use crate::{Io, Move, Play, Position, SearchLimits};
 use anyhow::{Context, Error as Anyhow};
 use async_trait::async_trait;
 use derive_more::{DebugCustom, Display, Error, From};
-use serde::{Deserialize, Serialize};
-use std::{collections::HashMap, future::Future, io, pin::Pin, str::FromStr};
+use std::{collections::HashMap, future::Future, io, pin::Pin};
 use tokio::{runtime, task::block_in_place};
 use tracing::{debug, error, instrument};
 use vampirc_uci::{self as uci, UciFen, UciMessage, UciSearchControl, UciTimeControl};
 
-/// Configuration for [`Uci`].
-#[derive(Debug, Display, Default, Clone, Eq, PartialEq, Deserialize, Serialize)]
-#[cfg_attr(test, derive(test_strategy::Arbitrary))]
-#[display(fmt = "{}", "ron::ser::to_string(self).unwrap()")]
-#[serde(deny_unknown_fields, rename = "config", default)]
-pub struct UciConfig {
-    /// Search limits.
-    pub search: SearchLimits,
-
-    /// Engine options.
-    pub options: HashMap<String, Option<String>>,
-}
-
-/// The reason why parsing [`UciConfig`] failed.
-#[derive(Debug, Display, PartialEq, Error, From)]
-#[display(fmt = "failed to parse minimax configuration")]
-pub struct ParseUciConfigError(ron::de::Error);
-
-impl FromStr for UciConfig {
-    type Err = ParseUciConfigError;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        Ok(ron::de::from_str(s)?)
-    }
-}
+pub type UciOptions = HashMap<String, Option<String>>;
 
 #[derive(DebugCustom)]
 #[debug(bound = "T: std::fmt::Debug")]
@@ -73,22 +48,22 @@ pub struct Uci<T: Io> {
 }
 
 impl<T: Io + Send + 'static> Uci<T> {
-    /// Constructs [`Uci`] with the default [`UciConfig`].
+    /// Constructs [`Uci`] with the default [`SearchLimits`].
     pub fn new(io: T) -> Self {
-        Self::with_config(io, UciConfig::default())
+        Self::with_config(io, SearchLimits::default(), HashMap::new())
     }
 
-    /// Constructs [`Uci`] with some [`UciConfig`].
-    pub fn with_config(mut io: T, config: UciConfig) -> Self {
+    /// Constructs [`Uci`] with some [`SearchLimits`] and [`UciOptions`].
+    pub fn with_config(mut io: T, limits: SearchLimits, options: UciOptions) -> Self {
         Uci {
-            limits: config.search,
+            limits,
             io: Lazy::Uninitialized(Box::pin(async move {
                 io.send(&UciMessage::Uci.to_string()).await?;
                 io.flush().await?;
 
                 while !matches!(recv_uci_message(&mut io).await?, UciMessage::UciOk) {}
 
-                for (name, value) in config.options {
+                for (name, value) in options {
                     let set_option = UciMessage::SetOption { name, value };
                     io.send(&set_option.to_string()).await?;
                 }
@@ -207,16 +182,6 @@ mod tests {
     }
 
     #[proptest]
-    fn config_deserializes_missing_fields_to_default() {
-        assert_eq!("config()".parse(), Ok(UciConfig::default()));
-    }
-
-    #[proptest]
-    fn parsing_printed_config_is_an_identity(c: UciConfig) {
-        assert_eq!(c.to_string().parse(), Ok(c));
-    }
-
-    #[proptest]
     fn new_schedules_engine_for_lazy_initialization() {
         assert!(matches!(
             Uci::new(MockIo::new()),
@@ -234,7 +199,8 @@ mod tests {
 
     #[proptest]
     fn engine_is_lazily_initialized_with_the_options_configured(
-        c: UciConfig,
+        l: SearchLimits,
+        o: UciOptions,
         pos: Position,
         m: Move,
     ) {
@@ -258,7 +224,7 @@ mod tests {
             .in_sequence(&mut seq)
             .returning(move || Ok(UciMessage::UciOk.to_string()));
 
-        for (name, value) in c.options.clone() {
+        for (name, value) in o.clone() {
             let set_option = UciMessage::SetOption { name, value };
             io.expect_send()
                 .once()
@@ -295,7 +261,7 @@ mod tests {
             .once()
             .returning(move || Ok(UciMessage::best_move(m.into()).to_string()));
 
-        let mut uci = Uci::with_config(io, c);
+        let mut uci = Uci::with_config(io, l, o);
         assert!(rt.block_on(uci.play(&pos)).is_ok());
     }
 

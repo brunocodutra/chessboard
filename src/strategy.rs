@@ -22,15 +22,9 @@ impl Default for Strategy {
 }
 
 impl Search for Strategy {
-    fn limits(&self) -> SearchLimits {
+    fn search(&mut self, pos: &Position, limits: SearchLimits) -> Pv {
         match self {
-            Strategy::Minimax(s) => s.limits(),
-        }
-    }
-
-    fn search(&mut self, pos: &Position) -> Pv {
-        match self {
-            Strategy::Minimax(s) => s.search(pos),
+            Strategy::Minimax(s) => s.search(pos, limits),
         }
     }
 
@@ -89,12 +83,12 @@ mod tests {
     #[proptest]
     fn minimax_builder_is_deserializable(e: EngineBuilder, c: MinimaxConfig) {
         assert_eq!(
-            format!("minimax({},{})", ron::ser::to_string(&e)?, c).parse(),
+            format!("minimax({},{})", e, c).parse(),
             Ok(StrategyBuilder::Minimax(e.clone(), c))
         );
 
         assert_eq!(
-            format!("minimax({})", ron::ser::to_string(&e)?).parse(),
+            format!("minimax({})", e).parse(),
             Ok(StrategyBuilder::Minimax(e, MinimaxConfig::default()))
         );
     }

@@ -144,7 +144,7 @@ impl PieceSquareTable for EndGamePesto {
 /// [PeSTO]'s evaluation function.
 ///
 /// [PeSTO]: https://www.chessprogramming.org/PeSTO%27s_Evaluation_Function
-#[derive(Debug, Default, Constructor)]
+#[derive(Debug, Default, Clone, Constructor)]
 #[cfg_attr(test, derive(test_strategy::Arbitrary))]
 pub struct Pesto {}
 
