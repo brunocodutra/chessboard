@@ -1,5 +1,5 @@
 use crate::io::Process;
-use crate::{Act, Action, Build, Position, Strategy, StrategyBuilder};
+use crate::{Build, Move, Play, Position, Strategy, StrategyBuilder};
 use async_trait::async_trait;
 use derive_more::{DebugCustom, Display, Error, From};
 use serde::{Deserialize, Serialize};
@@ -11,11 +11,11 @@ mod uci;
 pub use ai::*;
 pub use uci::*;
 
-/// The reason why [`Player`] failed to perform an action.
+/// The reason why [`Player`] failed to [`Play`].
 #[derive(Debug, Display, Error, From)]
 pub enum PlayerError {
-    Ai(<Ai<Strategy> as Act>::Error),
-    Uci(<Uci<Process> as Act>::Error),
+    Ai(<Ai<Strategy> as Play>::Error),
+    Uci(<Uci<Process> as Play>::Error),
 }
 
 /// A generic player.
@@ -29,13 +29,13 @@ pub enum Player {
 }
 
 #[async_trait]
-impl Act for Player {
+impl Play for Player {
     type Error = PlayerError;
 
-    async fn act(&mut self, pos: &Position) -> Result<Action, Self::Error> {
+    async fn play(&mut self, pos: &Position) -> Result<Move, Self::Error> {
         match self {
-            Player::Ai(p) => Ok(p.act(pos).await?),
-            Player::Uci(p) => Ok(p.act(pos).await?),
+            Player::Ai(p) => Ok(p.play(pos).await?),
+            Player::Uci(p) => Ok(p.play(pos).await?),
         }
     }
 }
@@ -88,9 +88,9 @@ mockall::mock! {
     #[derive(Debug)]
     pub PlayerBuilder {}
     impl Build for PlayerBuilder {
-        type Output = crate::MockAct;
+        type Output = crate::MockPlay;
         type Error = String;
-        fn build(self) -> Result<crate::MockAct, String>;
+        fn build(self) -> Result<crate::MockPlay, String>;
     }
 }
 
