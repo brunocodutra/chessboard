@@ -252,7 +252,7 @@ impl<E: Eval + Send + Sync> Search for Minimax<E> {
         let (mut score, start) = match self.tt.pv(pos.clone()).next() {
             Some(t) if t.draft() >= 0 => (t.score(), t.draft() + 1),
             _ => {
-                self.tt.clear(pos.zobrist());
+                self.tt.unset(pos.zobrist());
                 (self.engine.eval(pos), 0)
             }
         };
@@ -274,6 +274,10 @@ impl<E: Eval + Send + Sync> Search for Minimax<E> {
         self.metrics += counters.snapshot();
 
         self.tt.pv(pos.clone())
+    }
+
+    fn clear(&mut self) {
+        self.tt.clear()
     }
 }
 
