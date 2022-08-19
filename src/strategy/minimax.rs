@@ -249,8 +249,8 @@ impl<E: Eval + Send + Sync> Search for Minimax<E> {
 
         let mut metrics = SearchMetrics::default();
         let mut counters = SearchMetricsCounters::default();
-        for d in start..=limits.depth.min(Self::MAX_DRAFT as u8) as i8 {
-            let result = self.mtdf(pos, score, d, limits.time, &counters);
+        for d in start..=limits.depth().min(Self::MAX_DRAFT as u8) as i8 {
+            let result = self.mtdf(pos, score, d, limits.time(), &counters);
             metrics = counters.snapshot() - metrics;
 
             debug!(depth = d, %metrics);
@@ -444,18 +444,10 @@ mod tests {
     }
 
     #[proptest]
-    fn search_can_be_limited_by_time(
-        mut mm: Minimax<Engine>,
-        pos: Position,
-        l: SearchLimits,
-        us: u16,
-    ) {
+    fn search_can_be_limited_by_time(mut mm: Minimax<Engine>, pos: Position, us: u8) {
         let rt = runtime::Builder::new_multi_thread().enable_time().build()?;
 
-        let l = SearchLimits {
-            time: Duration::from_micros(us.into()),
-            ..l
-        };
+        let l = SearchLimits::Time(Duration::from_micros(us.into()));
 
         rt.block_on(async {
             select! {
