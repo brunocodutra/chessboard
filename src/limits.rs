@@ -1,3 +1,4 @@
+use derive_more::Display;
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
 
@@ -5,9 +6,10 @@ use std::time::Duration;
 use proptest::prelude::*;
 
 /// Configuration for the limits of search engines.
-#[derive(Debug, Copy, Clone, Eq, PartialEq, Deserialize, Serialize)]
+#[derive(Debug, Display, Copy, Clone, Eq, PartialEq, Deserialize, Serialize)]
 #[cfg_attr(test, derive(test_strategy::Arbitrary))]
 #[cfg_attr(test, arbitrary(args = (Option<u8>, Option<u8>)))]
+#[display(fmt = "{}", "ron::ser::to_string(self).unwrap()")]
 #[serde(deny_unknown_fields, rename = "limits", default)]
 pub struct SearchLimits {
     /// The maximum number of plies to search.

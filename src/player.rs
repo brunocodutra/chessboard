@@ -1,8 +1,9 @@
 use crate::io::Process;
-use crate::{Build, Move, Play, Position, Strategy, StrategyBuilder};
+use crate::{Build, Move, Play, Position, SearchLimits, Strategy, StrategyBuilder};
 use async_trait::async_trait;
 use derive_more::{DebugCustom, Display, Error, From};
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::str::FromStr;
 
 mod ai;
@@ -46,9 +47,13 @@ impl Play for Player {
 #[serde(deny_unknown_fields, rename_all = "lowercase")]
 pub enum PlayerBuilder {
     #[display(fmt = "{}", "ron::ser::to_string(self).unwrap()")]
-    Ai(StrategyBuilder),
+    Ai(StrategyBuilder, #[serde(default)] SearchLimits),
     #[display(fmt = "{}", "ron::ser::to_string(self).unwrap()")]
-    Uci(String, #[serde(default)] UciConfig),
+    Uci(
+        String,
+        #[serde(default)] SearchLimits,
+        #[serde(default)] HashMap<String, Option<String>>,
+    ),
 }
 
 /// The reason why parsing [`PlayerBuilder`] failed.
@@ -70,14 +75,14 @@ impl Build for PlayerBuilder {
 
     fn build(self) -> Result<Self::Output, Self::Error> {
         match self {
-            PlayerBuilder::Ai(strategy) => {
+            PlayerBuilder::Ai(strategy, limits) => {
                 let strategy = strategy.build()?;
-                Ok(Ai::new(strategy).into())
+                Ok(Ai::with_config(strategy, limits).into())
             }
 
-            PlayerBuilder::Uci(path, cfg) => {
+            PlayerBuilder::Uci(path, limits, options) => {
                 let io = Process::spawn(&path).map_err(UciError::from)?;
-                Ok(Uci::with_config(io, cfg).into())
+                Ok(Uci::with_config(io, limits, options).into())
             }
         }
     }
@@ -112,35 +117,49 @@ mod tests {
     }
 
     #[proptest]
-    fn ai_builder_is_deserializable(s: StrategyBuilder) {
+    fn ai_builder_is_deserializable(s: StrategyBuilder, l: SearchLimits) {
         assert_eq!(
-            format!("ai({})", ron::ser::to_string(&s)?).parse(),
-            Ok(PlayerBuilder::Ai(s))
+            format!("ai({})", s).parse(),
+            Ok(PlayerBuilder::Ai(s.clone(), SearchLimits::default()))
+        );
+
+        assert_eq!(
+            format!("ai({}, {})", s, l).parse(),
+            Ok(PlayerBuilder::Ai(s, l))
         );
     }
 
     #[proptest]
-    fn uci_builder_is_deserializable(s: String, c: UciConfig) {
+    fn uci_builder_is_deserializable(s: String, l: SearchLimits, o: UciOptions) {
         assert_eq!(
             format!("uci({:?})", s).parse(),
-            Ok(PlayerBuilder::Uci(s.clone(), UciConfig::default()))
+            Ok(PlayerBuilder::Uci(
+                s.clone(),
+                SearchLimits::default(),
+                UciOptions::default()
+            ))
         );
 
         assert_eq!(
-            format!("uci({:?}, {})", s, c).parse(),
-            Ok(PlayerBuilder::Uci(s, c))
+            format!("uci({:?}, {})", s, l).parse(),
+            Ok(PlayerBuilder::Uci(s.clone(), l, UciOptions::default()))
+        );
+
+        assert_eq!(
+            format!("uci({:?}, {}, {})", s, l, ron::ser::to_string(&o)?).parse(),
+            Ok(PlayerBuilder::Uci(s, l, o))
         );
     }
 
     #[proptest]
-    fn ai_can_be_configured_at_runtime(s: StrategyBuilder) {
-        assert!(matches!(PlayerBuilder::Ai(s).build(), Ok(Player::Ai(_))));
+    fn ai_can_be_configured_at_runtime(s: StrategyBuilder, l: SearchLimits) {
+        assert!(matches!(PlayerBuilder::Ai(s, l).build(), Ok(Player::Ai(_))));
     }
 
     #[proptest]
-    fn uci_can_be_configured_at_runtime(s: String, c: UciConfig) {
+    fn uci_can_be_configured_at_runtime(s: String, l: SearchLimits, o: UciOptions) {
         assert!(matches!(
-            PlayerBuilder::Uci(s, c).build(),
+            PlayerBuilder::Uci(s, l, o).build(),
             Ok(Player::Uci(_))
         ));
     }

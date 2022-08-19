@@ -1,4 +1,4 @@
-use chessboard::strategy::{Minimax, MinimaxConfig};
+use chessboard::strategy::Minimax;
 use chessboard::{Engine, Position, Search, SearchLimits};
 use criterion::{criterion_group, criterion_main, BatchSize, Criterion};
 use std::time::Duration;
@@ -9,15 +9,10 @@ fn bench(c: &mut Criterion) {
         depth: 5,
     };
 
-    let config = MinimaxConfig {
-        search: limits,
-        ..MinimaxConfig::default()
-    };
-
     c.benchmark_group("benches").bench_function("minimax", |b| {
         b.iter_batched_ref(
-            || Minimax::with_config(Engine::default(), config),
-            |s| s.search(&Position::default()).next(),
+            Minimax::<Engine>::default,
+            |mm| mm.search(&Position::default(), limits).next(),
             BatchSize::SmallInput,
         );
     });
