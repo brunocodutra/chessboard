@@ -43,11 +43,10 @@ opt-level = 1
 [profile.cov]
 inherits = "dev"
 opt-level = 0
-overflow-checks = false
 
 [profile.bench]
 debug = true
 
 [[bench]]
-name = "minimax"
+name = "ttd"
 harness = false
