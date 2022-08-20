@@ -31,9 +31,9 @@ impl Default for SearchLimits {
 }
 
 /// The reason why parsing [`SearchLimits`] failed.
-#[derive(Debug, Display, PartialEq, Error, From)]
+#[derive(Debug, Display, Eq, PartialEq, Error, From)]
 #[display(fmt = "failed to parse minimax configuration")]
-pub struct ParseSearchLimitsError(ron::de::Error);
+pub struct ParseSearchLimitsError(ron::de::SpannedError);
 
 impl FromStr for SearchLimits {
     type Err = ParseSearchLimitsError;

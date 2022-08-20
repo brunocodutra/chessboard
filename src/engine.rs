@@ -55,9 +55,9 @@ pub enum EngineBuilder {
 }
 
 /// The reason why parsing [`EngineBuilder`] failed.
-#[derive(Debug, Display, PartialEq, Error, From)]
+#[derive(Debug, Display, Eq, PartialEq, Error, From)]
 #[display(fmt = "failed to parse engine configuration")]
-pub struct ParseBuilderError(ron::de::Error);
+pub struct ParseBuilderError(ron::de::SpannedError);
 
 impl FromStr for EngineBuilder {
     type Err = ParseBuilderError;

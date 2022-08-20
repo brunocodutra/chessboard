@@ -36,9 +36,9 @@ impl Default for MinimaxConfig {
 }
 
 /// The reason why parsing [`MinimaxConfig`] failed.
-#[derive(Debug, Display, PartialEq, Error, From)]
+#[derive(Debug, Display, Eq, PartialEq, Error, From)]
 #[display(fmt = "failed to parse minimax configuration")]
-pub struct ParseMinimaxConfigError(ron::de::Error);
+pub struct ParseMinimaxConfigError(ron::de::SpannedError);
 
 impl FromStr for MinimaxConfig {
     type Err = ParseMinimaxConfigError;
