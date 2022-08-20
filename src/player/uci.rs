@@ -61,7 +61,7 @@ impl<T: Io + Send + 'static> Uci<T> {
                 io.send(&UciMessage::Uci.to_string()).await?;
                 io.flush().await?;
 
-                while !matches!(recv_uci_message(&mut io).await?, UciMessage::UciOk) {}
+                while !matches!(uci::parse_one(io.recv().await?.trim()), UciMessage::UciOk) {}
 
                 for (name, value) in options {
                     let set_option = UciMessage::SetOption { name, value };
@@ -72,7 +72,7 @@ impl<T: Io + Send + 'static> Uci<T> {
                 io.send(&UciMessage::IsReady.to_string()).await?;
                 io.flush().await?;
 
-                while !matches!(recv_uci_message(&mut io).await?, UciMessage::ReadyOk) {}
+                while !matches!(uci::parse_one(io.recv().await?.trim()), UciMessage::ReadyOk) {}
 
                 Ok(io)
             })),
@@ -126,24 +126,10 @@ impl<T: Io + Send> Play for Uci<T> {
         io.flush().await?;
 
         loop {
-            match recv_uci_message(io).await? {
+            match uci::parse_one(io.recv().await?.trim()) {
                 UciMessage::BestMove { best_move: m, .. } => break Ok(m.into()),
                 _ => continue,
             }
-        }
-    }
-}
-
-#[instrument(level = "trace", skip(io), err)]
-async fn recv_uci_message<T: Io>(io: &mut T) -> Result<UciMessage, UciError> {
-    loop {
-        match uci::parse_one(io.recv().await?.trim()) {
-            UciMessage::Unknown(m, cause) => {
-                let error = cause.map(Anyhow::new).unwrap_or_else(|| Anyhow::msg(m));
-                debug!("{:?}", error.context("failed to parse UCI message"));
-            }
-
-            msg => return Ok(msg),
         }
     }
 }
