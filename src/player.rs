@@ -57,9 +57,9 @@ pub enum PlayerBuilder {
 }
 
 /// The reason why parsing [`PlayerBuilder`] failed.
-#[derive(Debug, Display, PartialEq, Error, From)]
+#[derive(Debug, Display, Eq, PartialEq, Error, From)]
 #[display(fmt = "failed to parse player configuration")]
-pub struct ParseBuilderError(ron::de::Error);
+pub struct ParseBuilderError(ron::de::SpannedError);
 
 impl FromStr for PlayerBuilder {
     type Err = ParseBuilderError;

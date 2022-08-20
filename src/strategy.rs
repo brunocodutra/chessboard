@@ -45,9 +45,9 @@ pub enum StrategyBuilder {
 }
 
 /// The reason why parsing [`StrategyBuilder`] failed.
-#[derive(Debug, Display, PartialEq, Error, From)]
+#[derive(Debug, Display, Eq, PartialEq, Error, From)]
 #[display(fmt = "failed to parse search configuration")]
-pub struct ParseBuilderError(ron::de::Error);
+pub struct ParseBuilderError(ron::de::SpannedError);
 
 impl FromStr for StrategyBuilder {
     type Err = ParseBuilderError;
