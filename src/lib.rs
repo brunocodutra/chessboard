@@ -24,7 +24,7 @@ mod role;
 mod san;
 mod search;
 mod square;
-mod tt;
+mod transposition;
 
 pub use crate::binary::*;
 pub use crate::bits::*;
@@ -52,7 +52,7 @@ pub use crate::role::*;
 pub use crate::san::*;
 pub use crate::search::*;
 pub use crate::square::*;
-pub use crate::tt::*;
+pub use crate::transposition::*;
 
 pub mod engine;
 pub mod player;

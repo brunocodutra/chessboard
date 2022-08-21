@@ -3,10 +3,10 @@ use async_trait::async_trait;
 use derive_more::From;
 use std::convert::Infallible;
 use tokio::task::block_in_place;
-use tracing::instrument;
+use tracing::{instrument, Span};
 
 /// A computed controlled player.
-#[derive(Debug, From)]
+#[derive(Debug, Default, From)]
 #[cfg_attr(test, derive(test_strategy::Arbitrary))]
 pub struct Ai<S: Search> {
     strategy: S,
@@ -29,18 +29,23 @@ impl<S: Search> Ai<S> {
 impl<S: Search + Send> Play for Ai<S> {
     type Error = Infallible;
 
-    #[instrument(level = "debug", skip(self, pos), ret(Display), err, fields(%pos))]
+    #[instrument(level = "debug", skip(self, pos), ret(Display), err, fields(%pos, depth, score))]
     async fn play(&mut self, pos: &Position) -> Result<Move, Self::Error> {
-        let best = block_in_place(|| Some(self.strategy.search(pos, self.limits).next()?.best()));
-        Ok(best.expect("expected non-terminal position"))
+        let pv = block_in_place(|| self.strategy.search::<1>(pos, self.limits));
+
+        if let Some((d, s)) = Option::zip(pv.depth(), pv.score()) {
+            Span::current().record("depth", d).record("score", s);
+        }
+
+        Ok(*pv.first().expect("expected at least one legal move"))
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{MockSearch, Strategy};
-    use proptest::prop_assume;
+    use crate::{MockSearch, Pv, Transposition};
+    use std::iter::once;
     use test_strategy::proptest;
     use tokio::runtime;
 
@@ -50,25 +55,31 @@ mod tests {
     }
 
     #[proptest]
-    fn searches_for_best_move(mut ai: Ai<Strategy>, pos: Position) {
+    fn searches_for_best_move(
+        l: SearchLimits,
+        pos: Position,
+        #[filter(#t.draft() >= 0)] t: Transposition,
+    ) {
         let rt = runtime::Builder::new_multi_thread().build()?;
 
-        let t = ai.strategy.search(&pos, ai.limits).next();
-        prop_assume!(t.is_some());
+        let pv: Pv<256> = once(t).collect();
 
-        let best = t.unwrap().best();
-        assert_eq!(rt.block_on(ai.play(&pos))?, best);
+        let mut strategy = MockSearch::new();
+        strategy.expect_search().return_const(pv);
+
+        let mut ai = Ai::with_config(strategy, l);
+        assert_eq!(rt.block_on(ai.play(&pos))?, t.best());
     }
 
     #[proptest]
     #[should_panic]
-    fn panics_if_there_are_no_moves(
-        mut ai: Ai<Strategy>,
-        #[by_ref]
-        #[filter(#pos.moves().len() == 0)]
-        pos: Position,
-    ) {
+    fn panics_if_there_are_no_moves(l: SearchLimits, pos: Position) {
         let rt = runtime::Builder::new_multi_thread().build()?;
+
+        let mut strategy = MockSearch::new();
+        strategy.expect_search().return_const(Pv::default());
+
+        let mut ai = Ai::with_config(strategy, l);
         rt.block_on(ai.play(&pos))?;
     }
 }

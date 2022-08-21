@@ -1,5 +1,5 @@
-use crate::{Eval, Position, Pv, SearchMetrics, Transposition, TranspositionTable};
-use crate::{Search, SearchLimits, SearchMetricsCounters};
+use crate::{Eval, Position, Pv, Transposition, TranspositionTable};
+use crate::{Search, SearchLimits, SearchMetrics, SearchMetricsCounters};
 use derive_more::{Display, Error, From};
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
@@ -228,28 +228,29 @@ impl<E: Eval + Send + Sync> Minimax<E> {
 }
 
 impl<E: Eval + Send + Sync> Search for Minimax<E> {
-    fn search(&mut self, pos: &Position, limits: SearchLimits) -> Pv {
-        let (mut score, start) = match self.tt.pv(pos.clone()).next() {
-            Some(t) if t.draft() >= 0 => (t.score(), t.draft()),
-            _ => {
-                self.tt.unset(pos.zobrist());
-                (self.engine.eval(pos), 0)
-            }
-        };
+    fn search<const N: usize>(&mut self, pos: &Position, limits: SearchLimits) -> Pv<N> {
+        let mut pv: Pv<N> = self.tt.iter(pos).collect();
+
+        let (mut score, start) = Option::zip(pv.score(), pv.depth()).unwrap_or_else(|| {
+            self.tt.unset(pos.zobrist());
+            (self.engine.eval(pos), 0)
+        });
 
         let mut metrics = SearchMetrics::default();
         let mut counters = SearchMetricsCounters::default();
-        for d in start..=limits.depth().min(Self::MAX_DRAFT as u8) as i8 {
-            match self.mtdf(pos, score, d, limits.time(), &counters) {
-                Ok(s) => score = s,
+        for depth in start..=limits.depth().min(Self::MAX_DRAFT as u8) {
+            let result = self.mtdf(pos, score, depth as i8, limits.time(), &counters);
+
+            (score, pv) = match result {
+                Ok(s) => (s, self.tt.iter(pos).collect()),
                 Err(_) => break,
-            }
+            };
 
             metrics = counters.snapshot() - metrics;
-            debug!(depth = d, score, %metrics);
+            debug!(depth, score, %pv, %metrics);
         }
 
-        self.tt.pv(pos.clone())
+        pv
     }
 
     fn clear(&mut self) {
@@ -410,7 +411,7 @@ mod tests {
         pos: Position,
         l: SearchLimits,
     ) {
-        assert_eq!(mm.search(&pos, l).next(), mm.tt.get(pos.zobrist()));
+        assert_eq!(mm.search::<256>(&pos, l), mm.tt.iter(&pos).collect());
     }
 
     #[proptest]
@@ -421,12 +422,12 @@ mod tests {
         t: Transposition,
     ) {
         mm.tt.set(pos.zobrist(), t);
-        assert_eq!(mm.search(&pos, l).next(), mm.tt.get(pos.zobrist()));
+        assert_eq!(mm.search::<1>(&pos, l), mm.tt.iter(&pos).collect());
     }
 
     #[proptest]
     fn search_is_stable(mut mm: Minimax<Engine>, pos: Position, l: SearchLimits) {
-        assert_eq!(mm.search(&pos, l).next(), mm.search(&pos, l).next());
+        assert_eq!(mm.search::<0>(&pos, l), mm.search::<0>(&pos, l));
     }
 
     #[proptest]
@@ -437,7 +438,7 @@ mod tests {
 
         rt.block_on(async {
             select! {
-                _ = async { mm.search(&pos, l) } => {}
+                _ = async { mm.search::<1>(&pos, l) } => {}
                 _ = sleep(Duration::from_millis(1)) => {
                     panic!()
                 }

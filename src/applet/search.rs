@@ -47,18 +47,16 @@ impl Execute for Search {
 }
 
 fn search(strategy: &mut Strategy, pos: &Position, limits: SearchLimits) -> Result<(), Anyhow> {
-    let pv: Vec<_> = strategy.search(pos, limits).collect();
-
-    let head = *pv.first().context("no principal variation found")?;
-    let moves: Vec<_> = pv.into_iter().map(|t| t.best().to_string()).collect();
+    let pv = strategy.search::<{ u8::MAX as usize }>(pos, limits);
+    let (d, s) = Option::zip(pv.depth(), pv.score()).context("no principal variation found")?;
 
     info!(
-        depth = head.draft(),
+        depth = d,
         score = match pos.turn() {
-            Color::White => head.score(),
-            Color::Black => -head.score(),
+            Color::White => s,
+            Color::Black => -s,
         },
-        pv = %moves.join(" ")
+        %pv
     );
 
     Ok(())

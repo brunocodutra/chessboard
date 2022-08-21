@@ -10,7 +10,7 @@ fn bench(c: &mut Criterion) {
     c.benchmark_group("benches").bench_function("ttd", |b| {
         b.iter_batched_ref(
             || (Strategy::default(), positions.next().unwrap()),
-            |(mm, pos)| mm.search(pos, SearchLimits::Depth(4)).next(),
+            |(mm, pos)| mm.search::<0>(pos, SearchLimits::Depth(4)),
             BatchSize::SmallInput,
         );
     });

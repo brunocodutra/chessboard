@@ -22,7 +22,7 @@ impl Default for Strategy {
 }
 
 impl Search for Strategy {
-    fn search(&mut self, pos: &Position, limits: SearchLimits) -> Pv {
+    fn search<const N: usize>(&mut self, pos: &Position, limits: SearchLimits) -> Pv<N> {
         match self {
             Strategy::Minimax(s) => s.search(pos, limits),
         }
