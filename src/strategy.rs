@@ -17,7 +17,7 @@ pub enum Strategy {
 
 impl Default for Strategy {
     fn default() -> Self {
-        Minimax::default().into()
+        StrategyBuilder::default().build().unwrap()
     }
 }
 
@@ -41,7 +41,16 @@ impl Search for Strategy {
 #[serde(deny_unknown_fields, rename_all = "lowercase")]
 pub enum StrategyBuilder {
     #[display(fmt = "{}", "ron::ser::to_string(self).unwrap()")]
-    Minimax(EngineBuilder, #[serde(default)] MinimaxConfig),
+    Minimax(
+        #[serde(default)] EngineBuilder,
+        #[serde(default)] MinimaxConfig,
+    ),
+}
+
+impl Default for StrategyBuilder {
+    fn default() -> Self {
+        StrategyBuilder::Minimax(EngineBuilder::default(), MinimaxConfig::default())
+    }
 }
 
 /// The reason why parsing [`StrategyBuilder`] failed.

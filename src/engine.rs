@@ -27,7 +27,7 @@ pub enum Engine {
 
 impl Default for Engine {
     fn default() -> Self {
-        Pesto::default().into()
+        EngineBuilder::default().build().unwrap()
     }
 }
 
@@ -52,6 +52,12 @@ pub enum EngineBuilder {
     Materialist {},
     #[display(fmt = "{}", "ron::ser::to_string(self).unwrap()")]
     Pesto {},
+}
+
+impl Default for EngineBuilder {
+    fn default() -> Self {
+        EngineBuilder::Pesto {}
+    }
 }
 
 /// The reason why parsing [`EngineBuilder`] failed.
