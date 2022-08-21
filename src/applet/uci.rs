@@ -119,7 +119,7 @@ impl<T: Io> Server<T> {
 
                     if !search_moves.is_empty() {
                         let moves: Vec<_> = search_moves.iter().map(ToString::to_string).collect();
-                        warn!("ignored request to limit search to {}", moves.join(", "));
+                        warn!("ignored request to limit search to [{}]", moves.join(","));
                     }
 
                     if let Some(n) = mate {
@@ -154,9 +154,9 @@ impl<T: Io> Server<T> {
     }
 
     async fn go(&mut self, limits: SearchLimits) -> Result<(), Anyhow> {
-        let mut pv = block_in_place(|| self.strategy.search(&self.position, limits));
-        let best = pv.next().context("there's no move!")?.best().into();
-        let msg = UciMessage::best_move(best);
+        let pv = block_in_place(|| self.strategy.search::<1>(&self.position, limits));
+        let best = *pv.first().context("no legal move found")?;
+        let msg = UciMessage::best_move(best.into());
         self.io.send(&msg.to_string()).await?;
         Ok(())
     }
