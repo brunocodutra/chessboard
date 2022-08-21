@@ -55,8 +55,6 @@ impl FromStr for MinimaxConfig {
 #[cfg_attr(test, derive(test_strategy::Arbitrary))]
 pub struct Minimax<E: Eval + Send + Sync> {
     engine: E,
-    #[cfg_attr(test, strategy(Just(SearchMetrics::default())))]
-    metrics: SearchMetrics,
     #[cfg_attr(test, strategy(any::<MinimaxConfig>()
         .prop_map(|c| TranspositionTable::new(c.table_size)))
     )]
@@ -66,12 +64,6 @@ pub struct Minimax<E: Eval + Send + Sync> {
 impl<E: Eval + Send + Sync + Default> Default for Minimax<E> {
     fn default() -> Self {
         Self::new(E::default())
-    }
-}
-
-impl<E: Eval + Send + Sync> Drop for Minimax<E> {
-    fn drop(&mut self) {
-        debug!(metrics = %self.metrics)
     }
 }
 
@@ -104,7 +96,6 @@ impl<E: Eval + Send + Sync> Minimax<E> {
     pub fn with_config(engine: E, config: MinimaxConfig) -> Self {
         Minimax {
             engine,
-            metrics: SearchMetrics::default(),
             tt: TranspositionTable::new(config.table_size),
         }
     }
@@ -115,12 +106,12 @@ impl<E: Eval + Send + Sync> Minimax<E> {
     fn nw(
         &self,
         pos: &Position,
-        beta: i16,
+        guess: i16,
         draft: i8,
         time: Duration,
         counters: &SearchMetricsCounters,
     ) -> Result<i16, Timeout> {
-        assert!(beta > -i16::MAX, "{} > {}", beta, -i16::MAX);
+        assert!(guess > i16::MIN, "{} > {}", guess, i16::MIN);
 
         if counters.time() >= time {
             return Err(Timeout);
@@ -140,8 +131,7 @@ impl<E: Eval + Send + Sync> Minimax<E> {
             #[cfg(test)] // Probing larger draft is not exact.
             Some(t) if t.draft() != draft => (),
             Some(t) => {
-                let (lower, upper) = t.bounds().into_inner();
-                if beta <= lower || beta > upper {
+                if !t.bounds().contains(&guess) {
                     counters.tt_cut();
                     return Ok(t.score());
                 }
@@ -152,7 +142,7 @@ impl<E: Eval + Send + Sync> Minimax<E> {
             return Ok(self.engine.eval(pos).max(-i16::MAX));
         } else if draft <= 0 {
             let stand_pat = self.engine.eval(pos).max(-i16::MAX);
-            if stand_pat >= beta {
+            if stand_pat > guess {
                 counters.sp_cut();
                 #[cfg(not(test))]
                 // The stand pat heuristic is not exact.
@@ -161,8 +151,8 @@ impl<E: Eval + Send + Sync> Minimax<E> {
         } else if let Some(m) = transposition.map(|t| t.best()) {
             let mut pos = pos.clone();
             if pos.make(m).is_ok() {
-                let score = -self.nw(&pos, -beta + 1, draft - 1, time, counters)?;
-                if score >= beta {
+                let score = -self.nw(&pos, -guess, draft - 1, time, counters)?;
+                if score > guess {
                     counters.pv_cut();
                     self.tt.set(zobrist, Transposition::lower(score, draft, m));
                     return Ok(score);
@@ -190,8 +180,8 @@ impl<E: Eval + Send + Sync> Minimax<E> {
                 if cutoff.load(Ordering::Relaxed) {
                     Ok(None)
                 } else {
-                    let score = -self.nw(&pos, -beta + 1, draft - 1, time, counters)?;
-                    cutoff.fetch_or(score >= beta, Ordering::Relaxed);
+                    let score = -self.nw(&pos, -guess, draft - 1, time, counters)?;
+                    cutoff.fetch_or(score > guess, Ordering::Relaxed);
                     Ok(Some((m, score)))
                 }
             })
@@ -200,7 +190,7 @@ impl<E: Eval + Send + Sync> Minimax<E> {
 
         self.tt.set(
             zobrist,
-            if score >= beta {
+            if score > guess {
                 Transposition::lower(score, draft, best)
             } else {
                 Transposition::upper(score, draft, best)
@@ -217,16 +207,16 @@ impl<E: Eval + Send + Sync> Minimax<E> {
         &self,
         pos: &Position,
         mut score: i16,
-        depth: i8,
+        draft: i8,
         time: Duration,
         counters: &SearchMetricsCounters,
     ) -> Result<i16, Timeout> {
-        let mut alpha = -i16::MAX;
+        let mut alpha = i16::MIN;
         let mut beta = i16::MAX;
         while alpha < beta {
-            let target = score.max(alpha + 1);
-            score = self.nw(pos, target, depth, time, counters)?;
-            if score < target {
+            let guess = score.max(alpha + 1);
+            score = self.nw(pos, guess, draft, time, counters)?;
+            if score < guess {
                 beta = score;
             } else {
                 alpha = score;
@@ -240,7 +230,7 @@ impl<E: Eval + Send + Sync> Minimax<E> {
 impl<E: Eval + Send + Sync> Search for Minimax<E> {
     fn search(&mut self, pos: &Position, limits: SearchLimits) -> Pv {
         let (mut score, start) = match self.tt.pv(pos.clone()).next() {
-            Some(t) if t.draft() >= 0 => (t.score(), t.draft() + 1),
+            Some(t) if t.draft() >= 0 => (t.score(), t.draft()),
             _ => {
                 self.tt.unset(pos.zobrist());
                 (self.engine.eval(pos), 0)
@@ -250,18 +240,14 @@ impl<E: Eval + Send + Sync> Search for Minimax<E> {
         let mut metrics = SearchMetrics::default();
         let mut counters = SearchMetricsCounters::default();
         for d in start..=limits.depth().min(Self::MAX_DRAFT as u8) as i8 {
-            let result = self.mtdf(pos, score, d, limits.time(), &counters);
-            metrics = counters.snapshot() - metrics;
-
-            debug!(depth = d, %metrics);
-
-            match result {
+            match self.mtdf(pos, score, d, limits.time(), &counters) {
                 Ok(s) => score = s,
                 Err(_) => break,
             }
-        }
 
-        self.metrics += counters.snapshot();
+            metrics = counters.snapshot() - metrics;
+            debug!(depth = d, score, %metrics);
+        }
 
         self.tt.pv(pos.clone())
     }
@@ -323,15 +309,16 @@ mod tests {
     #[proptest]
     #[should_panic]
     #[cfg(debug_assertions)]
-    fn nw_panics_if_beta_is_too_small(pos: Position, #[strategy(..=-i16::MAX)] b: i16, d: i8) {
+    fn nw_panics_if_beta_is_too_small(pos: Position, d: i8) {
         let mm = Minimax::new(MockEval::new());
-        mm.nw(&pos, b, d, Duration::MAX, &SearchMetricsCounters::default())?;
+        let counters = SearchMetricsCounters::default();
+        mm.nw(&pos, i16::MIN, d, Duration::MAX, &counters)?;
     }
 
     #[proptest]
     fn nw_evaluates_position_if_draft_is_lower_than_minimum(
         pos: Position,
-        #[strategy(-i16::MAX + 1..)] b: i16,
+        #[strategy(-i16::MAX..)] g: i16,
         #[strategy(i8::MIN..=Minimax::<MockEval>::MIN_DRAFT)] d: i8,
         s: i16,
     ) {
@@ -344,30 +331,29 @@ mod tests {
 
         let mm = Minimax::new(engine);
         let counters = SearchMetricsCounters::default();
-        assert_eq!(mm.nw(&pos, b, d, Duration::MAX, &counters), Ok(s));
+        assert_eq!(mm.nw(&pos, g, d, Duration::MAX, &counters), Ok(s));
     }
 
     #[proptest]
     fn nw_aborts_if_time_is_up(
         mm: Minimax<Engine>,
         pos: Position,
-        #[strategy(-i16::MAX + 1..)] b: i16,
+        #[strategy(-i16::MAX..)] g: i16,
         d: i8,
     ) {
         let counters = SearchMetricsCounters::default();
-        assert_eq!(mm.nw(&pos, b, d, Duration::ZERO, &counters), Err(Timeout));
+        assert_eq!(mm.nw(&pos, g, d, Duration::ZERO, &counters), Err(Timeout));
     }
 
     #[proptest]
     fn mtdf_finds_best_score(
         mm: Minimax<Engine>,
         pos: Position,
-        s: i16,
+        g: i16,
         #[strategy(Minimax::<Engine>::MIN_DRAFT..=Minimax::<Engine>::MAX_DRAFT)] d: i8,
     ) {
-        let counters = SearchMetricsCounters::default();
         assert_eq!(
-            mm.mtdf(&pos, s, d, Duration::MAX, &counters),
+            mm.mtdf(&pos, g, d, Duration::MAX, &SearchMetricsCounters::default()),
             Ok(negamax(&mm.engine, &pos, d))
         );
     }
@@ -376,11 +362,11 @@ mod tests {
     fn mtdf_aborts_if_time_is_up(
         mm: Minimax<Engine>,
         pos: Position,
-        s: i16,
+        g: i16,
         #[strategy(Minimax::<Engine>::MIN_DRAFT..=Minimax::<Engine>::MAX_DRAFT)] d: i8,
     ) {
         let counters = SearchMetricsCounters::default();
-        assert_eq!(mm.mtdf(&pos, s, d, Duration::ZERO, &counters), Err(Timeout));
+        assert_eq!(mm.mtdf(&pos, g, d, Duration::ZERO, &counters), Err(Timeout));
     }
 
     #[proptest]
@@ -388,14 +374,14 @@ mod tests {
         e: Engine,
         c: MinimaxConfig,
         pos: Position,
-        s: i16,
+        g: i16,
         #[strategy(Minimax::<Engine>::MIN_DRAFT..=Minimax::<Engine>::MAX_DRAFT)] d: i8,
     ) {
         let a = Minimax::with_config(e.clone(), c);
         let b = Minimax::with_config(e, c);
 
         assert_eq!(
-            a.mtdf(&pos, s, d, Duration::MAX, &SearchMetricsCounters::default()),
+            a.mtdf(&pos, g, d, Duration::MAX, &SearchMetricsCounters::default()),
             b.mtdf(&pos, 0, d, Duration::MAX, &SearchMetricsCounters::default())
         );
     }
@@ -406,15 +392,15 @@ mod tests {
         a: MinimaxConfig,
         b: MinimaxConfig,
         pos: Position,
-        s: i16,
+        g: i16,
         #[strategy(Minimax::<Engine>::MIN_DRAFT..=Minimax::<Engine>::MAX_DRAFT)] d: i8,
     ) {
         let a = Minimax::with_config(e.clone(), a);
         let b = Minimax::with_config(e, b);
 
         assert_eq!(
-            a.mtdf(&pos, s, d, Duration::MAX, &SearchMetricsCounters::default()),
-            b.mtdf(&pos, s, d, Duration::MAX, &SearchMetricsCounters::default())
+            a.mtdf(&pos, g, d, Duration::MAX, &SearchMetricsCounters::default()),
+            b.mtdf(&pos, g, d, Duration::MAX, &SearchMetricsCounters::default())
         );
     }
 
