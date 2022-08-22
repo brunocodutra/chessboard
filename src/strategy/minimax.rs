@@ -214,6 +214,7 @@ impl<E: Eval + Send + Sync> Minimax<E> {
         let mut alpha = i16::MIN;
         let mut beta = i16::MAX;
         while alpha < beta {
+            counters.test();
             let guess = score.max(alpha + 1);
             score = self.nw(pos, guess, draft, time, counters)?;
             if score < guess {
