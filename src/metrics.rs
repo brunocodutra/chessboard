@@ -6,10 +6,12 @@ use std::time::{Duration, Instant};
 #[derive(Debug, Display, Default, Clone, Eq, PartialEq, Hash, Add, AddAssign, Sub, SubAssign)]
 #[cfg_attr(test, derive(test_strategy::Arbitrary))]
 #[display(
-    fmt = "time={}ms nodes={}|{:.0}/s hits={}|{:.2}% cuts[tt={}|{:.2}% pv={}|{:.2}% sp={}|{:.2}%]",
+    fmt = "time={}ms nodes={}|{:.0}/s tests={}|{:.0}/s hits={}|{:.2}% cuts[tt={}|{:.2}% pv={}|{:.2}% sp={}|{:.2}%]",
     "self.time().as_millis()",
     "self.nodes()",
     "self.nps()",
+    "self.tests()",
+    "self.tps()",
     "self.tt_hits()",
     "self.tt_hit_rate() * 100.",
     "self.tt_cuts()",
@@ -22,6 +24,7 @@ use std::time::{Duration, Instant};
 pub struct SearchMetrics {
     time: Duration,
     nodes: u64,
+    tests: u64,
     tt_hits: u64,
     tt_cuts: u64,
     pv_cuts: u64,
@@ -42,6 +45,16 @@ impl SearchMetrics {
     /// Nodes visited per second.
     pub fn nps(&self) -> f64 {
         self.nodes() as f64 / self.time().as_secs_f64()
+    }
+
+    /// Tests counter.
+    pub fn tests(&self) -> u64 {
+        self.tests
+    }
+
+    /// Tests completed per second.
+    pub fn tps(&self) -> f64 {
+        self.tests() as f64 / self.time().as_secs_f64()
     }
 
     /// Transposition table hits.
@@ -88,8 +101,9 @@ impl SearchMetrics {
 /// A collector for search metrics.
 #[derive(Debug)]
 pub struct SearchMetricsCounters {
-    timer: Instant,
+    time: Instant,
     nodes: AtomicU64,
+    tests: AtomicU64,
     tt_hits: AtomicU64,
     tt_cuts: AtomicU64,
     pv_cuts: AtomicU64,
@@ -99,8 +113,9 @@ pub struct SearchMetricsCounters {
 impl Default for SearchMetricsCounters {
     fn default() -> Self {
         SearchMetricsCounters {
-            timer: Instant::now(),
+            time: Instant::now(),
             nodes: AtomicU64::new(0),
+            tests: AtomicU64::new(0),
             tt_hits: AtomicU64::new(0),
             tt_cuts: AtomicU64::new(0),
             pv_cuts: AtomicU64::new(0),
@@ -112,12 +127,17 @@ impl Default for SearchMetricsCounters {
 impl SearchMetricsCounters {
     /// How much time has elapsed so far.
     pub fn time(&self) -> Duration {
-        self.timer.elapsed()
+        self.time.elapsed()
     }
 
     /// Increment nodes counter.
     pub fn node(&self) -> u64 {
         self.nodes.fetch_add(1, Ordering::Relaxed) + 1
+    }
+
+    /// Increment tests counter.
+    pub fn test(&self) -> u64 {
+        self.tests.fetch_add(1, Ordering::Relaxed) + 1
     }
 
     /// Increment transposition table hits counter.
@@ -143,8 +163,9 @@ impl SearchMetricsCounters {
     /// Returns the metrics collected.
     pub fn snapshot(&mut self) -> SearchMetrics {
         SearchMetrics {
-            time: self.timer.elapsed(),
+            time: self.time.elapsed(),
             nodes: *self.nodes.get_mut(),
+            tests: *self.tests.get_mut(),
             tt_hits: *self.tt_hits.get_mut(),
             tt_cuts: *self.tt_cuts.get_mut(),
             pv_cuts: *self.pv_cuts.get_mut(),
