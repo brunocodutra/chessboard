@@ -28,8 +28,8 @@ pub struct Transposition {
 }
 
 impl Transposition {
-    pub const MIN_DRAFT: i8 = (i8::MIN >> 1) + 32;
-    pub const MAX_DRAFT: i8 = (i8::MAX >> 1) + 32;
+    pub const MIN_DRAFT: i8 = (i8::MIN >> 1);
+    pub const MAX_DRAFT: i8 = (i8::MAX >> 1);
 
     fn new(kind: TranspositionKind, score: i16, draft: i8, best: Move) -> Self {
         assert!(draft >= Self::MIN_DRAFT, "{} >= {}", draft, Self::MIN_DRAFT);
@@ -103,7 +103,7 @@ impl Binary for OptionalSignedTransposition {
 
                 kind.store(t.kind as u8);
                 score.store(t.score);
-                draft.store(t.draft - 32);
+                draft.store(t.draft);
                 best.clone_from_bitslice(&t.best.encode());
                 rest.clone_from_bitslice(sig);
 
@@ -128,7 +128,7 @@ impl Binary for OptionalSignedTransposition {
                 Transposition {
                     kind: [Lower, Upper][kind.load::<usize>()],
                     score: score.load(),
-                    draft: draft.load::<i8>() + 32,
+                    draft: draft.load(),
                     best: Binary::decode(best.into())
                         .map_err(|_| DecodeTranspositionError(register))?,
                 },
