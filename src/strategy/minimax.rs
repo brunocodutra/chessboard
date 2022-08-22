@@ -138,9 +138,11 @@ impl<E: Eval + Send + Sync> Minimax<E> {
             }
         }
 
+        let quiesce = draft <= 0 && !pos.is_check();
+
         if draft <= Self::MIN_DRAFT {
             return Ok(self.engine.eval(pos).max(-i16::MAX));
-        } else if draft <= 0 {
+        } else if quiesce {
             let stand_pat = self.engine.eval(pos).max(-i16::MAX);
             if stand_pat > guess {
                 counters.sp_cut();
@@ -160,7 +162,7 @@ impl<E: Eval + Send + Sync> Minimax<E> {
             }
         }
 
-        let mut moves: Vec<_> = if draft <= 0 {
+        let mut moves: Vec<_> = if quiesce {
             pos.captures().collect()
         } else {
             pos.moves().collect()
@@ -269,26 +271,20 @@ mod tests {
     use test_strategy::proptest;
     use tokio::{runtime, select, time::sleep};
 
-    fn quiesce<E: Eval + Send + Sync>(engine: &E, pos: &Position, draft: i8) -> i16 {
-        if draft <= Minimax::<E>::MIN_DRAFT {
-            engine.eval(pos).max(-i16::MAX)
-        } else {
-            pos.captures()
-                .map(|(_, pos)| -quiesce(engine, &pos, draft - 1))
-                .max()
-                .unwrap_or_else(|| engine.eval(pos).max(-i16::MAX))
-        }
-    }
-
     fn negamax<E: Eval + Send + Sync>(engine: &E, pos: &Position, draft: i8) -> i16 {
-        if draft <= 0 {
-            quiesce(engine, pos, draft)
+        let moves: Vec<_> = if draft <= Minimax::<E>::MIN_DRAFT {
+            Default::default()
+        } else if draft <= 0 && !pos.is_check() {
+            pos.captures().collect()
         } else {
-            pos.moves()
-                .map(|(_, pos)| -negamax(engine, &pos, draft - 1))
-                .max()
-                .unwrap_or_else(|| engine.eval(pos).max(-i16::MAX))
-        }
+            pos.moves().collect()
+        };
+
+        moves
+            .into_iter()
+            .map(|(_, pos)| -negamax(engine, &pos, draft - 1))
+            .max()
+            .unwrap_or_else(|| engine.eval(pos).max(-i16::MAX))
     }
 
     #[proptest]

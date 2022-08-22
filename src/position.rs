@@ -124,6 +124,13 @@ impl Position {
             .map(Square::from)
     }
 
+    /// Whether this position is a [check].
+    ///
+    /// [check]: https://en.wikipedia.org/wiki/Glossary_of_chess#check
+    pub fn is_check(&self) -> bool {
+        sm::Position::is_check(&self.0)
+    }
+
     /// Whether this position is a [checkmate].
     ///
     /// [checkmate]: https://en.wikipedia.org/wiki/Glossary_of_chess#checkmate
@@ -390,8 +397,13 @@ mod tests {
     }
 
     #[proptest]
+    fn checkmate_implies_check(pos: Position) {
+        assert!(!pos.is_checkmate() || pos.is_check());
+    }
+
+    #[proptest]
     fn checkmate_and_stalemate_are_mutually_exclusive(pos: Position) {
-        assert!(!(pos.is_checkmate() && pos.is_stalemate()))
+        assert!(!(pos.is_checkmate() && pos.is_stalemate()));
     }
 
     #[proptest]
