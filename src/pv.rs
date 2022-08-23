@@ -78,7 +78,7 @@ impl<const N: usize> FromIterator<Transposition> for Pv<N> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{Position, TranspositionTable};
+    use crate::{MoveKind, Position, TranspositionTable};
     use proptest::prop_assume;
     use proptest::sample::{size_range, Selector};
     use test_strategy::proptest;
@@ -108,16 +108,16 @@ mod tests {
     fn collects_truncated_sequence(
         tt: TranspositionTable,
         #[by_ref]
-        #[filter(#pos.moves().len() > 0)]
+        #[filter(#pos.moves(MoveKind::ANY).len() > 0)]
         pos: Position,
         s: i16,
         #[strategy(1i8..=Transposition::MAX_DRAFT)] d: i8,
         selector: Selector,
     ) {
-        let (m, next) = selector.select(pos.moves());
-        prop_assume!(next.moves().len() > 0);
+        let (m, _, next) = selector.select(pos.moves(MoveKind::ANY));
+        prop_assume!(next.moves(MoveKind::ANY).len() > 0);
 
-        let (n, _) = selector.select(next.moves());
+        let (n, _, _) = selector.select(next.moves(MoveKind::ANY));
 
         let t = Transposition::lower(s, d, m);
         tt.unset(pos.zobrist());
@@ -138,16 +138,16 @@ mod tests {
     fn collects_non_negative_draft_only(
         tt: TranspositionTable,
         #[by_ref]
-        #[filter(#pos.moves().len() > 0)]
+        #[filter(#pos.moves(MoveKind::ANY).len() > 0)]
         pos: Position,
         s: i16,
         #[strategy(Transposition::MIN_DRAFT..0)] d: i8,
         selector: Selector,
     ) {
-        let (m, next) = selector.select(pos.moves());
-        prop_assume!(next.moves().len() > 0);
+        let (m, _, next) = selector.select(pos.moves(MoveKind::ANY));
+        prop_assume!(next.moves(MoveKind::ANY).len() > 0);
 
-        let (n, _) = selector.select(next.moves());
+        let (n, _, _) = selector.select(next.moves(MoveKind::ANY));
 
         let t = Transposition::lower(s, d - Transposition::MIN_DRAFT, m);
         tt.unset(pos.zobrist());
@@ -171,13 +171,13 @@ mod tests {
     fn depth_is_available_even_if_n_is_0(
         tt: TranspositionTable,
         #[by_ref]
-        #[filter(#pos.moves().len() > 0)]
+        #[filter(#pos.moves(MoveKind::ANY).len() > 0)]
         pos: Position,
         s: i16,
         #[strategy(0..Transposition::MAX_DRAFT)] d: i8,
         selector: Selector,
     ) {
-        let (m, _) = selector.select(pos.moves());
+        let (m, _, _) = selector.select(pos.moves(MoveKind::ANY));
 
         let t = Transposition::lower(s, d, m);
         tt.unset(pos.zobrist());
@@ -192,13 +192,13 @@ mod tests {
     fn score_is_available_even_if_n_is_0(
         tt: TranspositionTable,
         #[by_ref]
-        #[filter(#pos.moves().len() > 0)]
+        #[filter(#pos.moves(MoveKind::ANY).len() > 0)]
         pos: Position,
         s: i16,
         #[strategy(0..Transposition::MAX_DRAFT)] d: i8,
         selector: Selector,
     ) {
-        let (m, _) = selector.select(pos.moves());
+        let (m, _, _) = selector.select(pos.moves(MoveKind::ANY));
 
         let t = Transposition::lower(s, d, m);
         tt.unset(pos.zobrist());

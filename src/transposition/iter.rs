@@ -34,6 +34,7 @@ impl<'a> Iterator for TranspositionIterator<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::MoveKind;
     use proptest::{prop_assume, sample::Selector};
     use test_strategy::proptest;
 
@@ -43,16 +44,16 @@ mod tests {
         #[filter(#tt.capacity() > 1)]
         tt: TranspositionTable,
         #[by_ref]
-        #[filter(#pos.moves().len() > 0)]
+        #[filter(#pos.moves(MoveKind::ANY).len() > 0)]
         pos: Position,
         #[strategy(Transposition::MIN_DRAFT..=Transposition::MAX_DRAFT)] d: i8,
         s: i16,
         selector: Selector,
     ) {
-        let (m, next) = selector.select(pos.moves());
-        prop_assume!(next.moves().len() > 0);
+        let (m, _, next) = selector.select(pos.moves(MoveKind::ANY));
+        prop_assume!(next.moves(MoveKind::ANY).len() > 0);
 
-        let (n, _) = selector.select(next.moves());
+        let (n, _, _) = selector.select(next.moves(MoveKind::ANY));
 
         let t = Transposition::lower(s, d, m);
         tt.unset(pos.zobrist());

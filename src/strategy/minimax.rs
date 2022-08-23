@@ -1,4 +1,4 @@
-use crate::{Eval, Position, Pv, Transposition, TranspositionTable};
+use crate::{Eval, MoveKind, Position, Pv, Transposition, TranspositionTable};
 use crate::{Search, SearchLimits, SearchMetrics, SearchMetricsCounters};
 use derive_more::{Display, Error, From};
 use rayon::prelude::*;
@@ -163,22 +163,22 @@ impl<E: Eval + Send + Sync> Minimax<E> {
         }
 
         let mut moves: Vec<_> = if quiesce {
-            pos.captures().collect()
+            pos.moves(MoveKind::CAPTURE).collect()
         } else {
-            pos.moves().collect()
+            pos.moves(MoveKind::ANY).collect()
         };
 
         if moves.is_empty() {
             return Ok(self.engine.eval(pos).max(-i16::MAX));
         }
 
-        moves.sort_by_cached_key(|(_, pos)| self.engine.eval(pos));
+        moves.sort_by_cached_key(|(_, _, pos)| self.engine.eval(pos));
 
         let cutoff = AtomicBool::new(false);
 
         let (best, score) = moves
             .into_par_iter()
-            .map(|(m, pos)| {
+            .map(|(m, _, pos)| {
                 if cutoff.load(Ordering::Relaxed) {
                     Ok(None)
                 } else {
@@ -272,17 +272,11 @@ mod tests {
     use tokio::{runtime, select, time::sleep};
 
     fn negamax<E: Eval + Send + Sync>(engine: &E, pos: &Position, draft: i8) -> i16 {
-        let moves: Vec<_> = if draft <= Minimax::<E>::MIN_DRAFT {
-            Default::default()
-        } else if draft <= 0 && !pos.is_check() {
-            pos.captures().collect()
-        } else {
-            pos.moves().collect()
-        };
-
-        moves
+        pos.moves(MoveKind::ANY)
             .into_iter()
-            .map(|(_, pos)| -negamax(engine, &pos, draft - 1))
+            .filter(|_| draft > Minimax::<E>::MIN_DRAFT)
+            .filter(|(_, mk, _)| draft > 0 || pos.is_check() || mk.intersects(MoveKind::CAPTURE))
+            .map(|(_, _, pos)| -negamax(engine, &pos, draft - 1))
             .max()
             .unwrap_or_else(|| engine.eval(pos).max(-i16::MAX))
     }
