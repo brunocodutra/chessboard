@@ -162,17 +162,18 @@ impl<E: Eval + Send + Sync> Minimax<E> {
             }
         }
 
-        let mut moves: Vec<_> = if quiesce {
-            pos.moves(MoveKind::CAPTURE).collect()
+        let move_kinds = if quiesce {
+            MoveKind::CAPTURE | MoveKind::PROMOTION
         } else {
-            pos.moves(MoveKind::ANY).collect()
+            MoveKind::ANY
         };
+
+        let mut moves: Vec<_> = pos.moves(move_kinds).collect();
+        moves.sort_by_cached_key(|(_, _, p)| self.engine.eval(p));
 
         if moves.is_empty() {
             return Ok(self.engine.eval(pos).max(-i16::MAX));
         }
-
-        moves.sort_by_cached_key(|(_, _, pos)| self.engine.eval(pos));
 
         let cutoff = AtomicBool::new(false);
 
@@ -272,10 +273,17 @@ mod tests {
     use tokio::{runtime, select, time::sleep};
 
     fn negamax<E: Eval + Send + Sync>(engine: &E, pos: &Position, draft: i8) -> i16 {
-        pos.moves(MoveKind::ANY)
-            .into_iter()
-            .filter(|_| draft > Minimax::<E>::MIN_DRAFT)
-            .filter(|(_, mk, _)| draft > 0 || pos.is_check() || mk.intersects(MoveKind::CAPTURE))
+        if draft <= Minimax::<E>::MIN_DRAFT {
+            return engine.eval(pos).max(-i16::MAX);
+        }
+
+        let move_kinds = if draft <= 0 && !pos.is_check() {
+            MoveKind::CAPTURE | MoveKind::PROMOTION
+        } else {
+            MoveKind::ANY
+        };
+
+        pos.moves(move_kinds)
             .map(|(_, _, pos)| -negamax(engine, &pos, draft - 1))
             .max()
             .unwrap_or_else(|| engine.eval(pos).max(-i16::MAX))
