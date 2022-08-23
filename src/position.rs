@@ -1,4 +1,5 @@
 use crate::{Bits, Color, Fen, Move, Piece, Role, San, Square};
+use bitflags::bitflags;
 use bitvec::{order::Lsb0, view::BitView};
 use derive_more::{DebugCustom, Display, Error};
 use shakmaty as sm;
@@ -6,6 +7,51 @@ use std::{convert::TryFrom, num::NonZeroU32, ops::Index};
 
 #[cfg(test)]
 use proptest::{prelude::*, sample::Selector};
+
+bitflags! {
+    #[derive(Default)]
+    pub struct MoveKind: u8 {
+        const ANY =         0b00000001;
+        const CASTLE =      0b00000010;
+        const PROMOTION =   0b00000100;
+        const CAPTURE =     0b00001000;
+    }
+}
+
+#[doc(hidden)]
+impl From<&sm::Move> for MoveKind {
+    fn from(m: &sm::Move) -> Self {
+        let mut kind = Self::ANY;
+
+        if m.is_castle() {
+            kind |= MoveKind::CASTLE
+        }
+
+        if m.is_promotion() {
+            kind |= MoveKind::PROMOTION
+        }
+
+        if m.is_capture() {
+            kind |= MoveKind::CAPTURE;
+        }
+
+        kind
+    }
+}
+
+#[doc(hidden)]
+impl From<&mut sm::Move> for MoveKind {
+    fn from(m: &mut sm::Move) -> Self {
+        (&*m).into()
+    }
+}
+
+#[doc(hidden)]
+impl From<sm::Move> for MoveKind {
+    fn from(m: sm::Move) -> Self {
+        (&m).into()
+    }
+}
 
 pub type Zobrist = Bits<u64, 64>;
 
@@ -153,27 +199,16 @@ impl Position {
     }
 
     /// An iterator over the legal [`Move`]s that can be played in this position.
-    pub fn moves(&self) -> impl ExactSizeIterator<Item = (Move, Self)> {
-        let p = self.0.clone();
-        sm::Position::legal_moves(&self.0)
-            .into_iter()
-            .map(move |vm| {
-                let mut p = p.clone();
-                sm::Position::play_unchecked(&mut p, &vm);
-                (sm::uci::Uci::from_standard(&vm).into(), p.into())
-            })
-    }
+    pub fn moves(&self, kind: MoveKind) -> impl ExactSizeIterator<Item = (Move, MoveKind, Self)> {
+        let mut legals = sm::Position::legal_moves(&self.0);
+        legals.retain(|vm| kind.intersects(vm.into()));
 
-    /// An iterator over the legal capture [`Move`]s that can be played in this position.
-    pub fn captures(&self) -> impl ExactSizeIterator<Item = (Move, Self)> {
         let p = self.0.clone();
-        sm::Position::capture_moves(&self.0)
-            .into_iter()
-            .map(move |vm| {
-                let mut p = p.clone();
-                sm::Position::play_unchecked(&mut p, &vm);
-                (sm::uci::Uci::from_standard(&vm).into(), p.into())
-            })
+        legals.into_iter().map(move |vm| {
+            let mut p = p.clone();
+            sm::Position::play_unchecked(&mut p, &vm);
+            (sm::uci::Uci::from_standard(&vm).into(), vm.into(), p.into())
+        })
     }
 
     /// Play a [`Move`] if legal in this position.
@@ -408,7 +443,7 @@ mod tests {
 
     #[proptest]
     fn moves_returns_all_legal_moves_from_this_position(pos: Position) {
-        for (m, p) in pos.moves() {
+        for (m, _, p) in pos.moves(MoveKind::ANY) {
             let mut pos = pos.clone();
             assert_eq!(pos[m.whence()].map(|p| p.color()), Some(pos.turn()));
             assert_eq!(pos.make(m).err(), None);
@@ -417,27 +452,47 @@ mod tests {
     }
 
     #[proptest]
-    fn captures_returns_a_subset_of_legal_moves_from_this_position(pos: Position) {
-        let moves: HashSet<_> = pos.moves().collect();
-        let captures: HashSet<_> = pos.moves().collect();
-        assert!(captures.is_subset(&moves));
-    }
-
-    #[proptest]
-    fn captures_returns_capture_moves(pos: Position) {
-        for (_, p) in pos.captures() {
+    fn captures_reduce_material(pos: Position) {
+        for (_, _, p) in pos.moves(MoveKind::CAPTURE) {
             assert!(p.by_color(p.turn()).len() < pos.by_color(p.turn()).len());
         }
     }
 
     #[proptest]
+    fn promotions_exchange_pawns(pos: Position) {
+        for (_, _, p) in pos.moves(MoveKind::PROMOTION) {
+            let pawn = Piece(pos.turn(), Role::Pawn);
+            assert!(p.by_piece(pawn).len() < pos.by_piece(pawn).len());
+            assert_eq!(p.by_color(pos.turn()).len(), pos.by_color(pos.turn()).len());
+        }
+    }
+
+    #[proptest]
+    fn castles_move_the_king_by_two_files(pos: Position) {
+        for (m, _, _) in pos.moves(MoveKind::CASTLE) {
+            assert_eq!(pos[m.whence()], Some(Piece(pos.turn(), Role::King)));
+            assert_eq!(m.whence().rank(), m.whither().rank());
+            assert_eq!((m.whence().file() - m.whither().file()).abs(), 2);
+        }
+    }
+
+    #[proptest]
+    fn castles_are_neither_captures_nor_promotions(pos: Position) {
+        let castles: HashSet<_> = pos.moves(MoveKind::CASTLE).collect();
+        let captures_or_promotions: HashSet<_> =
+            pos.moves(MoveKind::CAPTURE | MoveKind::PROMOTION).collect();
+
+        assert_eq!(castles.intersection(&captures_or_promotions).count(), 0);
+    }
+
+    #[proptest]
     fn legal_move_updates_position(
         #[by_ref]
-        #[filter(#pos.moves().len() > 0)]
+        #[filter(#pos.moves(MoveKind::ANY).len() > 0)]
         mut pos: Position,
         selector: Selector,
     ) {
-        let (m, next) = selector.select(pos.moves());
+        let (m, _, next) = selector.select(pos.moves(MoveKind::ANY));
         let vm = sm::uci::Uci::to_move(&m.into(), &pos.0)?;
         let san = sm::san::San::from_move(&pos.0, &vm).into();
         assert_eq!(pos.make(m), Ok(san));
@@ -447,7 +502,7 @@ mod tests {
     #[proptest]
     fn illegal_move_fails_without_changing_position(
         #[by_ref] mut pos: Position,
-        #[filter(!#pos.moves().any(|(m, _)| m == #m))] m: Move,
+        #[filter(!#pos.moves(MoveKind::ANY).any(|(m, _, _)| m == #m))] m: Move,
     ) {
         let before = pos.clone();
         assert_eq!(pos.make(m), Err(IllegalMove(m, before.clone())));

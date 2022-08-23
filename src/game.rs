@@ -87,7 +87,7 @@ fn is_game_over(pos: &Position) -> Option<Outcome> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{MockPlay, MockPlayerBuilder};
+    use crate::{MockPlay, MockPlayerBuilder, MoveKind};
     use proptest::sample::Selector;
     use test_strategy::proptest;
     use tokio::runtime;
@@ -139,7 +139,7 @@ mod tests {
             match is_game_over(&next) {
                 Some(o) => break o,
                 _ => {
-                    let (m, _) = selector.select(next.moves());
+                    let (m, _, _) = selector.select(next.moves(MoveKind::ANY));
                     moves.push(m);
                     sans.push(next.make(m)?);
                 }
