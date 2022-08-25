@@ -1,6 +1,6 @@
 use crate::{Eval, MoveKind, Position, Pv, Transposition, TranspositionTable};
 use crate::{Search, SearchLimits, SearchMetrics, SearchMetricsCounters};
-use derive_more::{Display, Error, From};
+use derive_more::{Display, Error, From, Neg};
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -10,7 +10,10 @@ use tracing::debug;
 #[cfg(test)]
 use proptest::prelude::*;
 
-#[derive(Debug, Display, Clone, Eq, PartialEq, Ord, PartialOrd, Error)]
+#[derive(Debug, Default, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Neg)]
+struct Score(i16, i8);
+
+#[derive(Debug, Display, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Error)]
 #[display(fmt = "time is up!")]
 pub struct Timeout;
 
@@ -110,7 +113,7 @@ impl<E: Eval + Send + Sync> Minimax<E> {
         draft: i8,
         time: Duration,
         counters: &SearchMetricsCounters,
-    ) -> Result<i16, Timeout> {
+    ) -> Result<Score, Timeout> {
         assert!(guess > i16::MIN, "{} > {}", guess, i16::MIN);
 
         if counters.time() >= time {
@@ -133,7 +136,7 @@ impl<E: Eval + Send + Sync> Minimax<E> {
             Some(t) => {
                 if !t.bounds().contains(&guess) {
                     counters.tt_cut();
-                    return Ok(t.score());
+                    return Ok(Score(t.score(), t.draft()));
                 }
             }
         }
@@ -141,23 +144,23 @@ impl<E: Eval + Send + Sync> Minimax<E> {
         let quiesce = draft <= 0 && !pos.is_check();
 
         if draft <= Self::MIN_DRAFT {
-            return Ok(self.engine.eval(pos).max(-i16::MAX));
+            return Ok(Score(self.engine.eval(pos).max(-i16::MAX), draft));
         } else if quiesce {
-            let stand_pat = self.engine.eval(pos).max(-i16::MAX);
-            if stand_pat > guess {
+            let s = self.engine.eval(pos).max(-i16::MAX);
+            if s > guess {
                 counters.sp_cut();
                 #[cfg(not(test))]
                 // The stand pat heuristic is not exact.
-                return Ok(stand_pat);
+                return Ok(Score(s, draft));
             }
         } else if let Some(m) = transposition.map(|t| t.best()) {
             let mut pos = pos.clone();
             if pos.make(m).is_ok() {
-                let score = -self.nw(&pos, -guess, draft - 1, time, counters)?;
-                if score > guess {
+                let Score(s, d) = -self.nw(&pos, -guess, draft - 1, time, counters)?;
+                if s > guess {
                     counters.pv_cut();
-                    self.tt.set(zobrist, Transposition::lower(score, draft, m));
-                    return Ok(score);
+                    self.tt.set(zobrist, Transposition::lower(s, draft, m));
+                    return Ok(Score(s, d));
                 }
             }
         }
@@ -172,20 +175,20 @@ impl<E: Eval + Send + Sync> Minimax<E> {
         moves.sort_by_cached_key(|(_, _, p)| self.engine.eval(p));
 
         if moves.is_empty() {
-            return Ok(self.engine.eval(pos).max(-i16::MAX));
+            return Ok(Score(self.engine.eval(pos).max(-i16::MAX), draft));
         }
 
         let cutoff = AtomicBool::new(false);
 
-        let (best, score) = moves
+        let (best, Score(s, d)) = moves
             .into_par_iter()
             .map(|(m, _, pos)| {
                 if cutoff.load(Ordering::Relaxed) {
                     Ok(None)
                 } else {
-                    let score = -self.nw(&pos, -guess, draft - 1, time, counters)?;
-                    cutoff.fetch_or(score > guess, Ordering::Relaxed);
-                    Ok(Some((m, score)))
+                    let Score(s, d) = -self.nw(&pos, -guess, draft - 1, time, counters)?;
+                    cutoff.fetch_or(s > guess, Ordering::Relaxed);
+                    Ok(Some((m, Score(s, d))))
                 }
             })
             .try_reduce(|| None, |a, b| Ok(max_by_key(a, b, |x| x.map(|(_, s)| s))))?
@@ -193,14 +196,14 @@ impl<E: Eval + Send + Sync> Minimax<E> {
 
         self.tt.set(
             zobrist,
-            if score > guess {
-                Transposition::lower(score, draft, best)
+            if s > guess {
+                Transposition::lower(s, draft, best)
             } else {
-                Transposition::upper(score, draft, best)
+                Transposition::upper(s, draft, best)
             },
         );
 
-        Ok(score)
+        Ok(Score(s, d))
     }
 
     /// The [mtd(f)] algorithm.
@@ -219,7 +222,7 @@ impl<E: Eval + Send + Sync> Minimax<E> {
         while alpha < beta {
             counters.test();
             let guess = score.max(alpha + 1);
-            score = self.nw(pos, guess, draft, time, counters)?;
+            Score(score, _) = self.nw(pos, guess, draft, time, counters)?;
             if score < guess {
                 beta = score;
             } else {
@@ -331,7 +334,7 @@ mod tests {
 
         let mm = Minimax::new(engine);
         let counters = SearchMetricsCounters::default();
-        assert_eq!(mm.nw(&pos, g, d, Duration::MAX, &counters), Ok(s));
+        assert_eq!(mm.nw(&pos, g, d, Duration::MAX, &counters), Ok(Score(s, d)));
     }
 
     #[proptest]
