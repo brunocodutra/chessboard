@@ -36,7 +36,7 @@ impl Execute for Search {
         match self.limits {
             l @ SearchLimits::Time(_) => block_in_place(|| search(&mut strategy, &pos, l))?,
             l => {
-                for d in 0..=l.depth() {
+                for d in 1..=l.depth() {
                     block_in_place(|| search(&mut strategy, &pos, SearchLimits::Depth(d)))?
                 }
             }

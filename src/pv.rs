@@ -13,18 +13,18 @@ pub struct Pv<const N: usize> {
     #[deref_mut(forward)]
     #[into_iterator(owned, ref, ref_mut)]
     moves: ArrayVec<Move, N>,
-    ctx: Option<(u8, i16)>,
+    info: Option<(u8, i16)>,
 }
 
 impl<const N: usize> Pv<N> {
     /// The depth of this sequence.
     pub fn depth(&self) -> Option<u8> {
-        self.ctx.map(|(d, _)| d)
+        self.info.map(|(d, _)| d)
     }
 
     /// This sequence's score from the point of view of the side to move.
     pub fn score(&self) -> Option<i16> {
-        self.ctx.map(|(_, s)| s)
+        self.info.map(|(_, s)| s)
     }
 
     /// The number of moves in this sequence.
@@ -47,7 +47,7 @@ impl<const N: usize> Pv<N> {
     /// No moves are discarded if `M >= self.len()`.
     pub fn truncate<const M: usize>(self) -> Pv<M> {
         Pv {
-            ctx: self.ctx,
+            info: self.info,
             moves: self.moves.into_iter().take(M).collect(),
         }
     }
@@ -61,8 +61,8 @@ impl<const N: usize> Pv<N> {
 /// Panics if the sequence is not strictly decreasing by draft.
 impl<const N: usize> FromIterator<Transposition> for Pv<N> {
     fn from_iter<I: IntoIterator<Item = Transposition>>(tts: I) -> Self {
-        let mut tts = tts.into_iter().filter(|t| t.draft() >= 0).peekable();
-        let ctx = tts.peek().map(|t| (t.draft() as u8, t.score()));
+        let mut tts = tts.into_iter().filter(|t| t.draft() > 0).peekable();
+        let info = tts.peek().map(|t| (t.draft() as u8, t.score()));
 
         let mut draft = i8::MAX;
         let moves = ArrayVec::from_iter(tts.take(N).map(|t| {
@@ -71,7 +71,7 @@ impl<const N: usize> FromIterator<Transposition> for Pv<N> {
             t.best()
         }));
 
-        Pv { ctx, moves }
+        Pv { info, moves }
     }
 }
 
@@ -88,7 +88,7 @@ mod tests {
         assert_eq!(tt.iter(&pos).collect::<Pv<0>>().len(), 0);
         assert_eq!(
             tt.iter(&pos).collect::<Pv<10>>().len(),
-            tt.iter(&pos).filter(|t| t.draft() >= 0).count()
+            tt.iter(&pos).filter(|t| t.draft() > 0).count()
         );
     }
 
@@ -100,7 +100,7 @@ mod tests {
         assert!(tt.iter(&pos).collect::<Pv<0>>().is_empty());
         assert_eq!(
             tt.iter(&pos).collect::<Pv<10>>().is_empty(),
-            tt.iter(&pos).filter(|t| t.draft() >= 0).count() == 0
+            tt.iter(&pos).filter(|t| t.draft() > 0).count() == 0
         );
     }
 
@@ -123,7 +123,7 @@ mod tests {
         tt.unset(pos.zobrist());
         tt.set(pos.zobrist(), t);
 
-        let u = Transposition::lower(s.saturating_neg(), d - 1, n);
+        let u = Transposition::lower(s, d - 1, n);
         tt.unset(next.zobrist());
         tt.set(next.zobrist(), u);
 
@@ -135,13 +135,14 @@ mod tests {
     }
 
     #[proptest]
-    fn collects_non_negative_draft_only(
+    fn collects_positive_draft_only(
         tt: TranspositionTable,
         #[by_ref]
         #[filter(#pos.moves(MoveKind::ANY).len() > 0)]
         pos: Position,
         s: i16,
-        #[strategy(Transposition::MIN_DRAFT..0)] d: i8,
+        #[strategy(1..=Transposition::MAX_DRAFT)] a: i8,
+        #[strategy(Transposition::MIN_DRAFT..=0)] b: i8,
         selector: Selector,
     ) {
         let (m, _, next) = selector.select(pos.moves(MoveKind::ANY));
@@ -149,11 +150,11 @@ mod tests {
 
         let (n, _, _) = selector.select(next.moves(MoveKind::ANY));
 
-        let t = Transposition::lower(s, d - Transposition::MIN_DRAFT, m);
+        let t = Transposition::lower(s, a, m);
         tt.unset(pos.zobrist());
         tt.set(pos.zobrist(), t);
 
-        let u = Transposition::lower(s.saturating_neg(), d, n);
+        let u = Transposition::lower(s, b, n);
         tt.unset(next.zobrist());
         tt.set(next.zobrist(), u);
 
@@ -168,13 +169,13 @@ mod tests {
     }
 
     #[proptest]
-    fn depth_is_available_even_if_n_is_0(
+    fn depth_and_score_are_available_even_if_n_is_0(
         tt: TranspositionTable,
         #[by_ref]
         #[filter(#pos.moves(MoveKind::ANY).len() > 0)]
         pos: Position,
         s: i16,
-        #[strategy(0..Transposition::MAX_DRAFT)] d: i8,
+        #[strategy(1..Transposition::MAX_DRAFT)] d: i8,
         selector: Selector,
     ) {
         let (m, _, _) = selector.select(pos.moves(MoveKind::ANY));
@@ -185,17 +186,18 @@ mod tests {
 
         let pv: Pv<0> = tt.iter(&pos).collect();
         assert_eq!(pv.depth(), Some(t.draft() as u8));
+        assert_eq!(pv.score(), Some(t.score()));
         assert_eq!(&pv[..], [].as_slice())
     }
 
     #[proptest]
-    fn score_is_available_even_if_n_is_0(
+    fn depth_and_score_are_not_available_if_draft_is_not_positive(
         tt: TranspositionTable,
         #[by_ref]
         #[filter(#pos.moves(MoveKind::ANY).len() > 0)]
         pos: Position,
         s: i16,
-        #[strategy(0..Transposition::MAX_DRAFT)] d: i8,
+        #[strategy(Transposition::MIN_DRAFT..=0)] d: i8,
         selector: Selector,
     ) {
         let (m, _, _) = selector.select(pos.moves(MoveKind::ANY));
@@ -204,8 +206,9 @@ mod tests {
         tt.unset(pos.zobrist());
         tt.set(pos.zobrist(), t);
 
-        let pv: Pv<0> = tt.iter(&pos).collect();
-        assert_eq!(pv.score(), Some(t.score()));
+        let pv: Pv<10> = tt.iter(&pos).collect();
+        assert_eq!(pv.depth(), None);
+        assert_eq!(pv.score(), None);
         assert_eq!(&pv[..], [].as_slice())
     }
 
