@@ -58,7 +58,7 @@ mod tests {
     fn searches_for_best_move(
         l: SearchLimits,
         pos: Position,
-        #[filter(#t.draft() >= 0)] t: Transposition,
+        #[filter(#t.draft() > 0)] t: Transposition,
     ) {
         let rt = runtime::Builder::new_multi_thread().build()?;
 

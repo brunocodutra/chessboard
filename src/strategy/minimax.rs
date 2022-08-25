@@ -320,7 +320,7 @@ mod tests {
         pos: Position,
         #[strategy(-i16::MAX..)] g: i16,
         #[strategy(i8::MIN..=Minimax::<MockEval>::MIN_DRAFT)] d: i8,
-        s: i16,
+        #[strategy(-i16::MAX..)] s: i16,
     ) {
         let mut engine = MockEval::new();
         engine
