@@ -26,7 +26,7 @@ pub enum SearchLimits {
 
 impl Default for SearchLimits {
     fn default() -> Self {
-        SearchLimits::Depth(u8::MAX)
+        SearchLimits::None
     }
 }
 

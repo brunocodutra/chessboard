@@ -1,6 +1,7 @@
 use anyhow::Error as Anyhow;
 use async_trait::async_trait;
 use clap::Subcommand;
+use derive_more::From;
 
 mod play;
 mod search;
@@ -13,11 +14,17 @@ pub trait Execute {
     async fn execute(self) -> Result<(), Anyhow>;
 }
 
-#[derive(Subcommand)]
+#[derive(From, Subcommand)]
 pub enum Applet {
     Search(search::Search),
     Play(play::Play),
     Uci(uci::Uci),
+}
+
+impl Default for Applet {
+    fn default() -> Self {
+        uci::Uci::default().into()
+    }
 }
 
 #[async_trait]

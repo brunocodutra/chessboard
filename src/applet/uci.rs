@@ -9,7 +9,7 @@ use tracing::{debug, error, instrument, warn};
 use vampirc_uci::{self as uci, UciMessage, UciSearchControl, UciTimeControl};
 
 /// A basic *not fully compliant* UCI server.
-#[derive(Debug, Parser)]
+#[derive(Debug, Default, Parser)]
 #[clap(
     disable_help_flag = true,
     disable_version_flag = true,
@@ -17,6 +17,7 @@ use vampirc_uci::{self as uci, UciMessage, UciSearchControl, UciTimeControl};
 )]
 pub struct Uci {
     /// The search strategy.
+    #[clap(short, long, default_value_t)]
     strategy: StrategyBuilder,
 }
 
