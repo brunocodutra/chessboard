@@ -1,7 +1,7 @@
 use crate::{Binary, Bits, Move, Register};
 use bitvec::field::BitField;
 use derive_more::{Display, Error};
-use std::ops::RangeInclusive;
+use std::{cmp::Ordering, ops::RangeInclusive};
 
 mod iter;
 mod table;
@@ -14,6 +14,7 @@ pub use table::*;
 enum TranspositionKind {
     Lower,
     Upper,
+    Exact,
 }
 
 /// A partial search result.
@@ -25,6 +26,18 @@ pub struct Transposition {
     #[cfg_attr(test, strategy(Self::MIN_DRAFT..=Self::MAX_DRAFT))]
     draft: i8,
     best: Move,
+}
+
+impl PartialOrd for Transposition {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        (self.draft, self.kind).partial_cmp(&(other.draft, other.kind))
+    }
+}
+
+impl Ord for Transposition {
+    fn cmp(&self, other: &Self) -> Ordering {
+        (self.draft, self.kind).cmp(&(other.draft, other.kind))
+    }
 }
 
 impl Transposition {
@@ -53,11 +66,17 @@ impl Transposition {
         Transposition::new(TranspositionKind::Upper, score, draft, best)
     }
 
+    /// Constructs a [`Transposition`] given the exact score, remaining draft, and best [`Move`].
+    pub fn exact(score: i16, draft: i8, best: Move) -> Self {
+        Transposition::new(TranspositionKind::Exact, score, draft, best)
+    }
+
     /// Bounds for the exact score.
     pub fn bounds(&self) -> RangeInclusive<i16> {
         match self.kind {
             TranspositionKind::Lower => self.score..=i16::MAX,
             TranspositionKind::Upper => i16::MIN..=self.score,
+            TranspositionKind::Exact => self.score..=self.score,
         }
     }
 
@@ -77,14 +96,14 @@ impl Transposition {
     }
 }
 
-type Signature = Bits<u32, 25>;
+type Signature = Bits<u32, 24>;
 type OptionalSignedTransposition = Option<(Transposition, Signature)>;
 type OptionalSignedTranspositionRegister = <OptionalSignedTransposition as Binary>::Register;
 
 /// The reason why decoding [`Transposition`] from binary failed.
 #[derive(Debug, Display, Clone, Eq, PartialEq, Error)]
 #[cfg_attr(test, derive(test_strategy::Arbitrary))]
-#[display(fmt = "`{}` is not a valid search result", _0)]
+#[display(fmt = "`{}` is not a valid transposition", _0)]
 pub struct DecodeTranspositionError(#[error(not(source))] OptionalSignedTranspositionRegister);
 
 impl Binary for OptionalSignedTransposition {
@@ -96,7 +115,7 @@ impl Binary for OptionalSignedTransposition {
             None => Bits::default(),
             Some((t, sig)) => {
                 let mut register = Bits::default();
-                let (kind, rest) = register.split_at_mut(1);
+                let (kind, rest) = register.split_at_mut(2);
                 let (score, rest) = rest.split_at_mut(16);
                 let (draft, rest) = rest.split_at_mut(7);
                 let (best, rest) = rest.split_at_mut(<Move as Binary>::Register::WIDTH);
@@ -118,7 +137,7 @@ impl Binary for OptionalSignedTransposition {
         if register == Bits::default() {
             Ok(None)
         } else {
-            let (kind, rest) = register.split_at(1);
+            let (kind, rest) = register.split_at(2);
             let (score, rest) = rest.split_at(16);
             let (draft, rest) = rest.split_at(7);
             let (best, rest) = rest.split_at(<Move as Binary>::Register::WIDTH);
@@ -126,7 +145,10 @@ impl Binary for OptionalSignedTransposition {
             use TranspositionKind::*;
             Ok(Some((
                 Transposition {
-                    kind: [Lower, Upper][kind.load::<usize>()],
+                    kind: [Lower, Upper, Exact]
+                        .into_iter()
+                        .nth(kind.load())
+                        .ok_or(DecodeTranspositionError(register))?,
                     score: score.load(),
                     draft: draft.load(),
                     best: Binary::decode(best.into())
@@ -156,7 +178,7 @@ mod tests {
     }
 
     #[proptest]
-    fn upper_constructs_lower_bound_transposition(
+    fn upper_constructs_upper_bound_transposition(
         s: i16,
         #[strategy(Transposition::MIN_DRAFT..=Transposition::MAX_DRAFT)] d: i8,
         m: Move,
@@ -168,7 +190,18 @@ mod tests {
     }
 
     #[proptest]
-    #[cfg(debug_assertions)]
+    fn exact_constructs_exact_transposition(
+        s: i16,
+        #[strategy(Transposition::MIN_DRAFT..=Transposition::MAX_DRAFT)] d: i8,
+        m: Move,
+    ) {
+        assert_eq!(
+            Transposition::exact(s, d, m),
+            Transposition::new(TranspositionKind::Exact, s, d, m)
+        );
+    }
+
+    #[proptest]
     #[should_panic]
     fn transposition_panics_if_draft_grater_than_max(
         k: TranspositionKind,
@@ -180,7 +213,6 @@ mod tests {
     }
 
     #[proptest]
-    #[cfg(debug_assertions)]
     #[should_panic]
     fn transposition_panics_if_draft_lower_than_max(
         k: TranspositionKind,
@@ -194,6 +226,22 @@ mod tests {
     #[proptest]
     fn transposition_score_is_between_bounds(t: Transposition) {
         assert!(t.bounds().contains(&t.score()));
+    }
+
+    #[proptest]
+    fn transposition_with_larger_draft_is_larger(
+        t: Transposition,
+        #[filter(#t.draft != #u.draft)] u: Transposition,
+    ) {
+        assert_eq!(t < u, t.draft < u.draft);
+    }
+
+    #[proptest]
+    fn transposition_with_same_draft_is_compared_by_kind(
+        t: Transposition,
+        #[filter(#t.draft == #u.draft)] u: Transposition,
+    ) {
+        assert_eq!(t < u, t.kind < u.kind);
     }
 
     #[proptest]

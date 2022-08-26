@@ -78,10 +78,11 @@ impl TranspositionTable {
     /// In the slot if not empty, the [`Transposition`] with greater draft is chosen.
     pub fn set(&self, key: Zobrist, transposition: Transposition) {
         let sig = self.signature_of(key);
+        let register = Some((transposition, sig)).encode();
         self.cache.update(self.index_of(key), |r| {
             match Binary::decode(r).expect("expected valid encoding") {
-                Some((t, _)) if t.draft() > transposition.draft() => None,
-                _ => Some((transposition, sig)).encode().into(),
+                Some((t, _)) if t > transposition => None,
+                _ => Some(register),
             }
         })
     }
@@ -163,7 +164,7 @@ mod tests {
     }
 
     #[proptest]
-    fn set_keeps_transposition_with_larger_draft(
+    fn set_keeps_greater_transposition(
         tt: TranspositionTable,
         t: Transposition,
         u: Transposition,
@@ -173,7 +174,7 @@ mod tests {
         tt.cache.store(tt.index_of(k), Some((t, sig)).encode());
         tt.set(k, u);
 
-        if t.draft() > u.draft() {
+        if t > u {
             assert_eq!(tt.get(k), Some(t));
         } else {
             assert_eq!(tt.get(k), Some(u));
