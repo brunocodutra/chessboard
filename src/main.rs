@@ -19,7 +19,7 @@ struct Chessboard {
     verbosity: Level,
 
     #[clap(subcommand)]
-    applet: Applet,
+    applet: Option<Applet>,
 }
 
 #[tokio::main]
@@ -38,5 +38,5 @@ async fn main() -> Result<(), Anyhow> {
 
     registry().with(filter).with(writer).init();
 
-    applet.execute().await
+    applet.unwrap_or_default().execute().await
 }

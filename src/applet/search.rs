@@ -16,10 +16,11 @@ use tracing::{info, instrument};
 )]
 pub struct Search {
     /// How deep/long to search.
-    #[clap(short, long, default_value = "none")]
+    #[clap(short, long, default_value_t)]
     limits: SearchLimits,
 
     /// The search strategy.
+    #[clap(short, long, default_value_t)]
     strategy: StrategyBuilder,
 
     /// The position to search in FEN notation.
