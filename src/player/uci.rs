@@ -5,7 +5,7 @@ use derive_more::{DebugCustom, Display, Error, From};
 use std::{collections::HashMap, future::Future, io, pin::Pin};
 use tokio::{runtime, task::block_in_place};
 use tracing::{debug, error, instrument};
-use vampirc_uci::{self as uci, UciFen, UciMessage, UciSearchControl, UciTimeControl};
+use vampirc_uci::{self as uci, UciFen, UciMessage, UciSearchControl};
 
 pub type UciOptions = HashMap<String, Option<String>>;
 
@@ -112,12 +112,15 @@ impl<T: Io + Send> Play for Uci<T> {
             moves: Vec::new(),
         };
 
-        let go = UciMessage::Go {
-            search_control: Some(UciSearchControl::depth(self.limits.depth())),
-            time_control: Some(UciTimeControl::MoveTime(
-                uci::Duration::from_std(self.limits.time())
-                    .unwrap_or_else(|_| uci::Duration::max_value()),
-            )),
+        let go = match self.limits {
+            SearchLimits::None => UciMessage::go(),
+            SearchLimits::Depth(d) => UciMessage::Go {
+                search_control: Some(UciSearchControl::depth(d)),
+                time_control: None,
+            },
+            SearchLimits::Time(t) => UciMessage::go_movetime(
+                uci::Duration::from_std(t).unwrap_or_else(|_| uci::Duration::max_value()),
+            ),
         };
 
         let io = self.io.get_or_init().await?;
@@ -448,11 +451,15 @@ mod tests {
             .withf(move |msg| msg == p.to_string())
             .returning(|_| Ok(()));
 
-        let go = UciMessage::Go {
-            search_control: Some(UciSearchControl::depth(l.depth())),
-            time_control: Some(UciTimeControl::MoveTime(
-                uci::Duration::from_std(l.time()).unwrap_or_else(|_| uci::Duration::max_value()),
-            )),
+        let go = match l {
+            SearchLimits::None => UciMessage::go(),
+            SearchLimits::Depth(d) => UciMessage::Go {
+                search_control: Some(UciSearchControl::depth(d)),
+                time_control: None,
+            },
+            SearchLimits::Time(t) => UciMessage::go_movetime(
+                uci::Duration::from_std(t).unwrap_or_else(|_| uci::Duration::max_value()),
+            ),
         };
 
         io.expect_send()
