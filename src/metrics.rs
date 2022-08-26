@@ -6,7 +6,7 @@ use std::time::{Duration, Instant};
 #[derive(Debug, Display, Default, Clone, Eq, PartialEq, Hash, Add, AddAssign, Sub, SubAssign)]
 #[cfg_attr(test, derive(test_strategy::Arbitrary))]
 #[display(
-    fmt = "time={}ms nodes={}|{:.0}/s tests={}|{:.0}/s hits={}|{:.2}% cuts[tt={}|{:.2}% pv={}|{:.2}% sp={}|{:.2}%]",
+    fmt = "time={}ms nodes={}|{:.0}/s tests={}|{:.0}/s hits={}|{:.2}% cuts[tt={}|{:.2}% sp={}|{:.2}%]",
     "self.time().as_millis()",
     "self.nodes()",
     "self.nps()",
@@ -16,8 +16,6 @@ use std::time::{Duration, Instant};
     "self.tt_hit_rate() * 100.",
     "self.tt_cuts()",
     "self.tt_cut_rate() * 100.",
-    "self.pv_cuts()",
-    "self.pv_cut_rate() * 100.",
     "self.sp_cuts()",
     "self.sp_cut_rate() * 100."
 )]
@@ -27,7 +25,6 @@ pub struct SearchMetrics {
     tests: u64,
     tt_hits: u64,
     tt_cuts: u64,
-    pv_cuts: u64,
     sp_cuts: u64,
 }
 
@@ -77,16 +74,6 @@ impl SearchMetrics {
         self.tt_cuts() as f64 / self.nodes() as f64
     }
 
-    /// Transposition table move cuts counter.
-    pub fn pv_cuts(&self) -> u64 {
-        self.pv_cuts
-    }
-
-    /// Transposition table move cut rate.
-    pub fn pv_cut_rate(&self) -> f64 {
-        self.pv_cuts() as f64 / self.nodes() as f64
-    }
-
     /// Stand pat cuts counter.
     pub fn sp_cuts(&self) -> u64 {
         self.sp_cuts
@@ -106,7 +93,6 @@ pub struct SearchMetricsCounters {
     tests: AtomicU64,
     tt_hits: AtomicU64,
     tt_cuts: AtomicU64,
-    pv_cuts: AtomicU64,
     sp_cuts: AtomicU64,
 }
 
@@ -118,7 +104,6 @@ impl Default for SearchMetricsCounters {
             tests: AtomicU64::new(0),
             tt_hits: AtomicU64::new(0),
             tt_cuts: AtomicU64::new(0),
-            pv_cuts: AtomicU64::new(0),
             sp_cuts: AtomicU64::new(0),
         }
     }
@@ -150,11 +135,6 @@ impl SearchMetricsCounters {
         self.tt_cuts.fetch_add(1, Ordering::Relaxed) + 1
     }
 
-    /// Increment transposition table move cuts counter.
-    pub fn pv_cut(&self) -> u64 {
-        self.pv_cuts.fetch_add(1, Ordering::Relaxed) + 1
-    }
-
     /// Increment stand pat cuts counter.
     pub fn sp_cut(&self) -> u64 {
         self.sp_cuts.fetch_add(1, Ordering::Relaxed) + 1
@@ -168,7 +148,6 @@ impl SearchMetricsCounters {
             tests: *self.tests.get_mut(),
             tt_hits: *self.tt_hits.get_mut(),
             tt_cuts: *self.tt_cuts.get_mut(),
-            pv_cuts: *self.pv_cuts.get_mut(),
             sp_cuts: *self.sp_cuts.get_mut(),
         }
     }
