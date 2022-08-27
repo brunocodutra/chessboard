@@ -1,6 +1,6 @@
 use crate::{Eval, MoveKind, Position, Pv, Transposition, TranspositionTable};
 use crate::{Search, SearchLimits, SearchMetrics, SearchMetricsCounters};
-use derive_more::{Display, Error, From, Neg};
+use derive_more::{Deref, Display, Error, From, Neg};
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -10,8 +10,8 @@ use tracing::debug;
 #[cfg(test)]
 use proptest::prelude::*;
 
-#[derive(Debug, Default, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Neg)]
-struct Score(i16, i8);
+#[derive(Debug, Default, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Deref, Neg)]
+struct Score(#[deref] i16, i8);
 
 #[derive(Debug, Display, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Error)]
 #[display(fmt = "time is up!")]
@@ -56,7 +56,7 @@ impl FromStr for MinimaxConfig {
 /// [minimax]: https://en.wikipedia.org/wiki/Minimax
 #[derive(Debug)]
 #[cfg_attr(test, derive(test_strategy::Arbitrary))]
-pub struct Minimax<E: Eval + Send + Sync> {
+pub struct Minimax<E: Eval> {
     engine: E,
     #[cfg_attr(test, strategy(any::<MinimaxConfig>()
         .prop_map(|c| TranspositionTable::new(c.table_size)))
@@ -64,13 +64,13 @@ pub struct Minimax<E: Eval + Send + Sync> {
     tt: TranspositionTable,
 }
 
-impl<E: Eval + Send + Sync + Default> Default for Minimax<E> {
+impl<E: Eval + Default> Default for Minimax<E> {
     fn default() -> Self {
         Self::new(E::default())
     }
 }
 
-impl<E: Eval + Send + Sync> Minimax<E> {
+impl<E: Eval> Minimax<E> {
     #[cfg(test)]
     #[cfg(tarpaulin)]
     const MIN_DRAFT: i8 = -1;
@@ -103,6 +103,12 @@ impl<E: Eval + Send + Sync> Minimax<E> {
         }
     }
 
+    fn eval(&self, pos: &Position, draft: i8) -> Score {
+        Score(self.engine.eval(pos).max(-i16::MAX), draft)
+    }
+}
+
+impl<E: Eval + Send + Sync> Minimax<E> {
     /// A null-window implementation of the [alpha-beta pruning] algorithm.
     ///
     /// [alpha-beta pruning]: https://en.wikipedia.org/wiki/Alpha%E2%80%93beta_pruning
@@ -136,7 +142,7 @@ impl<E: Eval + Send + Sync> Minimax<E> {
             Some(t) => {
                 if !t.bounds().contains(&guess) {
                     counters.tt_cut();
-                    return Ok(Score(t.score(), t.draft()));
+                    return Ok(Score(t.score(), draft));
                 }
             }
         }
@@ -144,23 +150,23 @@ impl<E: Eval + Send + Sync> Minimax<E> {
         let quiesce = draft <= 0 && !pos.is_check();
 
         if draft <= Self::MIN_DRAFT {
-            return Ok(Score(self.engine.eval(pos).max(-i16::MAX), draft));
+            return Ok(self.eval(pos, draft));
         } else if quiesce {
-            let s = self.engine.eval(pos).max(-i16::MAX);
-            if s > guess {
+            let stand_pat = self.eval(pos, draft);
+            if *stand_pat > guess {
                 counters.sp_cut();
                 #[cfg(not(test))]
                 // The stand pat heuristic is not exact.
-                return Ok(Score(s, draft));
+                return Ok(stand_pat);
             }
         } else if let Some(m) = transposition.map(|t| t.best()) {
             let mut pos = pos.clone();
             if pos.make(m).is_ok() {
-                let Score(s, d) = -self.nw(&pos, -guess, draft - 1, time, counters)?;
-                if s > guess {
+                let score = -self.nw(&pos, -guess, draft - 1, time, counters)?;
+                if *score > guess {
                     counters.pv_cut();
-                    self.tt.set(zobrist, Transposition::lower(s, draft, m));
-                    return Ok(Score(s, d));
+                    self.tt.set(zobrist, Transposition::lower(*score, draft, m));
+                    return Ok(score);
                 }
             }
         }
@@ -175,20 +181,20 @@ impl<E: Eval + Send + Sync> Minimax<E> {
         moves.sort_by_cached_key(|(_, _, p)| self.engine.eval(p));
 
         if moves.is_empty() {
-            return Ok(Score(self.engine.eval(pos).max(-i16::MAX), draft));
+            return Ok(self.eval(pos, draft));
         }
 
         let cutoff = AtomicBool::new(false);
 
-        let (best, Score(s, d)) = moves
+        let (best, score) = moves
             .into_par_iter()
             .map(|(m, _, pos)| {
                 if cutoff.load(Ordering::Relaxed) {
                     Ok(None)
                 } else {
-                    let Score(s, d) = -self.nw(&pos, -guess, draft - 1, time, counters)?;
-                    cutoff.fetch_or(s > guess, Ordering::Relaxed);
-                    Ok(Some((m, Score(s, d))))
+                    let score = -self.nw(&pos, -guess, draft - 1, time, counters)?;
+                    cutoff.fetch_or(*score > guess, Ordering::Relaxed);
+                    Ok(Some((m, score)))
                 }
             })
             .try_reduce(|| None, |a, b| Ok(max_by_key(a, b, |x| x.map(|(_, s)| s))))?
@@ -196,14 +202,14 @@ impl<E: Eval + Send + Sync> Minimax<E> {
 
         self.tt.set(
             zobrist,
-            if s > guess {
-                Transposition::lower(s, draft, best)
+            if *score > guess {
+                Transposition::lower(*score, draft, best)
             } else {
-                Transposition::upper(s, draft, best)
+                Transposition::upper(*score, draft, best)
             },
         );
 
-        Ok(Score(s, d))
+        Ok(score)
     }
 
     /// The [mtd(f)] algorithm.
@@ -275,7 +281,7 @@ mod tests {
     use test_strategy::proptest;
     use tokio::{runtime, select, time::sleep};
 
-    fn negamax<E: Eval + Send + Sync>(engine: &E, pos: &Position, draft: i8) -> i16 {
+    fn negamax<E: Eval>(engine: &E, pos: &Position, draft: i8) -> i16 {
         if draft <= Minimax::<E>::MIN_DRAFT {
             return engine.eval(pos).max(-i16::MAX);
         }
@@ -314,8 +320,8 @@ mod tests {
     #[cfg(debug_assertions)]
     fn nw_panics_if_beta_is_too_small(pos: Position, d: i8) {
         let mm = Minimax::new(MockEval::new());
-        let counters = SearchMetricsCounters::default();
-        mm.nw(&pos, i16::MIN, d, Duration::MAX, &counters)?;
+        let ctr = SearchMetricsCounters::default();
+        mm.nw(&pos, i16::MIN, d, Duration::MAX, &ctr)?;
     }
 
     #[proptest]
@@ -333,8 +339,8 @@ mod tests {
             .return_const(s);
 
         let mm = Minimax::new(engine);
-        let counters = SearchMetricsCounters::default();
-        assert_eq!(mm.nw(&pos, g, d, Duration::MAX, &counters), Ok(Score(s, d)));
+        let ctr = SearchMetricsCounters::default();
+        assert_eq!(mm.nw(&pos, g, d, Duration::MAX, &ctr), Ok(Score(s, d)));
     }
 
     #[proptest]
@@ -344,8 +350,8 @@ mod tests {
         #[strategy(-i16::MAX..)] g: i16,
         d: i8,
     ) {
-        let counters = SearchMetricsCounters::default();
-        assert_eq!(mm.nw(&pos, g, d, Duration::ZERO, &counters), Err(Timeout));
+        let ctr = SearchMetricsCounters::default();
+        assert_eq!(mm.nw(&pos, g, d, Duration::ZERO, &ctr), Err(Timeout));
     }
 
     #[proptest]
@@ -368,8 +374,8 @@ mod tests {
         g: i16,
         #[strategy(Minimax::<Engine>::MIN_DRAFT..=Minimax::<Engine>::MAX_DRAFT)] d: i8,
     ) {
-        let counters = SearchMetricsCounters::default();
-        assert_eq!(mm.mtdf(&pos, g, d, Duration::ZERO, &counters), Err(Timeout));
+        let ctr = SearchMetricsCounters::default();
+        assert_eq!(mm.mtdf(&pos, g, d, Duration::ZERO, &ctr), Err(Timeout));
     }
 
     #[proptest]
