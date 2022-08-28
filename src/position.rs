@@ -61,6 +61,14 @@ pub type Zobrist = Bits<u64, 64>;
 #[display(fmt = "move `{}` is illegal in position `{}`", _0, _1)]
 pub struct IllegalMove(pub Move, pub Position);
 
+/// Represents an illegal [null-move] in a given [`Position`].
+///
+/// [null-move]: https://en.wikipedia.org/wiki/Null_move
+#[derive(Debug, Display, Clone, Eq, PartialEq, Error)]
+#[cfg_attr(test, derive(test_strategy::Arbitrary))]
+#[display(fmt = "passing the turn leads to illegal position from `{}`", _0)]
+pub struct IllegalPass(#[error(not(source))] pub Position);
+
 /// The current position on the chess board.
 ///
 /// This type guarantees that it only holds valid positions.
@@ -221,6 +229,19 @@ impl Position {
             }
 
             _ => Err(IllegalMove(m, self.clone())),
+        }
+    }
+
+    /// Play a [null-move] if legal in this position.
+    ///
+    /// [null-move]: https://en.wikipedia.org/wiki/Null_move
+    pub fn pass(&mut self) -> Result<San, IllegalPass> {
+        match sm::Position::swap_turn(self.0.clone()) {
+            Err(_) => Err(IllegalPass(self.clone())),
+            Ok(p) => {
+                self.0 = p;
+                Ok(San::null())
+            }
         }
     }
 }

@@ -1,10 +1,10 @@
-use crate::{Eval, MoveKind, Position, Pv, Transposition, TranspositionTable};
+use crate::{Eval, Move, MoveKind, Piece, Position, Pv, Role, Transposition, TranspositionTable};
 use crate::{Search, SearchLimits, SearchMetrics, SearchMetricsCounters};
 use derive_more::{Deref, Display, Error, From, Neg};
 use rayon::{iter::once, prelude::*};
 use serde::{Deserialize, Serialize};
 use std::sync::atomic::{AtomicI16, Ordering};
-use std::{cmp::max_by_key, str::FromStr, time::Duration};
+use std::{cmp::max_by_key, ops::Range, str::FromStr, time::Duration};
 use tracing::debug;
 
 #[cfg(test)]
@@ -114,21 +114,36 @@ impl<E: Eval> Minimax<E> {
 }
 
 impl<E: Eval + Send + Sync> Minimax<E> {
+    fn nw(
+        &self,
+        prev: Option<Move>,
+        pos: &Position,
+        bound: i16,
+        draft: i8,
+        time: Duration,
+        counters: &SearchMetricsCounters,
+    ) -> Result<Score, Timeout> {
+        assert!(bound < i16::MAX, "{} < {}", bound, i16::MAX);
+        self.pvs(prev, pos, bound..bound + 1, draft, time, counters)
+    }
+
     /// An implementation of the [PVS] variation of [alpha-beta pruning] algorithm.
     ///
     /// [PVS]: https://en.wikipedia.org/wiki/Principal_variation_search
     /// [alpha-beta pruning]: https://en.wikipedia.org/wiki/Alpha%E2%80%93beta_pruning
     fn pvs(
         &self,
+        prev: Option<Move>,
         pos: &Position,
-        mut alpha: i16,
-        mut beta: i16,
+        bounds: Range<i16>,
         draft: i8,
         time: Duration,
         counters: &SearchMetricsCounters,
     ) -> Result<Score, Timeout> {
-        assert!(alpha > i16::MIN, "{} > {}", alpha, i16::MIN);
-        assert!(alpha < beta, "{} < {}", alpha, beta);
+        assert!(!bounds.is_empty(), "{:?} ≠ ∅", bounds);
+        assert!(!bounds.contains(&i16::MIN), "{:?} ∌ {}", bounds, i16::MIN);
+
+        let (mut alpha, mut beta) = (bounds.start, bounds.end);
 
         if counters.time() >= time {
             return Err(Timeout);
@@ -157,19 +172,34 @@ impl<E: Eval + Send + Sync> Minimax<E> {
             }
         }
 
+        let stand_pat = self.eval(pos, draft);
         let quiesce = draft <= 0 && !pos.is_check();
 
         if draft <= Self::MIN_DRAFT {
-            return Ok(self.eval(pos, draft));
+            return Ok(stand_pat);
         } else if quiesce {
             if cfg!(not(test)) {
                 // The stand pat heuristic is not exact.
-                alpha = alpha.max(self.engine.eval(pos))
+                alpha = alpha.max(*stand_pat)
             }
 
             if alpha >= beta {
                 counters.sp_cut();
-                return Ok(Score(alpha, draft));
+                return Ok(stand_pat);
+            }
+        } else if draft > 0 && *stand_pat >= beta && prev.is_some()
+                // Avoid common zugzwang positions in which the side to move only has pawns.
+                && pos.by_color(pos.turn()).len() - 1 > pos.by_piece(Piece(pos.turn(), Role::Pawn)).len()
+        {
+            let mut pos = pos.clone();
+            if pos.pass().is_ok() {
+                let r = (2 + draft / 8).min(draft - 1);
+                if *-self.nw(None, &pos, -beta, draft - r - 1, time, counters)? >= beta {
+                    counters.nm_cut();
+                    #[cfg(not(test))]
+                    // The null move pruning heuristic is not exact.
+                    return Ok(Score(beta, draft));
+                }
             }
         }
 
@@ -189,9 +219,9 @@ impl<E: Eval + Send + Sync> Minimax<E> {
         });
 
         let (score, pv) = match moves.pop() {
-            None => return Ok(self.eval(pos, draft)),
+            None => return Ok(stand_pat),
             Some((m, _, pos)) => {
-                let score = -self.pvs(&pos, -beta, -alpha, draft - 1, time, counters)?;
+                let score = -self.pvs(Some(m), &pos, -beta..-alpha, draft - 1, time, counters)?;
 
                 if *score >= beta {
                     counters.pv_cut();
@@ -214,7 +244,7 @@ impl<E: Eval + Send + Sync> Minimax<E> {
                 let mut alpha = cutoff.load(Ordering::Relaxed);
                 while *score < alpha && alpha < beta {
                     let bound = alpha;
-                    score = -self.pvs(&pos, -bound - 1, -bound, draft - 1, time, counters)?;
+                    score = -self.nw(Some(m), &pos, -bound - 1, draft - 1, time, counters)?;
                     alpha = cutoff.fetch_max(*score, Ordering::Relaxed).max(*score);
                     if *score < bound {
                         break;
@@ -223,7 +253,7 @@ impl<E: Eval + Send + Sync> Minimax<E> {
 
                 // Search remaining window in case there's room for the score to improve.
                 if (alpha..beta - 1).contains(&score) {
-                    score = -self.pvs(&pos, -beta, -alpha, draft - 1, time, counters)?;
+                    score = -self.pvs(Some(m), &pos, -beta..-alpha, draft - 1, time, counters)?;
                     cutoff.fetch_max(*score, Ordering::Relaxed);
                 }
 
@@ -261,7 +291,7 @@ impl<E: Eval + Send + Sync> Search for Minimax<E> {
         let mut counters = SearchMetricsCounters::default();
 
         for d in start as i8..=limits.depth().min(Self::MAX_DRAFT as u8) as i8 {
-            match self.pvs(pos, -i16::MAX, i16::MAX, d, limits.time(), &counters) {
+            match self.pvs(None, pos, -i16::MAX..i16::MAX, d, limits.time(), &counters) {
                 Err(_) => break,
                 Ok(score) => {
                     metrics = counters.snapshot() - metrics;
@@ -324,15 +354,24 @@ mod tests {
 
     #[proptest]
     #[should_panic]
-    fn pvs_panics_if_alpha_is_too_small(pos: Position, b: i16, d: i8) {
+    fn nw_panics_if_bound_is_too_large(m: Option<Move>, pos: Position, d: i8) {
         let mm = Minimax::new(MockEval::new());
         let ctr = SearchMetricsCounters::default();
-        mm.pvs(&pos, i16::MIN, b, d, Duration::MAX, &ctr)?;
+        mm.nw(m, &pos, i16::MAX, d, Duration::MAX, &ctr)?;
+    }
+
+    #[proptest]
+    #[should_panic]
+    fn pvs_panics_if_alpha_is_too_small(m: Option<Move>, pos: Position, b: i16, d: i8) {
+        let mm = Minimax::new(MockEval::new());
+        let ctr = SearchMetricsCounters::default();
+        mm.pvs(m, &pos, i16::MIN..b, d, Duration::MAX, &ctr)?;
     }
 
     #[proptest]
     #[should_panic]
     fn pvs_panics_if_alpha_is_not_greater_than_beta(
+        m: Option<Move>,
         pos: Position,
         #[strategy(-i16::MAX..i16::MAX)] a: i16,
         #[strategy(..=#a)] b: i16,
@@ -340,11 +379,12 @@ mod tests {
     ) {
         let mm = Minimax::new(MockEval::new());
         let ctr = SearchMetricsCounters::default();
-        mm.pvs(&pos, a, b, d, Duration::MAX, &ctr)?;
+        mm.pvs(m, &pos, a..b, d, Duration::MAX, &ctr)?;
     }
 
     #[proptest]
     fn pvs_evaluates_position_if_draft_is_lower_than_minimum(
+        m: Option<Move>,
         pos: Position,
         #[strategy(-i16::MAX..i16::MAX)] a: i16,
         #[strategy(#a+1..)] b: i16,
@@ -360,30 +400,35 @@ mod tests {
 
         let mm = Minimax::new(engine);
         let ctr = SearchMetricsCounters::default();
-        assert_eq!(mm.pvs(&pos, a, b, d, Duration::MAX, &ctr), Ok(Score(s, d)));
+        assert_eq!(
+            mm.pvs(m, &pos, a..b, d, Duration::MAX, &ctr),
+            Ok(Score(s, d))
+        );
     }
 
     #[proptest]
     fn pvs_aborts_if_time_is_up(
         mm: Minimax<Engine>,
+        m: Option<Move>,
         pos: Position,
         #[strategy(-i16::MAX..i16::MAX)] a: i16,
         #[strategy(#a+1..)] b: i16,
         d: i8,
     ) {
         let ctr = SearchMetricsCounters::default();
-        assert_eq!(mm.pvs(&pos, a, b, d, Duration::ZERO, &ctr), Err(Timeout));
+        assert_eq!(mm.pvs(m, &pos, a..b, d, Duration::ZERO, &ctr), Err(Timeout));
     }
 
     #[proptest]
     fn pvs_finds_best_score(
         mm: Minimax<Engine>,
+        m: Option<Move>,
         pos: Position,
         #[strategy(Minimax::<Engine>::MIN_DRAFT..=Minimax::<Engine>::MAX_DRAFT)] d: i8,
     ) {
         let ctr = SearchMetricsCounters::default();
         assert_eq!(
-            mm.pvs(&pos, -i16::MAX, i16::MAX, d, Duration::MAX, &ctr)
+            mm.pvs(m, &pos, -i16::MAX..i16::MAX, d, Duration::MAX, &ctr)
                 .as_deref(),
             Ok(&negamax(&mm.engine, &pos, d))
         );
@@ -394,6 +439,7 @@ mod tests {
         e: Engine,
         x: MinimaxConfig,
         y: MinimaxConfig,
+        m: Option<Move>,
         pos: Position,
         #[strategy(Minimax::<Engine>::MIN_DRAFT..=Minimax::<Engine>::MAX_DRAFT)] d: i8,
     ) {
@@ -404,9 +450,9 @@ mod tests {
         let yc = SearchMetricsCounters::default();
 
         assert_eq!(
-            x.pvs(&pos, -i16::MAX, i16::MAX, d, Duration::MAX, &xc)
+            x.pvs(m, &pos, -i16::MAX..i16::MAX, d, Duration::MAX, &xc)
                 .as_deref(),
-            y.pvs(&pos, -i16::MAX, i16::MAX, d, Duration::MAX, &yc)
+            y.pvs(m, &pos, -i16::MAX..i16::MAX, d, Duration::MAX, &yc)
                 .as_deref()
         );
     }
