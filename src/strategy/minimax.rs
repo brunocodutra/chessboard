@@ -32,14 +32,12 @@ pub struct MinimaxConfig {
     ///
     /// This is an upper limit, the actual memory allocation may be smaller.
     #[cfg_attr(test, strategy(0usize..=1024))]
-    pub table_size: usize,
+    pub hash: usize,
 }
 
 impl Default for MinimaxConfig {
     fn default() -> Self {
-        Self {
-            table_size: 1 << 24,
-        }
+        Self { hash: 1 << 25 }
     }
 }
 
@@ -64,7 +62,7 @@ impl FromStr for MinimaxConfig {
 pub struct Minimax<E: Eval> {
     engine: E,
     #[cfg_attr(test, strategy(any::<MinimaxConfig>()
-        .prop_map(|c| TranspositionTable::new(c.table_size)))
+        .prop_map(|c| TranspositionTable::new(c.hash)))
     )]
     tt: TranspositionTable,
 }
@@ -104,7 +102,7 @@ impl<E: Eval> Minimax<E> {
     pub fn with_config(engine: E, config: MinimaxConfig) -> Self {
         Minimax {
             engine,
-            tt: TranspositionTable::new(config.table_size),
+            tt: TranspositionTable::new(config.hash),
         }
     }
 
@@ -349,7 +347,7 @@ mod tests {
     fn table_size_is_an_upper_limit(c: MinimaxConfig) {
         let mm = Minimax::with_config(MockEval::new(), c);
         prop_assume!(mm.tt.capacity() > 1);
-        assert!(mm.tt.size() <= c.table_size);
+        assert!(mm.tt.size() <= c.hash);
     }
 
     #[proptest]
