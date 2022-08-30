@@ -112,6 +112,29 @@ impl<E: Eval> Minimax<E> {
 }
 
 impl<E: Eval + Send + Sync> Minimax<E> {
+    fn aw(
+        &self,
+        pos: &Position,
+        guess: i16,
+        draft: i8,
+        time: Duration,
+        counters: &SearchMetricsCounters,
+    ) -> Result<Score, Timeout> {
+        const W: i16 = 64;
+
+        let upper = guess.saturating_add(W / 2).max(W - i16::MAX);
+        let lower = guess.saturating_sub(W / 2).min(i16::MAX - W).max(-i16::MAX);
+        let score = self.pvs(None, pos, lower..upper, draft, time, counters)?;
+
+        if *score >= upper {
+            self.pvs(None, pos, lower..i16::MAX, draft, time, counters)
+        } else if *score <= lower {
+            self.pvs(None, pos, -i16::MAX..upper, draft, time, counters)
+        } else {
+            Ok(score)
+        }
+    }
+
     fn nw(
         &self,
         prev: Option<Move>,
@@ -277,27 +300,26 @@ impl<E: Eval + Send + Sync> Minimax<E> {
 
 impl<E: Eval + Send + Sync> Search for Minimax<E> {
     fn search<const N: usize>(&mut self, pos: &Position, limits: SearchLimits) -> Pv<N> {
-        let pv: Pv<N> = self.tt.iter(pos).collect();
+        let mut pv: Pv<N> = self.tt.iter(pos).collect();
 
-        let start = 1 + pv.depth().unwrap_or_else(|| {
+        let (mut score, start) = Option::zip(pv.score(), pv.depth()).unwrap_or_else(|| {
             self.tt.unset(pos.zobrist());
-            0
+            (self.engine.eval(pos), 0)
         });
 
         let mut metrics = SearchMetrics::default();
         let mut counters = SearchMetricsCounters::default();
-
-        for d in start as i8..=limits.depth().min(Self::MAX_DRAFT as u8) as i8 {
-            match self.pvs(None, pos, -i16::MAX..i16::MAX, d, limits.time(), &counters) {
+        for depth in start..=limits.depth().min(Self::MAX_DRAFT as u8) {
+            (score, pv) = match self.aw(pos, score, depth as i8, limits.time(), &counters) {
+                Ok(s) => (*s, self.tt.iter(pos).collect()),
                 Err(_) => break,
-                Ok(score) => {
-                    metrics = counters.snapshot() - metrics;
-                    debug!(depth = d, score = *score, %metrics);
-                }
             };
+
+            metrics = counters.snapshot() - metrics;
+            debug!(depth, score, %pv, %metrics);
         }
 
-        self.tt.iter(pos).collect()
+        pv
     }
 
     fn clear(&mut self) {
