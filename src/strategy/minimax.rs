@@ -241,16 +241,15 @@ impl<E: Eval + Send + Sync> Minimax<E> {
                 let mut score = Score::MIN;
                 let mut alpha = cutoff.load(Ordering::Relaxed);
                 while *score < alpha && alpha < beta {
-                    let bound = alpha;
-                    score = -self.nw(Some(m), &pos, -bound - 1, draft - 1, time, counters)?;
+                    let target = alpha;
+                    score = -self.nw(Some(m), &pos, -target - 1, draft - 1, time, counters)?;
                     alpha = cutoff.fetch_max(*score, Ordering::Relaxed).max(*score);
-                    if *score < bound {
+                    if *score < target {
                         break;
                     }
                 }
 
-                // Search remaining window in case there's room for the score to improve.
-                if (alpha..beta - 1).contains(&score) {
+                if alpha <= *score && *score < beta {
                     score = -self.pvs(Some(m), &pos, -beta..-alpha, draft - 1, time, counters)?;
                     cutoff.fetch_max(*score, Ordering::Relaxed);
                 }
