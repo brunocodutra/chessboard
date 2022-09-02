@@ -1,12 +1,12 @@
 use super::{Eval, PieceSquareTable};
-use crate::chess::{Position, Role};
+use crate::chess::{Position, Promotion, Role};
 use derive_more::Constructor;
 use test_strategy::Arbitrary;
 
 struct MidGamePesto;
 
 impl PieceSquareTable for MidGamePesto {
-    const PIECE_VALUE: [i16; 6] = [82, 337, 365, 477, 1025, 0];
+    const PIECE_VALUE: [i16; 6] = [82, 337, 365, 477, 1025, 12000];
 
     #[rustfmt::skip]
     const PIECE_SQUARE_BONUS: [[i16; 64]; 6] = [
@@ -76,7 +76,7 @@ impl PieceSquareTable for MidGamePesto {
 struct EndGamePesto;
 
 impl PieceSquareTable for EndGamePesto {
-    const PIECE_VALUE: [i16; 6] = [94, 281, 297, 512, 936, 0];
+    const PIECE_VALUE: [i16; 6] = [94, 281, 297, 512, 936, 12000];
 
     #[rustfmt::skip]
     const PIECE_SQUARE_BONUS: [[i16; 64]; 6] = [
@@ -154,7 +154,7 @@ impl Pesto {
     const MID_GAME: i32 = 6192;
 }
 
-impl Eval for Pesto {
+impl Eval<Position> for Pesto {
     fn eval(&self, pos: &Position) -> i16 {
         let mg = MidGamePesto.eval(pos) as i32;
         let eg = EndGamePesto.eval(pos) as i32;
@@ -162,13 +162,25 @@ impl Eval for Pesto {
         use Role::*;
         let phase = [Knight, Bishop, Rook, Queen]
             .into_iter()
-            .map(|r| pos.by_role(r).len() as i32 * MidGamePesto::PIECE_VALUE[r as usize] as i32)
+            .map(|r| pos.by_role(r).len() as i32 * MidGamePesto.eval(&r) as i32)
             .sum::<i32>()
             .max(Self::END_GAME)
             .min(Self::MID_GAME);
 
         let score = eg + (mg - eg) * (phase - Self::END_GAME) / (Self::MID_GAME - Self::END_GAME);
         score.max(i16::MIN as i32).min(i16::MAX as i32) as i16
+    }
+}
+
+impl Eval<Role> for Pesto {
+    fn eval(&self, role: &Role) -> i16 {
+        EndGamePesto.eval(role)
+    }
+}
+
+impl Eval<Promotion> for Pesto {
+    fn eval(&self, p: &Promotion) -> i16 {
+        Option::<Role>::from(*p).map(|r| self.eval(&r)).unwrap_or(0)
     }
 }
 

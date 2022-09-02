@@ -1,5 +1,6 @@
-use super::{Color, Fen, Move, Piece, Role, San, Square};
+use super::{Color, Fen, Move, Piece, Promotion, Role, San, Square};
 use crate::util::Bits;
+use arrayvec::ArrayVec;
 use bitflags::bitflags;
 use bitvec::{order::Lsb0, view::BitView};
 use derive_more::{DebugCustom, Display, Error};
@@ -118,7 +119,7 @@ impl Position {
     }
 
     /// [`Square`]s occupied.
-    pub fn occupied(&self) -> impl ExactSizeIterator<Item = Square> {
+    pub fn occupied(&self) -> impl DoubleEndedIterator<Item = Square> + ExactSizeIterator {
         sm::Position::board(&self.0)
             .occupied()
             .into_iter()
@@ -126,7 +127,10 @@ impl Position {
     }
 
     /// [`Square`]s occupied by a [`Color`].
-    pub fn by_color(&self, c: Color) -> impl ExactSizeIterator<Item = Square> {
+    pub fn by_color(
+        &self,
+        c: Color,
+    ) -> impl DoubleEndedIterator<Item = Square> + ExactSizeIterator {
         sm::Position::board(&self.0)
             .by_color(c.into())
             .into_iter()
@@ -134,7 +138,7 @@ impl Position {
     }
 
     /// [`Square`]s occupied by a [`Role`].
-    pub fn by_role(&self, r: Role) -> impl ExactSizeIterator<Item = Square> {
+    pub fn by_role(&self, r: Role) -> impl DoubleEndedIterator<Item = Square> + ExactSizeIterator {
         sm::Position::board(&self.0)
             .by_role(r.into())
             .into_iter()
@@ -142,7 +146,10 @@ impl Position {
     }
 
     /// [`Square`]s occupied by a [`Piece`].
-    pub fn by_piece(&self, p: Piece) -> impl ExactSizeIterator<Item = Square> {
+    pub fn by_piece(
+        &self,
+        p: Piece,
+    ) -> impl DoubleEndedIterator<Item = Square> + ExactSizeIterator {
         sm::Position::board(&self.0)
             .by_piece(p.into())
             .into_iter()
@@ -150,7 +157,10 @@ impl Position {
     }
 
     /// Into where the piece in this [`Square`] can attack.
-    pub fn attacks(&self, s: Square) -> impl ExactSizeIterator<Item = Square> {
+    pub fn attacks(
+        &self,
+        s: Square,
+    ) -> impl DoubleEndedIterator<Item = Square> + ExactSizeIterator {
         sm::Position::board(&self.0)
             .attacks_from(s.into())
             .into_iter()
@@ -158,7 +168,11 @@ impl Position {
     }
 
     /// From where pieces of this [`Color`] can attack into this [`Square`].
-    pub fn attackers(&self, s: Square, c: Color) -> impl ExactSizeIterator<Item = Square> {
+    pub fn attackers(
+        &self,
+        s: Square,
+        c: Color,
+    ) -> impl DoubleEndedIterator<Item = Square> + ExactSizeIterator {
         let board = sm::Position::board(&self.0);
         board
             .attacks_to(s.into(), c.into(), board.occupied())
@@ -167,10 +181,59 @@ impl Position {
     }
 
     /// The [`Square`]s occupied by [`Piece`]s giving check.
-    pub fn checkers(&self) -> impl ExactSizeIterator<Item = Square> {
+    pub fn checkers(&self) -> impl DoubleEndedIterator<Item = Square> + ExactSizeIterator {
         sm::Position::checkers(&self.0)
             .into_iter()
             .map(Square::from)
+    }
+
+    /// The Static Exchange Evaluation ([SEE]) algorithm.
+    ///
+    /// [SEE]: https://www.chessprogramming.org/Static_Exchange_Evaluation
+    pub fn see(
+        &self,
+        s: Square,
+    ) -> impl DoubleEndedIterator<Item = (Role, Promotion)> + ExactSizeIterator {
+        let to = s.into();
+        let mut pos = self.0.clone();
+        let mut board = sm::Position::board(&pos);
+        let mut exchanges: ArrayVec<(Role, Promotion), 32> = ArrayVec::new();
+
+        while let Some(capture) = board.role_at(to) {
+            match board
+                .attacks_to(to, sm::Position::turn(&pos), board.occupied())
+                .into_iter()
+                .filter_map(|s| Some((s, board.role_at(s)?)))
+                .min_by_key(|(_, r)| *r)
+            {
+                None => break,
+                Some((from, role)) => {
+                    let promotion = if role == sm::Role::Pawn
+                        && [sm::Rank::First, sm::Rank::Eighth].contains(&to.rank())
+                    {
+                        Some(sm::Role::Queen)
+                    } else {
+                        None
+                    };
+
+                    sm::Position::play_unchecked(
+                        &mut pos,
+                        &sm::Move::Normal {
+                            role,
+                            from,
+                            capture: Some(capture),
+                            to,
+                            promotion,
+                        },
+                    );
+
+                    board = sm::Position::board(&pos);
+                    exchanges.push((capture.into(), promotion.into()));
+                }
+            }
+        }
+
+        exchanges.into_iter()
     }
 
     /// Whether this position is a [check].
@@ -202,7 +265,10 @@ impl Position {
     }
 
     /// An iterator over the legal [`Move`]s that can be played in this position.
-    pub fn moves(&self, kind: MoveKind) -> impl ExactSizeIterator<Item = (Move, MoveKind, Self)> {
+    pub fn moves(
+        &self,
+        kind: MoveKind,
+    ) -> impl DoubleEndedIterator<Item = (Move, MoveKind, Self)> + ExactSizeIterator {
         let mut legals = sm::Position::legal_moves(&self.0);
         legals.retain(|vm| kind.intersects(vm.into()));
 

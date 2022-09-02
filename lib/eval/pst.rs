@@ -1,5 +1,5 @@
 use super::Eval;
-use crate::chess::{Color, Piece, Position, Role};
+use crate::chess::{Color, Piece, Position, Promotion, Role};
 
 /// A trait for types that can evaluate positions using a [Piece-Square Table].
 ///
@@ -29,7 +29,7 @@ trait PrecomputedPieceSquareTable: PieceSquareTable {
 
 impl<T: PieceSquareTable> PrecomputedPieceSquareTable for T {}
 
-impl<T: PieceSquareTable> Eval for T {
+impl<T: PieceSquareTable> Eval<Position> for T {
     fn eval(&self, pos: &Position) -> i16 {
         if pos.is_stalemate() || pos.is_material_insufficient() {
             0
@@ -53,5 +53,17 @@ impl<T: PieceSquareTable> Eval for T {
 
             score[pos.turn() as usize] - score[!pos.turn() as usize]
         }
+    }
+}
+
+impl<T: PieceSquareTable> Eval<Role> for T {
+    fn eval(&self, role: &Role) -> i16 {
+        Self::PIECE_VALUE[*role as usize]
+    }
+}
+
+impl<T: PieceSquareTable> Eval<Promotion> for T {
+    fn eval(&self, p: &Promotion) -> i16 {
+        Option::<Role>::from(*p).map(|r| self.eval(&r)).unwrap_or(0)
     }
 }

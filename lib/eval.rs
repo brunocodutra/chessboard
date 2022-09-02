@@ -1,4 +1,3 @@
-use crate::chess::Position;
 use derive_more::{DebugCustom, From};
 use test_strategy::Arbitrary;
 
@@ -12,15 +11,15 @@ pub use pesto::*;
 pub use pst::*;
 pub use random::*;
 
-/// Trait for types that can evaluate a [`Position`].
-pub trait Eval {
-    /// Evaluates a [`Position`].
+/// Trait for types that can evaluate other types.
+pub trait Eval<T> {
+    /// Evaluates an item.
     ///
     /// Positive values favor the current side to play.
-    fn eval(&self, pos: &Position) -> i16;
+    fn eval(&self, item: &T) -> i16;
 }
 
-/// A generic [`Position`] evaluator.
+/// A generic evaluator.
 #[derive(DebugCustom, Clone, Arbitrary, From)]
 pub enum Evaluator {
     #[debug(fmt = "{:?}", _0)]
@@ -37,12 +36,17 @@ impl Default for Evaluator {
     }
 }
 
-impl Eval for Evaluator {
-    fn eval(&self, pos: &Position) -> i16 {
+impl<T> Eval<T> for Evaluator
+where
+    Random: Eval<T>,
+    Materialist: Eval<T>,
+    Pesto: Eval<T>,
+{
+    fn eval(&self, item: &T) -> i16 {
         match self {
-            Evaluator::Random(e) => e.eval(pos),
-            Evaluator::Materialist(e) => e.eval(pos),
-            Evaluator::Pesto(e) => e.eval(pos),
+            Evaluator::Random(e) => e.eval(item),
+            Evaluator::Materialist(e) => e.eval(item),
+            Evaluator::Pesto(e) => e.eval(item),
         }
     }
 }
