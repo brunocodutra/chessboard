@@ -2,7 +2,9 @@ use crate::{Move, Transposition};
 use arrayvec::ArrayVec;
 use derive_more::{Deref, DerefMut, Display, IntoIterator};
 
-/// The strongest sequence from a starting [`Position`].
+/// The [principal variation].
+///
+/// [principal variation]: https://www.chessprogramming.org/Principal_Variation
 #[derive(Debug, Display, Default, Clone, Eq, PartialEq, Hash, Deref, DerefMut, IntoIterator)]
 #[display(
     fmt = "{}",

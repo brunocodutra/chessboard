@@ -8,7 +8,7 @@ use proptest::{collection::hash_map, prelude::*};
 
 /// A representation of the [Forsyth–Edwards Notation].
 ///
-/// [Forsyth–Edwards Notation]: https://en.wikipedia.org/wiki/Forsyth%E2%80%93Edwards_Notation
+/// [Forsyth–Edwards Notation]: https://www.chessprogramming.org/Forsyth-Edwards_Notation
 #[derive(DebugCustom, Display, Default, Clone, Eq, PartialEq, Hash)]
 #[cfg_attr(test, derive(test_strategy::Arbitrary))]
 #[debug(fmt = "Fen(\"{}\")", self)]

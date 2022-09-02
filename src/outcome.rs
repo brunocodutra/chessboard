@@ -21,7 +21,7 @@ pub enum Outcome {
 impl Outcome {
     /// Whether the outcome is a [draw] and neither side has won.
     ///
-    /// [draw]: https://en.wikipedia.org/wiki/Glossary_of_chess#draw
+    /// [draw]: https://www.chessprogramming.org/Draw
     pub fn is_draw(&self) -> bool {
         !self.is_decisive()
     }

@@ -63,7 +63,7 @@ pub struct IllegalMove(pub Move, pub Position);
 
 /// Represents an illegal [null-move] in a given [`Position`].
 ///
-/// [null-move]: https://en.wikipedia.org/wiki/Null_move
+/// [null-move]: https://www.chessprogramming.org/Null_Move
 #[derive(Debug, Display, Clone, Eq, PartialEq, Error)]
 #[cfg_attr(test, derive(test_strategy::Arbitrary))]
 #[display(fmt = "passing the turn leads to illegal position from `{}`", _0)]
@@ -115,7 +115,7 @@ impl Position {
 
     /// This position's [zobrist hash].
     ///
-    /// [zobrist hash]: https://en.wikipedia.org/wiki/Zobrist_hashing.
+    /// [zobrist hash]: https://www.chessprogramming.org/Zobrist_Hashing
     pub fn zobrist(&self) -> Zobrist {
         sm::zobrist::ZobristHash::zobrist_hash::<u64>(&self.0)
             .view_bits::<Lsb0>()
@@ -180,28 +180,28 @@ impl Position {
 
     /// Whether this position is a [check].
     ///
-    /// [check]: https://en.wikipedia.org/wiki/Glossary_of_chess#check
+    /// [check]: https://www.chessprogramming.org/Check
     pub fn is_check(&self) -> bool {
         sm::Position::is_check(&self.0)
     }
 
     /// Whether this position is a [checkmate].
     ///
-    /// [checkmate]: https://en.wikipedia.org/wiki/Glossary_of_chess#checkmate
+    /// [checkmate]: https://www.chessprogramming.org/Checkmate
     pub fn is_checkmate(&self) -> bool {
         sm::Position::is_checkmate(&self.0)
     }
 
     /// Whether this position is a [stalemate].
     ///
-    /// [stalemate]: https://en.wikipedia.org/wiki/Glossary_of_chess#stalemate
+    /// [stalemate]: https://www.chessprogramming.org/Stalemate
     pub fn is_stalemate(&self) -> bool {
         sm::Position::is_stalemate(&self.0)
     }
 
     /// Whether this position has [insufficient material].
     ///
-    /// [insufficient material]: https://en.wikipedia.org/wiki/Glossary_of_chess#insufficient_material
+    /// [insufficient material]: https://www.chessprogramming.org/Material#InsufficientMaterial
     pub fn is_material_insufficient(&self) -> bool {
         sm::Position::is_insufficient_material(&self.0)
     }
@@ -234,7 +234,7 @@ impl Position {
 
     /// Play a [null-move] if legal in this position.
     ///
-    /// [null-move]: https://en.wikipedia.org/wiki/Null_move
+    /// [null-move]: https://www.chessprogramming.org/Null_Move
     pub fn pass(&mut self) -> Result<San, IllegalPass> {
         match sm::Position::swap_turn(self.0.clone()) {
             Err(_) => Err(IllegalPass(self.clone())),
