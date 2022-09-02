@@ -7,7 +7,7 @@ use test_strategy::Arbitrary;
 pub struct Materialist {}
 
 impl PieceSquareTable for Materialist {
-    const PIECE_VALUE: [i16; 6] = [100, 300, 300, 500, 900, 0];
+    const PIECE_VALUE: [i16; 6] = [100, 300, 300, 500, 900, 20000];
 }
 
 #[cfg(test)]

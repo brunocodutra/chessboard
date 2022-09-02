@@ -22,11 +22,6 @@ pub use pv::*;
 #[derive(Debug, Default, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Deref, Neg)]
 struct Score(#[deref] i16, i8);
 
-impl Score {
-    const MIN: Self = Score(i16::MIN, i8::MIN);
-    const MAX: Self = Score(i16::MAX, i8::MAX);
-}
-
 #[derive(Debug, Display, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Error)]
 #[display(fmt = "time is up!")]
 pub struct Timeout;
@@ -82,6 +77,37 @@ impl Searcher {
 
     fn eval(&self, pos: &Position, draft: i8) -> Score {
         Score(self.evaluator.eval(pos).max(-i16::MAX), draft)
+    }
+
+    fn moves(
+        &self,
+        pos: &Position,
+        kind: MoveKind,
+        transposition: Option<Transposition>,
+    ) -> Vec<(Move, MoveKind, Position)> {
+        let mut moves: Vec<_> = pos.moves(kind).collect();
+
+        moves.sort_by_cached_key(|(m, _, p)| {
+            if transposition.map(|t| t.best()) == Some(*m) {
+                i16::MAX
+            } else {
+                let exchange = p.see(m.whither()).rev().fold(0i16, |v, (r, p)| {
+                    let capture = self.evaluator.eval(&r);
+                    let promotion = self.evaluator.eval(&p);
+                    promotion.saturating_sub(v).saturating_add(capture).max(0)
+                });
+
+                let capture = pos[m.whither()]
+                    .map(|p| self.evaluator.eval(&p.role()))
+                    .unwrap_or(0);
+
+                let promotion = self.evaluator.eval(&m.promotion());
+
+                promotion.saturating_sub(exchange).saturating_add(capture)
+            }
+        });
+
+        moves
     }
 
     /// An implementation of [aspiration windows].
@@ -202,20 +228,13 @@ impl Searcher {
             }
         }
 
-        let move_kinds = if quiesce {
+        let kind = if quiesce {
             MoveKind::CAPTURE | MoveKind::PROMOTION
         } else {
             MoveKind::ANY
         };
 
-        let mut moves: Vec<_> = pos.moves(move_kinds).collect();
-        moves.sort_by_cached_key(|(m, _, p)| {
-            if transposition.map(|t| t.best()) == Some(*m) {
-                Score::MAX
-            } else {
-                -self.eval(p, draft - 1)
-            }
-        });
+        let mut moves = self.moves(pos, kind, transposition);
 
         let (score, pv) = match moves.pop() {
             None => return Ok(stand_pat),
@@ -239,7 +258,7 @@ impl Searcher {
             .with_max_len(1)
             .rev()
             .map(|(m, _, pos)| {
-                let mut score = Score::MIN;
+                let mut score = Score(i16::MIN, Self::MIN_DRAFT);
                 let mut alpha = cutoff.load(Ordering::Relaxed);
                 while *score < alpha && alpha < beta {
                     let target = alpha;
@@ -316,7 +335,7 @@ mod tests {
     fn negamax(evaluator: &Evaluator, pos: &Position, draft: i8) -> i16 {
         let score = evaluator.eval(pos).max(-i16::MAX);
 
-        let move_kinds = if draft <= Searcher::MIN_DRAFT {
+        let kind = if draft <= Searcher::MIN_DRAFT {
             return score;
         } else if draft <= 0 && !pos.is_check() {
             MoveKind::CAPTURE | MoveKind::PROMOTION
@@ -324,7 +343,7 @@ mod tests {
             MoveKind::ANY
         };
 
-        pos.moves(move_kinds)
+        pos.moves(kind)
             .map(|(_, _, pos)| -negamax(evaluator, &pos, draft - 1))
             .max()
             .unwrap_or(score)

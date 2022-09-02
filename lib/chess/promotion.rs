@@ -1,3 +1,4 @@
+use super::Role;
 use crate::util::{Binary, Bits};
 use bitvec::{field::BitField, order::Lsb0, view::BitView};
 use derive_more::{Display, Error};
@@ -6,7 +7,7 @@ use test_strategy::Arbitrary;
 use vampirc_uci::UciPiece;
 
 /// A promotion specifier.
-#[derive(Debug, Display, Copy, Clone, Eq, PartialEq, Hash, Arbitrary)]
+#[derive(Debug, Display, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Arbitrary)]
 pub enum Promotion {
     #[display(fmt = "")]
     None,
@@ -39,6 +40,18 @@ impl Binary for Promotion {
             .into_iter()
             .nth(register.load())
             .ok_or(DecodePromotionError(register))
+    }
+}
+
+impl From<Promotion> for Option<Role> {
+    fn from(p: Promotion) -> Self {
+        match p {
+            Promotion::None => None,
+            Promotion::Knight => Some(Role::Knight),
+            Promotion::Bishop => Some(Role::Bishop),
+            Promotion::Rook => Some(Role::Rook),
+            Promotion::Queen => Some(Role::Queen),
+        }
     }
 }
 

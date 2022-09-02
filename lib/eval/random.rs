@@ -1,5 +1,4 @@
 use super::Eval;
-use crate::chess::Position;
 use derive_more::Constructor;
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
@@ -9,10 +8,10 @@ use test_strategy::Arbitrary;
 #[derive(Debug, Default, Clone, Arbitrary, Constructor)]
 pub struct Random {}
 
-impl Eval for Random {
-    fn eval(&self, pos: &Position) -> i16 {
+impl<T: Hash> Eval<T> for Random {
+    fn eval(&self, item: &T) -> i16 {
         let mut hashser = DefaultHasher::new();
-        pos.hash(&mut hashser);
+        item.hash(&mut hashser);
         hashser.finish() as i16
     }
 }
@@ -23,7 +22,7 @@ mod tests {
     use test_strategy::proptest;
 
     #[proptest]
-    fn score_is_stable(pos: Position) {
-        assert_eq!(Random::new().eval(&pos), Random::new().eval(&pos.clone()));
+    fn score_is_stable(item: String) {
+        assert_eq!(Random::new().eval(&item), Random::new().eval(&item));
     }
 }
