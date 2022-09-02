@@ -13,7 +13,7 @@ pub struct Pgn {
 
 /// Prints a simplified [PGN] description of the game
 ///
-/// [PGN]: https://en.wikipedia.org/wiki/Portable_Game_Notation.
+/// [PGN]: https://www.chessprogramming.org/Portable_Game_Notation
 impl Display for Pgn {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         writeln!(f, "[White {:?}]", self.white)?;

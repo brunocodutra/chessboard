@@ -92,7 +92,7 @@ impl TranspositionTable {
         self.cache.store(self.index_of(key), None.encode())
     }
 
-    /// An iterator for the [principal variation][`Pv`] from a starting [`Position`].
+    /// An iterator for the principal variation from a starting [`Position`].
     pub fn iter(&self, pos: &Position) -> TranspositionIterator<'_> {
         TranspositionIterator::new(self, pos.clone())
     }

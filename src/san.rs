@@ -7,7 +7,7 @@ use proptest::{prelude::*, sample::Selector};
 
 /// A representation of the [algebraic notation].
 ///
-/// [algebraic notation]: https://en.wikipedia.org/wiki/Algebraic_notation_(chess)
+/// [algebraic notation]: https://www.chessprogramming.org/Algebraic_Chess_Notation
 #[derive(DebugCustom, Display, Clone, Eq, PartialEq, Hash)]
 #[cfg_attr(test, derive(test_strategy::Arbitrary))]
 #[debug(fmt = "San(\"{}\")", self)]

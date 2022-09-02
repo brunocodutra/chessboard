@@ -56,7 +56,7 @@ impl FromStr for MinimaxConfig {
 
 /// An implementation of [minimax].
 ///
-/// [minimax]: https://en.wikipedia.org/wiki/Minimax
+/// [minimax]: https://www.chessprogramming.org/Minimax
 #[derive(Debug)]
 #[cfg_attr(test, derive(test_strategy::Arbitrary))]
 pub struct Minimax<E: Eval> {
@@ -112,6 +112,9 @@ impl<E: Eval> Minimax<E> {
 }
 
 impl<E: Eval + Send + Sync> Minimax<E> {
+    /// An implementation of [aspiration windows].
+    ///
+    /// [aspiration windows]: https://www.chessprogramming.org/Aspiration_Windows
     fn aw(
         &self,
         pos: &Position,
@@ -135,6 +138,9 @@ impl<E: Eval + Send + Sync> Minimax<E> {
         }
     }
 
+    /// A [zero-window] wrapper for [`Self::pvs`].
+    ///
+    /// [zero-window]: https://www.chessprogramming.org/Null_Window
     fn nw(
         &self,
         prev: Option<Move>,
@@ -150,8 +156,8 @@ impl<E: Eval + Send + Sync> Minimax<E> {
 
     /// An implementation of the [PVS] variation of [alpha-beta pruning] algorithm.
     ///
-    /// [PVS]: https://en.wikipedia.org/wiki/Principal_variation_search
-    /// [alpha-beta pruning]: https://en.wikipedia.org/wiki/Alpha%E2%80%93beta_pruning
+    /// [PVS]: https://www.chessprogramming.org/Principal_Variation_Search
+    /// [alpha-beta pruning]: https://www.chessprogramming.org/Alpha-Beta
     fn pvs(
         &self,
         prev: Option<Move>,
