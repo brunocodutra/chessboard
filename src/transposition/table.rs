@@ -1,5 +1,6 @@
-use super::{OptionalSignedTranspositionRegister, Signature};
-use crate::{Binary, Cache, Position, Register, Transposition, TranspositionIterator, Zobrist};
+use super::{OptionalSignedTranspositionRegister, Signature, Transposition, TranspositionIterator};
+use crate::util::{Binary, Cache, Register};
+use crate::{Position, Zobrist};
 use bitvec::field::BitField;
 
 #[cfg(test)]
@@ -101,7 +102,7 @@ impl TranspositionTable {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::Bits;
+    use crate::util::Bits;
     use bitvec::view::BitView;
     use test_strategy::proptest;
 

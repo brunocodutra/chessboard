@@ -1,4 +1,4 @@
-use crate::Register;
+use crate::util::Register;
 use bitvec::{field::BitField, mem::BitRegister, prelude::*, slice::BitSlice};
 use derive_more::{DebugCustom, Display};
 use std::ops::{Deref, DerefMut};

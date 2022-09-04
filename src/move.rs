@@ -1,4 +1,5 @@
-use crate::{Binary, Bits, Promotion, Register, Square};
+use crate::util::{Binary, Bits, Register};
+use crate::{Promotion, Square};
 use derive_more::{Display, Error};
 use shakmaty as sm;
 use vampirc_uci::UciMove;

@@ -1,4 +1,4 @@
-use crate::{Bits, Color, Fen, Move, Piece, Role, San, Square};
+use crate::{util::Bits, Color, Fen, Move, Piece, Role, San, Square};
 use bitflags::bitflags;
 use bitvec::{order::Lsb0, view::BitView};
 use derive_more::{DebugCustom, Display, Error};

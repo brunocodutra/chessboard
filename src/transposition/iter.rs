@@ -1,4 +1,5 @@
-use crate::{Position, Transposition, TranspositionTable};
+use super::{Transposition, TranspositionTable};
+use crate::Position;
 
 /// An iterator over the sequence of [`Transposition`]s in a [`TranspositionTable`].
 #[derive(Debug, Clone)]
