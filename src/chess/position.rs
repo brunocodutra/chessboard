@@ -3,11 +3,10 @@ use crate::util::Bits;
 use bitflags::bitflags;
 use bitvec::{order::Lsb0, view::BitView};
 use derive_more::{DebugCustom, Display, Error};
+use proptest::{prelude::*, sample::Selector};
 use shakmaty as sm;
 use std::{convert::TryFrom, num::NonZeroU32, ops::Index};
-
-#[cfg(test)]
-use proptest::{prelude::*, sample::Selector};
+use test_strategy::Arbitrary;
 
 bitflags! {
     /// Characteristics of a [`Move`] in the context of a [`Position`].
@@ -58,40 +57,34 @@ impl From<sm::Move> for MoveKind {
 pub type Zobrist = Bits<u64, 64>;
 
 /// Represents an illegal [`Move`] in a given [`Position`].
-#[derive(Debug, Display, Clone, Eq, PartialEq, Error)]
-#[cfg_attr(test, derive(test_strategy::Arbitrary))]
+#[derive(Debug, Display, Clone, Eq, PartialEq, Arbitrary, Error)]
 #[display(fmt = "move `{}` is illegal in position `{}`", _0, _1)]
 pub struct IllegalMove(pub Move, pub Position);
 
 /// Represents an illegal [null-move] in a given [`Position`].
 ///
 /// [null-move]: https://www.chessprogramming.org/Null_Move
-#[derive(Debug, Display, Clone, Eq, PartialEq, Error)]
-#[cfg_attr(test, derive(test_strategy::Arbitrary))]
+#[derive(Debug, Display, Clone, Eq, PartialEq, Arbitrary, Error)]
 #[display(fmt = "passing the turn leads to illegal position from `{}`", _0)]
 pub struct IllegalPass(#[error(not(source))] pub Position);
 
 /// The current position on the chess board.
 ///
 /// This type guarantees that it only holds valid positions.
-#[derive(DebugCustom, Display, Default, Clone, Eq, PartialEq, Hash)]
-#[cfg_attr(test, derive(test_strategy::Arbitrary))]
+#[derive(DebugCustom, Display, Default, Clone, Eq, PartialEq, Hash, Arbitrary)]
 #[debug(fmt = "Position(\"{}\")", self)]
 #[display(fmt = "{}", "Fen::from(self.clone())")]
 pub struct Position(
-    #[cfg_attr(test, strategy(
-        (0..256, any::<Selector>()).prop_map(|(moves, selector)| {
-            let mut chess = sm::Chess::default();
-            for _ in 0..moves {
-                match selector.try_select(sm::Position::legal_moves(&chess)) {
-                    Some(m) => sm::Position::play_unchecked(&mut chess, &m),
-                    _ => break,
-                }
+    #[strategy((0..256, any::<Selector>()).prop_map(|(moves, selector)| {
+        let mut chess = sm::Chess::default();
+        for _ in 0..moves {
+            match selector.try_select(sm::Position::legal_moves(&chess)) {
+                Some(m) => sm::Position::play_unchecked(&mut chess, &m),
+                _ => break,
             }
-            chess
-        })
-        .no_shrink()
-    ))]
+        }
+        chess
+    }).no_shrink())]
     sm::Chess,
 );
 
@@ -349,7 +342,6 @@ impl From<Position> for sm::Chess {
     }
 }
 
-#[cfg(test)]
 #[doc(hidden)]
 impl AsRef<sm::Chess> for Position {
     fn as_ref(&self) -> &sm::Chess {

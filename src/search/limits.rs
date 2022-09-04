@@ -1,11 +1,11 @@
 use derive_more::{Display, Error, From};
 use serde::{Deserialize, Serialize};
 use std::{str::FromStr, time::Duration};
+use test_strategy::Arbitrary;
 
 /// Configuration for the limits of search engines.
-#[derive(Debug, Display, Copy, Clone, Eq, PartialEq, Deserialize, Serialize)]
-#[cfg_attr(test, derive(test_strategy::Arbitrary))]
-#[cfg_attr(test, arbitrary(args = (Option<u8>, Option<u8>)))]
+#[derive(Debug, Display, Copy, Clone, Eq, PartialEq, Arbitrary, Deserialize, Serialize)]
+#[arbitrary(args = (Option<u8>, Option<u8>))]
 #[serde(deny_unknown_fields, rename_all = "lowercase")]
 pub enum Limits {
     /// Unlimited search.
@@ -14,12 +14,12 @@ pub enum Limits {
 
     /// The maximum number of plies to search.
     #[display(fmt = "{}", "ron::ser::to_string(self).unwrap()")]
-    #[cfg_attr(test, strategy(args.0.unwrap_or(u8::MIN)..=args.1.unwrap_or(u8::MAX)))]
+    #[strategy(args.0.unwrap_or(u8::MIN)..=args.1.unwrap_or(u8::MAX))]
     Depth(u8),
 
     /// The maximum amount of time to spend searching.
     #[display(fmt = "{}", "ron::ser::to_string(self).unwrap()")]
-    #[cfg_attr(test, strategy(Just(Duration::MAX)))]
+    #[strategy(Just(Duration::MAX))]
     #[serde(with = "humantime_serde")]
     Time(Duration),
 }

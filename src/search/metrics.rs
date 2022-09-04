@@ -1,10 +1,24 @@
 use derive_more::{Add, AddAssign, Display, Sub, SubAssign};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, Instant};
+use test_strategy::Arbitrary;
 
 /// Collected search metrics.
-#[derive(Debug, Display, Default, Clone, Eq, PartialEq, Hash, Add, AddAssign, Sub, SubAssign)]
-#[cfg_attr(test, derive(test_strategy::Arbitrary))]
+#[derive(
+    Debug,
+    Display,
+    Default,
+    Copy,
+    Clone,
+    Eq,
+    PartialEq,
+    Hash,
+    Arbitrary,
+    Add,
+    AddAssign,
+    Sub,
+    SubAssign,
+)]
 #[display(
     fmt = "time={}ms nodes={}|{:.0}/s hits={}|{:.2}% cuts[tt={}|{:.2}% pv={}|{:.2}% nm={}|{:.2}% sp={}|{:.2}%]",
     "self.time().as_millis()",

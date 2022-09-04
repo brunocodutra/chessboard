@@ -2,11 +2,11 @@ use crate::util::{Binary, Bits};
 use bitvec::{field::BitField, order::Lsb0, view::BitView};
 use derive_more::{Display, Error};
 use shakmaty as sm;
+use test_strategy::Arbitrary;
 use vampirc_uci::UciPiece;
 
 /// A promotion specifier.
-#[derive(Debug, Display, Copy, Clone, Eq, PartialEq, Hash)]
-#[cfg_attr(test, derive(test_strategy::Arbitrary))]
+#[derive(Debug, Display, Copy, Clone, Eq, PartialEq, Hash, Arbitrary)]
 pub enum Promotion {
     #[display(fmt = "")]
     None,
@@ -21,8 +21,7 @@ pub enum Promotion {
 }
 
 /// The reason why decoding [`Promotion`] from binary failed.
-#[derive(Debug, Display, Clone, Eq, PartialEq, Error)]
-#[cfg_attr(test, derive(test_strategy::Arbitrary))]
+#[derive(Debug, Display, Clone, Eq, PartialEq, Arbitrary, Error)]
 #[display(fmt = "`{}` is not a valid promotion", _0)]
 pub struct DecodePromotionError(#[error(not(source))] <Promotion as Binary>::Register);
 

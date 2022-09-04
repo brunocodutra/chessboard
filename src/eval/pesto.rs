@@ -1,6 +1,7 @@
 use super::{Eval, PieceSquareTable};
 use crate::chess::{Position, Role};
 use derive_more::Constructor;
+use test_strategy::Arbitrary;
 
 struct MidGamePesto;
 
@@ -145,8 +146,7 @@ impl PieceSquareTable for EndGamePesto {
 /// [PeSTO]'s evaluation.
 ///
 /// [PeSTO]: https://www.chessprogramming.org/PeSTO%27s_Evaluation_Function
-#[derive(Debug, Default, Clone, Constructor)]
-#[cfg_attr(test, derive(test_strategy::Arbitrary))]
+#[derive(Debug, Default, Clone, Arbitrary, Constructor)]
 pub struct Pesto {}
 
 impl Pesto {

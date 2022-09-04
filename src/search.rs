@@ -1,8 +1,10 @@
 use crate::eval::{Builder as EvaluatorBuilder, Dispatcher as Evaluator};
 use crate::{chess::Position, util::Build};
 use derive_more::{DebugCustom, Display, Error, From};
+use mockall::mock;
 use serde::{Deserialize, Serialize};
 use std::str::FromStr;
+use test_strategy::Arbitrary;
 
 mod limits;
 mod metrics;
@@ -25,8 +27,7 @@ pub trait Search {
     fn search<const N: usize>(&mut self, pos: &Position, limits: Limits) -> Pv<N>;
 }
 
-#[cfg(test)]
-mockall::mock! {
+mock! {
     #[derive(Debug)]
     pub Search {
         pub fn clear(&mut self);
@@ -34,7 +35,6 @@ mockall::mock! {
     }
 }
 
-#[cfg(test)]
 impl Search for MockSearch {
     fn clear(&mut self) {
         MockSearch::clear(self)
@@ -46,8 +46,7 @@ impl Search for MockSearch {
 }
 
 /// A generic adversarial search algorithm.
-#[derive(DebugCustom, From)]
-#[cfg_attr(test, derive(test_strategy::Arbitrary))]
+#[derive(DebugCustom, Arbitrary, From)]
 pub enum Dispatcher {
     #[debug(fmt = "{:?}", _0)]
     Minimax(Minimax<Evaluator>),
@@ -74,8 +73,7 @@ impl Search for Dispatcher {
 }
 
 /// Runtime configuration for [`Dispatcher`].
-#[derive(Debug, Display, Clone, Eq, PartialEq, Deserialize, Serialize)]
-#[cfg_attr(test, derive(test_strategy::Arbitrary))]
+#[derive(Debug, Display, Clone, Eq, PartialEq, Arbitrary, Deserialize, Serialize)]
 #[serde(deny_unknown_fields, rename_all = "lowercase")]
 pub enum Builder {
     #[display(fmt = "{}", "ron::ser::to_string(self).unwrap()")]

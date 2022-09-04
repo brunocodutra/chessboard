@@ -1,4 +1,5 @@
 use async_trait::async_trait;
+use mockall::automock;
 use std::io;
 
 mod pipe;
@@ -8,7 +9,7 @@ pub use pipe::*;
 pub use process::*;
 
 /// Trait for types that communicate via message-passing.
-#[cfg_attr(test, mockall::automock)]
+#[automock]
 #[async_trait]
 pub trait Io {
     /// Receive a message.

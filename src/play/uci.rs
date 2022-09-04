@@ -5,6 +5,7 @@ use anyhow::{Context, Error as Anyhow};
 use async_trait::async_trait;
 use derive_more::{DebugCustom, Display, Error, From};
 use std::{collections::HashMap, future::Future, io, pin::Pin};
+use test_strategy::Arbitrary;
 use tokio::{runtime, task::block_in_place};
 use tracing::{debug, error, instrument};
 use vampirc_uci::{self as uci, UciFen, UciMessage, UciSearchControl};
@@ -37,8 +38,7 @@ impl<T, E> Lazy<T, E> {
 }
 
 /// The reason why an [`Move`] could not be received from the UCI server.
-#[derive(Debug, Display, Error, From)]
-#[cfg_attr(test, derive(test_strategy::Arbitrary))]
+#[derive(Debug, Display, Arbitrary, Error, From)]
 #[display(fmt = "the UCI server encountered an error")]
 pub struct UciError(#[from(forward)] io::Error);
 

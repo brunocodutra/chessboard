@@ -2,12 +2,12 @@ use super::{Promotion, Square};
 use crate::util::{Binary, Bits, Register};
 use derive_more::{Display, Error};
 use shakmaty as sm;
+use test_strategy::Arbitrary;
 use vampirc_uci::UciMove;
 
 /// A chess move.
-#[derive(Debug, Display, Copy, Clone, Eq, PartialEq, Hash)]
-#[cfg_attr(test, derive(test_strategy::Arbitrary))]
-#[cfg_attr(test, filter(#self.0 != #self.1))]
+#[derive(Debug, Display, Copy, Clone, Eq, PartialEq, Hash, Arbitrary)]
+#[filter(#self.0 != #self.1)]
 #[display(fmt = "{}{}{}", _0, _1, _2)]
 pub struct Move(Square, Square, Promotion);
 
@@ -29,8 +29,7 @@ impl Move {
 }
 
 /// The reason why decoding [`Move`] from binary failed.
-#[derive(Debug, Display, Clone, Eq, PartialEq, Error)]
-#[cfg_attr(test, derive(test_strategy::Arbitrary))]
+#[derive(Debug, Display, Clone, Eq, PartialEq, Arbitrary, Error)]
 #[display(fmt = "`{}` is not a valid Move", _0)]
 pub struct DecodeMoveError(#[error(not(source))] <Move as Binary>::Register);
 

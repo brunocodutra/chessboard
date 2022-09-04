@@ -3,6 +3,7 @@ use crate::util::{Binary, Bits, Register};
 use bitvec::field::BitField;
 use derive_more::{Display, Error};
 use std::{cmp::Ordering, ops::RangeInclusive};
+use test_strategy::Arbitrary;
 
 mod iter;
 mod table;
@@ -10,8 +11,7 @@ mod table;
 pub use iter::*;
 pub use table::*;
 
-#[derive(Debug, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
-#[cfg_attr(test, derive(test_strategy::Arbitrary))]
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Arbitrary)]
 enum TranspositionKind {
     Lower,
     Upper,
@@ -19,12 +19,11 @@ enum TranspositionKind {
 }
 
 /// A partial search result.
-#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
-#[cfg_attr(test, derive(test_strategy::Arbitrary))]
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash, Arbitrary)]
 pub struct Transposition {
     kind: TranspositionKind,
     score: i16,
-    #[cfg_attr(test, strategy(Self::MIN_DRAFT..=Self::MAX_DRAFT))]
+    #[strategy(Self::MIN_DRAFT..=Self::MAX_DRAFT)]
     draft: i8,
     best: Move,
 }
@@ -102,8 +101,7 @@ type OptionalSignedTransposition = Option<(Transposition, Signature)>;
 type OptionalSignedTranspositionRegister = <OptionalSignedTransposition as Binary>::Register;
 
 /// The reason why decoding [`Transposition`] from binary failed.
-#[derive(Debug, Display, Clone, Eq, PartialEq, Error)]
-#[cfg_attr(test, derive(test_strategy::Arbitrary))]
+#[derive(Debug, Display, Clone, Eq, PartialEq, Arbitrary, Error)]
 #[display(fmt = "`{}` is not a valid transposition", _0)]
 pub struct DecodeTranspositionError(#[error(not(source))] OptionalSignedTranspositionRegister);
 

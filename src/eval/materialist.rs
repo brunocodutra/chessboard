@@ -1,9 +1,9 @@
 use super::PieceSquareTable;
 use derive_more::Constructor;
+use test_strategy::Arbitrary;
 
 /// Evaluates positions purely based on piece values.
-#[derive(Debug, Default, Clone, Constructor)]
-#[cfg_attr(test, derive(test_strategy::Arbitrary))]
+#[derive(Debug, Default, Clone, Arbitrary, Constructor)]
 pub struct Materialist {}
 
 impl PieceSquareTable for Materialist {

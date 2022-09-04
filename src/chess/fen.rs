@@ -1,24 +1,21 @@
-use super::Position;
+use super::{Piece, Position, Square};
 use derive_more::{DebugCustom, Display, Error};
+use proptest::{collection::hash_map, prelude::*};
 use shakmaty as sm;
 use std::str::FromStr;
-
-#[cfg(test)]
-use proptest::{collection::hash_map, prelude::*};
+use test_strategy::Arbitrary;
 
 /// A representation of the [Forsyth–Edwards Notation].
 ///
 /// [Forsyth–Edwards Notation]: https://www.chessprogramming.org/Forsyth-Edwards_Notation
-#[derive(DebugCustom, Display, Default, Clone, Eq, PartialEq, Hash)]
-#[cfg_attr(test, derive(test_strategy::Arbitrary))]
+#[derive(DebugCustom, Display, Default, Clone, Eq, PartialEq, Hash, Arbitrary)]
 #[debug(fmt = "Fen(\"{}\")", self)]
 #[display(fmt = "{}", _0)]
 pub struct Fen(
-    #[cfg_attr(test, strategy(
-        hash_map(any::<super::Square>().prop_map_into(), any::<super::Piece>().prop_map_into(), 0..=64)
-            .prop_map(|setup| setup.into_iter().collect())
-            .prop_map(|board| sm::fen::Fen(sm::Setup { board, ..Default::default() }))
-    ))]
+    #[strategy(hash_map(any::<Square>().prop_map_into(), any::<Piece>().prop_map_into(), 0..=64)
+        .prop_map(|setup| setup.into_iter().collect())
+        .prop_map(|board| sm::fen::Fen(sm::Setup { board, ..Default::default() }))
+    )]
     sm::fen::Fen,
 );
 

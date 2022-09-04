@@ -1,17 +1,15 @@
 use derive_more::{DebugCustom, Display, Error};
+use proptest::sample::select;
 use shakmaty as sm;
 use std::convert::{TryFrom, TryInto};
 use std::{num::TryFromIntError, ops::Sub};
-
-#[cfg(test)]
-use proptest::sample::select;
+use test_strategy::Arbitrary;
 
 /// Denotes a row on the chess board.
-#[derive(DebugCustom, Display, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
-#[cfg_attr(test, derive(test_strategy::Arbitrary))]
+#[derive(DebugCustom, Display, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Arbitrary)]
 #[debug(fmt = "{}", self)]
 #[display(fmt = "{}", _0)]
-pub struct Rank(#[cfg_attr(test, strategy(select(sm::Rank::ALL.as_ref())))] sm::Rank);
+pub struct Rank(#[strategy(select(sm::Rank::ALL.as_ref()))] sm::Rank);
 
 impl Rank {
     /// Constructs [`Rank`] from index.
