@@ -1,21 +1,19 @@
 use crate::util::Register;
 use bitvec::{field::BitField, mem::BitRegister, prelude::*, slice::BitSlice};
 use derive_more::{DebugCustom, Display};
-use std::ops::{Deref, DerefMut};
-
-#[cfg(test)]
 use proptest::prelude::*;
+use std::ops::{Deref, DerefMut};
+use test_strategy::Arbitrary;
 
 /// A fixed width collection of bits.
-#[derive(DebugCustom, Display, Default, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
-#[cfg_attr(test, derive(test_strategy::Arbitrary))]
-#[cfg_attr(test, arbitrary(args = T, bound(std::ops::RangeInclusive<T>: Strategy<Value = T>)))]
+#[derive(
+    DebugCustom, Display, Default, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Arbitrary,
+)]
+#[arbitrary(args = T, bound(std::ops::RangeInclusive<T>: Strategy<Value = T>))]
 #[debug(fmt = "Bits({})", self)]
 #[display(fmt = "{:b}", "self.deref()")]
 #[repr(transparent)]
-pub struct Bits<T: BitStore + BitRegister, const W: usize>(
-    #[cfg_attr(test, strategy(*args..=Self::max().0))] T,
-);
+pub struct Bits<T: BitStore + BitRegister, const W: usize>(#[strategy(*args..=Self::max().0)] T);
 
 impl<T: BitStore + BitRegister, const W: usize> Register for Bits<T, W> {
     const WIDTH: usize = W;

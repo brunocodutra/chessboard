@@ -2,29 +2,25 @@ use super::{OptionalSignedTranspositionRegister, Signature, Transposition, Trans
 use crate::chess::{Position, Zobrist};
 use crate::util::{Binary, Cache, Register};
 use bitvec::field::BitField;
-
-#[cfg(test)]
 use proptest::{collection::*, prelude::*};
+use test_strategy::Arbitrary;
 
 /// A cache for [`Transposition`]s.
-#[derive(Debug)]
-#[cfg_attr(test, derive(test_strategy::Arbitrary))]
+#[derive(Debug, Arbitrary)]
 pub struct TranspositionTable {
-    #[cfg_attr(test, strategy(
-        (1usize..=128, hash_map(any::<Position>(), any::<Transposition>(), 0..=32)).prop_map(|(cap, ts)| {
-            let cache = Cache::new(cap);
+    #[strategy((1usize..=128, hash_map(any::<Position>(), any::<Transposition>(), 0..=32)).prop_map(|(cap, ts)| {
+        let cache = Cache::new(cap);
 
-            for (pos, t) in ts {
-                let key = pos.zobrist();
-                let idx = key.load::<usize>() & (cache.len() - 1);
-                let sig = key[(Zobrist::WIDTH - Signature::WIDTH)..].into();
-                cache.store(idx, Some((t, sig)).encode());
-            }
+        for (pos, t) in ts {
+            let key = pos.zobrist();
+            let idx = key.load::<usize>() & (cache.len() - 1);
+            let sig = key[(Zobrist::WIDTH - Signature::WIDTH)..].into();
+            cache.store(idx, Some((t, sig)).encode());
+        }
 
-            cache
-        })
-        .no_shrink()
-    ))]
+        cache
+    })
+    .no_shrink())]
     cache: Cache<OptionalSignedTranspositionRegister>,
 }
 

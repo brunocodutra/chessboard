@@ -2,11 +2,11 @@ use crate::chess::{Color, Outcome, Pgn, Position};
 use crate::{play::Play, util::Build};
 use derive_more::{Constructor, Display, Error};
 use std::fmt::Display;
+use test_strategy::Arbitrary;
 use tracing::{field::display, instrument, warn, Span};
 
 /// The reason why the [`Game`] was interrupted.
-#[derive(Debug, Display, Clone, Eq, PartialEq, Error)]
-#[cfg_attr(test, derive(test_strategy::Arbitrary))]
+#[derive(Debug, Display, Clone, Eq, PartialEq, Arbitrary, Error)]
 #[display(fmt = "the {} player encountered an error")]
 pub enum GameInterrupted<W, B> {
     #[display(fmt = "white")]
@@ -17,8 +17,7 @@ pub enum GameInterrupted<W, B> {
 }
 
 /// Holds the state of a game of chess.
-#[derive(Debug, Constructor)]
-#[cfg_attr(test, derive(test_strategy::Arbitrary))]
+#[derive(Debug, Arbitrary, Constructor)]
 pub struct Game<W, B> {
     white: W,
     black: B,

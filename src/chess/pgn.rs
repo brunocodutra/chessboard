@@ -1,9 +1,9 @@
 use super::{Color, Outcome, San};
 use std::fmt::{self, Display};
+use test_strategy::Arbitrary;
 
 /// The description of a chess game.
-#[derive(Debug, Clone, Eq, PartialEq, Hash)]
-#[cfg_attr(test, derive(test_strategy::Arbitrary))]
+#[derive(Debug, Clone, Eq, PartialEq, Hash, Arbitrary)]
 pub struct Pgn {
     pub white: String,
     pub black: String,

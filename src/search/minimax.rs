@@ -2,14 +2,13 @@ use super::{Limits, Metrics, MetricsCounters, Pv, Search, Transposition, Transpo
 use crate::chess::{Move, MoveKind, Piece, Position, Role};
 use crate::eval::Eval;
 use derive_more::{Deref, Display, Error, From, Neg};
+use proptest::prelude::*;
 use rayon::{iter::once, prelude::*};
 use serde::{Deserialize, Serialize};
 use std::sync::atomic::{AtomicI16, Ordering};
 use std::{cmp::max_by_key, ops::Range, str::FromStr, time::Duration};
+use test_strategy::Arbitrary;
 use tracing::debug;
-
-#[cfg(test)]
-use proptest::prelude::*;
 
 #[derive(Debug, Default, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Deref, Neg)]
 struct Score(#[deref] i16, i8);
@@ -24,15 +23,14 @@ impl Score {
 pub struct Timeout;
 
 /// Configuration for [`Minimax`].
-#[derive(Debug, Display, Copy, Clone, Eq, PartialEq, Deserialize, Serialize)]
-#[cfg_attr(test, derive(test_strategy::Arbitrary))]
+#[derive(Debug, Display, Copy, Clone, Eq, PartialEq, Arbitrary, Deserialize, Serialize)]
 #[display(fmt = "{}", "ron::ser::to_string(self).unwrap()")]
 #[serde(deny_unknown_fields, rename = "config", default)]
 pub struct MinimaxConfig {
     /// The size of the transposition table in bytes.
     ///
     /// This is an upper limit, the actual memory allocation may be smaller.
-    #[cfg_attr(test, strategy(0usize..=1024))]
+    #[strategy(0usize..=1024)]
     pub hash: usize,
 }
 
@@ -58,13 +56,10 @@ impl FromStr for MinimaxConfig {
 /// An implementation of [minimax].
 ///
 /// [minimax]: https://www.chessprogramming.org/Minimax
-#[derive(Debug)]
-#[cfg_attr(test, derive(test_strategy::Arbitrary))]
+#[derive(Debug, Arbitrary)]
 pub struct Minimax<E: Eval> {
     evaluation: E,
-    #[cfg_attr(test, strategy(any::<MinimaxConfig>()
-        .prop_map(|c| TranspositionTable::new(c.hash)))
-    )]
+    #[strategy(any::<MinimaxConfig>().prop_map(|c| TranspositionTable::new(c.hash)))]
     tt: TranspositionTable,
 }
 

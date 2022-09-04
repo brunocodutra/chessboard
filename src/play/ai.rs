@@ -4,12 +4,12 @@ use crate::search::{Limits, Search};
 use async_trait::async_trait;
 use derive_more::From;
 use std::convert::Infallible;
+use test_strategy::Arbitrary;
 use tokio::task::block_in_place;
 use tracing::{instrument, Span};
 
 /// A computed controlled player.
-#[derive(Debug, Default, From)]
-#[cfg_attr(test, derive(test_strategy::Arbitrary))]
+#[derive(Debug, Default, Arbitrary, From)]
 pub struct Ai<S: Search> {
     strategy: S,
     limits: Limits,

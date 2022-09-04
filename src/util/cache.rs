@@ -1,14 +1,12 @@
 use atomic::{Atomic, Ordering};
-
-#[cfg(test)]
 use proptest::{collection::*, prelude::*};
+use test_strategy::Arbitrary;
 
-#[derive(Debug)]
-#[cfg_attr(test, derive(test_strategy::Arbitrary))]
-#[cfg_attr(test, arbitrary(args = SizeRange, bound(T)))]
+#[derive(Debug, Arbitrary)]
+#[arbitrary(args = SizeRange, bound(T))]
 /// A fixed-size concurrent in-memory cache.
 pub struct Cache<T: Copy> {
-    #[cfg_attr(test, strategy(vec(any::<T>().prop_map(|v| Atomic::new(v)), (*args).clone())))]
+    #[strategy(vec(any::<T>().prop_map(|v| Atomic::new(v)), (*args).clone()))]
     memory: Vec<Atomic<T>>,
 }
 

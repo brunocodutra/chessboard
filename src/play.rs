@@ -3,9 +3,11 @@ use crate::search::{Builder as StrategyBuilder, Dispatcher as Strategy, Limits};
 use crate::util::{Build, Process};
 use async_trait::async_trait;
 use derive_more::{DebugCustom, Display, Error, From};
+use mockall::{automock, mock};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::str::FromStr;
+use test_strategy::Arbitrary;
 
 mod ai;
 mod uci;
@@ -14,7 +16,7 @@ pub use ai::*;
 pub use uci::*;
 
 /// Trait for types that know how to play chess.
-#[cfg_attr(test, mockall::automock(type Error = String;))]
+#[automock(type Error = String;)]
 #[async_trait]
 pub trait Play {
     /// The reason why a [`Move`] could not be played.
@@ -54,8 +56,7 @@ impl Play for Dispatcher {
 }
 
 /// Runtime configuration for [`Dispatcher`].
-#[derive(Debug, Display, Clone, Eq, PartialEq, Deserialize, Serialize)]
-#[cfg_attr(test, derive(test_strategy::Arbitrary))]
+#[derive(Debug, Display, Clone, Eq, PartialEq, Arbitrary, Deserialize, Serialize)]
 #[serde(deny_unknown_fields, rename_all = "lowercase")]
 pub enum Builder {
     #[display(fmt = "{}", "ron::ser::to_string(self).unwrap()")]
@@ -100,8 +101,7 @@ impl Build for Builder {
     }
 }
 
-#[cfg(test)]
-mockall::mock! {
+mock! {
     #[derive(Debug)]
     pub Builder {}
     impl Build for Builder {
@@ -111,7 +111,6 @@ mockall::mock! {
     }
 }
 
-#[cfg(test)]
 impl std::fmt::Display for MockBuilder {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         std::fmt::Debug::fmt(&self, f)

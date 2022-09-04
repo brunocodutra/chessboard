@@ -3,10 +3,10 @@ use crate::chess::Position;
 use derive_more::Constructor;
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
+use test_strategy::Arbitrary;
 
 /// Evaluates a [`Position`]s to random, but stable, scores.
-#[derive(Debug, Default, Clone, Constructor)]
-#[cfg_attr(test, derive(test_strategy::Arbitrary))]
+#[derive(Debug, Default, Clone, Arbitrary, Constructor)]
 pub struct Random {}
 
 impl Eval for Random {

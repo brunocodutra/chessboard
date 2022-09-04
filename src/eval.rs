@@ -1,7 +1,9 @@
 use crate::{chess::Position, util::Build};
 use derive_more::{DebugCustom, Display, Error, From};
+use mockall::automock;
 use serde::{Deserialize, Serialize};
 use std::{convert::Infallible, str::FromStr};
+use test_strategy::Arbitrary;
 
 mod materialist;
 mod pesto;
@@ -14,7 +16,7 @@ pub use pst::*;
 pub use random::*;
 
 /// Trait for types that can evaluate a [`Position`].
-#[cfg_attr(test, mockall::automock)]
+#[automock]
 pub trait Eval {
     /// Evaluates a [`Position`].
     ///
@@ -23,8 +25,7 @@ pub trait Eval {
 }
 
 /// A generic chess engine.
-#[derive(DebugCustom, Clone, From)]
-#[cfg_attr(test, derive(test_strategy::Arbitrary))]
+#[derive(DebugCustom, Clone, Arbitrary, From)]
 pub enum Dispatcher {
     #[debug(fmt = "{:?}", _0)]
     Random(Random),
@@ -51,8 +52,7 @@ impl Eval for Dispatcher {
 }
 
 /// Runtime configuration for a [`Dispatcher`].
-#[derive(Debug, Display, Clone, Eq, PartialEq, Deserialize, Serialize)]
-#[cfg_attr(test, derive(test_strategy::Arbitrary))]
+#[derive(Debug, Display, Clone, Eq, PartialEq, Arbitrary, Deserialize, Serialize)]
 #[serde(deny_unknown_fields, rename_all = "lowercase")]
 pub enum Builder {
     #[display(fmt = "{}", "ron::ser::to_string(self).unwrap()")]
