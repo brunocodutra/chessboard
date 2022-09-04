@@ -1,4 +1,5 @@
-use crate::{Io, Move, Play, Position, SearchLimits};
+use crate::chess::{Move, Position};
+use crate::{Io, Play, SearchLimits};
 use anyhow::{Context, Error as Anyhow};
 use async_trait::async_trait;
 use derive_more::{DebugCustom, Display, Error, From};
@@ -140,7 +141,7 @@ impl<T: Io + Send> Play for Uci<T> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{MockIo, Move};
+    use crate::{chess::Move, MockIo};
     use mockall::Sequence;
     use proptest::prelude::*;
     use test_strategy::proptest;

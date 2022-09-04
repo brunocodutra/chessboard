@@ -1,4 +1,5 @@
-use crate::{Color, Eval, Piece, Position, Role};
+use crate::chess::{Color, Piece, Position, Role};
+use crate::Eval;
 
 /// A trait for types that can valuate material using a [Piece-Square Table].
 ///

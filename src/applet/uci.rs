@@ -1,7 +1,8 @@
 use super::Execute;
 use anyhow::{Context, Error as Anyhow};
 use async_trait::async_trait;
-use chessboard::{Build, Fen, Io, Pipe, Position, Search, SearchLimits, Strategy, StrategyBuilder};
+use chessboard::chess::{Fen, Position};
+use chessboard::{Build, Io, Pipe, Search, SearchLimits, Strategy, StrategyBuilder};
 use clap::{AppSettings::DeriveDisplayOrder, Parser};
 use tokio::io::{stdin, stdout};
 use tokio::task::block_in_place;

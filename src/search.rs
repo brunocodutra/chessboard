@@ -1,4 +1,4 @@
-use crate::{Position, Pv, SearchLimits};
+use crate::{chess::Position, Pv, SearchLimits};
 
 /// Trait for types that implement adversarial search algorithms.
 pub trait Search {

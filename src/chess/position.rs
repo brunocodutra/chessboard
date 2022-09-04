@@ -1,4 +1,5 @@
-use crate::{util::Bits, Color, Fen, Move, Piece, Role, San, Square};
+use super::{Color, Fen, Move, Piece, Role, San, Square};
+use crate::util::Bits;
 use bitflags::bitflags;
 use bitvec::{order::Lsb0, view::BitView};
 use derive_more::{DebugCustom, Display, Error};
@@ -9,6 +10,7 @@ use std::{convert::TryFrom, num::NonZeroU32, ops::Index};
 use proptest::{prelude::*, sample::Selector};
 
 bitflags! {
+    /// Characteristics of a [`Move`] in the context of a [`Position`].
     #[derive(Default)]
     pub struct MoveKind: u8 {
         const ANY =         0b00000001;
@@ -523,7 +525,7 @@ mod tests {
     #[proptest]
     fn illegal_move_fails_without_changing_position(
         #[by_ref] mut pos: Position,
-        #[filter(!#pos.moves(MoveKind::ANY).any(|(m, _, _)| m == #m))] m: Move,
+        #[filter(#pos.clone().make(#m).is_err())] m: Move,
     ) {
         let before = pos.clone();
         assert_eq!(pos.make(m), Err(IllegalMove(m, before.clone())));

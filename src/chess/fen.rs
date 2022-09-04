@@ -1,4 +1,4 @@
-use crate::Position;
+use super::Position;
 use derive_more::{DebugCustom, Display, Error};
 use shakmaty as sm;
 use std::str::FromStr;
@@ -15,7 +15,7 @@ use proptest::{collection::hash_map, prelude::*};
 #[display(fmt = "{}", _0)]
 pub struct Fen(
     #[cfg_attr(test, strategy(
-        hash_map(any::<crate::Square>().prop_map_into(), any::<crate::Piece>().prop_map_into(), 0..=64)
+        hash_map(any::<super::Square>().prop_map_into(), any::<super::Piece>().prop_map_into(), 0..=64)
             .prop_map(|setup| setup.into_iter().collect())
             .prop_map(|board| sm::fen::Fen(sm::Setup { board, ..Default::default() }))
     ))]

@@ -1,6 +1,6 @@
 use shakmaty as sm;
 
-/// Denotes the type of a chess [`Piece`][`crate::Piece`].
+/// Denotes the type of a chess [`Piece`][`super::Piece`].
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
 #[cfg_attr(test, derive(test_strategy::Arbitrary))]
 pub enum Role {

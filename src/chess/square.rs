@@ -1,5 +1,5 @@
+use super::{File, Rank};
 use crate::util::{Binary, Bits};
-use crate::{File, Rank};
 use bitvec::{field::BitField, order::Lsb0, view::BitView};
 use derive_more::{DebugCustom, Display, Error};
 use shakmaty as sm;

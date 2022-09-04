@@ -1,4 +1,4 @@
-use crate::{Build, Engine, EngineBuilder, Position, Pv, Search, SearchLimits};
+use crate::{chess::Position, Build, Engine, EngineBuilder, Pv, Search, SearchLimits};
 use derive_more::{DebugCustom, Display, Error, From};
 use serde::{Deserialize, Serialize};
 use std::str::FromStr;
