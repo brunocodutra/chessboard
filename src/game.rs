@@ -1,4 +1,5 @@
-use crate::{Build, Color, Outcome, Pgn, Play, Position};
+use crate::chess::{Color, Outcome, Pgn, Position};
+use crate::{Build, Play};
 use derive_more::{Constructor, Display, Error};
 use std::fmt::Display;
 use tracing::{field::display, instrument, warn, Span};
@@ -87,7 +88,7 @@ fn is_game_over(pos: &Position) -> Option<Outcome> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{MockPlay, MockPlayerBuilder, MoveKind};
+    use crate::{chess::MoveKind, MockPlay, MockPlayerBuilder};
     use proptest::sample::Selector;
     use test_strategy::proptest;
     use tokio::runtime;

@@ -1,4 +1,4 @@
-use crate::Position;
+use crate::chess::Position;
 
 /// Trait for types that can evaluate a [`Position`].
 #[cfg_attr(test, mockall::automock)]

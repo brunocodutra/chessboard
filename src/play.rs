@@ -1,4 +1,4 @@
-use crate::{Move, Position};
+use crate::chess::{Move, Position};
 use async_trait::async_trait;
 
 /// Trait for types that know how to play chess.

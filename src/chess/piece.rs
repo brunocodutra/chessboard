@@ -1,4 +1,4 @@
-use crate::{Color, Role};
+use super::{Color, Role};
 use shakmaty as sm;
 
 /// A chess [piece][`Role`] of a certain [`Color`].

@@ -1,4 +1,4 @@
-use crate::Color;
+use super::Color;
 use derive_more::Display;
 
 /// One of the possible outcomes of a chess game.

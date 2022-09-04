@@ -14,7 +14,7 @@ use proptest::{prelude::*, sample::Selector};
 #[display(fmt = "{}", _0)]
 pub struct San(
     #[cfg_attr(test, strategy(
-        (any::<crate::Position>(), any::<Selector>()).prop_filter_map("end position", |(pos, selector)| {
+        (any::<super::Position>(), any::<Selector>()).prop_filter_map("end position", |(pos, selector)| {
             let m = selector.try_select(sm::Position::legal_moves(pos.as_ref()))?;
             Some(sm::san::San::from_move(pos.as_ref(), &m))
         })

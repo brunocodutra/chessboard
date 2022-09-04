@@ -1,4 +1,4 @@
-use crate::{Eval, Position};
+use crate::{chess::Position, Eval};
 use derive_more::Constructor;
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};

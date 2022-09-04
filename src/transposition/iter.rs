@@ -1,5 +1,5 @@
 use super::{Transposition, TranspositionTable};
-use crate::Position;
+use crate::chess::Position;
 
 /// An iterator over the sequence of [`Transposition`]s in a [`TranspositionTable`].
 #[derive(Debug, Clone)]
@@ -35,7 +35,7 @@ impl<'a> Iterator for TranspositionIterator<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::MoveKind;
+    use crate::chess::MoveKind;
     use proptest::{prop_assume, sample::Selector};
     use test_strategy::proptest;
 

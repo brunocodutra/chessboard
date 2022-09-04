@@ -1,5 +1,5 @@
+use crate::chess::Move;
 use crate::util::{Binary, Bits, Register};
-use crate::Move;
 use bitvec::field::BitField;
 use derive_more::{Display, Error};
 use std::{cmp::Ordering, ops::RangeInclusive};

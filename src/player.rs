@@ -1,5 +1,5 @@
-use crate::io::Process;
-use crate::{Build, Move, Play, Position, SearchLimits, Strategy, StrategyBuilder};
+use crate::chess::{Move, Position};
+use crate::{io::Process, Build, Play, SearchLimits, Strategy, StrategyBuilder};
 use async_trait::async_trait;
 use derive_more::{DebugCustom, Display, Error, From};
 use serde::{Deserialize, Serialize};

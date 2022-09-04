@@ -1,7 +1,7 @@
 use super::Execute;
 use anyhow::Error as Anyhow;
 use async_trait::async_trait;
-use chessboard::{Game, PlayerBuilder, Position};
+use chessboard::{chess::Position, Game, PlayerBuilder};
 use clap::{AppSettings::DeriveDisplayOrder, Parser};
 use libm::erf;
 use std::num::NonZeroUsize;

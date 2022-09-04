@@ -1,4 +1,5 @@
-use crate::{Eval, Move, MoveKind, Piece, Position, Pv, Role, Transposition, TranspositionTable};
+use crate::chess::{Move, MoveKind, Piece, Position, Role};
+use crate::{Eval, Pv, Transposition, TranspositionTable};
 use crate::{Search, SearchLimits, SearchMetrics, SearchMetricsCounters};
 use derive_more::{Deref, Display, Error, From, Neg};
 use rayon::{iter::once, prelude::*};

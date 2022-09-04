@@ -1,4 +1,5 @@
-use crate::{Move, Play, Position, Search, SearchLimits};
+use crate::chess::{Move, Position};
+use crate::{Play, Search, SearchLimits};
 use async_trait::async_trait;
 use derive_more::From;
 use std::convert::Infallible;

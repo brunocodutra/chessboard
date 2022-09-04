@@ -1,7 +1,7 @@
-use crate::{Color, Outcome, San};
+use super::{Color, Outcome, San};
 use std::fmt::{self, Display};
 
-/// The description of a [`crate::Game`] played to completion.
+/// The description of a chess game.
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
 #[cfg_attr(test, derive(test_strategy::Arbitrary))]
 pub struct Pgn {

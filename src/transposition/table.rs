@@ -1,6 +1,6 @@
 use super::{OptionalSignedTranspositionRegister, Signature, Transposition, TranspositionIterator};
+use crate::chess::{Position, Zobrist};
 use crate::util::{Binary, Cache, Register};
-use crate::{Position, Zobrist};
 use bitvec::field::BitField;
 
 #[cfg(test)]

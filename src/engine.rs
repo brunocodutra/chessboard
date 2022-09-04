@@ -1,4 +1,4 @@
-use crate::{Build, Eval, Position};
+use crate::{chess::Position, Build, Eval};
 use derive_more::{DebugCustom, Display, Error, From};
 use serde::{Deserialize, Serialize};
 use std::{convert::Infallible, str::FromStr};
