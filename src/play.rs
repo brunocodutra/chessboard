@@ -1,6 +1,6 @@
 use crate::chess::{Move, Position};
 use crate::search::{Builder as StrategyBuilder, Dispatcher as Strategy, Limits};
-use crate::{util::io::Process, Build};
+use crate::{util::Process, Build};
 use async_trait::async_trait;
 use derive_more::{DebugCustom, Display, Error, From};
 use serde::{Deserialize, Serialize};
