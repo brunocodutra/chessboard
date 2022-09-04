@@ -1,12 +1,10 @@
 mod build;
 mod game;
-mod metrics;
 mod pv;
 mod transposition;
 
 pub use build::*;
 pub use game::*;
-pub use metrics::*;
 pub use pv::*;
 pub use transposition::*;
 
