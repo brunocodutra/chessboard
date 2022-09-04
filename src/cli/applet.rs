@@ -3,8 +3,8 @@ use async_trait::async_trait;
 use clap::Subcommand;
 use derive_more::From;
 
+mod analyze;
 mod play;
-mod search;
 mod uci;
 
 /// Trait for types that behave like subcommands.
@@ -16,7 +16,7 @@ pub trait Execute {
 
 #[derive(From, Subcommand)]
 pub enum Applet {
-    Search(search::Search),
+    Analyze(analyze::Analyze),
     Play(play::Play),
     Uci(uci::Uci),
 }
@@ -31,7 +31,7 @@ impl Default for Applet {
 impl Execute for Applet {
     async fn execute(self) -> Result<(), Anyhow> {
         match self {
-            Applet::Search(a) => Ok(a.execute().await?),
+            Applet::Analyze(a) => Ok(a.execute().await?),
             Applet::Play(a) => Ok(a.execute().await?),
             Applet::Uci(a) => Ok(a.execute().await?),
         }
