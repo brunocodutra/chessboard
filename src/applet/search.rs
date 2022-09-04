@@ -2,8 +2,8 @@ use super::Execute;
 use anyhow::{Context, Error as Anyhow};
 use async_trait::async_trait;
 use chessboard::chess::{Color, Fen, Position};
-use chessboard::search::{Builder as StrategyBuilder, Dispatcher as Strategy};
-use chessboard::{Build, Search as _, SearchLimits};
+use chessboard::search::{Builder as StrategyBuilder, Dispatcher as Strategy, Limits};
+use chessboard::{Build, Search as _};
 use clap::{AppSettings::DeriveDisplayOrder, Parser};
 use tokio::task::block_in_place;
 use tracing::{info, instrument};
@@ -18,7 +18,7 @@ use tracing::{info, instrument};
 pub struct Search {
     /// How deep/long to search.
     #[clap(short, long, default_value_t)]
-    limits: SearchLimits,
+    limits: Limits,
 
     /// The search strategy.
     #[clap(short, long, default_value_t)]
@@ -36,10 +36,10 @@ impl Execute for Search {
         let pos = self.fen.try_into()?;
 
         match self.limits {
-            l @ SearchLimits::Time(_) => block_in_place(|| search(&mut strategy, &pos, l))?,
+            l @ Limits::Time(_) => block_in_place(|| search(&mut strategy, &pos, l))?,
             l => {
                 for d in 1..=l.depth() {
-                    block_in_place(|| search(&mut strategy, &pos, SearchLimits::Depth(d)))?
+                    block_in_place(|| search(&mut strategy, &pos, Limits::Depth(d)))?
                 }
             }
         }
@@ -48,7 +48,7 @@ impl Execute for Search {
     }
 }
 
-fn search(strategy: &mut Strategy, pos: &Position, limits: SearchLimits) -> Result<(), Anyhow> {
+fn search(strategy: &mut Strategy, pos: &Position, limits: Limits) -> Result<(), Anyhow> {
     let pv = strategy.search::<{ u8::MAX as usize }>(pos, limits);
     let (d, s) = Option::zip(pv.depth(), pv.score()).context("no principal variation found")?;
 

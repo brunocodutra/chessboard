@@ -1,6 +1,6 @@
 use super::Play;
 use crate::chess::{Move, Position};
-use crate::{util::Io, SearchLimits};
+use crate::{search::Limits, util::Io};
 use anyhow::{Context, Error as Anyhow};
 use async_trait::async_trait;
 use derive_more::{DebugCustom, Display, Error, From};
@@ -46,17 +46,17 @@ pub struct UciError(#[from(forward)] io::Error);
 #[derive(Debug)]
 pub struct Uci<T: Io> {
     io: Lazy<T, UciError>,
-    limits: SearchLimits,
+    limits: Limits,
 }
 
 impl<T: Io + Send + 'static> Uci<T> {
-    /// Constructs [`Uci`] with the default [`SearchLimits`].
+    /// Constructs [`Uci`] with the default [`Limits`].
     pub fn new(io: T) -> Self {
-        Self::with_config(io, SearchLimits::default(), HashMap::new())
+        Self::with_config(io, Limits::default(), HashMap::new())
     }
 
-    /// Constructs [`Uci`] with some [`SearchLimits`] and [`UciOptions`].
-    pub fn with_config(mut io: T, limits: SearchLimits, options: UciOptions) -> Self {
+    /// Constructs [`Uci`] with some [`Limits`] and [`UciOptions`].
+    pub fn with_config(mut io: T, limits: Limits, options: UciOptions) -> Self {
         Uci {
             limits,
             io: Lazy::Uninitialized(Box::pin(async move {
@@ -115,12 +115,12 @@ impl<T: Io + Send> Play for Uci<T> {
         };
 
         let go = match self.limits {
-            SearchLimits::None => UciMessage::go(),
-            SearchLimits::Depth(d) => UciMessage::Go {
+            Limits::None => UciMessage::go(),
+            Limits::Depth(d) => UciMessage::Go {
                 search_control: Some(UciSearchControl::depth(d)),
                 time_control: None,
             },
-            SearchLimits::Time(t) => UciMessage::go_movetime(
+            Limits::Time(t) => UciMessage::go_movetime(
                 uci::Duration::from_std(t).unwrap_or_else(|_| uci::Duration::max_value()),
             ),
         };
@@ -185,12 +185,12 @@ mod tests {
 
     #[proptest]
     fn new_applies_default_search_limits() {
-        assert_eq!(Uci::new(MockIo::new()).limits, SearchLimits::default());
+        assert_eq!(Uci::new(MockIo::new()).limits, Limits::default());
     }
 
     #[proptest]
     fn engine_is_lazily_initialized_with_the_options_configured(
-        l: SearchLimits,
+        l: Limits,
         o: UciOptions,
         pos: Position,
         m: Move,
@@ -342,7 +342,7 @@ mod tests {
     }
 
     #[proptest]
-    fn drop_gracefully_quits_initialized_engine(l: SearchLimits) {
+    fn drop_gracefully_quits_initialized_engine(l: Limits) {
         let rt = runtime::Builder::new_multi_thread().build()?;
         let mut io = MockIo::new();
 
@@ -414,7 +414,7 @@ mod tests {
     }
 
     #[proptest]
-    fn drop_recovers_from_errors(l: SearchLimits, e: io::Error) {
+    fn drop_recovers_from_errors(l: Limits, e: io::Error) {
         let rt = runtime::Builder::new_multi_thread().build()?;
         let mut io = MockIo::new();
         io.expect_send().once().return_once(move |_| Err(e));
@@ -428,7 +428,7 @@ mod tests {
     }
 
     #[proptest]
-    fn drop_recovers_from_missing_runtime(l: SearchLimits) {
+    fn drop_recovers_from_missing_runtime(l: Limits) {
         drop(Uci {
             io: Lazy::Initialized(MockIo::new()),
             limits: l,
@@ -436,7 +436,7 @@ mod tests {
     }
 
     #[proptest]
-    fn play_instructs_engine_to_make_move(l: SearchLimits, pos: Position, m: Move) {
+    fn play_instructs_engine_to_make_move(l: Limits, pos: Position, m: Move) {
         let rt = runtime::Builder::new_multi_thread().build()?;
         let mut io = MockIo::new();
         let mut seq = Sequence::new();
@@ -454,12 +454,12 @@ mod tests {
             .returning(|_| Ok(()));
 
         let go = match l {
-            SearchLimits::None => UciMessage::go(),
-            SearchLimits::Depth(d) => UciMessage::Go {
+            Limits::None => UciMessage::go(),
+            Limits::Depth(d) => UciMessage::Go {
                 search_control: Some(UciSearchControl::depth(d)),
                 time_control: None,
             },
-            SearchLimits::Time(t) => UciMessage::go_movetime(
+            Limits::Time(t) => UciMessage::go_movetime(
                 uci::Duration::from_std(t).unwrap_or_else(|_| uci::Duration::max_value()),
             ),
         };
@@ -490,7 +490,7 @@ mod tests {
 
     #[proptest]
     fn play_ignores_invalid_uci_messages(
-        l: SearchLimits,
+        l: Limits,
         pos: Position,
         m: Move,
         #[by_ref]
@@ -519,7 +519,7 @@ mod tests {
 
     #[proptest]
     fn play_ignores_unexpected_uci_messages(
-        l: SearchLimits,
+        l: Limits,
         pos: Position,
         m: Move,
         #[by_ref]
@@ -550,7 +550,7 @@ mod tests {
     }
 
     #[proptest]
-    fn play_can_fail_writing(l: SearchLimits, pos: Position, e: io::Error) {
+    fn play_can_fail_writing(l: Limits, pos: Position, e: io::Error) {
         let rt = runtime::Builder::new_multi_thread().build()?;
         let mut io = MockIo::new();
 
@@ -572,7 +572,7 @@ mod tests {
     }
 
     #[proptest]
-    fn play_can_fail_flushing(l: SearchLimits, pos: Position, e: io::Error) {
+    fn play_can_fail_flushing(l: Limits, pos: Position, e: io::Error) {
         let rt = runtime::Builder::new_multi_thread().build()?;
         let mut io = MockIo::new();
 
@@ -594,7 +594,7 @@ mod tests {
     }
 
     #[proptest]
-    fn play_can_fail_reading(l: SearchLimits, pos: Position, e: io::Error) {
+    fn play_can_fail_reading(l: Limits, pos: Position, e: io::Error) {
         let rt = runtime::Builder::new_multi_thread().build()?;
         let mut io = MockIo::new();
 

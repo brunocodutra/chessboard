@@ -1,6 +1,6 @@
 use crate::chess::{Move, Position};
-use crate::search::{Builder as StrategyBuilder, Dispatcher as Strategy};
-use crate::{util::io::Process, Build, SearchLimits};
+use crate::search::{Builder as StrategyBuilder, Dispatcher as Strategy, Limits};
+use crate::{util::io::Process, Build};
 use async_trait::async_trait;
 use derive_more::{DebugCustom, Display, Error, From};
 use serde::{Deserialize, Serialize};
@@ -59,11 +59,11 @@ impl Play for Dispatcher {
 #[serde(deny_unknown_fields, rename_all = "lowercase")]
 pub enum Builder {
     #[display(fmt = "{}", "ron::ser::to_string(self).unwrap()")]
-    Ai(StrategyBuilder, #[serde(default)] SearchLimits),
+    Ai(StrategyBuilder, #[serde(default)] Limits),
     #[display(fmt = "{}", "ron::ser::to_string(self).unwrap()")]
     Uci(
         String,
-        #[serde(default)] SearchLimits,
+        #[serde(default)] Limits,
         #[serde(default)] HashMap<String, Option<String>>,
     ),
 }
@@ -129,22 +129,22 @@ mod tests {
     }
 
     #[proptest]
-    fn ai_builder_is_deserializable(s: StrategyBuilder, l: SearchLimits) {
+    fn ai_builder_is_deserializable(s: StrategyBuilder, l: Limits) {
         assert_eq!(
             format!("ai({})", s).parse(),
-            Ok(Builder::Ai(s.clone(), SearchLimits::default()))
+            Ok(Builder::Ai(s.clone(), Limits::default()))
         );
 
         assert_eq!(format!("ai({}, {})", s, l).parse(), Ok(Builder::Ai(s, l)));
     }
 
     #[proptest]
-    fn uci_builder_is_deserializable(s: String, l: SearchLimits, o: UciOptions) {
+    fn uci_builder_is_deserializable(s: String, l: Limits, o: UciOptions) {
         assert_eq!(
             format!("uci({:?})", s).parse(),
             Ok(Builder::Uci(
                 s.clone(),
-                SearchLimits::default(),
+                Limits::default(),
                 UciOptions::default()
             ))
         );
@@ -161,12 +161,12 @@ mod tests {
     }
 
     #[proptest]
-    fn ai_can_be_configured_at_runtime(s: StrategyBuilder, l: SearchLimits) {
+    fn ai_can_be_configured_at_runtime(s: StrategyBuilder, l: Limits) {
         assert!(matches!(Builder::Ai(s, l).build(), Ok(Dispatcher::Ai(_))));
     }
 
     #[proptest]
-    fn uci_can_be_configured_at_runtime(s: String, l: SearchLimits, o: UciOptions) {
+    fn uci_can_be_configured_at_runtime(s: String, l: Limits, o: UciOptions) {
         assert!(matches!(
             Builder::Uci(s, l, o).build(),
             Ok(Dispatcher::Uci(_))

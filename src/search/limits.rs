@@ -7,7 +7,7 @@ use std::{str::FromStr, time::Duration};
 #[cfg_attr(test, derive(test_strategy::Arbitrary))]
 #[cfg_attr(test, arbitrary(args = (Option<u8>, Option<u8>)))]
 #[serde(deny_unknown_fields, rename_all = "lowercase")]
-pub enum SearchLimits {
+pub enum Limits {
     /// Unlimited search.
     #[display(fmt = "{}", "ron::ser::to_string(self).unwrap()")]
     None,
@@ -24,18 +24,18 @@ pub enum SearchLimits {
     Time(Duration),
 }
 
-impl Default for SearchLimits {
+impl Default for Limits {
     fn default() -> Self {
-        SearchLimits::None
+        Limits::None
     }
 }
 
-/// The reason why parsing [`SearchLimits`] failed.
+/// The reason why parsing [`Limits`] failed.
 #[derive(Debug, Display, Eq, PartialEq, Error, From)]
 #[display(fmt = "failed to parse minimax configuration")]
 pub struct ParseSearchLimitsError(ron::de::SpannedError);
 
-impl FromStr for SearchLimits {
+impl FromStr for Limits {
     type Err = ParseSearchLimitsError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
@@ -43,11 +43,11 @@ impl FromStr for SearchLimits {
     }
 }
 
-impl SearchLimits {
+impl Limits {
     /// Depth or [`u8::MAX`].
     pub fn depth(&self) -> u8 {
         match self {
-            SearchLimits::Depth(d) => *d,
+            Limits::Depth(d) => *d,
             _ => u8::MAX,
         }
     }
@@ -55,7 +55,7 @@ impl SearchLimits {
     /// Time or [`Duration::MAX`].
     pub fn time(&self) -> Duration {
         match self {
-            SearchLimits::Time(t) => *t,
+            Limits::Time(t) => *t,
             _ => Duration::MAX,
         }
     }
@@ -68,29 +68,29 @@ mod tests {
     use test_strategy::proptest;
 
     #[proptest]
-    fn parsing_printed_search_limits_is_an_identity(l: SearchLimits) {
+    fn parsing_printed_search_limits_is_an_identity(l: Limits) {
         assert_eq!(l.to_string().parse(), Ok(l));
     }
 
     #[proptest]
     fn depth_returns_value_if_set(d: u8) {
-        assert_eq!(SearchLimits::Depth(d).depth(), d);
+        assert_eq!(Limits::Depth(d).depth(), d);
     }
 
     #[proptest]
     fn depth_returns_max_by_default(d: Duration) {
-        assert_eq!(SearchLimits::None.depth(), u8::MAX);
-        assert_eq!(SearchLimits::Time(d).depth(), u8::MAX);
+        assert_eq!(Limits::None.depth(), u8::MAX);
+        assert_eq!(Limits::Time(d).depth(), u8::MAX);
     }
 
     #[proptest]
     fn time_returns_value_if_set(d: Duration) {
-        assert_eq!(SearchLimits::Time(d).time(), d);
+        assert_eq!(Limits::Time(d).time(), d);
     }
 
     #[proptest]
     fn time_returns_max_by_default(d: u8) {
-        assert_eq!(SearchLimits::None.time(), Duration::MAX);
-        assert_eq!(SearchLimits::Depth(d).time(), Duration::MAX);
+        assert_eq!(Limits::None.time(), Duration::MAX);
+        assert_eq!(Limits::Depth(d).time(), Duration::MAX);
     }
 }

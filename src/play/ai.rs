@@ -1,6 +1,6 @@
 use super::Play;
 use crate::chess::{Move, Position};
-use crate::{Search, SearchLimits};
+use crate::{search::Limits, Search};
 use async_trait::async_trait;
 use derive_more::From;
 use std::convert::Infallible;
@@ -12,17 +12,17 @@ use tracing::{instrument, Span};
 #[cfg_attr(test, derive(test_strategy::Arbitrary))]
 pub struct Ai<S: Search> {
     strategy: S,
-    limits: SearchLimits,
+    limits: Limits,
 }
 
 impl<S: Search> Ai<S> {
-    /// Constructs [`Ai`] with default [`SearchLimits`].
+    /// Constructs [`Ai`] with default [`Limits`].
     pub fn new(strategy: S) -> Self {
-        Ai::with_config(strategy, SearchLimits::default())
+        Ai::with_config(strategy, Limits::default())
     }
 
-    /// Constructs [`Ai`] with some [`SearchLimits`].
-    pub fn with_config(strategy: S, limits: SearchLimits) -> Self {
+    /// Constructs [`Ai`] with some [`Limits`].
+    pub fn with_config(strategy: S, limits: Limits) -> Self {
         Ai { strategy, limits }
     }
 }
@@ -53,12 +53,12 @@ mod tests {
 
     #[proptest]
     fn new_applies_default_search_limits() {
-        assert_eq!(Ai::new(MockSearch::new()).limits, SearchLimits::default());
+        assert_eq!(Ai::new(MockSearch::new()).limits, Limits::default());
     }
 
     #[proptest]
     fn searches_for_best_move(
-        l: SearchLimits,
+        l: Limits,
         pos: Position,
         #[filter(#t.draft() > 0)] t: Transposition,
     ) {
@@ -75,7 +75,7 @@ mod tests {
 
     #[proptest]
     #[should_panic]
-    fn panics_if_there_are_no_moves(l: SearchLimits, pos: Position) {
+    fn panics_if_there_are_no_moves(l: Limits, pos: Position) {
         let rt = runtime::Builder::new_multi_thread().build()?;
 
         let mut strategy = MockSearch::new();
