@@ -5,9 +5,11 @@ use serde::{Deserialize, Serialize};
 use std::str::FromStr;
 
 mod limits;
+mod metrics;
 mod minimax;
 
 pub use limits::*;
+pub use metrics::*;
 pub use minimax::*;
 
 /// Trait for types that implement adversarial search algorithms.

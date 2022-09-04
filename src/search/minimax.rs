@@ -1,6 +1,6 @@
 use crate::chess::{Move, MoveKind, Piece, Position, Role};
-use crate::{search::Limits, Search, SearchMetrics, SearchMetricsCounters};
-use crate::{Eval, Pv, Transposition, TranspositionTable};
+use crate::search::{Limits, Metrics, MetricsCounters};
+use crate::{Eval, Pv, Search, Transposition, TranspositionTable};
 use derive_more::{Deref, Display, Error, From, Neg};
 use rayon::{iter::once, prelude::*};
 use serde::{Deserialize, Serialize};
@@ -122,18 +122,18 @@ impl<E: Eval + Send + Sync> Minimax<E> {
         guess: i16,
         draft: i8,
         time: Duration,
-        counters: &SearchMetricsCounters,
+        metrics: &MetricsCounters,
     ) -> Result<Score, Timeout> {
         const W: i16 = 64;
 
         let upper = guess.saturating_add(W / 2).max(W - i16::MAX);
         let lower = guess.saturating_sub(W / 2).min(i16::MAX - W).max(-i16::MAX);
-        let score = self.pvs(None, pos, lower..upper, draft, time, counters)?;
+        let score = self.pvs(None, pos, lower..upper, draft, time, metrics)?;
 
         if *score >= upper {
-            self.pvs(None, pos, lower..i16::MAX, draft, time, counters)
+            self.pvs(None, pos, lower..i16::MAX, draft, time, metrics)
         } else if *score <= lower {
-            self.pvs(None, pos, -i16::MAX..upper, draft, time, counters)
+            self.pvs(None, pos, -i16::MAX..upper, draft, time, metrics)
         } else {
             Ok(score)
         }
@@ -149,10 +149,10 @@ impl<E: Eval + Send + Sync> Minimax<E> {
         bound: i16,
         draft: i8,
         time: Duration,
-        counters: &SearchMetricsCounters,
+        metrics: &MetricsCounters,
     ) -> Result<Score, Timeout> {
         assert!(bound < i16::MAX, "{} < {}", bound, i16::MAX);
-        self.pvs(prev, pos, bound..bound + 1, draft, time, counters)
+        self.pvs(prev, pos, bound..bound + 1, draft, time, metrics)
     }
 
     /// An implementation of the [PVS] variation of [alpha-beta pruning] algorithm.
@@ -166,24 +166,24 @@ impl<E: Eval + Send + Sync> Minimax<E> {
         bounds: Range<i16>,
         draft: i8,
         time: Duration,
-        counters: &SearchMetricsCounters,
+        metrics: &MetricsCounters,
     ) -> Result<Score, Timeout> {
         assert!(!bounds.is_empty(), "{:?} ≠ ∅", bounds);
         assert!(!bounds.contains(&i16::MIN), "{:?} ∌ {}", bounds, i16::MIN);
 
         let (mut alpha, mut beta) = (bounds.start, bounds.end);
 
-        if counters.time() >= time {
+        if metrics.time() >= time {
             return Err(Timeout);
         }
 
-        counters.node();
+        metrics.node();
 
         let zobrist = pos.zobrist();
         let transposition = self.tt.get(zobrist);
 
         if transposition.is_some() {
-            counters.tt_hit();
+            metrics.tt_hit();
         }
 
         match transposition.filter(|t| t.draft() >= draft) {
@@ -194,7 +194,7 @@ impl<E: Eval + Send + Sync> Minimax<E> {
                 let (lower, upper) = t.bounds().into_inner();
                 (alpha, beta) = (alpha.max(lower), beta.min(upper));
                 if alpha >= beta {
-                    counters.tt_cut();
+                    metrics.tt_cut();
                     return Ok(Score(t.score(), draft));
                 }
             }
@@ -212,7 +212,7 @@ impl<E: Eval + Send + Sync> Minimax<E> {
             }
 
             if alpha >= beta {
-                counters.sp_cut();
+                metrics.sp_cut();
                 return Ok(stand_pat);
             }
         } else if draft > 0 && *stand_pat >= beta && prev.is_some()
@@ -222,8 +222,8 @@ impl<E: Eval + Send + Sync> Minimax<E> {
             let mut pos = pos.clone();
             if pos.pass().is_ok() {
                 let r = (2 + draft / 8).min(draft - 1);
-                if *-self.nw(None, &pos, -beta, draft - r - 1, time, counters)? >= beta {
-                    counters.nm_cut();
+                if *-self.nw(None, &pos, -beta, draft - r - 1, time, metrics)? >= beta {
+                    metrics.nm_cut();
                     #[cfg(not(test))]
                     // The null move pruning heuristic is not exact.
                     return Ok(Score(beta, draft));
@@ -249,10 +249,10 @@ impl<E: Eval + Send + Sync> Minimax<E> {
         let (score, pv) = match moves.pop() {
             None => return Ok(stand_pat),
             Some((m, _, pos)) => {
-                let score = -self.pvs(Some(m), &pos, -beta..-alpha, draft - 1, time, counters)?;
+                let score = -self.pvs(Some(m), &pos, -beta..-alpha, draft - 1, time, metrics)?;
 
                 if *score >= beta {
-                    counters.pv_cut();
+                    metrics.pv_cut();
                     self.tt.set(zobrist, Transposition::lower(*score, draft, m));
                     return Ok(score);
                 }
@@ -272,7 +272,7 @@ impl<E: Eval + Send + Sync> Minimax<E> {
                 let mut alpha = cutoff.load(Ordering::Relaxed);
                 while *score < alpha && alpha < beta {
                     let target = alpha;
-                    score = -self.nw(Some(m), &pos, -target - 1, draft - 1, time, counters)?;
+                    score = -self.nw(Some(m), &pos, -target - 1, draft - 1, time, metrics)?;
                     alpha = cutoff.fetch_max(*score, Ordering::Relaxed).max(*score);
                     if *score < target {
                         break;
@@ -280,7 +280,7 @@ impl<E: Eval + Send + Sync> Minimax<E> {
                 }
 
                 if alpha <= *score && *score < beta {
-                    score = -self.pvs(Some(m), &pos, -beta..-alpha, draft - 1, time, counters)?;
+                    score = -self.pvs(Some(m), &pos, -beta..-alpha, draft - 1, time, metrics)?;
                     cutoff.fetch_max(*score, Ordering::Relaxed);
                 }
 
@@ -314,8 +314,8 @@ impl<E: Eval + Send + Sync> Search for Minimax<E> {
             (self.evaluation.eval(pos), 0)
         });
 
-        let mut metrics = SearchMetrics::default();
-        let mut counters = SearchMetricsCounters::default();
+        let mut metrics = Metrics::default();
+        let mut counters = MetricsCounters::default();
         for depth in start..=limits.depth().min(Self::MAX_DRAFT as u8) {
             (score, pv) = match self.aw(pos, score, depth as i8, limits.time(), &counters) {
                 Ok(s) => (*s, self.tt.iter(pos).collect()),
@@ -382,16 +382,16 @@ mod tests {
     #[should_panic]
     fn nw_panics_if_bound_is_too_large(m: Option<Move>, pos: Position, d: i8) {
         let mm = Minimax::new(MockEval::new());
-        let ctr = SearchMetricsCounters::default();
-        mm.nw(m, &pos, i16::MAX, d, Duration::MAX, &ctr)?;
+        let metrics = MetricsCounters::default();
+        mm.nw(m, &pos, i16::MAX, d, Duration::MAX, &metrics)?;
     }
 
     #[proptest]
     #[should_panic]
     fn pvs_panics_if_alpha_is_too_small(m: Option<Move>, pos: Position, b: i16, d: i8) {
         let mm = Minimax::new(MockEval::new());
-        let ctr = SearchMetricsCounters::default();
-        mm.pvs(m, &pos, i16::MIN..b, d, Duration::MAX, &ctr)?;
+        let metrics = MetricsCounters::default();
+        mm.pvs(m, &pos, i16::MIN..b, d, Duration::MAX, &metrics)?;
     }
 
     #[proptest]
@@ -404,8 +404,8 @@ mod tests {
         d: i8,
     ) {
         let mm = Minimax::new(MockEval::new());
-        let ctr = SearchMetricsCounters::default();
-        mm.pvs(m, &pos, a..b, d, Duration::MAX, &ctr)?;
+        let metrics = MetricsCounters::default();
+        mm.pvs(m, &pos, a..b, d, Duration::MAX, &metrics)?;
     }
 
     #[proptest]
@@ -425,9 +425,9 @@ mod tests {
             .return_const(s);
 
         let mm = Minimax::new(evaluation);
-        let ctr = SearchMetricsCounters::default();
+        let metrics = MetricsCounters::default();
         assert_eq!(
-            mm.pvs(m, &pos, a..b, d, Duration::MAX, &ctr),
+            mm.pvs(m, &pos, a..b, d, Duration::MAX, &metrics),
             Ok(Score(s, d))
         );
     }
@@ -441,8 +441,11 @@ mod tests {
         #[strategy(#a+1..)] b: i16,
         d: i8,
     ) {
-        let ctr = SearchMetricsCounters::default();
-        assert_eq!(mm.pvs(m, &pos, a..b, d, Duration::ZERO, &ctr), Err(Timeout));
+        let metrics = MetricsCounters::default();
+        assert_eq!(
+            mm.pvs(m, &pos, a..b, d, Duration::ZERO, &metrics),
+            Err(Timeout)
+        );
     }
 
     #[proptest]
@@ -452,9 +455,9 @@ mod tests {
         pos: Position,
         #[strategy(Minimax::<Evaluator>::MIN_DRAFT..=Minimax::<Evaluator>::MAX_DRAFT)] d: i8,
     ) {
-        let ctr = SearchMetricsCounters::default();
+        let metrics = MetricsCounters::default();
         assert_eq!(
-            mm.pvs(m, &pos, -i16::MAX..i16::MAX, d, Duration::MAX, &ctr)
+            mm.pvs(m, &pos, -i16::MAX..i16::MAX, d, Duration::MAX, &metrics)
                 .as_deref(),
             Ok(&negamax(&mm.evaluation, &pos, d))
         );
@@ -472,8 +475,8 @@ mod tests {
         let x = Minimax::with_config(e.clone(), x);
         let y = Minimax::with_config(e, y);
 
-        let xc = SearchMetricsCounters::default();
-        let yc = SearchMetricsCounters::default();
+        let xc = MetricsCounters::default();
+        let yc = MetricsCounters::default();
 
         assert_eq!(
             x.pvs(m, &pos, -i16::MAX..i16::MAX, d, Duration::MAX, &xc)

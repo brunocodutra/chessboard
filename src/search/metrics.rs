@@ -21,7 +21,7 @@ use std::time::{Duration, Instant};
     "self.sp_cuts()",
     "self.sp_cut_rate() * 100."
 )]
-pub struct SearchMetrics {
+pub struct Metrics {
     time: Duration,
     nodes: u64,
     tt_hits: u64,
@@ -31,7 +31,7 @@ pub struct SearchMetrics {
     sp_cuts: u64,
 }
 
-impl SearchMetrics {
+impl Metrics {
     /// Time elapsed.
     pub fn time(&self) -> Duration {
         self.time
@@ -100,7 +100,7 @@ impl SearchMetrics {
 
 /// A collector for search metrics.
 #[derive(Debug)]
-pub struct SearchMetricsCounters {
+pub struct MetricsCounters {
     time: Instant,
     nodes: AtomicU64,
     tt_hits: AtomicU64,
@@ -110,9 +110,9 @@ pub struct SearchMetricsCounters {
     sp_cuts: AtomicU64,
 }
 
-impl Default for SearchMetricsCounters {
+impl Default for MetricsCounters {
     fn default() -> Self {
-        SearchMetricsCounters {
+        MetricsCounters {
             time: Instant::now(),
             nodes: AtomicU64::new(0),
             tt_hits: AtomicU64::new(0),
@@ -124,7 +124,7 @@ impl Default for SearchMetricsCounters {
     }
 }
 
-impl SearchMetricsCounters {
+impl MetricsCounters {
     /// How much time has elapsed so far.
     pub fn time(&self) -> Duration {
         self.time.elapsed()
@@ -161,8 +161,8 @@ impl SearchMetricsCounters {
     }
 
     /// Returns the metrics collected.
-    pub fn snapshot(&mut self) -> SearchMetrics {
-        SearchMetrics {
+    pub fn snapshot(&mut self) -> Metrics {
+        Metrics {
             time: self.time.elapsed(),
             nodes: *self.nodes.get_mut(),
             tt_hits: *self.tt_hits.get_mut(),
