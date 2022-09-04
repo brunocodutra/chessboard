@@ -103,8 +103,8 @@ impl Build for Builder {
 #[cfg(test)]
 mockall::mock! {
     #[derive(Debug)]
-    pub PlayerBuilder {}
-    impl Build for PlayerBuilder {
+    pub Builder {}
+    impl Build for Builder {
         type Output = MockPlay;
         type Error = String;
         fn build(self) -> Result<MockPlay, String>;
@@ -112,7 +112,7 @@ mockall::mock! {
 }
 
 #[cfg(test)]
-impl std::fmt::Display for MockPlayerBuilder {
+impl std::fmt::Display for MockBuilder {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         std::fmt::Debug::fmt(&self, f)
     }

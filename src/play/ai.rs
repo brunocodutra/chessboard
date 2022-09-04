@@ -1,6 +1,6 @@
 use super::Play;
 use crate::chess::{Move, Position};
-use crate::{search::Limits, Search};
+use crate::search::{Limits, Search};
 use async_trait::async_trait;
 use derive_more::From;
 use std::convert::Infallible;
@@ -46,7 +46,7 @@ impl<S: Search + Send> Play for Ai<S> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{MockSearch, Pv, Transposition};
+    use crate::{search::MockSearch, Pv, Transposition};
     use std::iter::once;
     use test_strategy::proptest;
     use tokio::runtime;
