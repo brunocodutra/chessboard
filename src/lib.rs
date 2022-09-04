@@ -3,7 +3,6 @@ mod game;
 mod limits;
 mod metrics;
 mod pv;
-mod search;
 mod transposition;
 
 pub use build::*;
@@ -11,7 +10,6 @@ pub use game::*;
 pub use limits::*;
 pub use metrics::*;
 pub use pv::*;
-pub use search::*;
 pub use transposition::*;
 
 /// Types that represent the domain model of chess.
@@ -20,16 +18,20 @@ pub mod chess;
 pub mod eval;
 /// Types that can analyze chess positions.
 pub mod play;
-pub mod strategy;
+/// Types related to adversarial search.
+pub mod search;
 /// Assorted utilities.
 pub mod util;
 
 pub use eval::Eval;
 pub use play::Play;
-pub use strategy::{Strategy, StrategyBuilder};
+pub use search::Search;
 
 #[cfg(test)]
 pub use eval::MockEval;
 
 #[cfg(test)]
 pub use play::{MockPlay, MockPlayerBuilder};
+
+#[cfg(test)]
+pub use search::MockSearch;

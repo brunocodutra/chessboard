@@ -1,4 +1,4 @@
-use chessboard::{chess::Fen, Search, SearchLimits, Strategy};
+use chessboard::{chess::Fen, search::Dispatcher as Strategy, Search, SearchLimits};
 use criterion::{criterion_group, criterion_main, BatchSize, Criterion};
 
 fn bench(c: &mut Criterion) {
