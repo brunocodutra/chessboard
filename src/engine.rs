@@ -15,25 +15,25 @@ mod uci;
 pub use ai::*;
 pub use uci::*;
 
-/// Trait for types that know how to play chess.
+/// Trait for types that know how to analyze chess [`Position`]s.
 #[automock(type Error = String;)]
 #[async_trait]
-pub trait Play {
-    /// The reason why a [`Move`] could not be played.
+pub trait Engine {
+    /// The reason why the engine was unable to analyze the [`Position`].
     type Error;
 
-    /// Play the next turn.
-    async fn play(&mut self, pos: &Position) -> Result<Move, Self::Error>;
+    /// Find the best [`Move`].
+    async fn best(&mut self, pos: &Position) -> Result<Move, Self::Error>;
 }
 
 /// The reason why [`Dispatcher`] failed to play a [`Move`].
 #[derive(Debug, Display, Error, From)]
 pub enum DispatcherError {
-    Ai(<Ai<Strategy> as Play>::Error),
-    Uci(<Uci<Process> as Play>::Error),
+    Ai(<Ai<Strategy> as Engine>::Error),
+    Uci(<Uci<Process> as Engine>::Error),
 }
 
-/// A generic player.
+/// A generic [`Engine`].
 #[derive(DebugCustom, From)]
 #[allow(clippy::large_enum_variant)]
 pub enum Dispatcher {
@@ -44,13 +44,13 @@ pub enum Dispatcher {
 }
 
 #[async_trait]
-impl Play for Dispatcher {
+impl Engine for Dispatcher {
     type Error = DispatcherError;
 
-    async fn play(&mut self, pos: &Position) -> Result<Move, Self::Error> {
+    async fn best(&mut self, pos: &Position) -> Result<Move, Self::Error> {
         match self {
-            Dispatcher::Ai(p) => Ok(p.play(pos).await?),
-            Dispatcher::Uci(p) => Ok(p.play(pos).await?),
+            Dispatcher::Ai(p) => Ok(p.best(pos).await?),
+            Dispatcher::Uci(p) => Ok(p.best(pos).await?),
         }
     }
 }
@@ -71,7 +71,7 @@ pub enum Builder {
 
 /// The reason why parsing [`Builder`] failed.
 #[derive(Debug, Display, Eq, PartialEq, Error, From)]
-#[display(fmt = "failed to parse player configuration")]
+#[display(fmt = "failed to parse engine configuration")]
 pub struct ParseBuilderError(ron::de::SpannedError);
 
 impl FromStr for Builder {
@@ -105,9 +105,9 @@ mock! {
     #[derive(Debug)]
     pub Builder {}
     impl Build for Builder {
-        type Output = MockPlay;
+        type Output = MockEngine;
         type Error = String;
-        fn build(self) -> Result<MockPlay, String>;
+        fn build(self) -> Result<MockEngine, String>;
     }
 }
 
