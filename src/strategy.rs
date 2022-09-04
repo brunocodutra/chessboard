@@ -1,4 +1,5 @@
-use crate::{chess::Position, Build, Engine, EngineBuilder, Pv, Search, SearchLimits};
+use crate::eval::{Builder as EvaluatorBuilder, Dispatcher as Evaluator};
+use crate::{chess::Position, Build, Pv, Search, SearchLimits};
 use derive_more::{DebugCustom, Display, Error, From};
 use serde::{Deserialize, Serialize};
 use std::str::FromStr;
@@ -12,7 +13,7 @@ pub use minimax::*;
 #[cfg_attr(test, derive(test_strategy::Arbitrary))]
 pub enum Strategy {
     #[debug(fmt = "{:?}", _0)]
-    Minimax(Minimax<Engine>),
+    Minimax(Minimax<Evaluator>),
 }
 
 impl Default for Strategy {
@@ -42,14 +43,14 @@ impl Search for Strategy {
 pub enum StrategyBuilder {
     #[display(fmt = "{}", "ron::ser::to_string(self).unwrap()")]
     Minimax(
-        #[serde(default)] EngineBuilder,
+        #[serde(default)] EvaluatorBuilder,
         #[serde(default)] MinimaxConfig,
     ),
 }
 
 impl Default for StrategyBuilder {
     fn default() -> Self {
-        StrategyBuilder::Minimax(EngineBuilder::default(), MinimaxConfig::default())
+        StrategyBuilder::Minimax(EvaluatorBuilder::default(), MinimaxConfig::default())
     }
 }
 
@@ -68,7 +69,7 @@ impl FromStr for StrategyBuilder {
 
 impl Build for StrategyBuilder {
     type Output = Strategy;
-    type Error = <EngineBuilder as Build>::Error;
+    type Error = <EvaluatorBuilder as Build>::Error;
 
     fn build(self) -> Result<Self::Output, Self::Error> {
         match self {
@@ -90,7 +91,7 @@ mod tests {
     }
 
     #[proptest]
-    fn minimax_builder_is_deserializable(e: EngineBuilder, c: MinimaxConfig) {
+    fn minimax_builder_is_deserializable(e: EvaluatorBuilder, c: MinimaxConfig) {
         assert_eq!(
             format!("minimax({},{})", e, c).parse(),
             Ok(StrategyBuilder::Minimax(e.clone(), c))
@@ -103,7 +104,7 @@ mod tests {
     }
 
     #[proptest]
-    fn minimax_can_be_configured_at_runtime(e: EngineBuilder, c: MinimaxConfig) {
+    fn minimax_can_be_configured_at_runtime(e: EvaluatorBuilder, c: MinimaxConfig) {
         assert!(matches!(
             StrategyBuilder::Minimax(e, c).build(),
             Ok(Strategy::Minimax(_))
