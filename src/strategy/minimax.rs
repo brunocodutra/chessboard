@@ -61,7 +61,7 @@ impl FromStr for MinimaxConfig {
 #[derive(Debug)]
 #[cfg_attr(test, derive(test_strategy::Arbitrary))]
 pub struct Minimax<E: Eval> {
-    engine: E,
+    evaluation: E,
     #[cfg_attr(test, strategy(any::<MinimaxConfig>()
         .prop_map(|c| TranspositionTable::new(c.hash)))
     )]
@@ -95,20 +95,20 @@ impl<E: Eval> Minimax<E> {
     const MAX_DRAFT: i8 = Transposition::MAX_DRAFT;
 
     /// Constructs [`Minimax`] with the default [`MinimaxConfig`].
-    pub fn new(engine: E) -> Self {
-        Self::with_config(engine, MinimaxConfig::default())
+    pub fn new(evaluation: E) -> Self {
+        Self::with_config(evaluation, MinimaxConfig::default())
     }
 
     /// Constructs [`Minimax`] with some [`MinimaxConfig`].
-    pub fn with_config(engine: E, config: MinimaxConfig) -> Self {
+    pub fn with_config(evaluation: E, config: MinimaxConfig) -> Self {
         Minimax {
-            engine,
+            evaluation,
             tt: TranspositionTable::new(config.hash),
         }
     }
 
     fn eval(&self, pos: &Position, draft: i8) -> Score {
-        Score(self.engine.eval(pos).max(-i16::MAX), draft)
+        Score(self.evaluation.eval(pos).max(-i16::MAX), draft)
     }
 }
 
@@ -311,7 +311,7 @@ impl<E: Eval + Send + Sync> Search for Minimax<E> {
 
         let (mut score, start) = Option::zip(pv.score(), pv.depth()).unwrap_or_else(|| {
             self.tt.unset(pos.zobrist());
-            (self.engine.eval(pos), 0)
+            (self.evaluation.eval(pos), 0)
         });
 
         let mut metrics = SearchMetrics::default();
@@ -337,15 +337,15 @@ impl<E: Eval + Send + Sync> Search for Minimax<E> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{Engine, MockEval};
+    use crate::{eval::Dispatcher as Evaluator, MockEval};
     use mockall::predicate::*;
     use proptest::prop_assume;
     use std::time::Duration;
     use test_strategy::proptest;
     use tokio::{runtime, select, time::sleep};
 
-    fn negamax<E: Eval>(engine: &E, pos: &Position, draft: i8) -> i16 {
-        let score = engine.eval(pos).max(-i16::MAX);
+    fn negamax<E: Eval>(evaluation: &E, pos: &Position, draft: i8) -> i16 {
+        let score = evaluation.eval(pos).max(-i16::MAX);
 
         let move_kinds = if draft <= Minimax::<E>::MIN_DRAFT {
             return score;
@@ -356,7 +356,7 @@ mod tests {
         };
 
         pos.moves(move_kinds)
-            .map(|(_, _, pos)| -negamax(engine, &pos, draft - 1))
+            .map(|(_, _, pos)| -negamax(evaluation, &pos, draft - 1))
             .max()
             .unwrap_or(score)
     }
@@ -417,14 +417,14 @@ mod tests {
         #[strategy(i8::MIN..=Minimax::<MockEval>::MIN_DRAFT)] d: i8,
         #[strategy(-i16::MAX..)] s: i16,
     ) {
-        let mut engine = MockEval::new();
-        engine
+        let mut evaluation = MockEval::new();
+        evaluation
             .expect_eval()
             .once()
             .with(eq(pos.clone()))
             .return_const(s);
 
-        let mm = Minimax::new(engine);
+        let mm = Minimax::new(evaluation);
         let ctr = SearchMetricsCounters::default();
         assert_eq!(
             mm.pvs(m, &pos, a..b, d, Duration::MAX, &ctr),
@@ -434,7 +434,7 @@ mod tests {
 
     #[proptest]
     fn pvs_aborts_if_time_is_up(
-        mm: Minimax<Engine>,
+        mm: Minimax<Evaluator>,
         m: Option<Move>,
         pos: Position,
         #[strategy(-i16::MAX..i16::MAX)] a: i16,
@@ -447,27 +447,27 @@ mod tests {
 
     #[proptest]
     fn pvs_finds_best_score(
-        mm: Minimax<Engine>,
+        mm: Minimax<Evaluator>,
         m: Option<Move>,
         pos: Position,
-        #[strategy(Minimax::<Engine>::MIN_DRAFT..=Minimax::<Engine>::MAX_DRAFT)] d: i8,
+        #[strategy(Minimax::<Evaluator>::MIN_DRAFT..=Minimax::<Evaluator>::MAX_DRAFT)] d: i8,
     ) {
         let ctr = SearchMetricsCounters::default();
         assert_eq!(
             mm.pvs(m, &pos, -i16::MAX..i16::MAX, d, Duration::MAX, &ctr)
                 .as_deref(),
-            Ok(&negamax(&mm.engine, &pos, d))
+            Ok(&negamax(&mm.evaluation, &pos, d))
         );
     }
 
     #[proptest]
     fn pvs_does_not_depend_on_table_size(
-        e: Engine,
+        e: Evaluator,
         x: MinimaxConfig,
         y: MinimaxConfig,
         m: Option<Move>,
         pos: Position,
-        #[strategy(Minimax::<Engine>::MIN_DRAFT..=Minimax::<Engine>::MAX_DRAFT)] d: i8,
+        #[strategy(Minimax::<Evaluator>::MIN_DRAFT..=Minimax::<Evaluator>::MAX_DRAFT)] d: i8,
     ) {
         let x = Minimax::with_config(e.clone(), x);
         let y = Minimax::with_config(e, y);
@@ -485,7 +485,7 @@ mod tests {
 
     #[proptest]
     fn search_finds_the_principal_variation(
-        mut mm: Minimax<Engine>,
+        mut mm: Minimax<Evaluator>,
         pos: Position,
         l: SearchLimits,
     ) {
@@ -494,7 +494,7 @@ mod tests {
 
     #[proptest]
     fn search_avoids_tt_collisions(
-        mut mm: Minimax<Engine>,
+        mut mm: Minimax<Evaluator>,
         pos: Position,
         l: SearchLimits,
         t: Transposition,
@@ -504,12 +504,12 @@ mod tests {
     }
 
     #[proptest]
-    fn search_is_stable(mut mm: Minimax<Engine>, pos: Position, l: SearchLimits) {
+    fn search_is_stable(mut mm: Minimax<Evaluator>, pos: Position, l: SearchLimits) {
         assert_eq!(mm.search::<0>(&pos, l), mm.search::<0>(&pos, l));
     }
 
     #[proptest]
-    fn search_can_be_limited_by_time(mut mm: Minimax<Engine>, pos: Position, us: u8) {
+    fn search_can_be_limited_by_time(mut mm: Minimax<Evaluator>, pos: Position, us: u8) {
         let rt = runtime::Builder::new_multi_thread().enable_time().build()?;
 
         let l = SearchLimits::Time(Duration::from_micros(us.into()));

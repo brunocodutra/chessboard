@@ -1,7 +1,7 @@
+use super::Eval;
 use crate::chess::{Color, Piece, Position, Role};
-use crate::Eval;
 
-/// A trait for types that can valuate material using a [Piece-Square Table].
+/// A trait for types that can evaluate positions using a [Piece-Square Table].
 ///
 /// [Piece-Square Table]: https://www.chessprogramming.org/Piece-Square_Tables
 pub trait PieceSquareTable {

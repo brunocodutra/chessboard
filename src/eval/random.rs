@@ -1,9 +1,10 @@
-use crate::{chess::Position, Eval};
+use super::Eval;
+use crate::chess::Position;
 use derive_more::Constructor;
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 
-/// A trivial engine that evaluates a [`Position`]s to random, but stable, scores.
+/// Evaluates a [`Position`]s to random, but stable, scores.
 #[derive(Debug, Default, Clone, Constructor)]
 #[cfg_attr(test, derive(test_strategy::Arbitrary))]
 pub struct Random {}
