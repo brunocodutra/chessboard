@@ -46,7 +46,7 @@ impl<S: Search + Send> Play for Ai<S> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{search::MockSearch, Pv, Transposition};
+    use crate::search::{MockSearch, Pv, Transposition};
     use std::iter::once;
     use test_strategy::proptest;
     use tokio::runtime;

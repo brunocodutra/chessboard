@@ -1,6 +1,6 @@
+use super::{Limits, Metrics, MetricsCounters, Pv, Search, Transposition, TranspositionTable};
 use crate::chess::{Move, MoveKind, Piece, Position, Role};
-use crate::search::{Limits, Metrics, MetricsCounters, Search};
-use crate::{eval::Eval, Pv, Transposition, TranspositionTable};
+use crate::eval::Eval;
 use derive_more::{Deref, Display, Error, From, Neg};
 use rayon::{iter::once, prelude::*};
 use serde::{Deserialize, Serialize};

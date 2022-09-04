@@ -1,5 +1,5 @@
 use crate::eval::{Builder as EvaluatorBuilder, Dispatcher as Evaluator};
-use crate::{chess::Position, Build, Pv};
+use crate::{chess::Position, Build};
 use derive_more::{DebugCustom, Display, Error, From};
 use serde::{Deserialize, Serialize};
 use std::str::FromStr;
@@ -7,10 +7,14 @@ use std::str::FromStr;
 mod limits;
 mod metrics;
 mod minimax;
+mod pv;
+mod transposition;
 
 pub use limits::*;
 pub use metrics::*;
 pub use minimax::*;
+pub use pv::*;
+pub use transposition::*;
 
 /// Trait for types that implement adversarial search algorithms.
 pub trait Search {
