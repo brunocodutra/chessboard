@@ -1,11 +1,15 @@
 use super::Execute;
 use anyhow::Error as Anyhow;
 use async_trait::async_trait;
-use chessboard::{chess::Position, play::Builder as PlayerBuilder, Game};
+use chessboard::{chess::Position, play::Builder as PlayerBuilder};
 use clap::{AppSettings::DeriveDisplayOrder, Parser};
 use libm::erf;
 use std::num::NonZeroUsize;
 use tracing::{info, instrument};
+
+mod game;
+
+pub use game::Game;
 
 /// A match of chess between two players.
 #[derive(Debug, Parser)]

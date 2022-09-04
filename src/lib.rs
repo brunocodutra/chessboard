@@ -1,7 +1,3 @@
-mod game;
-
-pub use game::*;
-
 /// Types that represent the domain model of chess.
 pub mod chess;
 /// Types that can evaluate chess positions.
