@@ -2,7 +2,6 @@ use crate::{Binary, Bits};
 use bitvec::{field::BitField, order::Lsb0, view::BitView};
 use derive_more::{Display, Error};
 use shakmaty as sm;
-use std::str::FromStr;
 use vampirc_uci::UciPiece;
 
 /// A promotion specifier.
@@ -41,32 +40,6 @@ impl Binary for Promotion {
             .into_iter()
             .nth(register.load())
             .ok_or(DecodePromotionError(register))
-    }
-}
-
-/// The reason parsing [`Promotion`] failed.
-#[derive(Debug, Display, Clone, Eq, PartialEq, Error)]
-#[display(
-    fmt = "expected either one of four characters `[{}{}{}{}]` or the empty string",
-    Promotion::Knight,
-    Promotion::Bishop,
-    Promotion::Rook,
-    Promotion::Queen
-)]
-pub struct ParsePromotionError;
-
-impl FromStr for Promotion {
-    type Err = ParsePromotionError;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s {
-            "" => Ok(Promotion::None),
-            "n" => Ok(Promotion::Knight),
-            "b" => Ok(Promotion::Bishop),
-            "r" => Ok(Promotion::Rook),
-            "q" => Ok(Promotion::Queen),
-            _ => Err(ParsePromotionError),
-        }
     }
 }
 
@@ -137,21 +110,6 @@ mod tests {
     #[proptest]
     fn decoding_promotion_fails_for_invalid_register(#[any(5)] b: Bits<u8, 3>) {
         assert_eq!(Promotion::decode(b), Err(DecodePromotionError(b)));
-    }
-
-    #[proptest]
-    fn parsing_printed_promotion_is_an_identity(p: Promotion) {
-        assert_eq!(p.to_string().parse(), Ok(p));
-    }
-
-    #[proptest]
-    fn parsing_promotion_fails_for_upper_case_letter(#[strategy("[A-Z]")] s: String) {
-        assert_eq!(s.parse::<Promotion>(), Err(ParsePromotionError));
-    }
-
-    #[proptest]
-    fn parsing_promotion_fails_except_for_one_of_four_letters(#[strategy("[^nbrq]+")] s: String) {
-        assert_eq!(s.parse::<Promotion>(), Err(ParsePromotionError));
     }
 
     #[proptest]

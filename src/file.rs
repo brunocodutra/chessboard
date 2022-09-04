@@ -1,7 +1,7 @@
-use derive_more::{DebugCustom, Display, Error, From};
+use derive_more::{DebugCustom, Display, Error};
 use shakmaty as sm;
 use std::convert::{TryFrom, TryInto};
-use std::{char::ParseCharError, num::TryFromIntError, ops::Sub, str::FromStr};
+use std::{num::TryFromIntError, ops::Sub};
 
 #[cfg(test)]
 use proptest::sample::select;
@@ -44,22 +44,6 @@ impl Sub for File {
 
     fn sub(self, rhs: Self) -> Self::Output {
         self.index() as i8 - rhs.index() as i8
-    }
-}
-
-/// The reason why parsing [`File`] failed.
-#[derive(Debug, Display, Clone, Eq, PartialEq, Error, From)]
-#[display(fmt = "failed to parse file")]
-pub enum ParseFileError {
-    ParseCharError(ParseCharError),
-    InvalidFile(InvalidFile),
-}
-
-impl FromStr for File {
-    type Err = ParseFileError;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        Ok(s.parse::<char>()?.try_into()?)
     }
 }
 
@@ -151,41 +135,6 @@ mod tests {
     #[proptest]
     fn iter_returns_iterator_of_exact_size() {
         assert_eq!(File::iter().len(), 8);
-    }
-
-    #[proptest]
-    fn parsing_printed_file_is_an_identity(f: File) {
-        assert_eq!(f.to_string().parse(), Ok(f));
-    }
-
-    #[proptest]
-    fn parsing_file_succeeds_for_lower_case_letter_between_a_and_h(#[strategy(b'a'..=b'h')] c: u8) {
-        let c = char::from(c);
-        assert_eq!(c.to_string().parse::<File>(), Ok(c.try_into()?));
-    }
-
-    #[proptest]
-    fn parsing_file_fails_for_upper_case_letter(#[strategy("[A-Z]")] s: String) {
-        assert_eq!(
-            s.parse::<File>(),
-            Err(ParseFileError::InvalidFile(InvalidFile))
-        );
-    }
-
-    #[proptest]
-    fn parsing_file_fails_for_strings_of_length_not_one(#[strategy(".{2,}?")] s: String) {
-        assert_eq!(
-            s.parse::<File>().err(),
-            s.parse::<char>().err().map(Into::into)
-        );
-    }
-
-    #[proptest]
-    fn parsing_file_fails_for_letters_out_of_range(#[filter(!('a'..='h').contains(&#c))] c: char) {
-        assert_eq!(
-            c.to_string().parse::<File>().err(),
-            File::try_from(c).err().map(Into::into)
-        );
     }
 
     #[proptest]

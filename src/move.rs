@@ -1,7 +1,6 @@
-use crate::{Binary, Bits, ParsePromotionError, ParseSquareError, Promotion, Register, Square};
-use derive_more::{Display, Error, From};
+use crate::{Binary, Bits, Promotion, Register, Square};
+use derive_more::{Display, Error};
 use shakmaty as sm;
-use std::str::FromStr;
 use vampirc_uci::UciMove;
 
 /// A chess move.
@@ -60,39 +59,6 @@ impl Binary for Move {
             Square::decode(whence.into()).map_err(|_| DecodeMoveError(register))?,
             Square::decode(whither.into()).map_err(|_| DecodeMoveError(register))?,
             Promotion::decode(promotion.into()).map_err(|_| DecodeMoveError(register))?,
-        ))
-    }
-}
-
-/// The reason why parsing [`Move`] failed.
-#[derive(Debug, Display, Clone, Eq, PartialEq, Error, From)]
-#[display(fmt = "failed to parse move; {}")]
-pub enum ParseMoveError {
-    #[display(fmt = "invalid 'from' square")]
-    #[from(ignore)]
-    InvalidFromSquare(ParseSquareError),
-
-    #[display(fmt = "invalid 'to' square")]
-    #[from(ignore)]
-    InvalidToSquare(ParseSquareError),
-
-    #[display(fmt = "invalid promotion")]
-    InvalidPromotion(ParsePromotionError),
-}
-
-impl FromStr for Move {
-    type Err = ParseMoveError;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        use ParseMoveError::*;
-
-        let i = s.char_indices().nth(2).map_or_else(|| s.len(), |(i, _)| i);
-        let j = s.char_indices().nth(4).map_or_else(|| s.len(), |(i, _)| i);
-
-        Ok(Move(
-            s[..i].parse().map_err(InvalidFromSquare)?,
-            s[i..j].parse().map_err(InvalidToSquare)?,
-            s[j..].parse()?,
         ))
     }
 }
@@ -165,53 +131,6 @@ mod tests {
     #[proptest]
     fn move_serializes_to_pure_coordinate_notation(m: Move) {
         assert_eq!(m.to_string(), UciMove::from(m).to_string());
-    }
-
-    #[proptest]
-    fn parsing_printed_move_is_an_identity(m: Move) {
-        assert_eq!(m.to_string().parse(), Ok(m));
-    }
-
-    #[proptest]
-    fn parsing_move_fails_if_from_square_is_invalid(
-        #[strategy("[^a-h]{2}|[^1-8]{2}")] f: String,
-        t: Square,
-        p: Promotion,
-    ) {
-        use ParseMoveError::*;
-        let s = [f.clone(), t.to_string(), p.to_string()].concat();
-        assert_eq!(
-            s.parse::<Move>().err(),
-            f.parse::<Square>().err().map(InvalidFromSquare)
-        );
-    }
-
-    #[proptest]
-    fn parsing_move_fails_if_to_square_is_invalid(
-        f: Square,
-        #[strategy("[^a-h]{2}|[^1-8]{2}")] t: String,
-        p: Promotion,
-    ) {
-        use ParseMoveError::*;
-        let s = [f.to_string(), t.clone(), p.to_string()].concat();
-        assert_eq!(
-            s.parse::<Move>().err(),
-            t.parse::<Square>().err().map(InvalidToSquare)
-        );
-    }
-
-    #[proptest]
-    fn parsing_move_fails_if_promotion_is_invalid(
-        f: Square,
-        t: Square,
-        #[strategy("[^nbrq]+")] p: String,
-    ) {
-        use ParseMoveError::*;
-        let s = [f.to_string(), t.to_string(), p.clone()].concat();
-        assert_eq!(
-            s.parse::<Move>().err(),
-            p.parse::<Promotion>().err().map(InvalidPromotion)
-        );
     }
 
     #[proptest]

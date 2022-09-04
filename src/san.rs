@@ -73,4 +73,9 @@ mod test {
     ) {
         assert!(s.parse::<San>().is_err());
     }
+
+    #[proptest]
+    fn san_has_an_equivalent_shakmaty_representation(san: San) {
+        assert_eq!(San::from(sm::san::San::from(san.clone())), san);
+    }
 }

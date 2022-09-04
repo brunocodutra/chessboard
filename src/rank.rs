@@ -1,7 +1,7 @@
-use derive_more::{DebugCustom, Display, Error, From};
+use derive_more::{DebugCustom, Display, Error};
 use shakmaty as sm;
 use std::convert::{TryFrom, TryInto};
-use std::{char::ParseCharError, num::TryFromIntError, ops::Sub, str::FromStr};
+use std::{num::TryFromIntError, ops::Sub};
 
 #[cfg(test)]
 use proptest::sample::select;
@@ -44,22 +44,6 @@ impl Sub for Rank {
 
     fn sub(self, rhs: Self) -> Self::Output {
         self.index() as i8 - rhs.index() as i8
-    }
-}
-
-/// The reason why parsing [`Rank`] failed.
-#[derive(Debug, Display, Clone, Eq, PartialEq, Error, From)]
-#[display(fmt = "failed to parse rank")]
-pub enum ParseRankError {
-    ParseCharError(ParseCharError),
-    InvalidRank(InvalidRank),
-}
-
-impl FromStr for Rank {
-    type Err = ParseRankError;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        Ok(s.parse::<char>()?.try_into()?)
     }
 }
 
@@ -151,33 +135,6 @@ mod tests {
     #[proptest]
     fn iter_returns_iterator_of_exact_size() {
         assert_eq!(Rank::iter().len(), 8);
-    }
-
-    #[proptest]
-    fn parsing_printed_rank_is_an_identity(r: Rank) {
-        assert_eq!(r.to_string().parse(), Ok(r));
-    }
-
-    #[proptest]
-    fn parsing_rank_succeeds_for_digit_between_1_and_8(#[strategy(b'1'..=b'8')] c: u8) {
-        let c = char::from(c);
-        assert_eq!(c.to_string().parse::<Rank>(), Ok(c.try_into()?));
-    }
-
-    #[proptest]
-    fn parsing_rank_fails_for_strings_of_length_not_one(#[strategy(".{2,}?")] s: String) {
-        assert_eq!(
-            s.parse::<Rank>().err(),
-            s.parse::<char>().err().map(Into::into)
-        );
-    }
-
-    #[proptest]
-    fn parsing_rank_fails_for_digits_out_of_range(#[filter(!('1'..='8').contains(&#c))] c: char) {
-        assert_eq!(
-            c.to_string().parse::<Rank>().err(),
-            Rank::try_from(c).err().map(Into::into)
-        );
     }
 
     #[proptest]
