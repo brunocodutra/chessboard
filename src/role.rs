@@ -1,21 +1,14 @@
-use derive_more::Display;
 use shakmaty as sm;
 
 /// Denotes the type of a chess [`Piece`][`crate::Piece`].
-#[derive(Debug, Display, Copy, Clone, Eq, PartialEq, Hash)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
 #[cfg_attr(test, derive(test_strategy::Arbitrary))]
 pub enum Role {
-    #[display(fmt = "pawn")]
     Pawn,
-    #[display(fmt = "knight")]
     Knight,
-    #[display(fmt = "bishop")]
     Bishop,
-    #[display(fmt = "rook")]
     Rook,
-    #[display(fmt = "queen")]
     Queen,
-    #[display(fmt = "king")]
     King,
 }
 

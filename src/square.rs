@@ -1,9 +1,9 @@
-use crate::{Binary, Bits, File, ParseFileError, ParseRankError, Rank};
+use crate::{Binary, Bits, File, Rank};
 use bitvec::{field::BitField, order::Lsb0, view::BitView};
-use derive_more::{DebugCustom, Display, Error, From};
+use derive_more::{DebugCustom, Display, Error};
 use shakmaty as sm;
 use std::convert::{Infallible, TryFrom, TryInto};
-use std::{num::TryFromIntError, str::FromStr};
+use std::num::TryFromIntError;
 use vampirc_uci::UciSquare;
 
 #[cfg(test)]
@@ -97,23 +97,6 @@ impl From<Square> for u8 {
     }
 }
 
-/// The reason why parsing [`Square`] failed.
-#[derive(Debug, Display, Clone, Eq, PartialEq, Error, From)]
-#[display(fmt = "failed to parse square")]
-pub enum ParseSquareError {
-    InvalidFile(ParseFileError),
-    InvalidRank(ParseRankError),
-}
-
-impl FromStr for Square {
-    type Err = ParseSquareError;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let i = s.char_indices().nth(1).map_or_else(|| s.len(), |(i, _)| i);
-        Ok(Square::new(s[..i].parse()?, s[i..].parse()?))
-    }
-}
-
 #[doc(hidden)]
 impl From<Square> for UciSquare {
     fn from(s: Square) -> Self {
@@ -190,29 +173,6 @@ mod tests {
     #[proptest]
     fn decoding_square_never_fails(b: Bits<u8, 6>) {
         assert!(Square::decode(b).is_ok());
-    }
-
-    #[proptest]
-    fn parsing_printed_square_is_an_identity(s: Square) {
-        assert_eq!(s.to_string().parse(), Ok(s));
-    }
-
-    #[proptest]
-    fn parsing_square_fails_if_file_is_invalid(#[strategy("[^a-h]")] f: String, r: Rank) {
-        let s = [f.clone(), r.to_string()].concat();
-        assert_eq!(
-            s.parse::<Square>().err(),
-            f.parse::<File>().err().map(Into::into)
-        );
-    }
-
-    #[proptest]
-    fn parsing_square_fails_if_rank_is_invalid(f: File, #[strategy("[^1-8]*")] r: String) {
-        let s = [f.to_string(), r.clone()].concat();
-        assert_eq!(
-            s.parse::<Square>().err(),
-            r.parse::<Rank>().err().map(Into::into)
-        );
     }
 
     #[proptest]
