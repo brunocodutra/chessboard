@@ -1,5 +1,5 @@
 use crate::chess::{Color, Outcome, Pgn, Position};
-use crate::{play::Play, Build};
+use crate::{play::Play, util::Build};
 use derive_more::{Constructor, Display, Error};
 use std::fmt::Display;
 use tracing::{field::display, instrument, warn, Span};

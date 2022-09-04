@@ -1,5 +1,5 @@
 use crate::eval::{Builder as EvaluatorBuilder, Dispatcher as Evaluator};
-use crate::{chess::Position, Build};
+use crate::{chess::Position, util::Build};
 use derive_more::{DebugCustom, Display, Error, From};
 use serde::{Deserialize, Serialize};
 use std::str::FromStr;
