@@ -4,7 +4,7 @@ use async_trait::async_trait;
 use chessboard::chess::{Fen, Position};
 use chessboard::prelude::*;
 use chessboard::search::{Builder as StrategyBuilder, Dispatcher as Strategy, Limits};
-use chessboard::util::{io::Pipe, Io};
+use chessboard::util::{Io, Pipe};
 use clap::{AppSettings::DeriveDisplayOrder, Parser};
 use tokio::io::{stdin, stdout};
 use tokio::task::block_in_place;

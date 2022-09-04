@@ -1,17 +1,11 @@
 mod binary;
 mod bits;
 mod cache;
+mod io;
 mod register;
 
 pub use binary::*;
 pub use bits::*;
 pub use cache::*;
+pub use io::*;
 pub use register::*;
-
-/// Simple IO interfaces.
-pub mod io;
-
-pub use io::Io;
-
-#[cfg(test)]
-pub use io::MockIo;
