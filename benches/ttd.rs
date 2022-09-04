@@ -1,4 +1,5 @@
-use chessboard::{chess::Fen, search::Dispatcher as Strategy, Search, SearchLimits};
+use chessboard::search::{Dispatcher as Strategy, Limits};
+use chessboard::{chess::Fen, Search};
 use criterion::{criterion_group, criterion_main, BatchSize, Criterion};
 
 fn bench(c: &mut Criterion) {
@@ -10,7 +11,7 @@ fn bench(c: &mut Criterion) {
     c.benchmark_group("benches").bench_function("ttd", |b| {
         b.iter_batched_ref(
             || (Strategy::default(), positions.next().unwrap()),
-            |(mm, pos)| mm.search::<0>(pos, SearchLimits::Depth(5)),
+            |(s, pos)| s.search::<0>(pos, Limits::Depth(5)),
             BatchSize::SmallInput,
         );
     });

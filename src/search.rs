@@ -1,11 +1,13 @@
 use crate::eval::{Builder as EvaluatorBuilder, Dispatcher as Evaluator};
-use crate::{chess::Position, Build, Pv, SearchLimits};
+use crate::{chess::Position, Build, Pv};
 use derive_more::{DebugCustom, Display, Error, From};
 use serde::{Deserialize, Serialize};
 use std::str::FromStr;
 
+mod limits;
 mod minimax;
 
+pub use limits::*;
 pub use minimax::*;
 
 /// Trait for types that implement adversarial search algorithms.
@@ -14,7 +16,7 @@ pub trait Search {
     fn clear(&mut self);
 
     /// Searches for the strongest [variation][`Pv`].
-    fn search<const N: usize>(&mut self, pos: &Position, limits: SearchLimits) -> Pv<N>;
+    fn search<const N: usize>(&mut self, pos: &Position, limits: Limits) -> Pv<N>;
 }
 
 #[cfg(test)]
@@ -22,7 +24,7 @@ mockall::mock! {
     #[derive(Debug)]
     pub Search {
         pub fn clear(&mut self);
-        pub fn search(&mut self, pos: &Position, limits: SearchLimits) -> Pv<256>;
+        pub fn search(&mut self, pos: &Position, limits: Limits) -> Pv<256>;
     }
 }
 
@@ -32,7 +34,7 @@ impl Search for MockSearch {
         MockSearch::clear(self)
     }
 
-    fn search<const N: usize>(&mut self, pos: &Position, limits: SearchLimits) -> Pv<N> {
+    fn search<const N: usize>(&mut self, pos: &Position, limits: Limits) -> Pv<N> {
         MockSearch::search(self, pos, limits).truncate()
     }
 }
@@ -52,7 +54,7 @@ impl Default for Dispatcher {
 }
 
 impl Search for Dispatcher {
-    fn search<const N: usize>(&mut self, pos: &Position, limits: SearchLimits) -> Pv<N> {
+    fn search<const N: usize>(&mut self, pos: &Position, limits: Limits) -> Pv<N> {
         match self {
             Dispatcher::Minimax(s) => s.search(pos, limits),
         }

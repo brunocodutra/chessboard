@@ -1,6 +1,6 @@
 use crate::chess::{Move, MoveKind, Piece, Position, Role};
+use crate::{search::Limits, Search, SearchMetrics, SearchMetricsCounters};
 use crate::{Eval, Pv, Transposition, TranspositionTable};
-use crate::{Search, SearchLimits, SearchMetrics, SearchMetricsCounters};
 use derive_more::{Deref, Display, Error, From, Neg};
 use rayon::{iter::once, prelude::*};
 use serde::{Deserialize, Serialize};
@@ -306,7 +306,7 @@ impl<E: Eval + Send + Sync> Minimax<E> {
 }
 
 impl<E: Eval + Send + Sync> Search for Minimax<E> {
-    fn search<const N: usize>(&mut self, pos: &Position, limits: SearchLimits) -> Pv<N> {
+    fn search<const N: usize>(&mut self, pos: &Position, limits: Limits) -> Pv<N> {
         let mut pv: Pv<N> = self.tt.iter(pos).collect();
 
         let (mut score, start) = Option::zip(pv.score(), pv.depth()).unwrap_or_else(|| {
@@ -484,11 +484,7 @@ mod tests {
     }
 
     #[proptest]
-    fn search_finds_the_principal_variation(
-        mut mm: Minimax<Evaluator>,
-        pos: Position,
-        l: SearchLimits,
-    ) {
+    fn search_finds_the_principal_variation(mut mm: Minimax<Evaluator>, pos: Position, l: Limits) {
         assert_eq!(mm.search::<256>(&pos, l), mm.tt.iter(&pos).collect());
     }
 
@@ -496,7 +492,7 @@ mod tests {
     fn search_avoids_tt_collisions(
         mut mm: Minimax<Evaluator>,
         pos: Position,
-        l: SearchLimits,
+        l: Limits,
         t: Transposition,
     ) {
         mm.tt.set(pos.zobrist(), t);
@@ -504,7 +500,7 @@ mod tests {
     }
 
     #[proptest]
-    fn search_is_stable(mut mm: Minimax<Evaluator>, pos: Position, l: SearchLimits) {
+    fn search_is_stable(mut mm: Minimax<Evaluator>, pos: Position, l: Limits) {
         assert_eq!(mm.search::<0>(&pos, l), mm.search::<0>(&pos, l));
     }
 
@@ -512,7 +508,7 @@ mod tests {
     fn search_can_be_limited_by_time(mut mm: Minimax<Evaluator>, pos: Position, us: u8) {
         let rt = runtime::Builder::new_multi_thread().enable_time().build()?;
 
-        let l = SearchLimits::Time(Duration::from_micros(us.into()));
+        let l = Limits::Time(Duration::from_micros(us.into()));
 
         rt.block_on(async {
             select! {

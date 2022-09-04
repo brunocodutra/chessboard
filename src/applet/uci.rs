@@ -2,9 +2,9 @@ use super::Execute;
 use anyhow::{Context, Error as Anyhow};
 use async_trait::async_trait;
 use chessboard::chess::{Fen, Position};
-use chessboard::search::{Builder as StrategyBuilder, Dispatcher as Strategy};
+use chessboard::search::{Builder as StrategyBuilder, Dispatcher as Strategy, Limits};
 use chessboard::util::{io::Pipe, Io};
-use chessboard::{Build, Search, SearchLimits};
+use chessboard::{Build, Search};
 use clap::{AppSettings::DeriveDisplayOrder, Parser};
 use tokio::io::{stdin, stdout};
 use tokio::task::block_in_place;
@@ -92,7 +92,7 @@ impl<T: Io> Server<T> {
                     time_control: Some(UciTimeControl::Infinite),
                     search_control: None,
                 } => {
-                    self.go(SearchLimits::None).await?;
+                    self.go(Limits::None).await?;
                 }
 
                 UciMessage::Go {
@@ -100,8 +100,8 @@ impl<T: Io> Server<T> {
                     search_control: None,
                 } => {
                     let limits = match time.to_std() {
-                        Ok(time) => SearchLimits::Time(time),
-                        Err(_) => SearchLimits::None,
+                        Ok(time) => Limits::Time(time),
+                        Err(_) => Limits::None,
                     };
 
                     self.go(limits).await?;
@@ -134,7 +134,7 @@ impl<T: Io> Server<T> {
                         warn!("ignored request to terminate the search after {} nodes", n);
                     }
 
-                    self.go(SearchLimits::Depth(depth)).await?;
+                    self.go(Limits::Depth(depth)).await?;
                 }
 
                 UciMessage::Unknown(m, cause) => {
@@ -157,7 +157,7 @@ impl<T: Io> Server<T> {
         }
     }
 
-    async fn go(&mut self, limits: SearchLimits) -> Result<(), Anyhow> {
+    async fn go(&mut self, limits: Limits) -> Result<(), Anyhow> {
         let pv = block_in_place(|| self.strategy.search::<1>(&self.position, limits));
         let best = *pv.first().context("no legal move found")?;
         let msg = UciMessage::best_move(best.into());
