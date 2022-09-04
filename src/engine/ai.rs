@@ -1,4 +1,4 @@
-use super::Play;
+use super::Engine;
 use crate::chess::{Move, Position};
 use crate::search::{Limits, Search};
 use async_trait::async_trait;
@@ -8,7 +8,7 @@ use test_strategy::Arbitrary;
 use tokio::task::block_in_place;
 use tracing::{instrument, Span};
 
-/// A computed controlled player.
+/// A chess engine.
 #[derive(Debug, Default, Arbitrary, From)]
 pub struct Ai<S: Search> {
     strategy: S,
@@ -28,11 +28,11 @@ impl<S: Search> Ai<S> {
 }
 
 #[async_trait]
-impl<S: Search + Send> Play for Ai<S> {
+impl<S: Search + Send> Engine for Ai<S> {
     type Error = Infallible;
 
     #[instrument(level = "debug", skip(self, pos), ret(Display), err, fields(%pos, depth, score))]
-    async fn play(&mut self, pos: &Position) -> Result<Move, Self::Error> {
+    async fn best(&mut self, pos: &Position) -> Result<Move, Self::Error> {
         let pv = block_in_place(|| self.strategy.search::<1>(pos, self.limits));
 
         if let Some((d, s)) = Option::zip(pv.depth(), pv.score()) {
@@ -70,7 +70,7 @@ mod tests {
         strategy.expect_search().return_const(pv);
 
         let mut ai = Ai::with_config(strategy, l);
-        assert_eq!(rt.block_on(ai.play(&pos))?, t.best());
+        assert_eq!(rt.block_on(ai.best(&pos))?, t.best());
     }
 
     #[proptest]
@@ -82,6 +82,6 @@ mod tests {
         strategy.expect_search().return_const(Pv::default());
 
         let mut ai = Ai::with_config(strategy, l);
-        rt.block_on(ai.play(&pos))?;
+        rt.block_on(ai.best(&pos))?;
     }
 }
