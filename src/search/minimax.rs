@@ -1,6 +1,6 @@
 use crate::chess::{Move, MoveKind, Piece, Position, Role};
-use crate::search::{Limits, Metrics, MetricsCounters};
-use crate::{Eval, Pv, Search, Transposition, TranspositionTable};
+use crate::search::{Limits, Metrics, MetricsCounters, Search};
+use crate::{eval::Eval, Pv, Transposition, TranspositionTable};
 use derive_more::{Deref, Display, Error, From, Neg};
 use rayon::{iter::once, prelude::*};
 use serde::{Deserialize, Serialize};
@@ -337,7 +337,7 @@ impl<E: Eval + Send + Sync> Search for Minimax<E> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{eval::Dispatcher as Evaluator, MockEval};
+    use crate::eval::{Dispatcher as Evaluator, MockEval};
     use mockall::predicate::*;
     use proptest::prop_assume;
     use std::time::Duration;

@@ -1,5 +1,5 @@
 use chessboard::search::{Dispatcher as Strategy, Limits};
-use chessboard::{chess::Fen, Search};
+use chessboard::{chess::Fen, prelude::*};
 use criterion::{criterion_group, criterion_main, BatchSize, Criterion};
 
 fn bench(c: &mut Criterion) {

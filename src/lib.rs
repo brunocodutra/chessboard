@@ -19,15 +19,10 @@ pub mod search;
 /// Assorted utilities.
 pub mod util;
 
-pub use eval::Eval;
-pub use play::Play;
-pub use search::Search;
-
-#[cfg(test)]
-pub use eval::MockEval;
-
-#[cfg(test)]
-pub use play::{MockPlay, MockPlayerBuilder};
-
-#[cfg(test)]
-pub use search::MockSearch;
+/// Convenience module that brings common traits into scope.
+pub mod prelude {
+    pub use crate::build::Build as _;
+    pub use crate::eval::Eval as _;
+    pub use crate::play::Play as _;
+    pub use crate::search::Search as _;
+}

@@ -13,7 +13,7 @@ impl PieceSquareTable for Materialist {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{chess::Position, Eval};
+    use crate::{chess::Position, eval::Eval};
     use test_strategy::proptest;
 
     #[proptest]
