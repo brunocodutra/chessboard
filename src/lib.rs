@@ -1,7 +1,5 @@
-mod build;
 mod game;
 
-pub use build::*;
 pub use game::*;
 
 /// Types that represent the domain model of chess.
@@ -17,8 +15,8 @@ pub mod util;
 
 /// Convenience module that brings common traits into scope.
 pub mod prelude {
-    pub use crate::build::Build as _;
     pub use crate::eval::Eval as _;
     pub use crate::play::Play as _;
     pub use crate::search::Search as _;
+    pub use crate::util::Build as _;
 }
