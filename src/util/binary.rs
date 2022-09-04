@@ -1,4 +1,4 @@
-use crate::Register;
+use crate::util::Register;
 
 /// Trait for types that can be encoded to binary.
 pub trait Binary: Sized {

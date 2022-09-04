@@ -1,4 +1,5 @@
-use crate::{engine::PieceSquareTable, Eval, Position, Role};
+use super::PieceSquareTable;
+use crate::{Eval, Position, Role};
 use derive_more::Constructor;
 
 struct MidGamePesto;

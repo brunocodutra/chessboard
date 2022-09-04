@@ -1,4 +1,4 @@
-use crate::{Binary, Bits};
+use crate::util::{Binary, Bits};
 use bitvec::{field::BitField, order::Lsb0, view::BitView};
 use derive_more::{Display, Error};
 use shakmaty as sm;

@@ -1,7 +1,4 @@
-mod binary;
-mod bits;
 mod build;
-mod cache;
 mod color;
 mod eval;
 mod fen;
@@ -19,17 +16,13 @@ mod position;
 mod promotion;
 mod pv;
 mod rank;
-mod register;
 mod role;
 mod san;
 mod search;
 mod square;
 mod transposition;
 
-pub use crate::binary::*;
-pub use crate::bits::*;
 pub use crate::build::*;
-pub use crate::cache::*;
 pub use crate::color::*;
 pub use crate::eval::*;
 pub use crate::fen::*;
@@ -47,7 +40,6 @@ pub use crate::promotion::*;
 pub use crate::pv::*;
 pub use crate::r#move::*;
 pub use crate::rank::*;
-pub use crate::register::*;
 pub use crate::role::*;
 pub use crate::san::*;
 pub use crate::search::*;
@@ -57,6 +49,8 @@ pub use crate::transposition::*;
 pub mod engine;
 pub mod player;
 pub mod strategy;
+/// Assorted utilities.
+pub mod util;
 
 pub use crate::engine::{Engine, EngineBuilder};
 pub use crate::player::{Player, PlayerBuilder, PlayerError};

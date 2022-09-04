@@ -1,4 +1,4 @@
-use crate::{Io, Pipe};
+use super::{Io, Pipe};
 use anyhow::{bail, Context, Error as Anyhow};
 use async_trait::async_trait;
 use std::{io, time::Duration};

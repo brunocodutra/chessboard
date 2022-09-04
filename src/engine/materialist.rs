@@ -1,4 +1,4 @@
-use crate::engine::PieceSquareTable;
+use super::PieceSquareTable;
 use derive_more::Constructor;
 
 /// An engine that evaluates positions purely based on piece values.

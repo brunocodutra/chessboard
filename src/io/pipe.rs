@@ -1,4 +1,4 @@
-use crate::Io;
+use super::Io;
 use async_trait::async_trait;
 use std::io;
 use tokio::io::{AsyncBufReadExt, AsyncRead, AsyncWrite, AsyncWriteExt, BufReader, Lines};
