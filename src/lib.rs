@@ -1,12 +1,8 @@
 mod build;
 mod game;
-mod pv;
-mod transposition;
 
 pub use build::*;
 pub use game::*;
-pub use pv::*;
-pub use transposition::*;
 
 /// Types that represent the domain model of chess.
 pub mod chess;

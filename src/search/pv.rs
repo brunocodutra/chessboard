@@ -1,4 +1,5 @@
-use crate::{chess::Move, Transposition};
+use super::Transposition;
+use crate::chess::Move;
 use arrayvec::ArrayVec;
 use derive_more::{Deref, DerefMut, Display, IntoIterator};
 
@@ -81,7 +82,7 @@ impl<const N: usize> FromIterator<Transposition> for Pv<N> {
 mod tests {
     use super::*;
     use crate::chess::{MoveKind, Position};
-    use crate::TranspositionTable;
+    use crate::search::TranspositionTable;
     use proptest::prop_assume;
     use proptest::sample::{size_range, Selector};
     use test_strategy::proptest;
