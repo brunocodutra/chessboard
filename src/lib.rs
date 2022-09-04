@@ -1,7 +1,6 @@
 mod build;
 mod eval;
 mod game;
-mod io;
 mod limits;
 mod metrics;
 mod play;
@@ -12,7 +11,6 @@ mod transposition;
 pub use build::*;
 pub use eval::*;
 pub use game::*;
-pub use io::*;
 pub use limits::*;
 pub use metrics::*;
 pub use play::*;
