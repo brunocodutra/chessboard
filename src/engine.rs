@@ -1,12 +1,13 @@
 use crate::chess::{Move, Position};
-use crate::search::{Builder as StrategyBuilder, Dispatcher as Strategy, Limits};
+use crate::search::{Builder as StrategyBuilder, Dispatcher as Strategy, Limits, Pv};
 use crate::util::{Build, Process};
+use async_stream::stream;
 use async_trait::async_trait;
 use derive_more::{DebugCustom, Display, Error, From};
+use futures_util::stream::BoxStream;
 use mockall::{automock, mock};
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
-use std::str::FromStr;
+use std::{collections::HashMap, str::FromStr};
 use test_strategy::Arbitrary;
 
 mod ai;
@@ -22,8 +23,11 @@ pub trait Engine {
     /// The reason why the engine was unable to analyze the [`Position`].
     type Error;
 
-    /// Find the best [`Move`].
-    async fn best(&mut self, pos: &Position) -> Result<Move, Self::Error>;
+    /// Finds the best [`Move`].
+    async fn play(&mut self, pos: &Position) -> Result<Move, Self::Error>;
+
+    /// Analyzes a [`Position`].
+    fn analyze(&mut self, pos: &Position) -> BoxStream<'_, Result<Pv, Self::Error>>;
 }
 
 /// The reason why [`Dispatcher`] failed to play a [`Move`].
@@ -47,11 +51,27 @@ pub enum Dispatcher {
 impl Engine for Dispatcher {
     type Error = DispatcherError;
 
-    async fn best(&mut self, pos: &Position) -> Result<Move, Self::Error> {
+    async fn play(&mut self, pos: &Position) -> Result<Move, Self::Error> {
         match self {
-            Dispatcher::Ai(p) => Ok(p.best(pos).await?),
-            Dispatcher::Uci(p) => Ok(p.best(pos).await?),
+            Dispatcher::Ai(e) => Ok(e.play(pos).await?),
+            Dispatcher::Uci(e) => Ok(e.play(pos).await?),
         }
+    }
+
+    fn analyze(&mut self, pos: &Position) -> BoxStream<'_, Result<Pv, Self::Error>> {
+        let pos = pos.clone();
+
+        Box::pin(stream! {
+            match self {
+                Dispatcher::Ai(e) => for await pv in e.analyze(&pos) {
+                    yield Ok(pv?)
+                }
+
+                Dispatcher::Uci(e) => for await pv in e.analyze(&pos) {
+                    yield Ok(pv?)
+                }
+            }
+        })
     }
 }
 
@@ -60,13 +80,19 @@ impl Engine for Dispatcher {
 #[serde(deny_unknown_fields, rename_all = "lowercase")]
 pub enum Builder {
     #[display(fmt = "{}", "ron::ser::to_string(self).unwrap()")]
-    Ai(StrategyBuilder, #[serde(default)] Limits),
+    Ai(#[serde(default)] StrategyBuilder, #[serde(default)] Limits),
     #[display(fmt = "{}", "ron::ser::to_string(self).unwrap()")]
     Uci(
         String,
         #[serde(default)] Limits,
         #[serde(default)] HashMap<String, Option<String>>,
     ),
+}
+
+impl Default for Builder {
+    fn default() -> Self {
+        Builder::Ai(StrategyBuilder::default(), Limits::default())
+    }
 }
 
 /// The reason why parsing [`Builder`] failed.
@@ -129,6 +155,11 @@ mod tests {
 
     #[proptest]
     fn ai_builder_is_deserializable(s: StrategyBuilder, l: Limits) {
+        assert_eq!(
+            "ai()".parse(),
+            Ok(Builder::Ai(StrategyBuilder::default(), Limits::default()))
+        );
+
         assert_eq!(
             format!("ai({})", s).parse(),
             Ok(Builder::Ai(s.clone(), Limits::default()))

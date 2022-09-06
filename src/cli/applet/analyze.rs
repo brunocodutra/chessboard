@@ -1,11 +1,11 @@
 use super::Execute;
 use anyhow::{Context, Error as Anyhow};
 use async_trait::async_trait;
-use chessboard::chess::{Color, Fen, Position};
+use chessboard::chess::{Color, Fen};
+use chessboard::engine::Builder as EngineBuilder;
 use chessboard::prelude::*;
-use chessboard::search::{Builder as StrategyBuilder, Dispatcher as Strategy, Limits};
 use clap::{AppSettings::DeriveDisplayOrder, Parser};
-use tokio::task::block_in_place;
+use futures_util::TryStreamExt;
 use tracing::{info, instrument};
 
 /// Analyzes a position.
@@ -16,13 +16,8 @@ use tracing::{info, instrument};
     setting = DeriveDisplayOrder
 )]
 pub struct Analyze {
-    /// How deep/long to search.
-    #[clap(short, long, default_value_t)]
-    limits: Limits,
-
-    /// The search strategy.
-    #[clap(short, long, default_value_t)]
-    strategy: StrategyBuilder,
+    /// The engine used to analyze.
+    engine: EngineBuilder,
 
     /// The position to search in FEN notation.
     fen: Fen,
@@ -32,34 +27,24 @@ pub struct Analyze {
 impl Execute for Analyze {
     #[instrument(level = "trace", skip(self), err)]
     async fn execute(self) -> Result<(), Anyhow> {
-        let mut strategy = self.strategy.build()?;
         let pos = self.fen.try_into()?;
+        let mut engine = self.engine.build()?;
+        let mut analysis = engine.analyze(&pos);
 
-        match self.limits {
-            l @ Limits::Time(_) => block_in_place(|| search(&mut strategy, &pos, l))?,
-            l => {
-                for d in 1..=l.depth() {
-                    block_in_place(|| search(&mut strategy, &pos, Limits::Depth(d)))?
-                }
-            }
+        while let Some(pv) = analysis.try_next().await? {
+            let (d, s) =
+                Option::zip(pv.depth(), pv.score()).context("no principal variation found")?;
+
+            info!(
+                depth = d,
+                score = match pos.turn() {
+                    Color::White => s,
+                    Color::Black => -s,
+                },
+                %pv
+            );
         }
 
         Ok(())
     }
-}
-
-fn search(strategy: &mut Strategy, pos: &Position, limits: Limits) -> Result<(), Anyhow> {
-    let pv = strategy.search::<{ u8::MAX as usize }>(pos, limits);
-    let (d, s) = Option::zip(pv.depth(), pv.score()).context("no principal variation found")?;
-
-    info!(
-        depth = d,
-        score = match pos.turn() {
-            Color::White => s,
-            Color::Black => -s,
-        },
-        %pv
-    );
-
-    Ok(())
 }

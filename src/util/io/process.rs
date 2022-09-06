@@ -3,7 +3,7 @@ use anyhow::{bail, Context, Error as Anyhow};
 use async_trait::async_trait;
 use mockall::automock;
 use std::{io, time::Duration};
-use tokio::{runtime, select, task::block_in_place, time::sleep};
+use tokio::{runtime, task::block_in_place, time::timeout};
 use tracing::{error, field::display, instrument, Span};
 
 #[async_trait]
@@ -76,15 +76,14 @@ impl Drop for Process {
         let result: Result<_, Anyhow> = block_in_place(|| {
             runtime::Handle::try_current()?.block_on(async {
                 self.flush().await?;
-
-                select! {
-                    status = self.child.wait() => {
-                        Ok(status?)
-                    }
-
-                    _ = sleep(Self::TIMEOUT) => {
+                match timeout(Self::TIMEOUT, self.child.wait()).await {
+                    Ok(status) => Ok(status?),
+                    Err(_) => {
                         self.child.kill().await?;
-                        bail!("forcefully killed the remote after {}s", Self::TIMEOUT.as_secs());
+                        bail!(
+                            "timed out after {}s waiting for process to exit",
+                            Self::TIMEOUT.as_secs()
+                        );
                     }
                 }
             })
@@ -117,7 +116,9 @@ impl Io for Process {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::future::ready;
     use test_strategy::proptest;
+    use tokio::time::sleep;
 
     #[proptest]
     fn drop_gracefully_terminates_child_process(status: String) {
@@ -128,12 +129,12 @@ mod tests {
         process
             .child
             .expect_wait()
-            .return_once(move || Box::pin(async move { Ok(status) }));
+            .return_once(move || Box::pin(ready(Ok(status))));
 
         process
             .child
             .expect_kill()
-            .return_once(move || Box::pin(async { Ok(()) }));
+            .return_once(move || Box::pin(ready(Ok(()))));
 
         rt.block_on(async move {
             drop(process);
@@ -157,7 +158,7 @@ mod tests {
             .child
             .expect_kill()
             .once()
-            .return_once(move || Box::pin(async { Ok(()) }));
+            .return_once(move || Box::pin(ready(Ok(()))));
 
         rt.block_on(async move {
             drop(process);
@@ -173,12 +174,12 @@ mod tests {
         process
             .child
             .expect_wait()
-            .return_once(move || Box::pin(async { Err(a) }));
+            .return_once(move || Box::pin(ready(Err(a))));
 
         process
             .child
             .expect_kill()
-            .return_once(move || Box::pin(async { Err(b) }));
+            .return_once(move || Box::pin(ready(Err(b))));
 
         rt.block_on(async move {
             drop(process);

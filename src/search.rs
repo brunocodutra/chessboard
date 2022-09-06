@@ -31,7 +31,7 @@ mock! {
     #[derive(Debug)]
     pub Search {
         pub fn clear(&mut self);
-        pub fn search(&mut self, pos: &Position, limits: Limits) -> Pv<256>;
+        pub fn search(&mut self, pos: &Position, limits: Limits) -> Pv;
     }
 }
 

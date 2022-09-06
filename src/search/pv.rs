@@ -2,24 +2,38 @@ use super::Transposition;
 use crate::chess::Move;
 use arrayvec::ArrayVec;
 use derive_more::{Deref, DerefMut, Display, IntoIterator};
+use proptest::prelude::*;
+use test_strategy::Arbitrary;
 
 /// The [principal variation].
 ///
 /// [principal variation]: https://www.chessprogramming.org/Principal_Variation
-#[derive(Debug, Display, Default, Clone, Eq, PartialEq, Hash, Deref, DerefMut, IntoIterator)]
+#[derive(
+    Debug, Display, Default, Clone, Eq, PartialEq, Hash, Arbitrary, Deref, DerefMut, IntoIterator,
+)]
 #[display(
     fmt = "{}",
     "self.iter().map(Move::to_string).collect::<ArrayVec<_, N>>().join(\" \")"
 )]
-pub struct Pv<const N: usize> {
+pub struct Pv<const N: usize = 256> {
+    #[strategy(any::<Vec<Move>>().prop_map(|v| v.into_iter().collect()))]
     #[deref(forward)]
     #[deref_mut(forward)]
     #[into_iterator(owned, ref, ref_mut)]
     moves: ArrayVec<Move, N>,
+    #[strategy(any::<(u8, i16)>().prop_map(move |i| #moves.first().map(move |_| i)))]
     info: Option<(u8, i16)>,
 }
 
 impl<const N: usize> Pv<N> {
+    /// Constructs a new [`Pv`] given depth, score, and sequence of moves.
+    pub fn new<I: IntoIterator<Item = Move>>(depth: u8, score: i16, moves: I) -> Self {
+        Self {
+            moves: moves.into_iter().take(N).collect(),
+            info: Some((depth, score)),
+        }
+    }
+
     /// The depth of this sequence.
     pub fn depth(&self) -> Option<u8> {
         self.info.map(|(d, _)| d)
@@ -86,6 +100,17 @@ mod tests {
     use proptest::prop_assume;
     use proptest::sample::{size_range, Selector};
     use test_strategy::proptest;
+
+    #[proptest]
+    fn new_truncates_moves(d: u8, s: i16, #[any(size_range(10..20).lift())] m: Vec<Move>) {
+        assert_eq!(
+            Pv::<10>::new(d, s, m.clone()),
+            Pv {
+                moves: m[..10].iter().copied().collect(),
+                info: Some((d, s)),
+            }
+        );
+    }
 
     #[proptest]
     fn len_returns_number_of_moves_in_the_sequence(tt: TranspositionTable, pos: Position) {

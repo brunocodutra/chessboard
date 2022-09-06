@@ -113,8 +113,8 @@ where
             }
 
             let m = match pos.turn() {
-                Color::White => white.best(&pos).await.map_err(White)?,
-                Color::Black => black.best(&pos).await.map_err(Black)?,
+                Color::White => white.play(&pos).await.map_err(White)?,
+                Color::Black => black.play(&pos).await.map_err(Black)?,
             };
 
             match pos.make(m) {
@@ -216,8 +216,8 @@ mod tests {
 
         let act = move |_: &Position| Ok(moves.pop().unwrap());
 
-        w.expect_best().returning(act.clone());
-        b.expect_best().returning(act);
+        w.expect_play().returning(act.clone());
+        b.expect_play().returning(act);
 
         let mut wb = MockEngineBuilder::new();
         wb.expect_build().once().return_once(move || Ok(w));
@@ -276,7 +276,7 @@ mod tests {
             Color::Black => &mut b,
         };
 
-        p.expect_best().return_const(Err(e.clone()));
+        p.expect_play().return_const(Err(e.clone()));
 
         let mut wb = MockEngineBuilder::new();
         wb.expect_build().once().return_once(move || Ok(w));
