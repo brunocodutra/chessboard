@@ -1,13 +1,14 @@
 use super::{Promotion, Square};
 use crate::util::{Binary, Bits, Register};
-use derive_more::{Display, Error};
+use derive_more::{DebugCustom, Display, Error};
 use shakmaty as sm;
 use test_strategy::Arbitrary;
 use vampirc_uci::UciMove;
 
 /// A chess move.
-#[derive(Debug, Display, Copy, Clone, Eq, PartialEq, Hash, Arbitrary)]
+#[derive(DebugCustom, Display, Copy, Clone, Eq, PartialEq, Hash, Arbitrary)]
 #[filter(#self.0 != #self.1)]
+#[debug(fmt = "Move({})", self)]
 #[display(fmt = "{}{}{}", _0, _1, _2)]
 pub struct Move(Square, Square, Promotion);
 

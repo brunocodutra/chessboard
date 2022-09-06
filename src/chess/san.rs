@@ -9,7 +9,7 @@ use test_strategy::Arbitrary;
 ///
 /// [algebraic notation]: https://www.chessprogramming.org/Algebraic_Chess_Notation
 #[derive(DebugCustom, Display, Clone, Eq, PartialEq, Hash, Arbitrary)]
-#[debug(fmt = "San(\"{}\")", self)]
+#[debug(fmt = "San({})", self)]
 #[display(fmt = "{}", _0)]
 pub struct San(
     #[strategy(any::<(Position, Selector)>().prop_filter_map("end position", |(pos, selector)| {

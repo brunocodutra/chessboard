@@ -9,8 +9,8 @@ pub use pipe::*;
 pub use process::*;
 
 /// Trait for types that communicate via message-passing.
-#[automock]
 #[async_trait]
+#[automock]
 pub trait Io {
     /// Receive a message.
     async fn recv(&mut self) -> io::Result<String>;

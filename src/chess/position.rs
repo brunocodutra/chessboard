@@ -72,7 +72,7 @@ pub struct IllegalPass(#[error(not(source))] pub Position);
 ///
 /// This type guarantees that it only holds valid positions.
 #[derive(DebugCustom, Display, Default, Clone, Eq, PartialEq, Hash, Arbitrary)]
-#[debug(fmt = "Position(\"{}\")", self)]
+#[debug(fmt = "Position({})", self)]
 #[display(fmt = "{}", "Fen::from(self.clone())")]
 pub struct Position(
     #[strategy((0..256, any::<Selector>()).prop_map(|(moves, selector)| {
