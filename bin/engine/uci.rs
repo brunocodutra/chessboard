@@ -1,15 +1,12 @@
-use super::Engine;
-use crate::chess::{Move, Position};
-use crate::search::Pv;
-use crate::{search::Limits, util::Io};
+use super::Player;
+use crate::io::Io;
 use anyhow::{Context, Error as Anyhow};
 use async_stream::try_stream;
-use async_trait::async_trait;
 use derive_more::{DebugCustom, Display, Error, From};
-use futures_util::stream::BoxStream;
-use std::time::Instant;
-use std::{collections::HashMap, future::Future, io, pin::Pin};
-use test_strategy::Arbitrary;
+use futures_util::{future::BoxFuture, stream::BoxStream};
+use lib::chess::{Move, Position};
+use lib::search::{Limits, Pv};
+use std::{collections::HashMap, future::Future, io, pin::Pin, time::Instant};
 use tokio::{runtime, task::block_in_place, time::timeout};
 use tracing::{debug, error, instrument};
 use vampirc_uci::{self as uci, UciFen, UciInfoAttribute, UciMessage, UciSearchControl};
@@ -42,7 +39,7 @@ impl<T, E> Lazy<T, E> {
 }
 
 /// The reason why an [`Move`] could not be received from the UCI server.
-#[derive(Debug, Display, Arbitrary, Error, From)]
+#[derive(Debug, Display, Error, From)]
 #[display(fmt = "the UCI server encountered an error")]
 pub struct UciError(#[from(forward)] io::Error);
 
@@ -54,13 +51,8 @@ pub struct Uci<T: Io> {
 }
 
 impl<T: Io + Send + 'static> Uci<T> {
-    /// Constructs [`Uci`] with the default [`Limits`].
-    pub fn new(io: T) -> Self {
-        Self::with_config(io, Limits::default(), HashMap::new())
-    }
-
-    /// Constructs [`Uci`] with some [`Limits`] and [`UciOptions`].
-    pub fn with_config(mut io: T, limits: Limits, options: UciOptions) -> Self {
+    /// Constructs [`Uci`] with the given search [`Limits`] and [`UciOptions`].
+    pub fn new(mut io: T, limits: Limits, options: UciOptions) -> Self {
         Uci {
             limits,
             io: Lazy::Uninitialized(Box::pin(async move {
@@ -131,31 +123,41 @@ impl<T: Io> Drop for Uci<T> {
     }
 }
 
-#[async_trait]
-impl<T: Io + Send + 'static> Engine for Uci<T> {
+impl<T: Io + Send + 'static> Player for Uci<T> {
     type Error = UciError;
 
     #[instrument(level = "debug", skip(self, pos), ret(Display), err, fields(%pos))]
-    async fn play(&mut self, pos: &Position) -> Result<Move, Self::Error> {
-        self.go(pos).await?;
+    fn play<'a, 'b, 'c>(&'a mut self, pos: &'b Position) -> BoxFuture<'c, Result<Move, Self::Error>>
+    where
+        'a: 'c,
+        'b: 'c,
+    {
+        Box::pin(async move {
+            self.go(pos).await?;
 
-        let io = self.io.get_or_init().await?;
+            let io = self.io.get_or_init().await?;
 
-        loop {
-            if let UciMessage::BestMove { best_move: m, .. } =
-                uci::parse_one(io.recv().await?.trim())
-            {
-                break Ok(m.into());
+            loop {
+                if let UciMessage::BestMove { best_move: m, .. } =
+                    uci::parse_one(io.recv().await?.trim())
+                {
+                    break Ok(m.into());
+                }
             }
-        }
+        })
     }
 
     #[instrument(level = "debug", skip(self, pos), fields(%pos))]
-    fn analyze(&mut self, pos: &Position) -> BoxStream<'_, Result<Pv, Self::Error>> {
-        let pos = pos.clone();
-
+    fn analyze<'a, 'b, 'c, const N: usize>(
+        &'a mut self,
+        pos: &'b Position,
+    ) -> BoxStream<'c, Result<Pv<N>, Self::Error>>
+    where
+        'a: 'c,
+        'b: 'c,
+    {
         Box::pin(try_stream! {
-            self.go(&pos).await?;
+            self.go(pos).await?;
             let timer = Instant::now();
             let io = self.io.get_or_init().await?;
 
@@ -201,8 +203,9 @@ impl<T: Io + Send + 'static> Engine for Uci<T> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{chess::Move, util::MockIo};
+    use crate::io::MockIo;
     use futures_util::TryStreamExt;
+    use lib::chess::Move;
     use mockall::Sequence;
     use proptest::prelude::*;
     use std::{future::ready, time::Duration};
@@ -234,19 +237,14 @@ mod tests {
     }
 
     #[proptest]
-    fn new_schedules_engine_for_lazy_initialization() {
+    fn new_schedules_engine_for_lazy_initialization(l: Limits, o: UciOptions) {
         assert!(matches!(
-            Uci::new(MockIo::new()),
+            Uci::new(MockIo::new(), l, o),
             Uci {
                 io: Lazy::Uninitialized(_),
                 ..
             }
         ));
-    }
-
-    #[proptest]
-    fn new_applies_default_search_limits() {
-        assert_eq!(Uci::new(MockIo::new()).limits, Limits::default());
     }
 
     #[proptest]
@@ -313,7 +311,7 @@ mod tests {
             .once()
             .returning(move || Box::pin(ready(Ok(UciMessage::best_move(m.into()).to_string()))));
 
-        let mut uci = Uci::with_config(io, l, o);
+        let mut uci = Uci::new(io, l, o);
 
         assert_eq!(
             rt.block_on(uci.play(&pos)).map_err(|UciError(e)| e.kind()),
@@ -323,6 +321,8 @@ mod tests {
 
     #[proptest]
     fn initialization_ignores_invalid_uci_messages(
+        l: Limits,
+        o: UciOptions,
         pos: Position,
         m: Move,
         #[by_ref]
@@ -351,7 +351,7 @@ mod tests {
             .once()
             .returning(move || Box::pin(ready(Ok(UciMessage::best_move(m.into()).to_string()))));
 
-        let mut uci = Uci::new(io);
+        let mut uci = Uci::new(io, l, o);
 
         assert_eq!(
             rt.block_on(uci.play(&pos)).map_err(|UciError(e)| e.kind()),
@@ -361,6 +361,8 @@ mod tests {
 
     #[proptest]
     fn initialization_ignores_unexpected_uci_messages(
+        l: Limits,
+        o: UciOptions,
         pos: Position,
         m: Move,
         #[by_ref]
@@ -390,7 +392,7 @@ mod tests {
             .once()
             .returning(move || Box::pin(ready(Ok(UciMessage::best_move(m.into()).to_string()))));
 
-        let mut uci = Uci::new(io);
+        let mut uci = Uci::new(io, l, o);
 
         assert_eq!(
             rt.block_on(uci.play(&pos)).map_err(|UciError(e)| e.kind()),
@@ -399,7 +401,7 @@ mod tests {
     }
 
     #[proptest]
-    fn initialization_can_fail(pos: Position, e: io::Error) {
+    fn initialization_can_fail(l: Limits, o: UciOptions, pos: Position, e: io::Error) {
         let rt = runtime::Builder::new_multi_thread().build()?;
         let mut io = MockIo::new();
 
@@ -411,7 +413,7 @@ mod tests {
         io.expect_send().returning(|_| Box::pin(ready(Ok(()))));
         io.expect_flush().returning(|| Box::pin(ready(Ok(()))));
 
-        let mut uci = Uci::new(io);
+        let mut uci = Uci::new(io, l, o);
 
         assert_eq!(
             rt.block_on(uci.play(&pos)).map_err(|UciError(e)| e.kind()),
@@ -452,7 +454,7 @@ mod tests {
     }
 
     #[proptest]
-    fn drop_gracefully_quits_uninitialized_engine() {
+    fn drop_gracefully_quits_uninitialized_engine(l: Limits) {
         let rt = runtime::Builder::new_multi_thread().build()?;
         let mut io = MockIo::new();
 
@@ -491,7 +493,7 @@ mod tests {
             .returning(|| Box::pin(ready(Ok(()))));
 
         rt.block_on(async move {
-            drop(Uci::new(io));
+            drop(Uci::new(io, l, UciOptions::default()));
         })
     }
 
@@ -735,7 +737,7 @@ mod tests {
     }
 
     #[proptest]
-    fn analyze_stops_when_target_depth_is_reached(pos: Position, pvs: Vec<Pv>) {
+    fn analyze_stops_when_target_depth_is_reached(pos: Position, pvs: Vec<Pv<10>>) {
         let rt = runtime::Builder::new_multi_thread().enable_time().build()?;
         let mut io = MockIo::new();
 
@@ -807,7 +809,7 @@ mod tests {
         };
 
         assert_eq!(
-            rt.block_on(uci.analyze(&pos).try_collect::<Vec<_>>())
+            rt.block_on(uci.analyze::<10>(&pos).try_collect::<Vec<_>>())
                 .map_err(|UciError(e)| e.kind()),
             Ok(Vec::new())
         );

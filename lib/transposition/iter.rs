@@ -1,17 +1,17 @@
-use super::{Transposition, TranspositionTable};
+use super::{Table, Transposition};
 use crate::chess::Position;
 
-/// An iterator over the sequence of [`Transposition`]s in a [`TranspositionTable`].
+/// An iterator over the sequence of [`Transposition`]s in a transposition [`Table`].
 #[derive(Debug, Clone)]
-pub struct TranspositionIterator<'a> {
-    tt: &'a TranspositionTable,
+pub struct Iter<'a> {
+    tt: &'a Table,
     pos: Position,
     draft: Option<i8>,
 }
 
-impl<'a> TranspositionIterator<'a> {
-    pub fn new(tt: &'a TranspositionTable, pos: Position) -> Self {
-        TranspositionIterator {
+impl<'a> Iter<'a> {
+    pub fn new(tt: &'a Table, pos: Position) -> Self {
+        Iter {
             tt,
             pos,
             draft: Some(i8::MAX),
@@ -19,7 +19,7 @@ impl<'a> TranspositionIterator<'a> {
     }
 }
 
-impl<'a> Iterator for TranspositionIterator<'a> {
+impl<'a> Iterator for Iter<'a> {
     type Item = Transposition;
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -43,7 +43,7 @@ mod tests {
     fn iterates_over_moves_searched_with_strictly_decreasing_draft(
         #[by_ref]
         #[filter(#tt.capacity() > 1)]
-        tt: TranspositionTable,
+        tt: Table,
         #[by_ref]
         #[filter(#pos.moves(MoveKind::ANY).len() > 0)]
         pos: Position,
@@ -67,25 +67,25 @@ mod tests {
         prop_assume!(tt.get(pos.zobrist()) == Some(t));
         prop_assume!(tt.get(next.zobrist()) == Some(u));
 
-        let mut pv = TranspositionIterator::new(&tt, pos);
+        let mut pv = Iter::new(&tt, pos);
         assert_eq!(pv.next(), Some(t));
         assert_eq!(pv.next(), None);
     }
 
     #[proptest]
     fn iterates_over_legal_moves_only(
-        tt: TranspositionTable,
+        tt: Table,
         #[by_ref] pos: Position,
         #[filter(#pos.clone().make(#t.best()).is_err())] t: Transposition,
     ) {
         tt.unset(pos.zobrist());
         tt.set(pos.zobrist(), t);
-        assert_eq!(TranspositionIterator::new(&tt, pos).next(), None);
+        assert_eq!(Iter::new(&tt, pos).next(), None);
     }
 
     #[proptest]
-    fn is_fused(tt: TranspositionTable, pos: Position) {
-        let mut pv = TranspositionIterator::new(&tt, pos);
+    fn is_fused(tt: Table, pos: Position) {
+        let mut pv = Iter::new(&tt, pos);
 
         while pv.next().is_some() {}
 

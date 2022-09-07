@@ -1,9 +1,8 @@
+use crate::{build::Build, engine::EngineConfig, player::Player};
 use anyhow::{Context, Error as Anyhow};
 use clap::{AppSettings::DeriveDisplayOrder, Parser};
 use futures_util::TryStreamExt;
 use lib::chess::{Color, Fen};
-use lib::engine::Builder as EngineBuilder;
-use lib::prelude::*;
 use tracing::{info, instrument};
 
 /// Analyzes a position.
@@ -14,10 +13,11 @@ use tracing::{info, instrument};
     setting = DeriveDisplayOrder
 )]
 pub struct Analyze {
-    /// The engine used to analyze.
-    engine: EngineBuilder,
+    /// The engine used to analyze the position.
+    #[clap(short, long, default_value_t)]
+    engine: EngineConfig,
 
-    /// The position to search in FEN notation.
+    /// The position to analyze in FEN notation.
     fen: Fen,
 }
 
@@ -26,7 +26,7 @@ impl Analyze {
     pub async fn execute(self) -> Result<(), Anyhow> {
         let pos = self.fen.try_into()?;
         let mut engine = self.engine.build()?;
-        let mut analysis = engine.analyze(&pos);
+        let mut analysis = engine.analyze::<256>(&pos);
 
         while let Some(pv) = analysis.try_next().await? {
             let (d, s) =
