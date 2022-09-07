@@ -1,11 +1,9 @@
-use super::Execute;
 use anyhow::{Context, Error as Anyhow};
-use async_trait::async_trait;
-use chessboard::chess::{Color, Fen};
-use chessboard::engine::Builder as EngineBuilder;
-use chessboard::prelude::*;
 use clap::{AppSettings::DeriveDisplayOrder, Parser};
 use futures_util::TryStreamExt;
+use lib::chess::{Color, Fen};
+use lib::engine::Builder as EngineBuilder;
+use lib::prelude::*;
 use tracing::{info, instrument};
 
 /// Analyzes a position.
@@ -23,10 +21,9 @@ pub struct Analyze {
     fen: Fen,
 }
 
-#[async_trait]
-impl Execute for Analyze {
+impl Analyze {
     #[instrument(level = "trace", skip(self), err)]
-    async fn execute(self) -> Result<(), Anyhow> {
+    pub async fn execute(self) -> Result<(), Anyhow> {
         let pos = self.fen.try_into()?;
         let mut engine = self.engine.build()?;
         let mut analysis = engine.analyze(&pos);

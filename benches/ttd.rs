@@ -1,6 +1,6 @@
-use chessboard::search::{Dispatcher as Strategy, Limits};
-use chessboard::{chess::Fen, prelude::*};
 use criterion::{criterion_group, criterion_main, BatchSize, Criterion};
+use lib::search::{Dispatcher as Strategy, Limits};
+use lib::{chess::Fen, prelude::*};
 
 fn bench(c: &mut Criterion) {
     let mut positions = POSITIONS.iter().cycle().map(|s| {
