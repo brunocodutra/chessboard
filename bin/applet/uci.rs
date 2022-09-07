@@ -1,9 +1,8 @@
+use crate::io::{Io, Pipe};
 use anyhow::{Context, Error as Anyhow};
 use clap::{AppSettings::DeriveDisplayOrder, Parser};
 use lib::chess::{Fen, Position};
-use lib::prelude::*;
-use lib::search::{Builder as StrategyBuilder, Dispatcher as Strategy, Limits};
-use lib::util::{Io, Pipe};
+use lib::search::{Limits, Searcher};
 use tokio::io::{stdin, stdout};
 use tokio::task::block_in_place;
 use tracing::{debug, error, instrument, warn};
@@ -16,32 +15,27 @@ use vampirc_uci::{self as uci, UciMessage, UciSearchControl, UciTimeControl};
     disable_version_flag = true,
     setting = DeriveDisplayOrder
 )]
-pub struct Uci {
-    /// The search strategy.
-    #[clap(short, long, default_value_t)]
-    strategy: StrategyBuilder,
-}
+pub struct Uci {}
 
 impl Uci {
     #[instrument(level = "trace", skip(self), err)]
     pub async fn execute(self) -> Result<(), Anyhow> {
-        let strategy = self.strategy.build()?;
         let io = Pipe::new(stdout(), stdin());
-        Server::new(strategy, io).run().await
+        Server::new(io).run().await
     }
 }
 
 struct Server<T: Io> {
+    strategy: Searcher,
     position: Position,
-    strategy: Strategy,
     io: T,
 }
 
 impl<T: Io> Server<T> {
-    fn new(strategy: Strategy, io: T) -> Self {
+    fn new(io: T) -> Self {
         Server {
+            strategy: Searcher::default(),
             position: Position::default(),
-            strategy,
             io,
         }
     }

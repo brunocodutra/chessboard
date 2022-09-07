@@ -33,7 +33,6 @@ derive_more = { version = "0.99.16", default-features = false, features = [
 futures-util = { version = "0.3.24", default-features = false, features = ["alloc"] }
 humantime-serde = { version = "1.1.1", default-features = false }
 libm = { version = "0.2.5", default-features = false }
-mockall = { version = "0.11.2", default-features = false }
 proptest = { version = "1.0.0", default-features = false, features = ["std"] }
 rayon = { version = "1.5.3", default-features = false }
 ron = { version = "0.8.0", default-features = false }
@@ -59,6 +58,7 @@ vampirc-uci = { version = "0.11.0", default-features = false }
 
 [dev-dependencies]
 criterion = { version = "0.4.0", default-features = false, features = ["rayon"] }
+mockall = { version = "0.11.2", default-features = false }
 pgn-reader = { version = "0.20.0", default-features = false }
 
 [profile.release]

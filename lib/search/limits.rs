@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 use std::{str::FromStr, time::Duration};
 use test_strategy::Arbitrary;
 
-/// Configuration for the limits of search engines.
+/// Configuration for search limits.
 #[derive(Debug, Display, Copy, Clone, Eq, PartialEq, Arbitrary, Deserialize, Serialize)]
 #[arbitrary(args = (Option<u8>, Option<u8>))]
 #[serde(deny_unknown_fields, rename_all = "lowercase")]
@@ -33,10 +33,10 @@ impl Default for Limits {
 /// The reason why parsing [`Limits`] failed.
 #[derive(Debug, Display, Eq, PartialEq, Error, From)]
 #[display(fmt = "failed to parse minimax configuration")]
-pub struct ParseSearchLimitsError(ron::de::SpannedError);
+pub struct ParseLimitsError(ron::de::SpannedError);
 
 impl FromStr for Limits {
-    type Err = ParseSearchLimitsError;
+    type Err = ParseLimitsError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         Ok(ron::de::from_str(s)?)

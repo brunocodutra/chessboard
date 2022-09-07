@@ -1,4 +1,4 @@
-use super::{OptionalSignedTranspositionRegister, Signature, Transposition, TranspositionIterator};
+use super::{Iter, OptionalSignedTranspositionRegister, Signature, Transposition};
 use crate::chess::{Position, Zobrist};
 use crate::util::{Binary, Cache, Register};
 use bitvec::field::BitField;
@@ -7,7 +7,7 @@ use test_strategy::Arbitrary;
 
 /// A cache for [`Transposition`]s.
 #[derive(Debug, Arbitrary)]
-pub struct TranspositionTable {
+pub struct Table {
     #[strategy((1usize..=128, hash_map(any::<Position>(), any::<Transposition>(), 0..=32)).prop_map(|(cap, ts)| {
         let cache = Cache::new(cap);
 
@@ -24,25 +24,25 @@ pub struct TranspositionTable {
     cache: Cache<OptionalSignedTranspositionRegister>,
 }
 
-impl TranspositionTable {
-    /// Constructs a [`TranspositionTable`] of at most `size` many bytes.
+impl Table {
+    /// Constructs a transposition [`Table`] of at most `size` many bytes.
     ///
     /// The `size` specifies an upper bound, as long as the table is not empty.
     pub fn new(size: usize) -> Self {
         let entry_size = OptionalSignedTranspositionRegister::SIZE;
         let cache_size = (size / entry_size + 1).next_power_of_two() / 2;
 
-        TranspositionTable {
+        Table {
             cache: Cache::new(cache_size.max(1)),
         }
     }
 
-    /// The actual size of this [`TranspositionTable`] in bytes.
+    /// The actual size of this [`Table`] in bytes.
     pub fn size(&self) -> usize {
         self.capacity() * OptionalSignedTranspositionRegister::SIZE
     }
 
-    /// The actual size of this [`TranspositionTable`] in number of entries.
+    /// The actual size of this [`Table`] in number of entries.
     pub fn capacity(&self) -> usize {
         self.cache.len()
     }
@@ -90,8 +90,8 @@ impl TranspositionTable {
     }
 
     /// An iterator for the principal variation from a starting [`Position`].
-    pub fn iter(&self, pos: &Position) -> TranspositionIterator<'_> {
-        TranspositionIterator::new(self, pos.clone())
+    pub fn iter(&self, pos: &Position) -> Iter<'_> {
+        Iter::new(self, pos.clone())
     }
 }
 
@@ -103,7 +103,7 @@ mod tests {
     use test_strategy::proptest;
 
     #[proptest]
-    fn size_returns_table_capacity_in_bytes(tt: TranspositionTable) {
+    fn size_returns_table_capacity_in_bytes(tt: Table) {
         assert_eq!(
             tt.size(),
             tt.cache.len() * OptionalSignedTranspositionRegister::SIZE
@@ -114,7 +114,7 @@ mod tests {
     fn input_size_is_an_upper_limit(
         #[strategy(OptionalSignedTranspositionRegister::SIZE..=128)] s: usize,
     ) {
-        assert!(TranspositionTable::new(s).size() <= s);
+        assert!(Table::new(s).size() <= s);
     }
 
     #[proptest]
@@ -122,51 +122,38 @@ mod tests {
         #[strategy(OptionalSignedTranspositionRegister::SIZE..=128)] s: usize,
     ) {
         assert_eq!(
-            TranspositionTable::new(s.next_power_of_two()).size(),
+            Table::new(s.next_power_of_two()).size(),
             s.next_power_of_two()
         );
     }
 
     #[proptest]
-    fn capacity_returns_cache_len(tt: TranspositionTable) {
+    fn capacity_returns_cache_len(tt: Table) {
         assert_eq!(tt.capacity(), tt.cache.len());
     }
 
     #[proptest]
-    fn get_returns_none_if_transposition_does_not_exist(tt: TranspositionTable, k: Zobrist) {
+    fn get_returns_none_if_transposition_does_not_exist(tt: Table, k: Zobrist) {
         tt.cache.store(tt.index_of(k), Bits::default());
         assert_eq!(tt.get(k), None);
     }
 
     #[proptest]
-    fn get_returns_none_if_signature_does_not_match(
-        tt: TranspositionTable,
-        t: Transposition,
-        k: Zobrist,
-    ) {
+    fn get_returns_none_if_signature_does_not_match(tt: Table, t: Transposition, k: Zobrist) {
         let sig = tt.signature_of((!k.load::<u64>()).view_bits().into());
         tt.cache.store(tt.index_of(k), Some((t, sig)).encode());
         assert_eq!(tt.get(k), None);
     }
 
     #[proptest]
-    fn get_returns_some_if_transposition_exists(
-        tt: TranspositionTable,
-        t: Transposition,
-        k: Zobrist,
-    ) {
+    fn get_returns_some_if_transposition_exists(tt: Table, t: Transposition, k: Zobrist) {
         let sig = tt.signature_of(k);
         tt.cache.store(tt.index_of(k), Some((t, sig)).encode());
         assert_eq!(tt.get(k), Some(t));
     }
 
     #[proptest]
-    fn set_keeps_greater_transposition(
-        tt: TranspositionTable,
-        t: Transposition,
-        u: Transposition,
-        k: Zobrist,
-    ) {
+    fn set_keeps_greater_transposition(tt: Table, t: Transposition, u: Transposition, k: Zobrist) {
         let sig = tt.signature_of(k);
         tt.cache.store(tt.index_of(k), Some((t, sig)).encode());
         tt.set(k, u);
@@ -180,7 +167,7 @@ mod tests {
 
     #[proptest]
     fn set_ignores_the_signature_mismatch(
-        tt: TranspositionTable,
+        tt: Table,
         t: Transposition,
         #[filter(#u.draft() > #t.draft())] u: Transposition,
         k: Zobrist,
@@ -192,24 +179,20 @@ mod tests {
     }
 
     #[proptest]
-    fn set_stores_transposition_if_none_exists(
-        tt: TranspositionTable,
-        t: Transposition,
-        k: Zobrist,
-    ) {
+    fn set_stores_transposition_if_none_exists(tt: Table, t: Transposition, k: Zobrist) {
         tt.cache.store(tt.index_of(k), Bits::default());
         tt.set(k, t);
         assert_eq!(tt.get(k), Some(t));
     }
 
     #[proptest]
-    fn unset_erases_transposition(tt: TranspositionTable, k: Zobrist) {
+    fn unset_erases_transposition(tt: Table, k: Zobrist) {
         tt.unset(k);
         assert_eq!(tt.get(k), None);
     }
 
     #[proptest]
-    fn clear_resets_cache(mut tt: TranspositionTable, k: Zobrist) {
+    fn clear_resets_cache(mut tt: Table, k: Zobrist) {
         tt.clear();
         assert_eq!(tt.get(k), None);
     }

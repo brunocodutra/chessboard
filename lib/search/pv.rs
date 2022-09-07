@@ -1,5 +1,4 @@
-use super::Transposition;
-use crate::chess::Move;
+use crate::{chess::Move, transposition::Transposition};
 use arrayvec::ArrayVec;
 use derive_more::{Deref, DerefMut, Display, IntoIterator};
 use proptest::prelude::*;
@@ -15,8 +14,8 @@ use test_strategy::Arbitrary;
     fmt = "{}",
     "self.iter().map(Move::to_string).collect::<ArrayVec<_, N>>().join(\" \")"
 )]
-pub struct Pv<const N: usize = 256> {
-    #[strategy(any::<Vec<Move>>().prop_map(|v| v.into_iter().collect()))]
+pub struct Pv<const N: usize> {
+    #[strategy(any::<Vec<Move>>().prop_map(|v| v.into_iter().take(N).collect()))]
     #[deref(forward)]
     #[deref_mut(forward)]
     #[into_iterator(owned, ref, ref_mut)]
@@ -96,7 +95,7 @@ impl<const N: usize> FromIterator<Transposition> for Pv<N> {
 mod tests {
     use super::*;
     use crate::chess::{MoveKind, Position};
-    use crate::search::TranspositionTable;
+    use crate::transposition::Table;
     use proptest::prop_assume;
     use proptest::sample::{size_range, Selector};
     use test_strategy::proptest;
@@ -113,7 +112,7 @@ mod tests {
     }
 
     #[proptest]
-    fn len_returns_number_of_moves_in_the_sequence(tt: TranspositionTable, pos: Position) {
+    fn len_returns_number_of_moves_in_the_sequence(tt: Table, pos: Position) {
         assert_eq!(tt.iter(&pos).collect::<Pv<0>>().len(), 0);
         assert_eq!(
             tt.iter(&pos).collect::<Pv<10>>().len(),
@@ -122,10 +121,7 @@ mod tests {
     }
 
     #[proptest]
-    fn is_empty_returns_whether_there_are_no_moves_in_the_sequence(
-        tt: TranspositionTable,
-        pos: Position,
-    ) {
+    fn is_empty_returns_whether_there_are_no_moves_in_the_sequence(tt: Table, pos: Position) {
         assert!(tt.iter(&pos).collect::<Pv<0>>().is_empty());
         assert_eq!(
             tt.iter(&pos).collect::<Pv<10>>().is_empty(),
@@ -135,7 +131,7 @@ mod tests {
 
     #[proptest]
     fn collects_truncated_sequence(
-        tt: TranspositionTable,
+        tt: Table,
         #[by_ref]
         #[filter(#pos.moves(MoveKind::ANY).len() > 0)]
         pos: Position,
@@ -165,7 +161,7 @@ mod tests {
 
     #[proptest]
     fn collects_positive_draft_only(
-        tt: TranspositionTable,
+        tt: Table,
         #[by_ref]
         #[filter(#pos.moves(MoveKind::ANY).len() > 0)]
         pos: Position,
@@ -199,7 +195,7 @@ mod tests {
 
     #[proptest]
     fn depth_and_score_are_available_even_if_n_is_0(
-        tt: TranspositionTable,
+        tt: Table,
         #[by_ref]
         #[filter(#pos.moves(MoveKind::ANY).len() > 0)]
         pos: Position,
@@ -221,7 +217,7 @@ mod tests {
 
     #[proptest]
     fn depth_and_score_are_not_available_if_draft_is_not_positive(
-        tt: TranspositionTable,
+        tt: Table,
         #[by_ref]
         #[filter(#pos.moves(MoveKind::ANY).len() > 0)]
         pos: Position,

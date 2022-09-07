@@ -1,6 +1,6 @@
 use criterion::{criterion_group, criterion_main, BatchSize, Criterion};
-use lib::search::{Dispatcher as Strategy, Limits};
-use lib::{chess::Fen, prelude::*};
+use lib::chess::Fen;
+use lib::search::{Limits, Searcher};
 
 fn bench(c: &mut Criterion) {
     let mut positions = POSITIONS.iter().cycle().map(|s| {
@@ -10,7 +10,7 @@ fn bench(c: &mut Criterion) {
 
     c.benchmark_group("benches").bench_function("ttd", |b| {
         b.iter_batched_ref(
-            || (Strategy::default(), positions.next().unwrap()),
+            || (Searcher::default(), positions.next().unwrap()),
             |(s, pos)| s.search::<0>(pos, Limits::Depth(5)),
             BatchSize::SmallInput,
         );

@@ -1,13 +1,13 @@
 use super::{Io, Pipe};
 use anyhow::{bail, Context, Error as Anyhow};
 use async_trait::async_trait;
-use mockall::automock;
 use std::{io, time::Duration};
 use tokio::{runtime, task::block_in_place, time::timeout};
 use tracing::{error, field::display, instrument, Span};
 
+#[cfg(test)]
 #[async_trait]
-#[automock]
+#[mockall::automock]
 trait Child {
     async fn wait(&mut self) -> io::Result<String>;
     async fn kill(&mut self) -> io::Result<()>;

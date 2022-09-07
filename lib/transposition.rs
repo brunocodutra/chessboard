@@ -12,7 +12,7 @@ pub use iter::*;
 pub use table::*;
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Arbitrary)]
-enum TranspositionKind {
+enum Kind {
     Lower,
     Upper,
     Exact,
@@ -21,7 +21,7 @@ enum TranspositionKind {
 /// A partial search result.
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash, Arbitrary)]
 pub struct Transposition {
-    kind: TranspositionKind,
+    kind: Kind,
     score: i16,
     #[strategy(Self::MIN_DRAFT..=Self::MAX_DRAFT)]
     draft: i8,
@@ -44,7 +44,7 @@ impl Transposition {
     pub const MIN_DRAFT: i8 = (i8::MIN >> 1);
     pub const MAX_DRAFT: i8 = (i8::MAX >> 1);
 
-    fn new(kind: TranspositionKind, score: i16, draft: i8, best: Move) -> Self {
+    fn new(kind: Kind, score: i16, draft: i8, best: Move) -> Self {
         assert!(draft >= Self::MIN_DRAFT, "{} >= {}", draft, Self::MIN_DRAFT);
         assert!(draft <= Self::MAX_DRAFT, "{} <= {}", draft, Self::MAX_DRAFT);
 
@@ -58,25 +58,25 @@ impl Transposition {
 
     /// Constructs a [`Transposition`] given a lower bound for the score, remaining draft, and best [`Move`].
     pub fn lower(score: i16, draft: i8, best: Move) -> Self {
-        Transposition::new(TranspositionKind::Lower, score, draft, best)
+        Transposition::new(Kind::Lower, score, draft, best)
     }
 
     /// Constructs a [`Transposition`] given an upper bound for the score, remaining draft, and best [`Move`].
     pub fn upper(score: i16, draft: i8, best: Move) -> Self {
-        Transposition::new(TranspositionKind::Upper, score, draft, best)
+        Transposition::new(Kind::Upper, score, draft, best)
     }
 
     /// Constructs a [`Transposition`] given the exact score, remaining draft, and best [`Move`].
     pub fn exact(score: i16, draft: i8, best: Move) -> Self {
-        Transposition::new(TranspositionKind::Exact, score, draft, best)
+        Transposition::new(Kind::Exact, score, draft, best)
     }
 
     /// Bounds for the exact score.
     pub fn bounds(&self) -> RangeInclusive<i16> {
         match self.kind {
-            TranspositionKind::Lower => self.score..=i16::MAX,
-            TranspositionKind::Upper => i16::MIN..=self.score,
-            TranspositionKind::Exact => self.score..=self.score,
+            Kind::Lower => self.score..=i16::MAX,
+            Kind::Upper => i16::MIN..=self.score,
+            Kind::Exact => self.score..=self.score,
         }
     }
 
@@ -141,7 +141,7 @@ impl Binary for OptionalSignedTransposition {
             let (draft, rest) = rest.split_at(7);
             let (best, rest) = rest.split_at(<Move as Binary>::Register::WIDTH);
 
-            use TranspositionKind::*;
+            use Kind::*;
             Ok(Some((
                 Transposition {
                     kind: [Lower, Upper, Exact]
@@ -172,7 +172,7 @@ mod tests {
     ) {
         assert_eq!(
             Transposition::lower(s, d, m),
-            Transposition::new(TranspositionKind::Lower, s, d, m)
+            Transposition::new(Kind::Lower, s, d, m)
         );
     }
 
@@ -184,7 +184,7 @@ mod tests {
     ) {
         assert_eq!(
             Transposition::upper(s, d, m),
-            Transposition::new(TranspositionKind::Upper, s, d, m)
+            Transposition::new(Kind::Upper, s, d, m)
         );
     }
 
@@ -196,14 +196,14 @@ mod tests {
     ) {
         assert_eq!(
             Transposition::exact(s, d, m),
-            Transposition::new(TranspositionKind::Exact, s, d, m)
+            Transposition::new(Kind::Exact, s, d, m)
         );
     }
 
     #[proptest]
     #[should_panic]
     fn transposition_panics_if_draft_grater_than_max(
-        k: TranspositionKind,
+        k: Kind,
         s: i16,
         #[strategy(Transposition::MAX_DRAFT + 1..)] d: i8,
         m: Move,
@@ -214,7 +214,7 @@ mod tests {
     #[proptest]
     #[should_panic]
     fn transposition_panics_if_draft_lower_than_max(
-        k: TranspositionKind,
+        k: Kind,
         s: i16,
         #[strategy(..Transposition::MIN_DRAFT - 1)] d: i8,
         m: Move,
