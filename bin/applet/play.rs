@@ -1,11 +1,9 @@
-use super::Execute;
 use anyhow::Error as Anyhow;
-use async_trait::async_trait;
-use chessboard::chess::{Color, Outcome, Pgn, Position};
-use chessboard::engine::{Builder as EngineBuilder, Engine};
-use chessboard::util::Build;
 use clap::{AppSettings::DeriveDisplayOrder, Parser};
 use derive_more::{Constructor, Display, Error};
+use lib::chess::{Color, Outcome, Pgn, Position};
+use lib::engine::{Builder as EngineBuilder, Engine};
+use lib::util::Build;
 use libm::erf;
 use std::{fmt::Display, num::NonZeroUsize};
 use test_strategy::Arbitrary;
@@ -30,10 +28,9 @@ pub struct Play {
     defender: EngineBuilder,
 }
 
-#[async_trait]
-impl Execute for Play {
+impl Play {
     #[instrument(level = "trace", skip(self), err)]
-    async fn execute(self) -> Result<(), Anyhow> {
+    pub async fn execute(self) -> Result<(), Anyhow> {
         let players = [self.challenger, self.defender];
         let (mut wins, mut losses, mut draws) = (0f64, 0f64, 0f64);
         let mut pgns = Vec::with_capacity(self.games.into());
@@ -149,8 +146,8 @@ fn is_game_over(pos: &Position) -> Option<Outcome> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use chessboard::chess::MoveKind;
-    use chessboard::engine::{MockBuilder as MockEngineBuilder, MockEngine};
+    use lib::chess::MoveKind;
+    use lib::engine::{MockBuilder as MockEngineBuilder, MockEngine};
     use proptest::sample::Selector;
     use test_strategy::proptest;
     use tokio::runtime;

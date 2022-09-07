@@ -1,11 +1,9 @@
-use super::Execute;
 use anyhow::{Context, Error as Anyhow};
-use async_trait::async_trait;
-use chessboard::chess::{Fen, Position};
-use chessboard::prelude::*;
-use chessboard::search::{Builder as StrategyBuilder, Dispatcher as Strategy, Limits};
-use chessboard::util::{Io, Pipe};
 use clap::{AppSettings::DeriveDisplayOrder, Parser};
+use lib::chess::{Fen, Position};
+use lib::prelude::*;
+use lib::search::{Builder as StrategyBuilder, Dispatcher as Strategy, Limits};
+use lib::util::{Io, Pipe};
 use tokio::io::{stdin, stdout};
 use tokio::task::block_in_place;
 use tracing::{debug, error, instrument, warn};
@@ -24,10 +22,9 @@ pub struct Uci {
     strategy: StrategyBuilder,
 }
 
-#[async_trait]
-impl Execute for Uci {
+impl Uci {
     #[instrument(level = "trace", skip(self), err)]
-    async fn execute(self) -> Result<(), Anyhow> {
+    pub async fn execute(self) -> Result<(), Anyhow> {
         let strategy = self.strategy.build()?;
         let io = Pipe::new(stdout(), stdin());
         Server::new(strategy, io).run().await

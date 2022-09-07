@@ -74,6 +74,17 @@ opt-level = 0
 [profile.bench]
 debug = true
 
+[lib]
+name = "lib"
+path = "lib/lib.rs"
+bench = false
+
+[[bin]]
+name = "cli"
+path = "bin/main.rs"
+bench = false
+
 [[bench]]
 name = "ttd"
 harness = false
+
