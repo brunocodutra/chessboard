@@ -58,15 +58,15 @@ pub type Zobrist = Bits<u64, 64>;
 
 /// Represents an illegal [`Move`] in a given [`Position`].
 #[derive(Debug, Display, Clone, Eq, PartialEq, Arbitrary, Error)]
-#[display(fmt = "move `{}` is illegal in position `{}`", _0, _1)]
-pub struct IllegalMove(pub Move, pub Position);
+#[display(fmt = "move `{}` is illegal in this position", _0)]
+pub struct IllegalMove(#[error(not(source))] pub Move);
 
-/// Represents an illegal [null-move] in a given [`Position`].
+/// Represents an impossible [null-move] in a given [`Position`].
 ///
 /// [null-move]: https://www.chessprogramming.org/Null_Move
 #[derive(Debug, Display, Clone, Eq, PartialEq, Arbitrary, Error)]
-#[display(fmt = "passing the turn leads to illegal position from `{}`", _0)]
-pub struct IllegalPass(#[error(not(source))] pub Position);
+#[display(fmt = "passing the turn leads to illegal position")]
+pub struct ImpossiblePass;
 
 /// The current position on the chess board.
 ///
@@ -223,16 +223,16 @@ impl Position {
                 Ok(san)
             }
 
-            _ => Err(IllegalMove(m, self.clone())),
+            _ => Err(IllegalMove(m)),
         }
     }
 
     /// Play a [null-move] if legal in this position.
     ///
     /// [null-move]: https://www.chessprogramming.org/Null_Move
-    pub fn pass(&mut self) -> Result<San, IllegalPass> {
+    pub fn pass(&mut self) -> Result<San, ImpossiblePass> {
         match sm::Position::swap_turn(self.0.clone()) {
-            Err(_) => Err(IllegalPass(self.clone())),
+            Err(_) => Err(ImpossiblePass),
             Ok(p) => {
                 self.0 = p;
                 Ok(San::null())
@@ -520,7 +520,29 @@ mod tests {
         #[filter(#pos.clone().make(#m).is_err())] m: Move,
     ) {
         let before = pos.clone();
-        assert_eq!(pos.make(m), Err(IllegalMove(m, before.clone())));
+        assert_eq!(pos.make(m), Err(IllegalMove(m)));
+        assert_eq!(pos, before);
+    }
+
+    #[proptest]
+    fn possible_pass_updates_position(
+        #[by_ref]
+        #[filter(#pos.clone().pass().is_ok())]
+        mut pos: Position,
+    ) {
+        let before = pos.clone();
+        assert_eq!(pos.pass(), Ok(San::null()));
+        assert_ne!(pos, before);
+    }
+
+    #[proptest]
+    fn impossible_pass_fails_without_changing_position(
+        #[by_ref]
+        #[filter(#pos.clone().pass().is_err())]
+        mut pos: Position,
+    ) {
+        let before = pos.clone();
+        assert_eq!(pos.pass(), Err(ImpossiblePass));
         assert_eq!(pos, before);
     }
 
