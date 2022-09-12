@@ -110,6 +110,21 @@ impl Searcher {
         moves
     }
 
+    /// An implementation of [null move pruning].
+    ///
+    /// [null move pruning]: https://www.chessprogramming.org/Null_Move_Pruning
+    fn nmp(&self, pos: &Position, draft: i8) -> Option<i8> {
+        let turn = pos.turn();
+
+        // Avoid common zugzwang positions in which the side to move only has pawns.
+        if draft > 0 && pos.by_color(turn).len() > pos.by_piece(Piece(turn, Role::Pawn)).len() + 1 {
+            let r = 2 + draft / 8;
+            Some((draft - r - 1).max(0))
+        } else {
+            None
+        }
+    }
+
     /// An implementation of [aspiration windows].
     ///
     /// [aspiration windows]: https://www.chessprogramming.org/Aspiration_Windows
@@ -212,14 +227,10 @@ impl Searcher {
                 metrics.sp_cut();
                 return Ok(stand_pat);
             }
-        } else if draft > 0 && *stand_pat >= beta && prev.is_some()
-                // Avoid common zugzwang positions in which the side to move only has pawns.
-                && pos.by_color(pos.turn()).len() - 1 > pos.by_piece(Piece(pos.turn(), Role::Pawn)).len()
-        {
-            let mut pos = pos.clone();
-            if pos.pass().is_ok() {
-                let r = (2 + draft / 8).min(draft - 1);
-                if *-self.nw(None, &pos, -beta, draft - r - 1, time, metrics)? >= beta {
+        } else if *stand_pat >= beta && prev.is_some() {
+            if let Some(d) = self.nmp(pos, draft) {
+                let mut next = pos.clone();
+                if next.pass().is_ok() && *-self.nw(None, &next, -beta, d, time, metrics)? >= beta {
                     metrics.nm_cut();
                     #[cfg(not(test))]
                     // The null move pruning heuristic is not exact.

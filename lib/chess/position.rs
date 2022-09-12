@@ -297,12 +297,18 @@ impl Position {
     ///
     /// [null-move]: https://www.chessprogramming.org/Null_Move
     pub fn pass(&mut self) -> Result<San, ImpossiblePass> {
-        match sm::Position::swap_turn(self.0.clone()) {
-            Err(_) => Err(ImpossiblePass),
-            Ok(p) => {
-                self.0 = p;
-                Ok(San::null())
-            }
+        if self.is_check() {
+            Err(ImpossiblePass)
+        } else {
+            let null = sm::Move::Put {
+                role: sm::Role::King,
+                to: sm::Position::our(&self.0, sm::Role::King)
+                    .first()
+                    .expect("expected king on the board"),
+            };
+
+            sm::Position::play_unchecked(&mut self.0, &null);
+            Ok(San::null())
         }
     }
 }
@@ -591,9 +597,9 @@ mod tests {
     }
 
     #[proptest]
-    fn possible_pass_updates_position(
+    fn pass_updates_position(
         #[by_ref]
-        #[filter(#pos.clone().pass().is_ok())]
+        #[filter(!#pos.is_check())]
         mut pos: Position,
     ) {
         let before = pos.clone();
