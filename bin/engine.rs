@@ -28,9 +28,6 @@ pub enum EngineConfig {
     Pesto(#[serde(default)] Limits, #[serde(default)] Options),
 
     #[display(fmt = "{}", "ron::ser::to_string(self).unwrap()")]
-    Random(#[serde(default)] Limits, #[serde(default)] Options),
-
-    #[display(fmt = "{}", "ron::ser::to_string(self).unwrap()")]
     Uci(
         String,
         #[serde(default)] Limits,
@@ -132,24 +129,6 @@ mod tests {
         assert_eq!(
             format!("pesto({}, {})", l, o).parse(),
             Ok(EngineConfig::Pesto(l, o))
-        );
-    }
-
-    #[proptest]
-    fn random_config_is_deserializable(l: Limits, o: Options) {
-        assert_eq!(
-            "random()".parse(),
-            Ok(EngineConfig::Random(Limits::default(), Options::default()))
-        );
-
-        assert_eq!(
-            format!("random({})", l).parse(),
-            Ok(EngineConfig::Random(l, Options::default()))
-        );
-
-        assert_eq!(
-            format!("random({}, {})", l, o).parse(),
-            Ok(EngineConfig::Random(l, o))
         );
     }
 
