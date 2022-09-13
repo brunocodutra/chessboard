@@ -1,6 +1,6 @@
 use crate::engine::{Ai, Engine, EngineConfig, EngineError, Uci, UciError};
 use crate::io::Process;
-use lib::eval::{Pesto, Random};
+use lib::eval::Pesto;
 
 /// Trait for types that build other types.
 pub trait Build {
@@ -24,10 +24,6 @@ impl Build for EngineConfig {
                 Ok(Ai::new(Pesto::new().into(), limits, options).into())
             }
 
-            EngineConfig::Random(limits, options) => {
-                Ok(Ai::new(Random::new().into(), limits, options).into())
-            }
-
             EngineConfig::Uci(path, limits, options) => {
                 let io = Process::spawn(&path).map_err(UciError::from)?;
                 Ok(Uci::new(io, limits, options).into())
@@ -47,14 +43,6 @@ mod tests {
     fn pesto_can_be_configured_at_runtime(l: Limits, o: Options) {
         assert!(matches!(
             EngineConfig::Pesto(l, o).build(),
-            Ok(Engine::Ai(_))
-        ));
-    }
-
-    #[proptest]
-    fn random_can_be_configured_at_runtime(l: Limits, o: Options) {
-        assert!(matches!(
-            EngineConfig::Random(l, o).build(),
             Ok(Engine::Ai(_))
         ));
     }
