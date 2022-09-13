@@ -1,15 +1,14 @@
-use super::PieceSquareTable;
-
-/// [PeSTO]'s end-game PST.
+/// [PeSTO]'s end-game [Piece-Square Table].
 ///
 /// [PeSTO]: https://www.chessprogramming.org/PeSTO%27s_Evaluation_Function
-pub struct EndGame;
+/// [Piece-Square Table]: https://www.chessprogramming.org/Piece-Square_Tables
+pub enum EndGame {}
 
-impl PieceSquareTable for EndGame {
-    const PIECE_VALUE: [i16; 6] = [94, 281, 297, 512, 936, 12000];
+impl EndGame {
+    pub const PIECE_VALUE: [i16; 6] = [94, 281, 297, 512, 936, 12000];
 
     #[rustfmt::skip]
-    const PIECE_SQUARE_BONUS: [[i16; 64]; 6] = [
+    pub const PIECE_SQUARE_BONUS: [[i16; 64]; 6] = [
         [ // Pawn
               0,   0,   0,   0,   0,   0,   0,   0,
             178, 173, 158, 134, 147, 132, 165, 187,
