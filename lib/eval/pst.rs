@@ -64,6 +64,6 @@ impl<T: PieceSquareTable> Eval<Role> for T {
 
 impl<T: PieceSquareTable> Eval<Promotion> for T {
     fn eval(&self, p: &Promotion) -> i16 {
-        Option::<Role>::from(*p).map(|r| self.eval(&r)).unwrap_or(0)
+        Option::<Role>::from(*p).map_or_else(|| 0, |r| self.eval(&r) - self.eval(&Role::Pawn))
     }
 }

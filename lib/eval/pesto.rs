@@ -180,7 +180,7 @@ impl Eval<Role> for Pesto {
 
 impl Eval<Promotion> for Pesto {
     fn eval(&self, p: &Promotion) -> i16 {
-        Option::<Role>::from(*p).map(|r| self.eval(&r)).unwrap_or(0)
+        EndGamePesto.eval(p)
     }
 }
 
