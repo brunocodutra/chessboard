@@ -28,9 +28,6 @@ pub enum EngineConfig {
     Pesto(#[serde(default)] Limits, #[serde(default)] Options),
 
     #[display(fmt = "{}", "ron::ser::to_string(self).unwrap()")]
-    Materialist(#[serde(default)] Limits, #[serde(default)] Options),
-
-    #[display(fmt = "{}", "ron::ser::to_string(self).unwrap()")]
     Random(#[serde(default)] Limits, #[serde(default)] Options),
 
     #[display(fmt = "{}", "ron::ser::to_string(self).unwrap()")]
@@ -135,27 +132,6 @@ mod tests {
         assert_eq!(
             format!("pesto({}, {})", l, o).parse(),
             Ok(EngineConfig::Pesto(l, o))
-        );
-    }
-
-    #[proptest]
-    fn materialist_config_is_deserializable(l: Limits, o: Options) {
-        assert_eq!(
-            "materialist()".parse(),
-            Ok(EngineConfig::Materialist(
-                Limits::default(),
-                Options::default()
-            ))
-        );
-
-        assert_eq!(
-            format!("materialist({})", l).parse(),
-            Ok(EngineConfig::Materialist(l, Options::default()))
-        );
-
-        assert_eq!(
-            format!("materialist({}, {})", l, o).parse(),
-            Ok(EngineConfig::Materialist(l, o))
         );
     }
 

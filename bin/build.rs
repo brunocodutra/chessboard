@@ -1,6 +1,6 @@
 use crate::engine::{Ai, Engine, EngineConfig, EngineError, Uci, UciError};
 use crate::io::Process;
-use lib::eval::{Materialist, Pesto, Random};
+use lib::eval::{Pesto, Random};
 
 /// Trait for types that build other types.
 pub trait Build {
@@ -22,10 +22,6 @@ impl Build for EngineConfig {
         match self {
             EngineConfig::Pesto(limits, options) => {
                 Ok(Ai::new(Pesto::new().into(), limits, options).into())
-            }
-
-            EngineConfig::Materialist(limits, options) => {
-                Ok(Ai::new(Materialist::new().into(), limits, options).into())
             }
 
             EngineConfig::Random(limits, options) => {
@@ -51,14 +47,6 @@ mod tests {
     fn pesto_can_be_configured_at_runtime(l: Limits, o: Options) {
         assert!(matches!(
             EngineConfig::Pesto(l, o).build(),
-            Ok(Engine::Ai(_))
-        ));
-    }
-
-    #[proptest]
-    fn materialist_can_be_configured_at_runtime(l: Limits, o: Options) {
-        assert!(matches!(
-            EngineConfig::Materialist(l, o).build(),
             Ok(Engine::Ai(_))
         ));
     }
