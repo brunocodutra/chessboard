@@ -1,15 +1,14 @@
-use super::PieceSquareTable;
-
-/// [PeSTO]'s mid-game PST.
+/// [PeSTO]'s mid-game [Piece-Square Table].
 ///
 /// [PeSTO]: https://www.chessprogramming.org/PeSTO%27s_Evaluation_Function
-pub struct MidGame;
+/// [Piece-Square Table]: https://www.chessprogramming.org/Piece-Square_Tables
+pub enum MidGame {}
 
-impl PieceSquareTable for MidGame {
-    const PIECE_VALUE: [i16; 6] = [82, 337, 365, 477, 1025, 12000];
+impl MidGame {
+    pub const PIECE_VALUE: [i16; 6] = [82, 337, 365, 477, 1025, 12000];
 
     #[rustfmt::skip]
-    const PIECE_SQUARE_BONUS: [[i16; 64]; 6] = [
+    pub const PIECE_SQUARE_BONUS: [[i16; 64]; 6] = [
         [ // Pawn
               0,   0,   0,   0,   0,   0,  0,   0,
              98, 134,  61,  95,  68, 126, 34, -11,
