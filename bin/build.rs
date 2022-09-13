@@ -1,6 +1,6 @@
 use crate::engine::{Ai, Engine, EngineConfig, EngineError, Uci, UciError};
 use crate::io::Process;
-use lib::eval::Pesto;
+use lib::eval::Evaluator;
 
 /// Trait for types that build other types.
 pub trait Build {
@@ -20,8 +20,8 @@ impl Build for EngineConfig {
 
     fn build(self) -> Result<Self::Output, Self::Error> {
         match self {
-            EngineConfig::Pesto(limits, options) => {
-                Ok(Ai::new(Pesto::new().into(), limits, options).into())
+            EngineConfig::Ai(limits, options) => {
+                Ok(Ai::new(Evaluator::new(), limits, options).into())
             }
 
             EngineConfig::Uci(path, limits, options) => {
@@ -40,11 +40,8 @@ mod tests {
     use test_strategy::proptest;
 
     #[proptest]
-    fn pesto_can_be_configured_at_runtime(l: Limits, o: Options) {
-        assert!(matches!(
-            EngineConfig::Pesto(l, o).build(),
-            Ok(Engine::Ai(_))
-        ));
+    fn ai_can_be_configured_at_runtime(l: Limits, o: Options) {
+        assert!(matches!(EngineConfig::Ai(l, o).build(), Ok(Engine::Ai(_))));
     }
 
     #[proptest]

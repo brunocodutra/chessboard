@@ -25,7 +25,7 @@ pub struct ParseEngineConfigError(ron::de::SpannedError);
 #[serde(deny_unknown_fields, rename_all = "lowercase")]
 pub enum EngineConfig {
     #[display(fmt = "{}", "ron::ser::to_string(self).unwrap()")]
-    Pesto(#[serde(default)] Limits, #[serde(default)] Options),
+    Ai(#[serde(default)] Limits, #[serde(default)] Options),
 
     #[display(fmt = "{}", "ron::ser::to_string(self).unwrap()")]
     Uci(
@@ -37,7 +37,7 @@ pub enum EngineConfig {
 
 impl Default for EngineConfig {
     fn default() -> Self {
-        EngineConfig::Pesto(Limits::default(), Options::default())
+        EngineConfig::Ai(Limits::default(), Options::default())
     }
 }
 
@@ -115,20 +115,20 @@ mod tests {
     }
 
     #[proptest]
-    fn pesto_config_is_deserializable(l: Limits, o: Options) {
+    fn ai_config_is_deserializable(l: Limits, o: Options) {
         assert_eq!(
-            "pesto()".parse(),
-            Ok(EngineConfig::Pesto(Limits::default(), Options::default()))
+            "ai()".parse(),
+            Ok(EngineConfig::Ai(Limits::default(), Options::default()))
         );
 
         assert_eq!(
-            format!("pesto({})", l).parse(),
-            Ok(EngineConfig::Pesto(l, Options::default()))
+            format!("ai({})", l).parse(),
+            Ok(EngineConfig::Ai(l, Options::default()))
         );
 
         assert_eq!(
-            format!("pesto({}, {})", l, o).parse(),
-            Ok(EngineConfig::Pesto(l, o))
+            format!("ai({}, {})", l, o).parse(),
+            Ok(EngineConfig::Ai(l, o))
         );
     }
 
