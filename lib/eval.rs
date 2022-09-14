@@ -1,4 +1,4 @@
-use crate::chess::{Color, Piece, Position, Promotion, Role};
+use crate::chess::{Color, Piece, Position, Promotion, Role, Square};
 use derive_more::Constructor;
 use test_strategy::Arbitrary;
 
@@ -52,6 +52,13 @@ impl Evaluator {
             .sum::<usize>()
             .min(Self::PHASES)
     }
+
+    fn lookup(&self, phase: usize, Piece(c, r): Piece, s: Square) -> i16 {
+        Self::PIECE_SQUARE_TABLE[phase][r as usize][match c {
+            Color::White => s.mirror().index() as usize,
+            Color::Black => s.index() as usize,
+        }]
+    }
 }
 
 impl Eval<Position> for Evaluator {
@@ -68,10 +75,7 @@ impl Eval<Position> for Evaluator {
             for r in Role::iter() {
                 for c in [Color::White, Color::Black] {
                     for s in pos.by_piece(Piece(c, r)) {
-                        score[c as usize] += Self::PIECE_SQUARE_TABLE[phase][r as usize][match c {
-                            Color::White => s.mirror().index() as usize,
-                            Color::Black => s.index() as usize,
-                        }];
+                        score[c as usize] += self.lookup(phase, Piece(c, r), s);
                     }
                 }
             }
@@ -89,7 +93,13 @@ impl Eval<Role> for Evaluator {
 
 impl Eval<Promotion> for Evaluator {
     fn eval(&self, p: &Promotion) -> i16 {
-        Option::<Role>::from(*p).map_or_else(|| 0, |r| self.eval(&r) - self.eval(&Role::Pawn))
+        Option::<Role>::from(*p).map_or(0, |r| self.eval(&r) - self.eval(&Role::Pawn))
+    }
+}
+
+impl Eval<(&Position, Square)> for Evaluator {
+    fn eval(&self, &(pos, s): &(&Position, Square)) -> i16 {
+        pos[s].map_or(0, |p| self.lookup(self.phase(pos), p, s))
     }
 }
 
