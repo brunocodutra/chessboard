@@ -84,29 +84,33 @@ impl Searcher {
         pos: &Position,
         kind: MoveKind,
         transposition: Option<Transposition>,
-    ) -> Vec<(Move, MoveKind, Position)> {
-        let mut moves: Vec<_> = pos.moves(kind).collect();
+    ) -> Vec<(Move, Position, i16)> {
+        let mut moves: Vec<_> = pos
+            .moves(kind)
+            .map(|(m, _, next)| {
+                let value = if transposition.map(|t| t.best()) == Some(m) {
+                    i16::MAX
+                } else {
+                    let loss = next.see(m.whither()).rev().fold(0i16, |v, (r, p)| {
+                        let capture = self.evaluator.eval(&r);
+                        let promotion = self.evaluator.eval(&p);
+                        promotion.saturating_sub(v).saturating_add(capture).max(0)
+                    });
 
-        moves.sort_by_cached_key(|(m, _, p)| {
-            if transposition.map(|t| t.best()) == Some(*m) {
-                i16::MAX
-            } else {
-                let exchange = p.see(m.whither()).rev().fold(0i16, |v, (r, p)| {
-                    let capture = self.evaluator.eval(&r);
-                    let promotion = self.evaluator.eval(&p);
-                    promotion.saturating_sub(v).saturating_add(capture).max(0)
-                });
+                    let gain = self.evaluator.eval(&(pos, m.whither()));
+                    let source = self.evaluator.eval(&(pos, m.whence()));
+                    let destination = self.evaluator.eval(&(&next, m.whither()));
 
-                let capture = pos[m.whither()]
-                    .map(|p| self.evaluator.eval(&p.role()))
-                    .unwrap_or(0);
+                    gain.saturating_sub(loss)
+                        .saturating_add(destination)
+                        .saturating_sub(source)
+                };
 
-                let promotion = self.evaluator.eval(&m.promotion());
+                (m, next, value)
+            })
+            .collect();
 
-                promotion.saturating_sub(exchange).saturating_add(capture)
-            }
-        });
-
+        moves.sort_unstable_by_key(|(_, _, s)| *s);
         moves
     }
 
@@ -249,8 +253,8 @@ impl Searcher {
 
         let (score, pv) = match moves.pop() {
             None => return Ok(stand_pat),
-            Some((m, _, pos)) => {
-                let score = -self.pvs(Some(m), &pos, -beta..-alpha, draft - 1, time, metrics)?;
+            Some((m, next, _)) => {
+                let score = -self.pvs(Some(m), &next, -beta..-alpha, draft - 1, time, metrics)?;
 
                 if *score >= beta {
                     metrics.pv_cut();
@@ -268,12 +272,12 @@ impl Searcher {
             .into_par_iter()
             .with_max_len(1)
             .rev()
-            .map(|(m, _, pos)| {
+            .map(|(m, next, _)| {
                 let mut score = Score(i16::MIN, Self::MIN_DRAFT);
                 let mut alpha = cutoff.load(Ordering::Relaxed);
                 while *score < alpha && alpha < beta {
                     let target = alpha;
-                    score = -self.nw(Some(m), &pos, -target - 1, draft - 1, time, metrics)?;
+                    score = -self.nw(Some(m), &next, -target - 1, draft - 1, time, metrics)?;
                     alpha = cutoff.fetch_max(*score, Ordering::Relaxed).max(*score);
                     if *score < target {
                         break;
@@ -281,7 +285,7 @@ impl Searcher {
                 }
 
                 if alpha <= *score && *score < beta {
-                    score = -self.pvs(Some(m), &pos, -beta..-alpha, draft - 1, time, metrics)?;
+                    score = -self.pvs(Some(m), &next, -beta..-alpha, draft - 1, time, metrics)?;
                     cutoff.fetch_max(*score, Ordering::Relaxed);
                 }
 
