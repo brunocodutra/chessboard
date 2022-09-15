@@ -79,6 +79,25 @@ impl Searcher {
         Score(self.evaluator.eval(pos).max(-i16::MAX), draft)
     }
 
+    /// The Static Exchange Evaluation ([SEE]) algorithm.
+    ///
+    /// [SEE]: https://www.chessprogramming.org/Static_Exchange_Evaluation
+    fn see(&self, pos: &Position, next: &Position, m: Move) -> i16 {
+        let loss = next.exchanges(m.whither()).rev().fold(0i16, |v, (r, p)| {
+            let capture = self.evaluator.eval(&r);
+            let promotion = self.evaluator.eval(&p);
+            promotion.saturating_sub(v).saturating_add(capture).max(0)
+        });
+
+        let gain = self.evaluator.eval(&(pos, m.whither()));
+        let source = self.evaluator.eval(&(pos, m.whence()));
+        let destination = self.evaluator.eval(&(next, m.whither()));
+
+        gain.saturating_sub(loss)
+            .saturating_add(destination)
+            .saturating_sub(source)
+    }
+
     fn moves(
         &self,
         pos: &Position,
@@ -91,19 +110,7 @@ impl Searcher {
                 let value = if transposition.map(|t| t.best()) == Some(m) {
                     i16::MAX
                 } else {
-                    let loss = next.see(m.whither()).rev().fold(0i16, |v, (r, p)| {
-                        let capture = self.evaluator.eval(&r);
-                        let promotion = self.evaluator.eval(&p);
-                        promotion.saturating_sub(v).saturating_add(capture).max(0)
-                    });
-
-                    let gain = self.evaluator.eval(&(pos, m.whither()));
-                    let source = self.evaluator.eval(&(pos, m.whence()));
-                    let destination = self.evaluator.eval(&(&next, m.whither()));
-
-                    gain.saturating_sub(loss)
-                        .saturating_add(destination)
-                        .saturating_sub(source)
+                    self.see(pos, &next, m)
                 };
 
                 (m, next, value)

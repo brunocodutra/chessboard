@@ -187,10 +187,36 @@ impl Position {
             .map(Square::from)
     }
 
-    /// The Static Exchange Evaluation ([SEE]) algorithm.
+    /// Whether this position is a [check].
     ///
-    /// [SEE]: https://www.chessprogramming.org/Static_Exchange_Evaluation
-    pub fn see(
+    /// [check]: https://www.chessprogramming.org/Check
+    pub fn is_check(&self) -> bool {
+        sm::Position::is_check(&self.0)
+    }
+
+    /// Whether this position is a [checkmate].
+    ///
+    /// [checkmate]: https://www.chessprogramming.org/Checkmate
+    pub fn is_checkmate(&self) -> bool {
+        sm::Position::is_checkmate(&self.0)
+    }
+
+    /// Whether this position is a [stalemate].
+    ///
+    /// [stalemate]: https://www.chessprogramming.org/Stalemate
+    pub fn is_stalemate(&self) -> bool {
+        sm::Position::is_stalemate(&self.0)
+    }
+
+    /// Whether this position has [insufficient material].
+    ///
+    /// [insufficient material]: https://www.chessprogramming.org/Material#InsufficientMaterial
+    pub fn is_material_insufficient(&self) -> bool {
+        sm::Position::is_insufficient_material(&self.0)
+    }
+
+    /// A series of exchanges on a given [`Square`] ordered by least-value-attacker.
+    pub fn exchanges(
         &self,
         s: Square,
     ) -> impl DoubleEndedIterator<Item = (Role, Promotion)> + ExactSizeIterator {
@@ -234,34 +260,6 @@ impl Position {
         }
 
         exchanges.into_iter()
-    }
-
-    /// Whether this position is a [check].
-    ///
-    /// [check]: https://www.chessprogramming.org/Check
-    pub fn is_check(&self) -> bool {
-        sm::Position::is_check(&self.0)
-    }
-
-    /// Whether this position is a [checkmate].
-    ///
-    /// [checkmate]: https://www.chessprogramming.org/Checkmate
-    pub fn is_checkmate(&self) -> bool {
-        sm::Position::is_checkmate(&self.0)
-    }
-
-    /// Whether this position is a [stalemate].
-    ///
-    /// [stalemate]: https://www.chessprogramming.org/Stalemate
-    pub fn is_stalemate(&self) -> bool {
-        sm::Position::is_stalemate(&self.0)
-    }
-
-    /// Whether this position has [insufficient material].
-    ///
-    /// [insufficient material]: https://www.chessprogramming.org/Material#InsufficientMaterial
-    pub fn is_material_insufficient(&self) -> bool {
-        sm::Position::is_insufficient_material(&self.0)
     }
 
     /// An iterator over the legal [`Move`]s that can be played in this position.
