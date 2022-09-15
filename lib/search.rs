@@ -136,6 +136,17 @@ impl Searcher {
         }
     }
 
+    /// An implementation of [futility pruning].
+    ///
+    /// [utility pruning]: https://www.chessprogramming.org/Futility_Pruning
+    fn futility(&self, pos: &Position, next: &Position, draft: i8, value: i16) -> i16 {
+        if (1..=2).contains(&draft) && !pos.is_check() && !next.is_check() {
+            value.max(draft as i16 * self.evaluator.eval(&Role::Pawn))
+        } else {
+            i16::MAX
+        }
+    }
+
     /// An implementation of [aspiration windows].
     ///
     /// [aspiration windows]: https://www.chessprogramming.org/Aspiration_Windows
@@ -279,9 +290,16 @@ impl Searcher {
             .into_par_iter()
             .with_max_len(1)
             .rev()
-            .map(|(m, next, _)| {
+            .map(|(m, next, v)| {
                 let mut score = Score(i16::MIN, Self::MIN_DRAFT);
                 let mut alpha = cutoff.load(Ordering::Relaxed);
+
+                if stand_pat.saturating_add(self.futility(pos, &next, draft, v)) < alpha {
+                    // The futility pruning heuristic is not exact.
+                    #[cfg(not(test))]
+                    return Ok(None);
+                }
+
                 while *score < alpha && alpha < beta {
                     let target = alpha;
                     score = -self.nw(Some(m), &next, -target - 1, draft - 1, time, metrics)?;
