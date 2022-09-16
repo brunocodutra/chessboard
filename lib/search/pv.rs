@@ -139,10 +139,10 @@ mod tests {
         #[strategy(1i8..=Transposition::MAX_DRAFT)] d: i8,
         selector: Selector,
     ) {
-        let (m, _, next) = selector.select(pos.moves(MoveKind::ANY));
+        let (m, next) = selector.select(pos.moves(MoveKind::ANY));
         prop_assume!(next.moves(MoveKind::ANY).len() > 0);
 
-        let (n, _, _) = selector.select(next.moves(MoveKind::ANY));
+        let (n, _) = selector.select(next.moves(MoveKind::ANY));
 
         let t = Transposition::lower(s, d, m);
         tt.unset(pos.zobrist());
@@ -170,10 +170,10 @@ mod tests {
         #[strategy(Transposition::MIN_DRAFT..=0)] b: i8,
         selector: Selector,
     ) {
-        let (m, _, next) = selector.select(pos.moves(MoveKind::ANY));
+        let (m, next) = selector.select(pos.moves(MoveKind::ANY));
         prop_assume!(next.moves(MoveKind::ANY).len() > 0);
 
-        let (n, _, _) = selector.select(next.moves(MoveKind::ANY));
+        let (n, _) = selector.select(next.moves(MoveKind::ANY));
 
         let t = Transposition::lower(s, a, m);
         tt.unset(pos.zobrist());
@@ -203,7 +203,7 @@ mod tests {
         #[strategy(1..Transposition::MAX_DRAFT)] d: i8,
         selector: Selector,
     ) {
-        let (m, _, _) = selector.select(pos.moves(MoveKind::ANY));
+        let (m, _) = selector.select(pos.moves(MoveKind::ANY));
 
         let t = Transposition::lower(s, d, m);
         tt.unset(pos.zobrist());
@@ -225,7 +225,7 @@ mod tests {
         #[strategy(Transposition::MIN_DRAFT..=0)] d: i8,
         selector: Selector,
     ) {
-        let (m, _, _) = selector.select(pos.moves(MoveKind::ANY));
+        let (m, _) = selector.select(pos.moves(MoveKind::ANY));
 
         let t = Transposition::lower(s, d, m);
         tt.unset(pos.zobrist());
