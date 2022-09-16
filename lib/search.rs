@@ -84,18 +84,18 @@ impl Searcher {
     /// [SEE]: https://www.chessprogramming.org/Static_Exchange_Evaluation
     fn see(&self, pos: &Position, next: &Position, m: Move) -> i16 {
         let loss = next.exchanges(m.whither()).rev().fold(0i16, |v, (r, p)| {
-            let capture = self.evaluator.eval(&r);
-            let promotion = self.evaluator.eval(&p);
-            promotion.saturating_sub(v).saturating_add(capture).max(0)
+            let cap = self.evaluator.eval(&r);
+            let promo = self.evaluator.eval(&p);
+            cap.saturating_sub(v).saturating_add(promo).max(0)
         });
 
-        let gain = self.evaluator.eval(&(pos, m.whither()));
-        let source = self.evaluator.eval(&(pos, m.whence()));
-        let destination = self.evaluator.eval(&(next, m.whither()));
+        let cap = self.evaluator.eval(&(pos, m.whither()));
+        let src = self.evaluator.eval(&(pos, m.whence()));
+        let dst = self.evaluator.eval(&(next, m.whither()));
 
-        gain.saturating_sub(loss)
-            .saturating_add(destination)
-            .saturating_sub(source)
+        cap.saturating_sub(loss)
+            .saturating_add(dst)
+            .saturating_sub(src)
     }
 
     fn moves(
@@ -106,18 +106,18 @@ impl Searcher {
     ) -> Vec<(Move, Position, i16)> {
         let mut moves: Vec<_> = pos
             .moves(kind)
-            .map(|(m, _, next)| {
-                let value = if transposition.map(|t| t.best()) == Some(m) {
+            .map(|(m, next)| {
+                let gain = if transposition.map(|t| t.best()) == Some(m) {
                     i16::MAX
                 } else {
                     self.see(pos, &next, m)
                 };
 
-                (m, next, value)
+                (m, next, gain)
             })
             .collect();
 
-        moves.sort_unstable_by_key(|(_, _, s)| *s);
+        moves.sort_unstable_by_key(|(_, _, gain)| *gain);
         moves
     }
 
@@ -139,9 +139,9 @@ impl Searcher {
     /// An implementation of [futility pruning].
     ///
     /// [utility pruning]: https://www.chessprogramming.org/Futility_Pruning
-    fn futility(&self, pos: &Position, next: &Position, draft: i8, value: i16) -> i16 {
+    fn futility(&self, pos: &Position, next: &Position, draft: i8, gain: i16) -> i16 {
         if (1..=2).contains(&draft) && !pos.is_check() && !next.is_check() {
-            value.max(draft as i16 * self.evaluator.eval(&Role::Pawn))
+            gain.max(draft as i16 * self.evaluator.eval(&Role::Pawn))
         } else {
             i16::MAX
         }
@@ -290,11 +290,11 @@ impl Searcher {
             .into_par_iter()
             .with_max_len(1)
             .rev()
-            .map(|(m, next, v)| {
+            .map(|(m, next, gain)| {
                 let mut score = Score(i16::MIN, Self::MIN_DRAFT);
                 let mut alpha = cutoff.load(Ordering::Relaxed);
 
-                if stand_pat.saturating_add(self.futility(pos, &next, draft, v)) < alpha {
+                if stand_pat.saturating_add(self.futility(pos, &next, draft, gain)) < alpha {
                     // The futility pruning heuristic is not exact.
                     #[cfg(not(test))]
                     return Ok(None);
@@ -384,7 +384,7 @@ mod tests {
         };
 
         pos.moves(kind)
-            .map(|(_, _, pos)| -negamax(evaluator, &pos, draft - 1))
+            .map(|(_, pos)| -negamax(evaluator, &pos, draft - 1))
             .max()
             .unwrap_or(score)
     }

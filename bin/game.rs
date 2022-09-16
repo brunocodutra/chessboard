@@ -208,7 +208,7 @@ mod tests {
             match is_game_over(&next) {
                 Some(o) => break o,
                 _ => {
-                    let (m, _, _) = selector.select(next.moves(MoveKind::ANY));
+                    let (m, _) = selector.select(next.moves(MoveKind::ANY));
                     moves.push(m);
                     sans.push(next.make(m)?);
                 }

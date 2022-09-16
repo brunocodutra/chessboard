@@ -51,10 +51,10 @@ mod tests {
         s: i16,
         selector: Selector,
     ) {
-        let (m, _, next) = selector.select(pos.moves(MoveKind::ANY));
+        let (m, next) = selector.select(pos.moves(MoveKind::ANY));
         prop_assume!(next.moves(MoveKind::ANY).len() > 0);
 
-        let (n, _, _) = selector.select(next.moves(MoveKind::ANY));
+        let (n, _) = selector.select(next.moves(MoveKind::ANY));
 
         let t = Transposition::lower(s, d, m);
         tt.unset(pos.zobrist());

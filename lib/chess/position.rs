@@ -6,7 +6,7 @@ use bitvec::{order::Lsb0, view::BitView};
 use derive_more::{DebugCustom, Display, Error};
 use proptest::{prelude::*, sample::Selector};
 use shakmaty as sm;
-use std::{convert::TryFrom, num::NonZeroU32, ops::Index};
+use std::{convert::TryFrom, iter, num::NonZeroU32, ops::Index};
 use test_strategy::Arbitrary;
 
 bitflags! {
@@ -45,13 +45,6 @@ impl From<&sm::Move> for MoveKind {
 impl From<&mut sm::Move> for MoveKind {
     fn from(m: &mut sm::Move) -> Self {
         (&*m).into()
-    }
-}
-
-#[doc(hidden)]
-impl From<sm::Move> for MoveKind {
-    fn from(m: sm::Move) -> Self {
-        (&m).into()
     }
 }
 
@@ -222,51 +215,45 @@ impl Position {
     ) -> impl DoubleEndedIterator<Item = (Role, Promotion)> + ExactSizeIterator {
         let to = s.into();
         let mut pos = self.0.clone();
-        let mut board = sm::Position::board(&pos);
-        let mut exchanges: ArrayVec<(Role, Promotion), 32> = ArrayVec::new();
 
-        while let Some(capture) = board.role_at(to) {
-            match board
+        iter::from_fn(move || {
+            let board = sm::Position::board(&pos);
+            let capture = board.role_at(to)?;
+
+            let (from, role) = board
                 .attacks_to(to, sm::Position::turn(&pos), board.occupied())
                 .into_iter()
                 .filter_map(|s| Some((s, board.role_at(s)?)))
-                .min_by_key(|(_, r)| *r)
-            {
-                None => break,
-                Some((from, role)) => {
-                    let promotion = if role == sm::Role::Pawn
-                        && [sm::Rank::First, sm::Rank::Eighth].contains(&to.rank())
-                    {
-                        Some(sm::Role::Queen)
-                    } else {
-                        None
-                    };
+                .min_by_key(|(_, r)| *r)?;
 
-                    sm::Position::play_unchecked(
-                        &mut pos,
-                        &sm::Move::Normal {
-                            role,
-                            from,
-                            capture: Some(capture),
-                            to,
-                            promotion,
-                        },
-                    );
+            let promotion = match (role, to.rank()) {
+                (sm::Role::Pawn, sm::Rank::First | sm::Rank::Eighth) => Some(sm::Role::Queen),
+                _ => None,
+            };
 
-                    board = sm::Position::board(&pos);
-                    exchanges.push((capture.into(), promotion.into()));
-                }
-            }
-        }
+            sm::Position::play_unchecked(
+                &mut pos,
+                &sm::Move::Normal {
+                    role,
+                    from,
+                    capture: Some(capture),
+                    to,
+                    promotion,
+                },
+            );
 
-        exchanges.into_iter()
+            Some((capture.into(), promotion.into()))
+        })
+        .take(32)
+        .collect::<ArrayVec<_, 32>>()
+        .into_iter()
     }
 
     /// An iterator over the legal [`Move`]s that can be played in this position.
     pub fn moves(
         &self,
         kind: MoveKind,
-    ) -> impl DoubleEndedIterator<Item = (Move, MoveKind, Self)> + ExactSizeIterator {
+    ) -> impl DoubleEndedIterator<Item = (Move, Self)> + ExactSizeIterator {
         let mut legals = sm::Position::legal_moves(&self.0);
         legals.retain(|vm| kind.intersects(vm.into()));
 
@@ -274,7 +261,7 @@ impl Position {
         legals.into_iter().map(move |vm| {
             let mut p = p.clone();
             sm::Position::play_unchecked(&mut p, &vm);
-            (sm::uci::Uci::from_standard(&vm).into(), vm.into(), p.into())
+            (sm::uci::Uci::from_standard(&vm).into(), p.into())
         })
     }
 
@@ -528,7 +515,7 @@ mod tests {
 
     #[proptest]
     fn moves_returns_all_legal_moves_from_this_position(pos: Position) {
-        for (m, _, p) in pos.moves(MoveKind::ANY) {
+        for (m, p) in pos.moves(MoveKind::ANY) {
             let mut pos = pos.clone();
             assert_eq!(pos[m.whence()].map(|p| p.color()), Some(pos.turn()));
             assert_eq!(pos.make(m).err(), None);
@@ -538,14 +525,14 @@ mod tests {
 
     #[proptest]
     fn captures_reduce_material(pos: Position) {
-        for (_, _, p) in pos.moves(MoveKind::CAPTURE) {
+        for (_, p) in pos.moves(MoveKind::CAPTURE) {
             assert!(p.by_color(p.turn()).len() < pos.by_color(p.turn()).len());
         }
     }
 
     #[proptest]
     fn promotions_exchange_pawns(pos: Position) {
-        for (_, _, p) in pos.moves(MoveKind::PROMOTION) {
+        for (_, p) in pos.moves(MoveKind::PROMOTION) {
             let pawn = Piece(pos.turn(), Role::Pawn);
             assert!(p.by_piece(pawn).len() < pos.by_piece(pawn).len());
             assert_eq!(p.by_color(pos.turn()).len(), pos.by_color(pos.turn()).len());
@@ -554,7 +541,7 @@ mod tests {
 
     #[proptest]
     fn castles_move_the_king_by_two_files(pos: Position) {
-        for (m, _, _) in pos.moves(MoveKind::CASTLE) {
+        for (m, _) in pos.moves(MoveKind::CASTLE) {
             assert_eq!(pos[m.whence()], Some(Piece(pos.turn(), Role::King)));
             assert_eq!(m.whence().rank(), m.whither().rank());
             assert_eq!((m.whence().file() - m.whither().file()).abs(), 2);
@@ -577,7 +564,7 @@ mod tests {
         mut pos: Position,
         selector: Selector,
     ) {
-        let (m, _, next) = selector.select(pos.moves(MoveKind::ANY));
+        let (m, next) = selector.select(pos.moves(MoveKind::ANY));
         let vm = sm::uci::Uci::to_move(&m.into(), &pos.0)?;
         let san = sm::san::San::from_move(&pos.0, &vm).into();
         assert_eq!(pos.make(m), Ok(san));
