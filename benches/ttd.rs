@@ -11,7 +11,7 @@ fn bench(c: &mut Criterion) {
     c.benchmark_group("benches").bench_function("ttd", |b| {
         b.iter_batched_ref(
             || (Searcher::default(), positions.next().unwrap()),
-            |(s, pos)| s.search::<0>(pos, Limits::Depth(5)),
+            |(s, pos)| s.search::<0>(pos, Limits::Depth(6)),
             BatchSize::SmallInput,
         );
     });

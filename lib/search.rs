@@ -141,7 +141,7 @@ impl Searcher {
     /// [utility pruning]: https://www.chessprogramming.org/Futility_Pruning
     fn futility(&self, pos: &Position, next: &Position, draft: i8, gain: i16) -> i16 {
         if (1..=2).contains(&draft) && !pos.is_check() && !next.is_check() {
-            gain.max(draft as i16 * self.evaluator.eval(&Role::Pawn))
+            gain.saturating_add(4i16 * 4i16.pow(draft as u32))
         } else {
             i16::MAX
         }
