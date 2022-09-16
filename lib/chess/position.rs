@@ -1,6 +1,5 @@
-use super::{Color, Fen, Move, Outcome, Piece, Promotion, Role, San, Square};
+use super::{Color, Fen, Move, Outcome, Piece, Role, San, Square};
 use crate::util::Bits;
-use arrayvec::ArrayVec;
 use bitflags::bitflags;
 use bitvec::{order::Lsb0, view::BitView};
 use derive_more::{DebugCustom, Display, Error};
@@ -224,10 +223,7 @@ impl Position {
     }
 
     /// A series of exchanges on a given [`Square`] ordered by least-value-attacker.
-    pub fn exchanges(
-        &self,
-        s: Square,
-    ) -> impl DoubleEndedIterator<Item = (Role, Promotion)> + ExactSizeIterator {
+    pub fn exchanges(&self, s: Square) -> impl Iterator<Item = Self> {
         let to = s.into();
         let mut pos = self.0.clone();
 
@@ -257,11 +253,8 @@ impl Position {
                 },
             );
 
-            Some((capture.into(), promotion.into()))
+            Some(pos.clone().into())
         })
-        .take(32)
-        .collect::<ArrayVec<_, 32>>()
-        .into_iter()
     }
 
     /// An iterator over the legal [`Move`]s that can be played in this position.

@@ -115,20 +115,23 @@ impl Searcher {
     /// The Static Exchange Evaluation ([SEE]) algorithm.
     ///
     /// [SEE]: https://www.chessprogramming.org/Static_Exchange_Evaluation
-    fn see(&self, pos: &Position, next: &Position, m: Move) -> i16 {
-        let loss = next.exchanges(m.whither()).rev().fold(0i16, |v, (r, p)| {
-            let cap = self.evaluator.eval(&r);
-            let promo = self.evaluator.eval(&p);
-            cap.saturating_sub(v).saturating_add(promo).max(0)
-        });
+    fn see<I>(&self, pos: &Position, exchanges: &mut I, bounds: Range<i16>) -> i16
+    where
+        I: Iterator<Item = Position>,
+    {
+        assert!(!bounds.is_empty(), "{:?} ≠ ∅", bounds);
+        assert!(!bounds.contains(&i16::MIN), "{:?} ∌ {}", bounds, i16::MIN);
 
-        let cap = self.evaluator.eval(&(pos, m.whither()));
-        let src = self.evaluator.eval(&(pos, m.whence()));
-        let dst = self.evaluator.eval(&(next, m.whither()));
+        let (alpha, beta) = (bounds.start.max(self.evaluator.eval(pos)), bounds.end);
 
-        cap.saturating_sub(loss)
-            .saturating_add(dst)
-            .saturating_sub(src)
+        if alpha >= beta {
+            return beta;
+        }
+
+        match exchanges.next() {
+            None => alpha,
+            Some(next) => -self.see(&next, exchanges, -beta..-alpha),
+        }
     }
 
     fn moves(
@@ -140,49 +143,50 @@ impl Searcher {
         let mut moves: Vec<_> = pos
             .moves(kind)
             .map(|(m, next)| {
-                let gain = if pv == Some(m) {
+                let value = if pv == Some(m) {
                     i16::MAX
                 } else {
-                    self.see(pos, &next, m)
+                    let mut exchanges = next.exchanges(m.whither());
+                    -self.see(&next, &mut exchanges, -i16::MAX..i16::MAX)
                 };
 
-                (m, next, gain)
+                (m, next, value)
             })
             .collect();
 
-        moves.sort_unstable_by_key(|(_, _, gain)| *gain);
+        moves.sort_unstable_by_key(|(_, _, value)| *value);
         moves
     }
 
     /// An implementation of [null move pruning].
     ///
     /// [null move pruning]: https://www.chessprogramming.org/Null_Move_Pruning
-    fn nmp(&self, pos: &Position, sp: Score, beta: i16, draft: i8) -> Option<i8> {
+    fn nmp(&self, pos: &Position, value: i16, beta: i16, draft: i8) -> Option<i8> {
         let turn = pos.turn();
 
         // Avoid common zugzwang positions in which the side to move only has pawns.
-        if *sp >= beta
-            && draft > 0
+        if draft > 0
+            && value >= beta
             && pos.by_color(turn).len() > pos.by_piece(Piece(turn, Role::Pawn)).len() + 1
         {
             let r = 2 + draft / 8;
-            Some(draft - r - 1)
+            Some(draft.saturating_sub(r).saturating_sub(1).max(0))
         } else {
             None
         }
     }
 
     /// An implementation of late move pruning.
-    fn lmp(&self, next: &Position, sp: Score, alpha: i16, draft: i8, gain: i16) -> Option<i8> {
-        let r = match alpha.saturating_sub(*sp).saturating_sub(gain) {
-            i16::MIN..=36 => 0,
+    fn lmp(&self, next: &Position, value: i16, alpha: i16, draft: i8) -> Option<i8> {
+        let r = match alpha.saturating_sub(value) {
+            i16::MIN..=36 => return None,
             37..=108 => 1,
             109..=324 => 2,
             325..=972 => 3,
             _ => 4,
         };
 
-        if r > 0 && !next.is_check() {
+        if !next.is_check() {
             Some(draft.saturating_sub(r).saturating_sub(1))
         } else {
             None
@@ -285,11 +289,9 @@ impl Searcher {
                 return Ok(stand_pat);
             }
         } else if prev.is_some() && !in_check {
-            if let Some(d) = self.nmp(pos, stand_pat, beta, draft) {
+            if let Some(d) = self.nmp(pos, *stand_pat, beta, draft) {
                 let mut next = pos.clone();
-                if next.pass().is_ok()
-                    && *-self.nw(None, &next, -beta, d.max(0), time, metrics)? >= beta
-                {
+                if next.pass().is_ok() && *-self.nw(None, &next, -beta, d, time, metrics)? >= beta {
                     metrics.nm_cut();
                     #[cfg(not(test))]
                     // The null move pruning heuristic is not exact.
@@ -327,7 +329,7 @@ impl Searcher {
             .into_par_iter()
             .with_max_len(1)
             .rev()
-            .map(|(m, next, gain)| {
+            .map(|(m, next, value)| {
                 let mut score = Score::MIN;
                 let mut alpha = cutoff.load(Ordering::Relaxed);
 
@@ -336,7 +338,7 @@ impl Searcher {
                 }
 
                 if !in_check {
-                    if let Some(d) = self.lmp(&next, stand_pat, alpha, draft, gain) {
+                    if let Some(d) = self.lmp(&next, value, alpha, draft) {
                         if d < 0 || *-self.nw(Some(m), &next, -alpha - 1, d, time, metrics)? < alpha
                         {
                             // The late move pruning heuristic is not exact.

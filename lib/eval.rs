@@ -1,4 +1,4 @@
-use crate::chess::{Color, Piece, Position, Promotion, Role, Square};
+use crate::chess::{Color, Piece, Position, Role, Square};
 use derive_more::Constructor;
 use test_strategy::Arbitrary;
 
@@ -79,31 +79,21 @@ impl Eval<Position> for Evaluator {
     }
 }
 
-impl Eval<Role> for Evaluator {
-    fn eval(&self, role: &Role) -> i16 {
-        EndGame::PIECE_VALUE[*role as usize]
-    }
-}
-
-impl Eval<Promotion> for Evaluator {
-    fn eval(&self, p: &Promotion) -> i16 {
-        Option::<Role>::from(*p).map_or(0, |r| self.eval(&r) - self.eval(&Role::Pawn))
-    }
-}
-
-impl Eval<(&Position, Square)> for Evaluator {
-    fn eval(&self, &(pos, s): &(&Position, Square)) -> i16 {
-        pos[s].map_or(0, |p| self.lookup(self.phase(pos), p, s))
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use test_strategy::proptest;
 
     #[proptest]
-    fn position_evaluation_is_stable(pos: Position) {
-        assert_eq!(Evaluator::new().eval(&pos), Evaluator::new().eval(&pos));
+    fn position_evaluation_is_symmetric(
+        e: Evaluator,
+        #[by_ref]
+        #[filter(!#pos.is_check())]
+        pos: Position,
+    ) {
+        let mut mirror = pos.clone();
+        mirror.pass()?;
+
+        assert_eq!(e.eval(&pos), -e.eval(&mirror));
     }
 }
