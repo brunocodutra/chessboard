@@ -124,26 +124,46 @@ impl Searcher {
     /// An implementation of [null move pruning].
     ///
     /// [null move pruning]: https://www.chessprogramming.org/Null_Move_Pruning
-    fn nmp(&self, pos: &Position, draft: i8) -> Option<i8> {
+    fn nmp(&self, pos: &Position, sp: Score, beta: i16, draft: i8) -> Option<i8> {
         let turn = pos.turn();
 
         // Avoid common zugzwang positions in which the side to move only has pawns.
-        if draft > 0 && pos.by_color(turn).len() > pos.by_piece(Piece(turn, Role::Pawn)).len() + 1 {
+        if *sp >= beta
+            && draft > 0
+            && pos.by_color(turn).len() > pos.by_piece(Piece(turn, Role::Pawn)).len() + 1
+        {
             let r = 2 + draft / 8;
-            Some((draft - r - 1).max(0))
+            Some(draft - r - 1)
         } else {
             None
         }
     }
 
-    /// An implementation of [futility pruning].
-    ///
-    /// [utility pruning]: https://www.chessprogramming.org/Futility_Pruning
-    fn futility(&self, pos: &Position, next: &Position, draft: i8, gain: i16) -> i16 {
-        if (1..=2).contains(&draft) && !pos.is_check() && !next.is_check() {
-            gain.max(draft as i16 * self.evaluator.eval(&Role::Pawn))
+    /// An implementation of late move pruning.
+    fn lmp(
+        &self,
+        pos: &Position,
+        next: &Position,
+        sp: Score,
+        alpha: i16,
+        draft: i8,
+        gain: i16,
+    ) -> Option<i8> {
+        let r = match alpha.saturating_sub(*sp).saturating_sub(gain) {
+            i16::MIN..=0 => 0,
+            1..=150 if draft <= 2 => 0,
+            1..=150 => 1,
+            151..=300 if draft <= 3 => 1,
+            151..=300 => 2,
+            301..=600 if draft <= 4 => 2,
+            301..=600 => 3,
+            _ => 4,
+        };
+
+        if r > 0 && !pos.is_check() && !next.is_check() {
+            Some(draft.saturating_sub(r).saturating_sub(1))
         } else {
-            i16::MAX
+            None
         }
     }
 
@@ -249,10 +269,12 @@ impl Searcher {
                 metrics.sp_cut();
                 return Ok(stand_pat);
             }
-        } else if *stand_pat >= beta && prev.is_some() {
-            if let Some(d) = self.nmp(pos, draft) {
+        } else if prev.is_some() {
+            if let Some(d) = self.nmp(pos, stand_pat, beta, draft) {
                 let mut next = pos.clone();
-                if next.pass().is_ok() && *-self.nw(None, &next, -beta, d, time, metrics)? >= beta {
+                if next.pass().is_ok()
+                    && *-self.nw(None, &next, -beta, d.max(0), time, metrics)? >= beta
+                {
                     metrics.nm_cut();
                     #[cfg(not(test))]
                     // The null move pruning heuristic is not exact.
@@ -294,10 +316,18 @@ impl Searcher {
                 let mut score = Score(i16::MIN, Self::MIN_DRAFT);
                 let mut alpha = cutoff.load(Ordering::Relaxed);
 
-                if stand_pat.saturating_add(self.futility(pos, &next, draft, gain)) < alpha {
-                    // The futility pruning heuristic is not exact.
-                    #[cfg(not(test))]
+                if alpha >= beta {
                     return Ok(None);
+                }
+
+                if let Some(d) = self.lmp(pos, &next, stand_pat, alpha, draft, gain) {
+                    if d <= 0 || *-self.nw(Some(m), &next, -alpha - 1, d, time, metrics)? < alpha {
+                        // The late move pruning heuristic is not exact.
+                        #[cfg(not(test))]
+                        return Ok(None);
+                    } else {
+                        alpha = cutoff.load(Ordering::Relaxed);
+                    }
                 }
 
                 while *score < alpha && alpha < beta {
