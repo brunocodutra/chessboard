@@ -200,7 +200,7 @@ dependencies = [
  "rayon",
  "ron",
  "serde",
- "shakmaty",
+ "shakmaty 0.22.0",
  "test-strategy",
  "tokio",
  "tracing",
@@ -781,7 +781,7 @@ checksum = "f3084f5d442b72225bcbeed93f3c8e497bcd3a73363e9ba8877a50bb5e4a4fd8"
 dependencies = [
  "btoi",
  "memchr",
- "shakmaty",
+ "shakmaty 0.21.4",
  "slice-deque",
 ]
 
@@ -1063,6 +1063,17 @@ name = "shakmaty"
 version = "0.21.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "76cd30e231e2f9cbb4684a9cd5937d7310f3536e9161ce21991c3b2bd2c565ea"
+dependencies = [
+ "arrayvec",
+ "bitflags",
+ "btoi",
+]
+
+[[package]]
+name = "shakmaty"
+version = "0.22.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0c21d64aa05e370f386703bd46acdfd13d04f202fb4ce365cc67bbf744a72003"
 dependencies = [
  "arrayvec",
  "bitflags",
