@@ -1,4 +1,4 @@
-use super::{Color, Fen, Move, Piece, Promotion, Role, San, Square};
+use super::{Color, Fen, Move, Outcome, Piece, Promotion, Role, San, Square};
 use crate::util::Bits;
 use arrayvec::ArrayVec;
 use bitflags::bitflags;
@@ -206,6 +206,21 @@ impl Position {
     /// [insufficient material]: https://www.chessprogramming.org/Material#InsufficientMaterial
     pub fn is_material_insufficient(&self) -> bool {
         sm::Position::is_insufficient_material(&self.0)
+    }
+
+    /// The [`Outcome`] of the game in case this position is final.
+    pub fn outcome(&self) -> Option<Outcome> {
+        if self.is_checkmate() {
+            Some(Outcome::Checkmate(!self.turn()))
+        } else if self.is_stalemate() {
+            Some(Outcome::Stalemate)
+        } else if self.halfmoves() >= 150 {
+            Some(Outcome::DrawBy75MoveRule)
+        } else if self.is_material_insufficient() {
+            Some(Outcome::DrawByInsufficientMaterial)
+        } else {
+            None
+        }
     }
 
     /// A series of exchanges on a given [`Square`] ordered by least-value-attacker.
@@ -504,6 +519,16 @@ mod tests {
     }
 
     #[proptest]
+    fn checkmate_implies_outcome(pos: Position) {
+        assert!(!pos.is_checkmate() || pos.outcome() == Some(Outcome::Checkmate(!pos.turn())));
+    }
+
+    #[proptest]
+    fn stalemate_implies_outcome(pos: Position) {
+        assert!(!pos.is_stalemate() || pos.outcome() == Some(Outcome::Stalemate));
+    }
+
+    #[proptest]
     fn checkmate_implies_check(pos: Position) {
         assert!(!pos.is_checkmate() || pos.is_check());
     }
@@ -511,6 +536,11 @@ mod tests {
     #[proptest]
     fn checkmate_and_stalemate_are_mutually_exclusive(pos: Position) {
         assert!(!(pos.is_checkmate() && pos.is_stalemate()));
+    }
+
+    #[proptest]
+    fn check_and_stalemate_are_mutually_exclusive(pos: Position) {
+        assert!(!(pos.is_check() && pos.is_stalemate()));
     }
 
     #[proptest]
