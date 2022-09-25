@@ -63,25 +63,19 @@ impl Evaluator {
 
 impl Eval<Position> for Evaluator {
     fn eval(&self, pos: &Position) -> i16 {
-        if pos.is_stalemate() || pos.is_material_insufficient() {
-            0
-        } else if pos.is_checkmate() {
-            i16::MIN
-        } else {
-            let mut score = [0; 2];
+        let turn = pos.turn();
+        let phase = self.phase(pos);
 
-            let phase = self.phase(pos);
-
-            for r in Role::iter() {
-                for c in [Color::White, Color::Black] {
-                    for s in pos.by_piece(Piece(c, r)) {
-                        score[c as usize] += self.lookup(phase, Piece(c, r), s);
-                    }
+        let mut score = [0; 2];
+        for r in Role::iter() {
+            for c in [Color::White, Color::Black] {
+                for s in pos.by_piece(Piece(c, r)) {
+                    score[c as usize] += self.lookup(phase, Piece(c, r), s);
                 }
             }
-
-            score[pos.turn() as usize] - score[!pos.turn() as usize]
         }
+
+        score[turn as usize] - score[!turn as usize]
     }
 }
 

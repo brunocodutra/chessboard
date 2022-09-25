@@ -75,10 +75,6 @@ impl Searcher {
         }
     }
 
-    fn eval(&self, pos: &Position, draft: i8) -> Score {
-        Score(self.evaluator.eval(pos).max(-i16::MAX), draft)
-    }
-
     /// The Static Exchange Evaluation ([SEE]) algorithm.
     ///
     /// [SEE]: https://www.chessprogramming.org/Static_Exchange_Evaluation
@@ -140,15 +136,7 @@ impl Searcher {
     }
 
     /// An implementation of late move pruning.
-    fn lmp(
-        &self,
-        pos: &Position,
-        next: &Position,
-        sp: Score,
-        alpha: i16,
-        draft: i8,
-        gain: i16,
-    ) -> Option<i8> {
+    fn lmp(&self, next: &Position, sp: Score, alpha: i16, draft: i8, gain: i16) -> Option<i8> {
         let r = match alpha.saturating_sub(*sp).saturating_sub(gain) {
             i16::MIN..=0 => 0,
             1..=150 if draft <= 2 => 0,
@@ -160,7 +148,7 @@ impl Searcher {
             _ => 4,
         };
 
-        if r > 0 && !pos.is_check() && !next.is_check() {
+        if r > 0 && !next.is_check() {
             Some(draft.saturating_sub(r).saturating_sub(1))
         } else {
             None
@@ -254,12 +242,18 @@ impl Searcher {
             }
         }
 
-        let stand_pat = self.eval(pos, draft);
-        let quiesce = draft <= 0 && !pos.is_check();
+        let in_check = pos.is_check();
+        let stand_pat = if pos.is_checkmate() {
+            return Ok(Score(-i16::MAX, draft));
+        } else if pos.is_stalemate() || pos.is_material_insufficient() {
+            return Ok(Score(0, draft));
+        } else {
+            Score(self.evaluator.eval(pos).max(-i16::MAX), draft)
+        };
 
         if draft <= Self::MIN_DRAFT {
             return Ok(stand_pat);
-        } else if quiesce {
+        } else if draft <= 0 && !in_check {
             if cfg!(not(test)) {
                 // The stand pat heuristic is not exact.
                 alpha = alpha.max(*stand_pat)
@@ -269,7 +263,7 @@ impl Searcher {
                 metrics.sp_cut();
                 return Ok(stand_pat);
             }
-        } else if prev.is_some() {
+        } else if prev.is_some() && !in_check {
             if let Some(d) = self.nmp(pos, stand_pat, beta, draft) {
                 let mut next = pos.clone();
                 if next.pass().is_ok()
@@ -283,7 +277,7 @@ impl Searcher {
             }
         }
 
-        let kind = if quiesce {
+        let kind = if draft <= 0 && !in_check {
             MoveKind::CAPTURE | MoveKind::PROMOTION
         } else {
             MoveKind::ANY
@@ -320,13 +314,17 @@ impl Searcher {
                     return Ok(None);
                 }
 
-                if let Some(d) = self.lmp(pos, &next, stand_pat, alpha, draft, gain) {
-                    if d <= 0 || *-self.nw(Some(m), &next, -alpha - 1, d, time, metrics)? < alpha {
-                        // The late move pruning heuristic is not exact.
-                        #[cfg(not(test))]
-                        return Ok(None);
-                    } else {
-                        alpha = cutoff.load(Ordering::Relaxed);
+                if !in_check {
+                    if let Some(d) = self.lmp(&next, stand_pat, alpha, draft, gain) {
+                        if d <= 0
+                            || *-self.nw(Some(m), &next, -alpha - 1, d, time, metrics)? < alpha
+                        {
+                            // The late move pruning heuristic is not exact.
+                            #[cfg(not(test))]
+                            return Ok(None);
+                        } else {
+                            alpha = cutoff.load(Ordering::Relaxed);
+                        }
                     }
                 }
 
@@ -403,7 +401,13 @@ mod tests {
     use tokio::{runtime, time::timeout};
 
     fn negamax(evaluator: &Evaluator, pos: &Position, draft: i8) -> i16 {
-        let score = evaluator.eval(pos).max(-i16::MAX);
+        let score = if pos.is_checkmate() {
+            -i16::MAX
+        } else if pos.is_stalemate() || pos.is_material_insufficient() {
+            0
+        } else {
+            evaluator.eval(pos).max(-i16::MAX)
+        };
 
         let kind = if draft <= Searcher::MIN_DRAFT {
             return score;
@@ -464,6 +468,8 @@ mod tests {
     fn pvs_evaluates_position_if_draft_is_lower_than_minimum(
         s: Searcher,
         m: Option<Move>,
+        #[by_ref]
+        #[filter(!#pos.is_checkmate() && !#pos.is_stalemate() && !#pos.is_material_insufficient())]
         pos: Position,
         #[strategy(-i16::MAX..i16::MAX)] a: i16,
         #[strategy(#a + 1..)] b: i16,
@@ -472,7 +478,7 @@ mod tests {
         let metrics = MetricsCounters::default();
         assert_eq!(
             s.pvs(m, &pos, a..b, d, Duration::MAX, &metrics),
-            Ok(s.eval(&pos, d))
+            Ok(Score(s.evaluator.eval(&pos).max(-i16::MAX), d))
         );
     }
 
