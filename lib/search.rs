@@ -265,12 +265,10 @@ impl Searcher {
         }
 
         let in_check = pos.is_check();
-        let stand_pat = if pos.is_checkmate() {
-            return Ok(Score(-i16::MAX, draft));
-        } else if pos.is_stalemate() || pos.is_material_insufficient() {
-            return Ok(Score(0, draft));
-        } else {
-            Score(self.evaluator.eval(pos).max(-i16::MAX), draft)
+        let stand_pat = match pos.outcome() {
+            Some(o) if o.is_draw() => return Ok(Score(0, draft)),
+            Some(_) => return Ok(Score(-i16::MAX, draft)),
+            None => Score(self.evaluator.eval(pos).max(-i16::MAX), draft),
         };
 
         if draft <= Self::MIN_DRAFT {
@@ -414,12 +412,10 @@ mod tests {
     use tokio::{runtime, time::timeout};
 
     fn negamax(evaluator: &Evaluator, pos: &Position, draft: i8) -> i16 {
-        let score = if pos.is_checkmate() {
-            -i16::MAX
-        } else if pos.is_stalemate() || pos.is_material_insufficient() {
-            0
-        } else {
-            evaluator.eval(pos).max(-i16::MAX)
+        let score = match pos.outcome() {
+            Some(o) if o.is_draw() => return 0,
+            Some(_) => return -i16::MAX,
+            None => evaluator.eval(pos).max(-i16::MAX),
         };
 
         let kind = if draft <= Searcher::MIN_DRAFT {
@@ -482,7 +478,7 @@ mod tests {
         s: Searcher,
         m: Option<Move>,
         #[by_ref]
-        #[filter(!#pos.is_checkmate() && !#pos.is_stalemate() && !#pos.is_material_insufficient())]
+        #[filter(#pos.outcome().is_none())]
         pos: Position,
         #[strategy(-i16::MAX..i16::MAX)] a: i16,
         #[strategy(#a + 1..)] b: i16,

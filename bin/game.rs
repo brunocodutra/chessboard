@@ -1,6 +1,6 @@
 use crate::{build::Build, player::Player};
 use derive_more::{Constructor, Display, Error};
-use lib::chess::{Color, Outcome, Pgn, Position};
+use lib::chess::{Color, Pgn, Position};
 use std::fmt::Display;
 use tracing::{field::display, instrument, warn, Span};
 
@@ -44,7 +44,7 @@ where
         let mut moves = Vec::new();
 
         let outcome = loop {
-            if let Some(o) = is_game_over(&pos) {
+            if let Some(o) = pos.outcome() {
                 Span::current().record("outcome", display(o));
                 break o;
             }
@@ -66,20 +66,6 @@ where
             outcome,
             moves,
         })
-    }
-}
-
-fn is_game_over(pos: &Position) -> Option<Outcome> {
-    if pos.is_checkmate() {
-        Some(Outcome::Checkmate(!pos.turn()))
-    } else if pos.is_stalemate() {
-        Some(Outcome::Stalemate)
-    } else if pos.is_material_insufficient() {
-        Some(Outcome::DrawByInsufficientMaterial)
-    } else if pos.halfmoves() >= 150 {
-        Some(Outcome::DrawBy75MoveRule)
-    } else {
-        None
     }
 }
 
@@ -164,7 +150,7 @@ mod tests {
     #[proptest]
     fn game_ends_when_it_is_over(
         #[by_ref]
-        #[filter(is_game_over(#pos).is_some())]
+        #[filter(#pos.outcome().is_some())]
         pos: Position,
     ) {
         let rt = runtime::Builder::new_multi_thread().build()?;
@@ -183,7 +169,7 @@ mod tests {
 
         let g = Game::new(wb, bb);
 
-        let outcome = is_game_over(&pos).unwrap();
+        let outcome = pos.outcome().unwrap();
 
         assert_eq!(
             rt.block_on(g.play(pos)),
@@ -205,7 +191,7 @@ mod tests {
         let mut moves = Vec::new();
 
         let o = loop {
-            match is_game_over(&next) {
+            match next.outcome() {
                 Some(o) => break o,
                 _ => {
                     let (m, _) = selector.select(next.moves(MoveKind::ANY));
@@ -266,7 +252,7 @@ mod tests {
     #[proptest]
     fn game_interrupts_if_player_fails_to_act(
         #[by_ref]
-        #[filter(is_game_over(#pos).is_none())]
+        #[filter(#pos.outcome().is_none())]
         pos: Position,
         e: String,
     ) {
