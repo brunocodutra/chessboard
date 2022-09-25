@@ -36,7 +36,7 @@ libm = { version = "0.2.5", default-features = false }
 proptest = { version = "1.0.0", default-features = false, features = ["std"] }
 rayon = { version = "1.5.3", default-features = false }
 ron = { version = "0.8.0", default-features = false }
-serde = { version = "1.0.143", default-features = false, features = ["derive", "std"] }
+serde = { version = "1.0.145", default-features = false, features = ["derive", "std"] }
 shakmaty = { version = "0.21.2", default-features = false }
 test-strategy = { version = "0.2.1", default-features = false }
 tokio = { version = "1.21.1", default-features = false, features = [
