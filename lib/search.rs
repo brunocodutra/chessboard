@@ -1,4 +1,4 @@
-use crate::chess::{Move, MoveKind, Piece, Position, Role};
+use crate::chess::{Move, MoveKind, Piece, Position, Role, Zobrist};
 use crate::eval::{Eval, Evaluator};
 use crate::transposition::{Table, Transposition};
 use derive_more::{Deref, Display, Error, Neg};
@@ -75,6 +75,39 @@ impl Searcher {
         }
     }
 
+    fn probe(&self, zobrist: Zobrist, bounds: Range<i16>, draft: i8) -> (Option<Move>, i16, i16) {
+        let transposition = self.tt.get(zobrist);
+
+        let (alpha, beta) = match transposition.filter(|t| t.draft() >= draft) {
+            None => (bounds.start, bounds.end),
+            #[cfg(test)] // Probing larger draft is not exact.
+            Some(t) if t.draft() != draft => (bounds.start, bounds.end),
+            Some(t) => {
+                let (lower, upper) = t.bounds().into_inner();
+
+                (
+                    bounds.start.max(lower).min(upper),
+                    bounds.end.min(upper).max(lower),
+                )
+            }
+        };
+
+        (transposition.map(|t| t.best()), alpha, beta)
+    }
+
+    fn record(&self, zobrist: Zobrist, bounds: Range<i16>, draft: i8, score: Score, best: Move) {
+        self.tt.set(
+            zobrist,
+            if *score >= bounds.end {
+                Transposition::lower(*score, draft, best)
+            } else if *score <= bounds.start {
+                Transposition::upper(*score, draft, best)
+            } else {
+                Transposition::exact(*score, draft, best)
+            },
+        );
+    }
+
     /// The Static Exchange Evaluation ([SEE]) algorithm.
     ///
     /// [SEE]: https://www.chessprogramming.org/Static_Exchange_Evaluation
@@ -98,12 +131,12 @@ impl Searcher {
         &self,
         pos: &Position,
         kind: MoveKind,
-        transposition: Option<Transposition>,
+        pv: Option<Move>,
     ) -> Vec<(Move, Position, i16)> {
         let mut moves: Vec<_> = pos
             .moves(kind)
             .map(|(m, next)| {
-                let gain = if transposition.map(|t| t.best()) == Some(m) {
+                let gain = if pv == Some(m) {
                     i16::MAX
                 } else {
                     self.see(pos, &next, m)
@@ -213,8 +246,6 @@ impl Searcher {
         assert!(!bounds.is_empty(), "{:?} ≠ ∅", bounds);
         assert!(!bounds.contains(&i16::MIN), "{:?} ∌ {}", bounds, i16::MIN);
 
-        let (mut alpha, mut beta) = (bounds.start, bounds.end);
-
         if metrics.time() >= time {
             return Err(Timeout);
         }
@@ -222,24 +253,15 @@ impl Searcher {
         metrics.node();
 
         let zobrist = pos.zobrist();
-        let transposition = self.tt.get(zobrist);
+        let (pv, mut alpha, beta) = self.probe(zobrist, bounds, draft);
 
-        if transposition.is_some() {
+        if pv.is_some() {
             metrics.tt_hit();
         }
 
-        match transposition.filter(|t| t.draft() >= draft) {
-            None => (),
-            #[cfg(test)] // Probing larger draft is not exact.
-            Some(t) if t.draft() != draft => (),
-            Some(t) => {
-                let (lower, upper) = t.bounds().into_inner();
-                (alpha, beta) = (alpha.max(lower), beta.min(upper));
-                if alpha >= beta {
-                    metrics.tt_cut();
-                    return Ok(Score(t.score(), draft));
-                }
-            }
+        if alpha >= beta {
+            metrics.tt_cut();
+            return Ok(Score(alpha, draft));
         }
 
         let in_check = pos.is_check();
@@ -283,7 +305,7 @@ impl Searcher {
             MoveKind::ANY
         };
 
-        let mut moves = self.moves(pos, kind, transposition);
+        let mut moves = self.moves(pos, kind, pv);
 
         let (score, pv) = match moves.pop() {
             None => return Ok(stand_pat),
@@ -292,7 +314,7 @@ impl Searcher {
 
                 if *score >= beta {
                     metrics.pv_cut();
-                    self.tt.set(zobrist, Transposition::lower(*score, draft, m));
+                    self.record(zobrist, alpha..beta, draft, score, m);
                     return Ok(score);
                 }
 
@@ -348,16 +370,7 @@ impl Searcher {
             .try_reduce(|| None, |a, b| Ok(max_by_key(a, b, |x| x.map(|(s, _)| s))))?
             .expect("expected at least one legal move");
 
-        self.tt.set(
-            zobrist,
-            if *score >= beta {
-                Transposition::lower(*score, draft, best)
-            } else if *score <= alpha {
-                Transposition::upper(*score, draft, best)
-            } else {
-                Transposition::exact(*score, draft, best)
-            },
-        );
+        self.record(zobrist, alpha..beta, draft, score, best);
 
         Ok(score)
     }
