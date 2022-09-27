@@ -22,6 +22,10 @@ pub use pv::*;
 #[derive(Debug, Default, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Deref, Neg)]
 struct Score(#[deref] i16, i8);
 
+impl Score {
+    const MIN: Self = Score(i16::MIN, i8::MIN);
+}
+
 #[derive(Debug, Display, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Error)]
 #[display(fmt = "time is up!")]
 pub struct Timeout;
@@ -171,13 +175,10 @@ impl Searcher {
     /// An implementation of late move pruning.
     fn lmp(&self, next: &Position, sp: Score, alpha: i16, draft: i8, gain: i16) -> Option<i8> {
         let r = match alpha.saturating_sub(*sp).saturating_sub(gain) {
-            i16::MIN..=0 => 0,
-            1..=150 if draft <= 2 => 0,
-            1..=150 => 1,
-            151..=300 if draft <= 3 => 1,
-            151..=300 => 2,
-            301..=600 if draft <= 4 => 2,
-            301..=600 => 3,
+            i16::MIN..=36 => 0,
+            37..=108 => 1,
+            109..=324 => 2,
+            325..=972 => 3,
             _ => 4,
         };
 
@@ -327,7 +328,7 @@ impl Searcher {
             .with_max_len(1)
             .rev()
             .map(|(m, next, gain)| {
-                let mut score = Score(i16::MIN, Self::MIN_DRAFT);
+                let mut score = Score::MIN;
                 let mut alpha = cutoff.load(Ordering::Relaxed);
 
                 if alpha >= beta {
@@ -336,8 +337,7 @@ impl Searcher {
 
                 if !in_check {
                     if let Some(d) = self.lmp(&next, stand_pat, alpha, draft, gain) {
-                        if d <= 0
-                            || *-self.nw(Some(m), &next, -alpha - 1, d, time, metrics)? < alpha
+                        if d < 0 || *-self.nw(Some(m), &next, -alpha - 1, d, time, metrics)? < alpha
                         {
                             // The late move pruning heuristic is not exact.
                             #[cfg(not(test))]
