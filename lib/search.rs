@@ -157,16 +157,23 @@ impl Searcher {
     /// An implementation of [null move pruning].
     ///
     /// [null move pruning]: https://www.chessprogramming.org/Null_Move_Pruning
-    fn nmp(&self, pos: &Position, sp: Score, beta: i16, draft: i8) -> Option<i8> {
+    fn nmp(&self, pos: &Position, value: i16, beta: i16, draft: i8) -> Option<i8> {
+        if draft <= 0 {
+            return None;
+        }
+
+        let r = match value.saturating_sub(beta) {
+            i16::MIN..=0 => 0,
+            1..=300 => 2 + draft / 8,
+            301..=900 => 3 + draft / 8,
+            _ => 4 + draft / 8,
+        };
+
         let turn = pos.turn();
 
         // Avoid common zugzwang positions in which the side to move only has pawns.
-        if *sp >= beta
-            && draft > 0
-            && pos.by_color(turn).len() > pos.by_piece(Piece(turn, Role::Pawn)).len() + 1
-        {
-            let r = 2 + draft / 8;
-            Some(draft - r - 1)
+        if r > 0 && pos.by_color(turn).len() > pos.by_piece(Piece(turn, Role::Pawn)).len() + 1 {
+            Some(draft.saturating_sub(r).saturating_sub(1).max(0))
         } else {
             None
         }
@@ -285,11 +292,9 @@ impl Searcher {
                 return Ok(stand_pat);
             }
         } else if prev.is_some() && !in_check {
-            if let Some(d) = self.nmp(pos, stand_pat, beta, draft) {
+            if let Some(d) = self.nmp(pos, *stand_pat, beta, draft) {
                 let mut next = pos.clone();
-                if next.pass().is_ok()
-                    && *-self.nw(None, &next, -beta, d.max(0), time, metrics)? >= beta
-                {
+                if next.pass().is_ok() && *-self.nw(None, &next, -beta, d, time, metrics)? >= beta {
                     metrics.nm_cut();
                     #[cfg(not(test))]
                     // The null move pruning heuristic is not exact.
