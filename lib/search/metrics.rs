@@ -20,7 +20,7 @@ use test_strategy::Arbitrary;
     SubAssign,
 )]
 #[display(
-    fmt = "time={}ms nodes={}|{:.0}/s hits={}|{:.2}% cuts[tt={}|{:.2}% pv={}|{:.2}% nm={}|{:.2}% sp={}|{:.2}%]",
+    fmt = "time={}ms nodes={}|{:.0}/s hits={}|{:.2}% cuts[tt={}|{:.2}% pv={}|{:.2}% nm={}|{:.2}%]",
     "self.time().as_millis()",
     "self.nodes()",
     "self.nps()",
@@ -31,9 +31,7 @@ use test_strategy::Arbitrary;
     "self.pv_cuts()",
     "self.pv_cut_rate() * 100.",
     "self.nm_cuts()",
-    "self.nm_cut_rate() * 100.",
-    "self.sp_cuts()",
-    "self.sp_cut_rate() * 100."
+    "self.nm_cut_rate() * 100."
 )]
 pub struct Metrics {
     time: Duration,
@@ -42,7 +40,6 @@ pub struct Metrics {
     tt_cuts: u64,
     pv_cuts: u64,
     nm_cuts: u64,
-    sp_cuts: u64,
 }
 
 impl Metrics {
@@ -100,16 +97,6 @@ impl Metrics {
     pub fn nm_cut_rate(&self) -> f64 {
         self.nm_cuts() as f64 / self.nodes() as f64
     }
-
-    /// Stand pat cuts counter.
-    pub fn sp_cuts(&self) -> u64 {
-        self.sp_cuts
-    }
-
-    /// Stand pat cut rate.
-    pub fn sp_cut_rate(&self) -> f64 {
-        self.sp_cuts() as f64 / self.nodes() as f64
-    }
 }
 
 /// A collector for search metrics.
@@ -121,7 +108,6 @@ pub struct MetricsCounters {
     tt_cuts: AtomicU64,
     pv_cuts: AtomicU64,
     nm_cuts: AtomicU64,
-    sp_cuts: AtomicU64,
 }
 
 impl Default for MetricsCounters {
@@ -133,7 +119,6 @@ impl Default for MetricsCounters {
             tt_cuts: AtomicU64::new(0),
             pv_cuts: AtomicU64::new(0),
             nm_cuts: AtomicU64::new(0),
-            sp_cuts: AtomicU64::new(0),
         }
     }
 }
@@ -169,11 +154,6 @@ impl MetricsCounters {
         self.nm_cuts.fetch_add(1, Ordering::Relaxed) + 1
     }
 
-    /// Increment stand pat cuts counter.
-    pub fn sp_cut(&self) -> u64 {
-        self.sp_cuts.fetch_add(1, Ordering::Relaxed) + 1
-    }
-
     /// Returns the metrics collected.
     pub fn snapshot(&mut self) -> Metrics {
         Metrics {
@@ -183,7 +163,6 @@ impl MetricsCounters {
             tt_cuts: *self.tt_cuts.get_mut(),
             pv_cuts: *self.pv_cuts.get_mut(),
             nm_cuts: *self.nm_cuts.get_mut(),
-            sp_cuts: *self.sp_cuts.get_mut(),
         }
     }
 }
