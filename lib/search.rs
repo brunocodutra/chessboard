@@ -79,7 +79,7 @@ impl Searcher {
         }
     }
 
-    fn probe(&self, zobrist: Zobrist, bounds: Range<i16>, draft: i8) -> (Option<Move>, i16, i16) {
+    fn probe(&self, zobrist: Zobrist, bounds: &Range<i16>, draft: i8) -> (Option<Move>, i16, i16) {
         let transposition = self.tt.get(zobrist);
 
         let (alpha, beta) = match transposition.filter(|t| t.draft() >= draft) {
@@ -99,7 +99,7 @@ impl Searcher {
         (transposition.map(|t| t.best()), alpha, beta)
     }
 
-    fn record(&self, zobrist: Zobrist, bounds: Range<i16>, draft: i8, score: Score, best: Move) {
+    fn record(&self, zobrist: Zobrist, bounds: &Range<i16>, draft: i8, score: Score, best: Move) {
         self.tt.set(
             zobrist,
             if *score >= bounds.end {
@@ -165,12 +165,11 @@ impl Searcher {
         let turn = pos.turn();
 
         // Avoid common zugzwang positions in which the side to move only has pawns.
-        if draft > 0
-            && value >= beta
+        if value > beta
             && pos.by_color(turn).len() > pos.by_piece(Piece(turn, Role::Pawn)).len() + 1
         {
-            let r = 2 + draft / 8;
-            Some(draft.saturating_sub(r).saturating_sub(1).max(0))
+            let r = 2 + draft.max(0) / 8;
+            Some(draft.saturating_sub(r + 1))
         } else {
             None
         }
@@ -187,7 +186,7 @@ impl Searcher {
         };
 
         if !next.is_check() {
-            Some(draft.saturating_sub(r).saturating_sub(1))
+            Some(draft.saturating_sub(r + 1))
         } else {
             None
         }
@@ -208,12 +207,12 @@ impl Searcher {
 
         let upper = guess.saturating_add(W / 2).max(W - i16::MAX);
         let lower = guess.saturating_sub(W / 2).min(i16::MAX - W).max(-i16::MAX);
-        let score = self.pvs(None, pos, lower..upper, draft, time, metrics)?;
+        let score = self.pvs(pos, lower..upper, draft, time, metrics)?;
 
         if *score >= upper {
-            self.pvs(None, pos, lower..i16::MAX, draft, time, metrics)
+            self.pvs(pos, lower..i16::MAX, draft, time, metrics)
         } else if *score <= lower {
-            self.pvs(None, pos, -i16::MAX..upper, draft, time, metrics)
+            self.pvs(pos, -i16::MAX..upper, draft, time, metrics)
         } else {
             Ok(score)
         }
@@ -224,7 +223,6 @@ impl Searcher {
     /// [zero-window]: https://www.chessprogramming.org/Null_Window
     fn nw(
         &self,
-        prev: Option<Move>,
         pos: &Position,
         bound: i16,
         draft: i8,
@@ -232,7 +230,7 @@ impl Searcher {
         metrics: &MetricsCounters,
     ) -> Result<Score, Timeout> {
         assert!(bound < i16::MAX, "{} < {}", bound, i16::MAX);
-        self.pvs(prev, pos, bound..bound + 1, draft, time, metrics)
+        self.pvs(pos, bound..bound + 1, draft, time, metrics)
     }
 
     /// An implementation of the [PVS] variation of [alpha-beta pruning] algorithm.
@@ -241,7 +239,6 @@ impl Searcher {
     /// [alpha-beta pruning]: https://www.chessprogramming.org/Alpha-Beta
     fn pvs(
         &self,
-        prev: Option<Move>,
         pos: &Position,
         bounds: Range<i16>,
         draft: i8,
@@ -258,7 +255,7 @@ impl Searcher {
         metrics.node();
 
         let zobrist = pos.zobrist();
-        let (pv, mut alpha, beta) = self.probe(zobrist, bounds, draft);
+        let (pv, alpha, beta) = self.probe(zobrist, &bounds, draft);
 
         if pv.is_some() {
             metrics.tt_hit();
@@ -270,32 +267,25 @@ impl Searcher {
         }
 
         let in_check = pos.is_check();
-        let stand_pat = match pos.outcome() {
+        let value = match pos.outcome() {
             Some(o) if o.is_draw() => return Ok(Score(0, draft)),
             Some(_) => return Ok(Score(-i16::MAX, draft)),
-            None => Score(self.evaluator.eval(pos).max(-i16::MAX), draft),
+            None => self.evaluator.eval(pos).max(-i16::MAX),
         };
 
         if draft <= Self::MIN_DRAFT {
-            return Ok(stand_pat);
-        } else if draft <= 0 && !in_check {
-            if cfg!(not(test)) {
-                // The stand pat heuristic is not exact.
-                alpha = alpha.max(*stand_pat)
-            }
+            return Ok(Score(value, draft));
+        }
 
-            if alpha >= beta {
-                metrics.sp_cut();
-                return Ok(stand_pat);
-            }
-        } else if prev.is_some() && !in_check {
-            if let Some(d) = self.nmp(pos, *stand_pat, beta, draft) {
+        if !in_check {
+            if let Some(d) = self.nmp(pos, value, beta, draft) {
                 let mut next = pos.clone();
-                if next.pass().is_ok() && *-self.nw(None, &next, -beta, d, time, metrics)? >= beta {
+                next.pass().expect("expected possible pass");
+                if d < 0 || *-self.nw(&next, -beta, d, time, metrics)? >= beta {
                     metrics.nm_cut();
                     #[cfg(not(test))]
                     // The null move pruning heuristic is not exact.
-                    return Ok(Score(beta, draft));
+                    return Ok(Score(value, draft));
                 }
             }
         }
@@ -309,13 +299,13 @@ impl Searcher {
         let mut moves = self.moves(pos, kind, pv);
 
         let (score, pv) = match moves.pop() {
-            None => return Ok(stand_pat),
+            None => return Ok(Score(value, draft)),
             Some((m, next, _)) => {
-                let score = -self.pvs(Some(m), &next, -beta..-alpha, draft - 1, time, metrics)?;
+                let score = -self.pvs(&next, -beta..-alpha, draft - 1, time, metrics)?;
 
                 if *score >= beta {
                     metrics.pv_cut();
-                    self.record(zobrist, alpha..beta, draft, score, m);
+                    self.record(zobrist, &bounds, draft, score, m);
                     return Ok(score);
                 }
 
@@ -339,10 +329,9 @@ impl Searcher {
 
                 if !in_check {
                     if let Some(d) = self.lmp(&next, value, alpha, draft) {
-                        if d < 0 || *-self.nw(Some(m), &next, -alpha - 1, d, time, metrics)? < alpha
-                        {
-                            // The late move pruning heuristic is not exact.
+                        if d < 0 || *-self.nw(&next, -alpha - 1, d, time, metrics)? < alpha {
                             #[cfg(not(test))]
+                            // The late move pruning heuristic is not exact.
                             return Ok(None);
                         } else {
                             alpha = cutoff.load(Ordering::Relaxed);
@@ -352,7 +341,7 @@ impl Searcher {
 
                 while *score < alpha && alpha < beta {
                     let target = alpha;
-                    score = -self.nw(Some(m), &next, -target - 1, draft - 1, time, metrics)?;
+                    score = -self.nw(&next, -target - 1, draft - 1, time, metrics)?;
                     alpha = cutoff.fetch_max(*score, Ordering::Relaxed).max(*score);
                     if *score < target {
                         break;
@@ -360,7 +349,7 @@ impl Searcher {
                 }
 
                 if alpha <= *score && *score < beta {
-                    score = -self.pvs(Some(m), &next, -beta..-alpha, draft - 1, time, metrics)?;
+                    score = -self.pvs(&next, -beta..-alpha, draft - 1, time, metrics)?;
                     cutoff.fetch_max(*score, Ordering::Relaxed);
                 }
 
@@ -370,7 +359,7 @@ impl Searcher {
             .try_reduce(|| None, |a, b| Ok(max_by_key(a, b, |x| x.map(|(s, _)| s))))?
             .expect("expected at least one legal move");
 
-        self.record(zobrist, alpha..beta, draft, score, best);
+        self.record(zobrist, &bounds, draft, score, best);
 
         Ok(score)
     }
@@ -443,42 +432,34 @@ mod tests {
 
     #[proptest]
     #[should_panic]
-    fn nw_panics_if_bound_is_too_large(s: Searcher, m: Option<Move>, pos: Position, d: i8) {
+    fn nw_panics_if_bound_is_too_large(s: Searcher, pos: Position, d: i8) {
         let metrics = MetricsCounters::default();
-        s.nw(m, &pos, i16::MAX, d, Duration::MAX, &metrics)?;
+        s.nw(&pos, i16::MAX, d, Duration::MAX, &metrics)?;
     }
 
     #[proptest]
     #[should_panic]
-    fn pvs_panics_if_alpha_is_too_small(
-        s: Searcher,
-        m: Option<Move>,
-        pos: Position,
-        b: i16,
-        d: i8,
-    ) {
+    fn pvs_panics_if_alpha_is_too_small(s: Searcher, pos: Position, b: i16, d: i8) {
         let metrics = MetricsCounters::default();
-        s.pvs(m, &pos, i16::MIN..b, d, Duration::MAX, &metrics)?;
+        s.pvs(&pos, i16::MIN..b, d, Duration::MAX, &metrics)?;
     }
 
     #[proptest]
     #[should_panic]
     fn pvs_panics_if_alpha_is_not_greater_than_beta(
         s: Searcher,
-        m: Option<Move>,
         pos: Position,
         #[strategy(-i16::MAX..i16::MAX)] a: i16,
         #[strategy(..=#a)] b: i16,
         d: i8,
     ) {
         let metrics = MetricsCounters::default();
-        s.pvs(m, &pos, a..b, d, Duration::MAX, &metrics)?;
+        s.pvs(&pos, a..b, d, Duration::MAX, &metrics)?;
     }
 
     #[proptest]
     fn pvs_evaluates_position_if_draft_is_lower_than_minimum(
         s: Searcher,
-        m: Option<Move>,
         #[by_ref]
         #[filter(#pos.outcome().is_none())]
         pos: Position,
@@ -488,7 +469,7 @@ mod tests {
     ) {
         let metrics = MetricsCounters::default();
         assert_eq!(
-            s.pvs(m, &pos, a..b, d, Duration::MAX, &metrics),
+            s.pvs(&pos, a..b, d, Duration::MAX, &metrics),
             Ok(Score(s.evaluator.eval(&pos).max(-i16::MAX), d))
         );
     }
@@ -496,29 +477,24 @@ mod tests {
     #[proptest]
     fn pvs_aborts_if_time_is_up(
         s: Searcher,
-        m: Option<Move>,
         pos: Position,
         #[strategy(-i16::MAX..i16::MAX)] a: i16,
         #[strategy(#a+1..)] b: i16,
         d: i8,
     ) {
         let metrics = MetricsCounters::default();
-        assert_eq!(
-            s.pvs(m, &pos, a..b, d, Duration::ZERO, &metrics),
-            Err(Timeout)
-        );
+        assert_eq!(s.pvs(&pos, a..b, d, Duration::ZERO, &metrics), Err(Timeout));
     }
 
     #[proptest]
     fn pvs_finds_best_score(
         s: Searcher,
-        m: Option<Move>,
         pos: Position,
         #[strategy(Searcher::MIN_DRAFT..=Searcher::MAX_DRAFT)] d: i8,
     ) {
         let metrics = MetricsCounters::default();
         assert_eq!(
-            s.pvs(m, &pos, -i16::MAX..i16::MAX, d, Duration::MAX, &metrics)
+            s.pvs(&pos, -i16::MAX..i16::MAX, d, Duration::MAX, &metrics)
                 .as_deref(),
             Ok(&negamax(&s.evaluator, &pos, d))
         );
@@ -529,7 +505,6 @@ mod tests {
         e: Evaluator,
         x: Options,
         y: Options,
-        m: Option<Move>,
         pos: Position,
         #[strategy(Searcher::MIN_DRAFT..=Searcher::MAX_DRAFT)] d: i8,
     ) {
@@ -540,9 +515,9 @@ mod tests {
         let yc = MetricsCounters::default();
 
         assert_eq!(
-            x.pvs(m, &pos, -i16::MAX..i16::MAX, d, Duration::MAX, &xc)
+            x.pvs(&pos, -i16::MAX..i16::MAX, d, Duration::MAX, &xc)
                 .as_deref(),
-            y.pvs(m, &pos, -i16::MAX..i16::MAX, d, Duration::MAX, &yc)
+            y.pvs(&pos, -i16::MAX..i16::MAX, d, Duration::MAX, &yc)
                 .as_deref()
         );
     }
