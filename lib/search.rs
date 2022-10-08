@@ -270,7 +270,8 @@ impl Searcher {
         let value = match pos.outcome() {
             Some(o) if o.is_draw() => return Ok(Score(0, draft)),
             Some(_) => return Ok(Score(-i16::MAX, draft)),
-            None => self.evaluator.eval(pos).max(-i16::MAX),
+            None if draft <= 0 => self.evaluator.eval(pos).max(-i16::MAX),
+            None => *self.pvs(pos, alpha..beta, 0, time, metrics)?,
         };
 
         if draft <= Self::MIN_DRAFT {
