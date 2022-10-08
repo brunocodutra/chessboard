@@ -318,7 +318,6 @@ impl Searcher {
 
         let (score, best) = moves
             .into_par_iter()
-            .with_max_len(1)
             .rev()
             .map(|(m, next, value)| {
                 let mut score = Score::MIN;
