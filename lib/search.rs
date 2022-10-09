@@ -22,10 +22,6 @@ pub use pv::*;
 #[derive(Debug, Default, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Deref, Neg)]
 struct Score(#[deref] i16, i8);
 
-impl Score {
-    const MIN: Self = Score(i16::MIN, i8::MIN);
-}
-
 #[derive(Debug, Display, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Error)]
 #[display(fmt = "time is up!")]
 pub struct Timeout;
@@ -79,7 +75,18 @@ impl Searcher {
         }
     }
 
-    fn probe(&self, zobrist: Zobrist, bounds: &Range<i16>, draft: i8) -> (Option<Move>, i16, i16) {
+    /// Evaluates the [`Position`].
+    fn eval(&self, pos: &Position) -> i16 {
+        self.evaluator.eval(pos).max(-i16::MAX)
+    }
+
+    /// Probes for a `[Transposition`].
+    fn probe(
+        &self,
+        zobrist: Zobrist,
+        bounds: &Range<i16>,
+        draft: i8,
+    ) -> (Option<Transposition>, i16, i16) {
         let transposition = self.tt.get(zobrist);
 
         let (alpha, beta) = match transposition.filter(|t| t.draft() >= draft) {
@@ -96,9 +103,10 @@ impl Searcher {
             }
         };
 
-        (transposition.map(|t| t.best()), alpha, beta)
+        (transposition, alpha, beta)
     }
 
+    /// Records a `[Transposition`].
     fn record(&self, zobrist: Zobrist, bounds: &Range<i16>, draft: i8, score: Score, best: Move) {
         self.tt.set(
             zobrist,
@@ -122,7 +130,7 @@ impl Searcher {
         assert!(!bounds.is_empty(), "{:?} ≠ ∅", bounds);
         assert!(!bounds.contains(&i16::MIN), "{:?} ∌ {}", bounds, i16::MIN);
 
-        let (alpha, beta) = (bounds.start.max(self.evaluator.eval(pos)), bounds.end);
+        let (alpha, beta) = (bounds.start.max(self.eval(pos)), bounds.end);
 
         if alpha >= beta {
             return beta;
@@ -199,22 +207,30 @@ impl Searcher {
         &self,
         pos: &Position,
         guess: i16,
+        bounds: Range<i16>,
         draft: i8,
         time: Duration,
         metrics: &MetricsCounters,
     ) -> Result<Score, Timeout> {
-        const W: i16 = 64;
+        assert!(!bounds.is_empty(), "{:?} ≠ ∅", bounds);
+        assert!(!bounds.contains(&i16::MIN), "{:?} ∌ {}", bounds, i16::MIN);
 
-        let upper = guess.saturating_add(W / 2).max(W - i16::MAX);
-        let lower = guess.saturating_sub(W / 2).min(i16::MAX - W).max(-i16::MAX);
-        let score = self.pvs(pos, lower..upper, draft, time, metrics)?;
+        let mut w = 64;
+        if bounds.len() <= w as usize {
+            return self.pvs(pos, bounds, draft, time, metrics);
+        }
 
-        if *score >= upper {
-            self.pvs(pos, lower..i16::MAX, draft, time, metrics)
-        } else if *score <= lower {
-            self.pvs(pos, -i16::MAX..upper, draft, time, metrics)
-        } else {
-            Ok(score)
+        let (alpha, beta) = (bounds.start, bounds.end);
+        let mut lower = guess.saturating_sub(w / 2).max(alpha).min(beta - w);
+        let mut upper = guess.saturating_add(w / 2).max(alpha + w).min(beta);
+
+        loop {
+            w = w.saturating_mul(2);
+            match self.pvs(pos, lower..upper, draft, time, metrics)? {
+                s if (-lower..-alpha).contains(&-s) => lower = s.saturating_sub(w).max(alpha),
+                s if (upper..beta).contains(&s) => upper = s.saturating_add(w).min(beta),
+                s => break Ok(s),
+            }
         }
     }
 
@@ -255,9 +271,9 @@ impl Searcher {
         metrics.node();
 
         let zobrist = pos.zobrist();
-        let (pv, alpha, beta) = self.probe(zobrist, &bounds, draft);
+        let (transposition, alpha, beta) = self.probe(zobrist, &bounds, draft);
 
-        if pv.is_some() {
+        if transposition.is_some() {
             metrics.tt_hit();
         }
 
@@ -270,8 +286,11 @@ impl Searcher {
         let value = match pos.outcome() {
             Some(o) if o.is_draw() => return Ok(Score(0, draft)),
             Some(_) => return Ok(Score(-i16::MAX, draft)),
-            None if draft <= 0 => self.evaluator.eval(pos).max(-i16::MAX),
-            None => *self.pvs(pos, alpha..beta, 0, time, metrics)?,
+            None if draft <= 0 => self.eval(pos),
+            None => {
+                let guess = transposition.map_or_else(|| alpha / 2 + beta / 2, |t| t.score());
+                *self.aw(pos, guess, alpha..beta, 0, time, metrics)?
+            }
         };
 
         if draft <= Self::MIN_DRAFT {
@@ -297,12 +316,12 @@ impl Searcher {
             MoveKind::ANY
         };
 
-        let mut moves = self.moves(pos, kind, pv);
+        let mut moves = self.moves(pos, kind, transposition.map(|t| t.best()));
 
         let (score, pv) = match moves.pop() {
             None => return Ok(Score(value, draft)),
             Some((m, next, _)) => {
-                let score = -self.pvs(&next, -beta..-alpha, draft - 1, time, metrics)?;
+                let score = -self.aw(&next, -value, -beta..-alpha, draft - 1, time, metrics)?;
 
                 if *score >= beta {
                     metrics.pv_cut();
@@ -320,7 +339,7 @@ impl Searcher {
             .into_par_iter()
             .rev()
             .map(|(m, next, value)| {
-                let mut score = Score::MIN;
+                let mut score = Score(-i16::MAX, -i8::MAX);
                 let mut alpha = cutoff.load(Ordering::Relaxed);
 
                 if alpha >= beta {
@@ -332,7 +351,7 @@ impl Searcher {
                         if d < 0 || *-self.nw(&next, -alpha - 1, d, time, metrics)? < alpha {
                             #[cfg(not(test))]
                             // The late move pruning heuristic is not exact.
-                            return Ok(None);
+                            return Ok(Some((score, m)));
                         } else {
                             alpha = cutoff.load(Ordering::Relaxed);
                         }
@@ -348,8 +367,8 @@ impl Searcher {
                     }
                 }
 
-                if alpha <= *score && *score < beta {
-                    score = -self.pvs(&next, -beta..-alpha, draft - 1, time, metrics)?;
+                if (alpha..beta).contains(&score) {
+                    score = -self.aw(&next, -alpha, -beta..-alpha, draft - 1, time, metrics)?;
                     cutoff.fetch_max(*score, Ordering::Relaxed);
                 }
 
@@ -370,13 +389,14 @@ impl Searcher {
 
         let (mut score, start) = Option::zip(pv.score(), pv.depth()).unwrap_or_else(|| {
             self.tt.unset(pos.zobrist());
-            (self.evaluator.eval(pos), 0)
+            (self.eval(pos), 0)
         });
 
         let mut metrics = Metrics::default();
         let mut counters = MetricsCounters::default();
         for depth in start..=limits.depth().min(Self::MAX_DRAFT as u8) {
-            (score, pv) = match self.aw(pos, score, depth as i8, limits.time(), &counters) {
+            let bounds = -i16::MAX..i16::MAX;
+            (score, pv) = match self.aw(pos, score, bounds, depth as i8, limits.time(), &counters) {
                 Ok(s) => (*s, self.tt.iter(pos).collect()),
                 Err(_) => break,
             };
@@ -470,7 +490,7 @@ mod tests {
         let metrics = MetricsCounters::default();
         assert_eq!(
             s.pvs(&pos, a..b, d, Duration::MAX, &metrics),
-            Ok(Score(s.evaluator.eval(&pos).max(-i16::MAX), d))
+            Ok(Score(s.eval(&pos), d))
         );
     }
 
@@ -531,7 +551,8 @@ mod tests {
     ) {
         let metrics = MetricsCounters::default();
         assert_eq!(
-            s.aw(&pos, g, d, Duration::MAX, &metrics).as_deref(),
+            s.aw(&pos, g, -i16::MAX..i16::MAX, d, Duration::MAX, &metrics)
+                .as_deref(),
             Ok(&negamax(&s.evaluator, &pos, d))
         );
     }
@@ -546,8 +567,10 @@ mod tests {
     ) {
         let metrics = MetricsCounters::default();
         assert_eq!(
-            s.aw(&pos, g, d, Duration::MAX, &metrics).as_deref(),
-            s.aw(&pos, h, d, Duration::MAX, &metrics).as_deref()
+            s.aw(&pos, g, -i16::MAX..i16::MAX, d, Duration::MAX, &metrics)
+                .as_deref(),
+            s.aw(&pos, h, -i16::MAX..i16::MAX, d, Duration::MAX, &metrics)
+                .as_deref()
         );
     }
 
