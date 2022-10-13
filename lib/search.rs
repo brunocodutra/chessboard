@@ -287,10 +287,10 @@ impl Searcher {
             Some(o) if o.is_draw() => return Ok(Score(0, draft)),
             Some(_) => return Ok(Score(-i16::MAX, draft)),
             None if draft <= 0 => self.eval(pos),
-            None => {
-                let guess = transposition.map_or_else(|| alpha / 2 + beta / 2, |t| t.score());
-                *self.aw(pos, guess, alpha..beta, 0, time, metrics)?
-            }
+            None => match transposition {
+                None => *self.nw(pos, beta - 1, 0, time, metrics)?,
+                Some(t) => t.score(),
+            },
         };
 
         if draft <= Self::MIN_DRAFT {
