@@ -310,7 +310,7 @@ impl Searcher {
             }
         }
 
-        let kind = if draft <= 0 && !in_check {
+        let kind = if draft <= 0 {
             MoveKind::CAPTURE | MoveKind::PROMOTION
         } else {
             MoveKind::ANY
@@ -359,11 +359,12 @@ impl Searcher {
                 }
 
                 while *score < alpha && alpha < beta {
-                    let target = alpha;
-                    score = -self.nw(&next, -target - 1, draft - 1, time, metrics)?;
-                    alpha = cutoff.fetch_max(*score, Ordering::Relaxed).max(*score);
-                    if *score < target {
+                    score = -self.nw(&next, -alpha - 1, draft - 1, time, metrics)?;
+
+                    if *score < alpha {
                         break;
+                    } else {
+                        alpha = cutoff.fetch_max(*score, Ordering::Relaxed).max(*score);
                     }
                 }
 
@@ -431,7 +432,7 @@ mod tests {
 
         let kind = if draft <= Searcher::MIN_DRAFT {
             return score;
-        } else if draft <= 0 && !pos.is_check() {
+        } else if draft <= 0 {
             MoveKind::CAPTURE | MoveKind::PROMOTION
         } else {
             MoveKind::ANY
