@@ -44,23 +44,14 @@ impl Default for Searcher {
 
 impl Searcher {
     #[cfg(test)]
-    #[cfg(tarpaulin)]
-    const MIN_DRAFT: i8 = -1;
-    #[cfg(test)]
-    #[cfg(tarpaulin)]
-    const MAX_DRAFT: i8 = 1;
-
-    #[cfg(test)]
-    #[cfg(not(tarpaulin))]
     const MIN_DRAFT: i8 = -2;
     #[cfg(test)]
-    #[cfg(not(tarpaulin))]
     const MAX_DRAFT: i8 = 2;
 
     #[cfg(not(test))]
-    const MIN_DRAFT: i8 = Transposition::MIN_DRAFT;
+    const MIN_DRAFT: i8 = -32;
     #[cfg(not(test))]
-    const MAX_DRAFT: i8 = Transposition::MAX_DRAFT;
+    const MAX_DRAFT: i8 = Transposition::MAX_DEPTH as i8;
 
     /// Constructs [`Searcher`] with the default [`Options`].
     pub fn new(evaluator: Evaluator) -> Self {
@@ -85,14 +76,14 @@ impl Searcher {
         &self,
         zobrist: Zobrist,
         bounds: &Range<i16>,
-        draft: i8,
+        depth: u8,
     ) -> (Option<Transposition>, i16, i16) {
         let transposition = self.tt.get(zobrist);
 
-        let (alpha, beta) = match transposition.filter(|t| t.draft() >= draft) {
+        let (alpha, beta) = match transposition.filter(|t| t.depth() >= depth) {
             None => (bounds.start, bounds.end),
-            #[cfg(test)] // Probing larger draft is not exact.
-            Some(t) if t.draft() != draft => (bounds.start, bounds.end),
+            #[cfg(test)]
+            Some(t) if t.depth() == 0 => (bounds.start, bounds.end),
             Some(t) => {
                 let (lower, upper) = t.bounds().into_inner();
 
@@ -107,15 +98,15 @@ impl Searcher {
     }
 
     /// Records a `[Transposition`].
-    fn record(&self, zobrist: Zobrist, bounds: &Range<i16>, draft: i8, score: Score, best: Move) {
+    fn record(&self, zobrist: Zobrist, bounds: &Range<i16>, depth: u8, score: Score, best: Move) {
         self.tt.set(
             zobrist,
             if *score >= bounds.end {
-                Transposition::lower(*score, draft, best)
+                Transposition::lower(*score, depth, best)
             } else if *score <= bounds.start {
-                Transposition::upper(*score, draft, best)
+                Transposition::upper(*score, depth, best)
             } else {
-                Transposition::exact(*score, draft, best)
+                Transposition::exact(*score, depth, best)
             },
         );
     }
@@ -271,7 +262,7 @@ impl Searcher {
         metrics.node();
 
         let zobrist = pos.zobrist();
-        let (transposition, alpha, beta) = self.probe(zobrist, &bounds, draft);
+        let (transposition, alpha, beta) = self.probe(zobrist, &bounds, draft.max(0) as _);
 
         if transposition.is_some() {
             metrics.tt_hit();
@@ -325,7 +316,7 @@ impl Searcher {
 
                 if *score >= beta {
                     metrics.pv_cut();
-                    self.record(zobrist, &bounds, draft, score, m);
+                    self.record(zobrist, &bounds, draft.max(0) as _, score, m);
                     return Ok(score);
                 }
 
@@ -379,7 +370,7 @@ impl Searcher {
             .try_reduce(|| None, |a, b| Ok(max_by_key(a, b, |x| x.map(|(s, _)| s))))?
             .expect("expected at least one legal move");
 
-        self.record(zobrist, &bounds, draft, score, best);
+        self.record(zobrist, &bounds, draft.max(0) as _, score, best);
 
         Ok(score)
     }
@@ -511,7 +502,7 @@ mod tests {
     fn pvs_finds_best_score(
         s: Searcher,
         pos: Position,
-        #[strategy(Searcher::MIN_DRAFT..=Searcher::MAX_DRAFT)] d: i8,
+        #[strategy(0..=Searcher::MAX_DRAFT)] d: i8,
     ) {
         let metrics = MetricsCounters::default();
         assert_eq!(
@@ -527,7 +518,7 @@ mod tests {
         x: Options,
         y: Options,
         pos: Position,
-        #[strategy(Searcher::MIN_DRAFT..=Searcher::MAX_DRAFT)] d: i8,
+        #[strategy(0..=Searcher::MAX_DRAFT)] d: i8,
     ) {
         let x = Searcher::with_options(e.clone(), x);
         let y = Searcher::with_options(e, y);
@@ -548,7 +539,7 @@ mod tests {
         s: Searcher,
         pos: Position,
         #[strategy(-i16::MAX..i16::MAX)] g: i16,
-        #[strategy(Searcher::MIN_DRAFT..=Searcher::MAX_DRAFT)] d: i8,
+        #[strategy(0..=Searcher::MAX_DRAFT)] d: i8,
     ) {
         let metrics = MetricsCounters::default();
         assert_eq!(
@@ -564,7 +555,7 @@ mod tests {
         pos: Position,
         #[strategy(-i16::MAX..i16::MAX)] g: i16,
         #[strategy(-i16::MAX..i16::MAX)] h: i16,
-        #[strategy(Searcher::MIN_DRAFT..=Searcher::MAX_DRAFT)] d: i8,
+        #[strategy(0..=Searcher::MAX_DRAFT)] d: i8,
     ) {
         let metrics = MetricsCounters::default();
         assert_eq!(

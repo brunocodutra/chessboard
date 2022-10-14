@@ -74,16 +74,16 @@ impl<const N: usize> Pv<N> {
 /// Truncates the sequence at the N-th [`Transposition`].
 ///
 /// # Panics
-/// Panics if the sequence is not strictly decreasing by draft.
+/// Panics if the sequence is not strictly decreasing by depth.
 impl<const N: usize> FromIterator<Transposition> for Pv<N> {
     fn from_iter<I: IntoIterator<Item = Transposition>>(tts: I) -> Self {
-        let mut tts = tts.into_iter().filter(|t| t.draft() > 0).peekable();
-        let info = tts.peek().map(|t| (t.draft() as u8, t.score()));
+        let mut tts = tts.into_iter().filter(|t| t.depth() > 0).peekable();
+        let info = tts.peek().map(|t| (t.depth() as u8, t.score()));
 
-        let mut draft = i8::MAX;
+        let mut depth = u8::MAX;
         let moves = ArrayVec::from_iter(tts.take(N).map(|t| {
-            assert!(t.draft() <= draft);
-            draft = t.draft() - 1;
+            assert!(t.depth() <= depth);
+            depth = t.depth() - 1;
             t.best()
         }));
 
@@ -116,7 +116,7 @@ mod tests {
         assert_eq!(tt.iter(&pos).collect::<Pv<0>>().len(), 0);
         assert_eq!(
             tt.iter(&pos).collect::<Pv<10>>().len(),
-            tt.iter(&pos).filter(|t| t.draft() > 0).count()
+            tt.iter(&pos).filter(|t| t.depth() > 0).count()
         );
     }
 
@@ -125,7 +125,7 @@ mod tests {
         assert!(tt.iter(&pos).collect::<Pv<0>>().is_empty());
         assert_eq!(
             tt.iter(&pos).collect::<Pv<10>>().is_empty(),
-            tt.iter(&pos).filter(|t| t.draft() > 0).count() == 0
+            tt.iter(&pos).filter(|t| t.depth() > 0).count() == 0
         );
     }
 
@@ -136,7 +136,7 @@ mod tests {
         #[filter(#pos.moves(MoveKind::ANY).len() > 0)]
         pos: Position,
         s: i16,
-        #[strategy(1i8..=Transposition::MAX_DRAFT)] d: i8,
+        #[strategy(1u8..=Transposition::MAX_DEPTH)] d: u8,
         selector: Selector,
     ) {
         let (m, next) = selector.select(pos.moves(MoveKind::ANY));
@@ -160,14 +160,13 @@ mod tests {
     }
 
     #[proptest]
-    fn collects_positive_draft_only(
+    fn collects_positive_depth_only(
         tt: Table,
         #[by_ref]
         #[filter(#pos.moves(MoveKind::ANY).len() > 0)]
         pos: Position,
         s: i16,
-        #[strategy(1..=Transposition::MAX_DRAFT)] a: i8,
-        #[strategy(Transposition::MIN_DRAFT..=0)] b: i8,
+        #[strategy(1..=Transposition::MAX_DEPTH)] a: u8,
         selector: Selector,
     ) {
         let (m, next) = selector.select(pos.moves(MoveKind::ANY));
@@ -179,7 +178,7 @@ mod tests {
         tt.unset(pos.zobrist());
         tt.set(pos.zobrist(), t);
 
-        let u = Transposition::lower(s, b, n);
+        let u = Transposition::lower(s, 0, n);
         tt.unset(next.zobrist());
         tt.set(next.zobrist(), u);
 
@@ -200,7 +199,7 @@ mod tests {
         #[filter(#pos.moves(MoveKind::ANY).len() > 0)]
         pos: Position,
         s: i16,
-        #[strategy(1..Transposition::MAX_DRAFT)] d: i8,
+        #[strategy(1..Transposition::MAX_DEPTH)] d: u8,
         selector: Selector,
     ) {
         let (m, _) = selector.select(pos.moves(MoveKind::ANY));
@@ -210,24 +209,23 @@ mod tests {
         tt.set(pos.zobrist(), t);
 
         let pv: Pv<0> = tt.iter(&pos).collect();
-        assert_eq!(pv.depth(), Some(t.draft() as u8));
+        assert_eq!(pv.depth(), Some(t.depth() as u8));
         assert_eq!(pv.score(), Some(t.score()));
         assert_eq!(&pv[..], [].as_slice())
     }
 
     #[proptest]
-    fn depth_and_score_are_not_available_if_draft_is_not_positive(
+    fn depth_and_score_are_not_available_if_depth_is_not_positive(
         tt: Table,
         #[by_ref]
         #[filter(#pos.moves(MoveKind::ANY).len() > 0)]
         pos: Position,
         s: i16,
-        #[strategy(Transposition::MIN_DRAFT..=0)] d: i8,
         selector: Selector,
     ) {
         let (m, _) = selector.select(pos.moves(MoveKind::ANY));
 
-        let t = Transposition::lower(s, d, m);
+        let t = Transposition::lower(s, 0, m);
         tt.unset(pos.zobrist());
         tt.set(pos.zobrist(), t);
 
@@ -239,12 +237,12 @@ mod tests {
 
     #[proptest]
     #[should_panic]
-    fn panics_if_sequence_is_not_strictly_decreasing_by_draft(
+    fn panics_if_sequence_is_not_strictly_decreasing_by_depth(
         #[by_ref]
         #[any(size_range(2..=10).lift())]
         mut tts: Vec<Transposition>,
     ) {
-        tts.sort_by_key(|t| -t.draft());
+        tts.sort_by_key(|t| !t.depth());
         tts.rotate_left(1);
         let _: Pv<10> = tts.iter().copied().collect();
     }

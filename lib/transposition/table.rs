@@ -72,7 +72,7 @@ impl Table {
 
     /// Stores a [`Transposition`] in the slot associated with `key`.
     ///
-    /// In the slot if not empty, the [`Transposition`] with greater draft is chosen.
+    /// In the slot if not empty, the [`Transposition`] with greater depth is chosen.
     pub fn set(&self, key: Zobrist, transposition: Transposition) {
         let sig = self.signature_of(key);
         let register = Some((transposition, sig)).encode();
@@ -169,7 +169,7 @@ mod tests {
     fn set_ignores_the_signature_mismatch(
         tt: Table,
         t: Transposition,
-        #[filter(#u.draft() > #t.draft())] u: Transposition,
+        #[filter(#u.depth() > #t.depth())] u: Transposition,
         k: Zobrist,
     ) {
         let sig = tt.signature_of((!k.load::<u64>()).view_bits().into());

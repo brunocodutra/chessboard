@@ -23,52 +23,50 @@ enum Kind {
 pub struct Transposition {
     kind: Kind,
     score: i16,
-    #[strategy(Self::MIN_DRAFT..=Self::MAX_DRAFT)]
-    draft: i8,
+    #[strategy(0..=Self::MAX_DEPTH)]
+    depth: u8,
     best: Move,
 }
 
 impl PartialOrd for Transposition {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        (self.draft, self.kind).partial_cmp(&(other.draft, other.kind))
+        (self.depth, self.kind).partial_cmp(&(other.depth, other.kind))
     }
 }
 
 impl Ord for Transposition {
     fn cmp(&self, other: &Self) -> Ordering {
-        (self.draft, self.kind).cmp(&(other.draft, other.kind))
+        (self.depth, self.kind).cmp(&(other.depth, other.kind))
     }
 }
 
 impl Transposition {
-    pub const MIN_DRAFT: i8 = (i8::MIN >> 1);
-    pub const MAX_DRAFT: i8 = (i8::MAX >> 1);
+    pub const MAX_DEPTH: u8 = (u8::MAX >> 3);
 
-    fn new(kind: Kind, score: i16, draft: i8, best: Move) -> Self {
-        assert!(draft >= Self::MIN_DRAFT, "{} >= {}", draft, Self::MIN_DRAFT);
-        assert!(draft <= Self::MAX_DRAFT, "{} <= {}", draft, Self::MAX_DRAFT);
+    fn new(kind: Kind, score: i16, depth: u8, best: Move) -> Self {
+        assert!(depth <= Self::MAX_DEPTH, "{} <= {}", depth, Self::MAX_DEPTH);
 
         Transposition {
             kind,
             score,
-            draft,
+            depth,
             best,
         }
     }
 
-    /// Constructs a [`Transposition`] given a lower bound for the score, remaining draft, and best [`Move`].
-    pub fn lower(score: i16, draft: i8, best: Move) -> Self {
-        Transposition::new(Kind::Lower, score, draft, best)
+    /// Constructs a [`Transposition`] given a lower bound for the score, depth searched, and best [`Move`].
+    pub fn lower(score: i16, depth: u8, best: Move) -> Self {
+        Transposition::new(Kind::Lower, score, depth, best)
     }
 
-    /// Constructs a [`Transposition`] given an upper bound for the score, remaining draft, and best [`Move`].
-    pub fn upper(score: i16, draft: i8, best: Move) -> Self {
-        Transposition::new(Kind::Upper, score, draft, best)
+    /// Constructs a [`Transposition`] given an upper bound for the score, depth searched, and best [`Move`].
+    pub fn upper(score: i16, depth: u8, best: Move) -> Self {
+        Transposition::new(Kind::Upper, score, depth, best)
     }
 
-    /// Constructs a [`Transposition`] given the exact score, remaining draft, and best [`Move`].
-    pub fn exact(score: i16, draft: i8, best: Move) -> Self {
-        Transposition::new(Kind::Exact, score, draft, best)
+    /// Constructs a [`Transposition`] given the exact score, depth searched, and best [`Move`].
+    pub fn exact(score: i16, depth: u8, best: Move) -> Self {
+        Transposition::new(Kind::Exact, score, depth, best)
     }
 
     /// Bounds for the exact score.
@@ -80,9 +78,9 @@ impl Transposition {
         }
     }
 
-    /// Remaining draft.
-    pub fn draft(&self) -> i8 {
-        self.draft
+    /// Depth searched.
+    pub fn depth(&self) -> u8 {
+        self.depth
     }
 
     /// Partial score.
@@ -96,7 +94,7 @@ impl Transposition {
     }
 }
 
-type Signature = Bits<u32, 24>;
+type Signature = Bits<u32, 26>;
 type OptionalSignedTransposition = Option<(Transposition, Signature)>;
 type OptionalSignedTranspositionRegister = <OptionalSignedTransposition as Binary>::Register;
 
@@ -116,12 +114,12 @@ impl Binary for OptionalSignedTransposition {
                 let mut register = Bits::default();
                 let (kind, rest) = register.split_at_mut(2);
                 let (score, rest) = rest.split_at_mut(16);
-                let (draft, rest) = rest.split_at_mut(7);
+                let (depth, rest) = rest.split_at_mut(5);
                 let (best, rest) = rest.split_at_mut(<Move as Binary>::Register::WIDTH);
 
                 kind.store(t.kind as u8);
                 score.store(t.score);
-                draft.store(t.draft);
+                depth.store(t.depth);
                 best.clone_from_bitslice(&t.best.encode());
                 rest.clone_from_bitslice(sig);
 
@@ -138,7 +136,7 @@ impl Binary for OptionalSignedTransposition {
         } else {
             let (kind, rest) = register.split_at(2);
             let (score, rest) = rest.split_at(16);
-            let (draft, rest) = rest.split_at(7);
+            let (depth, rest) = rest.split_at(5);
             let (best, rest) = rest.split_at(<Move as Binary>::Register::WIDTH);
 
             use Kind::*;
@@ -149,7 +147,7 @@ impl Binary for OptionalSignedTransposition {
                         .nth(kind.load())
                         .ok_or(DecodeTranspositionError(register))?,
                     score: score.load(),
-                    draft: draft.load(),
+                    depth: depth.load(),
                     best: Binary::decode(best.into())
                         .map_err(|_| DecodeTranspositionError(register))?,
                 },
@@ -167,7 +165,7 @@ mod tests {
     #[proptest]
     fn lower_constructs_lower_bound_transposition(
         s: i16,
-        #[strategy(Transposition::MIN_DRAFT..=Transposition::MAX_DRAFT)] d: i8,
+        #[strategy(0..=Transposition::MAX_DEPTH)] d: u8,
         m: Move,
     ) {
         assert_eq!(
@@ -179,7 +177,7 @@ mod tests {
     #[proptest]
     fn upper_constructs_upper_bound_transposition(
         s: i16,
-        #[strategy(Transposition::MIN_DRAFT..=Transposition::MAX_DRAFT)] d: i8,
+        #[strategy(0..=Transposition::MAX_DEPTH)] d: u8,
         m: Move,
     ) {
         assert_eq!(
@@ -191,7 +189,7 @@ mod tests {
     #[proptest]
     fn exact_constructs_exact_transposition(
         s: i16,
-        #[strategy(Transposition::MIN_DRAFT..=Transposition::MAX_DRAFT)] d: i8,
+        #[strategy(0..=Transposition::MAX_DEPTH)] d: u8,
         m: Move,
     ) {
         assert_eq!(
@@ -202,21 +200,10 @@ mod tests {
 
     #[proptest]
     #[should_panic]
-    fn transposition_panics_if_draft_grater_than_max(
+    fn transposition_panics_if_depth_grater_than_max(
         k: Kind,
         s: i16,
-        #[strategy(Transposition::MAX_DRAFT + 1..)] d: i8,
-        m: Move,
-    ) {
-        Transposition::new(k, s, d, m);
-    }
-
-    #[proptest]
-    #[should_panic]
-    fn transposition_panics_if_draft_lower_than_max(
-        k: Kind,
-        s: i16,
-        #[strategy(..Transposition::MIN_DRAFT - 1)] d: i8,
+        #[strategy(Transposition::MAX_DEPTH + 1..)] d: u8,
         m: Move,
     ) {
         Transposition::new(k, s, d, m);
@@ -228,17 +215,17 @@ mod tests {
     }
 
     #[proptest]
-    fn transposition_with_larger_draft_is_larger(
+    fn transposition_with_larger_depth_is_larger(
         t: Transposition,
-        #[filter(#t.draft != #u.draft)] u: Transposition,
+        #[filter(#t.depth != #u.depth)] u: Transposition,
     ) {
-        assert_eq!(t < u, t.draft < u.draft);
+        assert_eq!(t < u, t.depth < u.depth);
     }
 
     #[proptest]
-    fn transposition_with_same_draft_is_compared_by_kind(
+    fn transposition_with_same_depth_is_compared_by_kind(
         t: Transposition,
-        #[filter(#t.draft == #u.draft)] u: Transposition,
+        #[filter(#t.depth == #u.depth)] u: Transposition,
     ) {
         assert_eq!(t < u, t.kind < u.kind);
     }

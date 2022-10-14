@@ -6,7 +6,7 @@ use crate::chess::Position;
 pub struct Iter<'a> {
     tt: &'a Table,
     pos: Position,
-    draft: Option<i8>,
+    depth: Option<u8>,
 }
 
 impl<'a> Iter<'a> {
@@ -14,7 +14,7 @@ impl<'a> Iter<'a> {
         Iter {
             tt,
             pos,
-            draft: Some(i8::MAX),
+            depth: Some(u8::MAX),
         }
     }
 }
@@ -23,10 +23,10 @@ impl<'a> Iterator for Iter<'a> {
     type Item = Transposition;
 
     fn next(&mut self) -> Option<Self::Item> {
-        let d = self.draft?;
+        let d = self.depth?;
         let key = self.pos.zobrist();
-        let t = self.tt.get(key).filter(|t| t.draft() <= d)?;
-        self.draft = t.draft().checked_sub(1);
+        let t = self.tt.get(key).filter(|t| t.depth() <= d)?;
+        self.depth = t.depth().checked_sub(1);
         self.pos.make(t.best()).ok()?;
         Some(t)
     }
@@ -40,14 +40,14 @@ mod tests {
     use test_strategy::proptest;
 
     #[proptest]
-    fn iterates_over_moves_searched_with_strictly_decreasing_draft(
+    fn iterates_over_moves_searched_with_strictly_decreasing_depth(
         #[by_ref]
         #[filter(#tt.capacity() > 1)]
         tt: Table,
         #[by_ref]
         #[filter(#pos.moves(MoveKind::ANY).len() > 0)]
         pos: Position,
-        #[strategy(Transposition::MIN_DRAFT..=Transposition::MAX_DRAFT)] d: i8,
+        #[strategy(0..=Transposition::MAX_DEPTH)] d: u8,
         s: i16,
         selector: Selector,
     ) {
