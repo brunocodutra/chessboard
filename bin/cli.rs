@@ -1,5 +1,5 @@
 use anyhow::Error as Anyhow;
-use clap::{AppSettings::DeriveDisplayOrder, Parser};
+use clap::Parser;
 use std::{cmp::min, io::stderr};
 use tracing::{instrument, Level};
 use tracing_subscriber::fmt::{format::FmtSpan, layer};
@@ -9,12 +9,12 @@ use crate::applet::Applet;
 
 /// Command line interface.
 #[derive(Parser)]
-#[clap(author, version, about, setting = DeriveDisplayOrder)]
+#[clap(author, version, about)]
 pub struct Cli {
     /// Verbosity level.
-    #[clap(short, long, parse(try_from_str))]
-    #[cfg_attr(not(debug_assertions), clap(default_value = "info"))]
-    #[cfg_attr(debug_assertions, clap(default_value = "debug"))]
+    #[clap(short, long)]
+    #[cfg_attr(not(debug_assertions), clap(default_value_t = Level::INFO))]
+    #[cfg_attr(debug_assertions, clap(default_value_t = Level::DEBUG))]
     verbosity: Level,
 
     #[clap(subcommand)]

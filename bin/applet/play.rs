@@ -1,6 +1,6 @@
 use crate::{engine::EngineConfig, game::Game};
 use anyhow::Error as Anyhow;
-use clap::{AppSettings::DeriveDisplayOrder, Parser};
+use clap::Parser;
 use lib::chess::Position;
 use libm::erf;
 use std::num::NonZeroUsize;
@@ -8,11 +8,7 @@ use tracing::{info, instrument};
 
 /// A match of chess between two players.
 #[derive(Debug, Parser)]
-#[clap(
-    disable_help_flag = true,
-    disable_version_flag = true,
-    setting = DeriveDisplayOrder
-)]
+#[clap(disable_help_flag = true, disable_version_flag = true)]
 pub struct Play {
     /// How many games to play.
     #[clap(short = 'n', long, default_value = "1")]
