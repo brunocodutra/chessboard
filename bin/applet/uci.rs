@@ -1,6 +1,6 @@
 use crate::io::{Io, Pipe};
 use anyhow::{Context, Error as Anyhow};
-use clap::{AppSettings::DeriveDisplayOrder, Parser};
+use clap::Parser;
 use lib::chess::{Fen, Position};
 use lib::search::{Limits, Searcher};
 use tokio::io::{stdin, stdout};
@@ -10,11 +10,7 @@ use vampirc_uci::{self as uci, UciMessage, UciSearchControl, UciTimeControl};
 
 /// A basic *not fully compliant* UCI server.
 #[derive(Debug, Default, Parser)]
-#[clap(
-    disable_help_flag = true,
-    disable_version_flag = true,
-    setting = DeriveDisplayOrder
-)]
+#[clap(disable_help_flag = true, disable_version_flag = true)]
 pub struct Uci {}
 
 impl Uci {

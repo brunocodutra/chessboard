@@ -1,17 +1,13 @@
 use crate::{build::Build, engine::EngineConfig, player::Player};
 use anyhow::{Context, Error as Anyhow};
-use clap::{AppSettings::DeriveDisplayOrder, Parser};
+use clap::Parser;
 use futures_util::TryStreamExt;
 use lib::chess::{Color, Fen};
 use tracing::{info, instrument};
 
 /// Analyzes a position.
 #[derive(Debug, Parser)]
-#[clap(
-    disable_help_flag = true,
-    disable_version_flag = true,
-    setting = DeriveDisplayOrder
-)]
+#[clap(disable_help_flag = true, disable_version_flag = true)]
 pub struct Analyze {
     /// The engine used to analyze the position.
     #[clap(short, long, default_value_t)]
