@@ -1,8 +1,7 @@
 use super::Position;
-use derive_more::{DebugCustom, Display, Error, From};
+use derive_more::{DebugCustom, Display};
 use proptest::{prelude::*, sample::Selector};
 use shakmaty as sm;
-use std::str::FromStr;
 use test_strategy::Arbitrary;
 
 /// A representation of the [algebraic notation].
@@ -21,21 +20,9 @@ pub struct San(
 );
 
 impl San {
+    /// The null-move.
     pub fn null() -> Self {
         San(sm::san::San::Null)
-    }
-}
-
-/// The reason why the string is not valid FEN.
-#[derive(Debug, Display, Clone, Error, From)]
-#[display(fmt = "{}", _0)]
-pub struct ParseSanError(#[error(not(source))] sm::san::ParseSanError);
-
-impl FromStr for San {
-    type Err = ParseSanError;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        Ok(San(s.parse()?))
     }
 }
 
@@ -57,20 +44,6 @@ impl From<San> for sm::san::San {
 mod test {
     use super::*;
     use test_strategy::proptest;
-
-    #[proptest]
-    fn parsing_printed_san_is_an_identity(san: San) {
-        assert_eq!(san.to_string().parse().ok(), Some(san));
-    }
-
-    #[proptest]
-    fn parsing_invalid_san_fails(
-        #[by_ref]
-        #[filter(#s.parse::<sm::san::San>().is_err())]
-        s: String,
-    ) {
-        assert!(s.parse::<San>().is_err());
-    }
 
     #[proptest]
     fn san_has_an_equivalent_shakmaty_representation(san: San) {
