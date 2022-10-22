@@ -38,7 +38,7 @@ derive_more = { version = "0.99.16", default-features = false, features = [
     "into_iterator",
     "not",
 ] }
-futures-util = { version = "0.3.24", default-features = false, features = ["alloc"] }
+futures-util = { version = "0.3.25", default-features = false, features = ["alloc"] }
 humantime-serde = { version = "1.1.1", default-features = false }
 libm = { version = "0.2.5", default-features = false }
 proptest = { version = "1.0.0", default-features = false, features = ["std"] }
