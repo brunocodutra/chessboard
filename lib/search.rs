@@ -206,8 +206,8 @@ impl Searcher {
         assert!(!bounds.is_empty(), "{:?} ≠ ∅", bounds);
         assert!(!bounds.contains(&i16::MIN), "{:?} ∌ {}", bounds, i16::MIN);
 
-        let mut w = 64;
-        if bounds.len() <= w as usize {
+        let mut w = 32;
+        if bounds.len() <= 4 * w as usize {
             return self.pvs(pos, bounds, draft, time, metrics);
         }
 
@@ -218,8 +218,8 @@ impl Searcher {
         loop {
             w = w.saturating_mul(2);
             match self.pvs(pos, lower..upper, draft, time, metrics)? {
-                s if (-lower..-alpha).contains(&-s) => lower = s.saturating_sub(w).max(alpha),
-                s if (upper..beta).contains(&s) => upper = s.saturating_add(w).min(beta),
+                s if (-lower..-alpha).contains(&-s) => lower = s.saturating_sub(w / 2).max(alpha),
+                s if (upper..beta).contains(&s) => upper = s.saturating_add(w / 2).min(beta),
                 s => break Ok(s),
             }
         }
