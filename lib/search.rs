@@ -162,13 +162,15 @@ impl Searcher {
     /// [null move pruning]: https://www.chessprogramming.org/Null_Move_Pruning
     fn nmp(&self, pos: &Position, value: i16, beta: i16, draft: i8) -> Option<i8> {
         let turn = pos.turn();
+        let r = match pos.by_color(turn).len() - pos.by_piece(Piece(turn, Role::Pawn)).len() {
+            0..=1 => return None,
+            2 => 0,
+            3 => 1,
+            _ => 2,
+        };
 
-        // Avoid common zugzwang positions in which the side to move only has pawns.
-        if value > beta
-            && pos.by_color(turn).len() > pos.by_piece(Piece(turn, Role::Pawn)).len() + 1
-        {
-            let r = 2 + draft.max(0) / 8;
-            Some(draft.saturating_sub(r + 1))
+        if value > beta {
+            Some(draft.saturating_sub(r + 1 + draft.max(0) / 4))
         } else {
             None
         }
