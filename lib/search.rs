@@ -243,10 +243,10 @@ impl Searcher {
         let value = match pos.outcome() {
             Some(o) if o.is_draw() => return Ok(Score(0, draft)),
             Some(_) => return Ok(Score(-i16::MAX, draft)),
-            None if draft <= 0 => self.eval(pos),
             None => match transposition {
-                None => *self.nw(pos, beta - 1, 0, timer)?,
                 Some(t) => t.score(),
+                None if draft <= 0 => self.eval(pos),
+                None => *self.nw(pos, beta - 1, 0, timer)?,
             },
         };
 
