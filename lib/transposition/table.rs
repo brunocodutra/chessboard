@@ -8,8 +8,8 @@ use test_strategy::Arbitrary;
 /// A cache for [`Transposition`]s.
 #[derive(Debug, Arbitrary)]
 pub struct Table {
-    #[strategy((1usize..=128, hash_map(any::<Position>(), any::<Transposition>(), 0..=32)).prop_map(|(cap, ts)| {
-        let cache = Cache::new(cap);
+    #[strategy((1usize..=32, hash_map(any::<Position>(), any::<Transposition>(), 0..=32)).prop_map(|(cap, ts)| {
+        let cache = Cache::new(cap.next_power_of_two());
 
         for (pos, t) in ts {
             let key = pos.zobrist();
@@ -112,14 +112,14 @@ mod tests {
 
     #[proptest]
     fn input_size_is_an_upper_limit(
-        #[strategy(OptionalSignedTranspositionRegister::SIZE..=128)] s: usize,
+        #[strategy(OptionalSignedTranspositionRegister::SIZE..=1024)] s: usize,
     ) {
         assert!(Table::new(s).size() <= s);
     }
 
     #[proptest]
     fn size_is_exact_if_input_is_power_of_two(
-        #[strategy(OptionalSignedTranspositionRegister::SIZE..=128)] s: usize,
+        #[strategy(OptionalSignedTranspositionRegister::SIZE..=1024)] s: usize,
     ) {
         assert_eq!(
             Table::new(s.next_power_of_two()).size(),
