@@ -78,7 +78,7 @@ impl<const N: usize> Pv<N> {
 impl<const N: usize> FromIterator<Transposition> for Pv<N> {
     fn from_iter<I: IntoIterator<Item = Transposition>>(tts: I) -> Self {
         let mut tts = tts.into_iter().filter(|t| t.depth() > 0).peekable();
-        let info = tts.peek().map(|t| (t.depth() as u8, t.score()));
+        let info = tts.peek().map(|t| (t.depth(), t.score()));
 
         let mut depth = u8::MAX;
         let moves = ArrayVec::from_iter(tts.take(N).map(|t| {
@@ -209,7 +209,7 @@ mod tests {
         tt.set(pos.zobrist(), t);
 
         let pv: Pv<0> = tt.iter(&pos).collect();
-        assert_eq!(pv.depth(), Some(t.depth() as u8));
+        assert_eq!(pv.depth(), Some(t.depth()));
         assert_eq!(pv.score(), Some(t.score()));
         assert_eq!(&pv[..], [].as_slice())
     }

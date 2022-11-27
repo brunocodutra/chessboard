@@ -88,8 +88,8 @@ impl Searcher {
                 let (lower, upper) = t.bounds().into_inner();
 
                 (
-                    bounds.start.max(lower).min(upper),
-                    bounds.end.min(upper).max(lower),
+                    bounds.start.clamp(lower, upper),
+                    bounds.end.clamp(lower, upper),
                 )
             }
         };
@@ -214,8 +214,8 @@ impl Searcher {
         }
 
         let (alpha, beta) = (bounds.start, bounds.end);
-        let mut lower = guess.saturating_sub(w / 2).max(alpha).min(beta - w);
-        let mut upper = guess.saturating_add(w / 2).max(alpha + w).min(beta);
+        let mut lower = guess.saturating_sub(w / 2).clamp(alpha, beta - w);
+        let mut upper = guess.saturating_add(w / 2).clamp(alpha + w, beta);
 
         loop {
             w = w.saturating_mul(2);
