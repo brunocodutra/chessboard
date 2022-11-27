@@ -137,24 +137,12 @@ impl Searcher {
         &self,
         pos: &Position,
         kind: MoveKind,
-        pv: Option<Move>,
-    ) -> Vec<(Move, Position, i16)> {
-        let mut moves: Vec<_> = pos
-            .moves(kind)
-            .map(|(m, next)| {
-                let value = if pv == Some(m) {
-                    i16::MAX
-                } else {
-                    let mut exchanges = next.exchanges(m.whither());
-                    -self.see(&next, &mut exchanges, -i16::MAX..i16::MAX)
-                };
-
-                (m, next, value)
-            })
-            .collect();
-
-        moves.sort_unstable_by_key(|(_, _, value)| *value);
-        moves
+    ) -> impl DoubleEndedIterator<Item = (Move, Position, i16)> + ExactSizeIterator + '_ {
+        pos.moves(kind).map(|(m, next)| {
+            let mut exchanges = next.exchanges(m.whither());
+            let value = -self.see(&next, &mut exchanges, -i16::MAX..i16::MAX);
+            (m, next, value)
+        })
     }
 
     /// An implementation of [null move pruning].
@@ -309,11 +297,19 @@ impl Searcher {
             MoveKind::ANY
         };
 
-        let mut moves = self.moves(pos, kind, transposition.map(|t| t.best()));
+        let mut moves: Vec<_> = self.moves(pos, kind).collect();
 
-        let (score, pv) = match moves.pop() {
+        moves.sort_unstable_by_key(|&(m, _, value)| {
+            if Some(m) == transposition.map(|t| t.best()) {
+                i16::MAX
+            } else {
+                value
+            }
+        });
+
+        let (score, best) = match moves.pop() {
             None => return Ok(Score(value, draft)),
-            Some((m, next, _)) => {
+            Some((m, next, value)) => {
                 let score = -self.aw(&next, -value, -beta..-alpha, draft - 1, time, metrics)?;
 
                 if *score >= beta {
@@ -332,43 +328,38 @@ impl Searcher {
             .into_par_iter()
             .rev()
             .map(|(m, next, value)| {
-                let mut score = Score(-i16::MAX, -i8::MAX);
+                let mut score = Score(value, draft);
                 let mut alpha = cutoff.load(Ordering::Relaxed);
 
-                if alpha >= beta {
-                    return Ok(None);
-                }
-
-                if !in_check {
-                    if let Some(d) = self.lmp(&next, value, alpha, draft) {
-                        if d < 0 || *-self.nw(&next, -alpha - 1, d, time, metrics)? < alpha {
-                            #[cfg(not(test))]
-                            // The late move pruning heuristic is not exact.
-                            return Ok(Some((score, m)));
-                        } else {
-                            alpha = cutoff.load(Ordering::Relaxed);
+                while alpha < beta {
+                    if !in_check {
+                        if let Some(d) = self.lmp(&next, *score, alpha, draft) {
+                            if d < 0 || *-self.nw(&next, -alpha - 1, d, time, metrics)? < alpha {
+                                #[cfg(not(test))]
+                                // The late move pruning heuristic is not exact.
+                                return Ok(Some((score, m)));
+                            }
                         }
                     }
-                }
 
-                while *score < alpha && alpha < beta {
-                    score = -self.nw(&next, -alpha - 1, draft - 1, time, metrics)?;
+                    (score, alpha) = match -self.nw(&next, -alpha - 1, draft - 1, time, metrics)? {
+                        score if *score < alpha => return Ok(Some((score, m))),
+                        score => match cutoff.fetch_max(*score, Ordering::Relaxed).max(*score) {
+                            _ if *score >= beta => return Ok(Some((score, m))),
+                            alpha => (score, alpha),
+                        },
+                    };
 
-                    if *score < alpha {
-                        break;
-                    } else {
-                        alpha = cutoff.fetch_max(*score, Ordering::Relaxed).max(*score);
+                    if (alpha..beta).contains(&score) {
+                        score = -self.aw(&next, -alpha, -beta..-alpha, draft - 1, time, metrics)?;
+                        cutoff.fetch_max(*score, Ordering::Relaxed);
+                        return Ok(Some((score, m)));
                     }
                 }
 
-                if (alpha..beta).contains(&score) {
-                    score = -self.aw(&next, -alpha, -beta..-alpha, draft - 1, time, metrics)?;
-                    cutoff.fetch_max(*score, Ordering::Relaxed);
-                }
-
-                Ok(Some((score, m)))
+                Ok(None)
             })
-            .chain(once(Ok(Some((score, pv)))))
+            .chain(once(Ok(Some((score, best)))))
             .try_reduce(|| None, |a, b| Ok(max_by_key(a, b, |x| x.map(|(s, _)| s))))?
             .expect("expected at least one legal move");
 
