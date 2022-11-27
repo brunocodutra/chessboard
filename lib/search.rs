@@ -438,7 +438,7 @@ mod tests {
     }
 
     #[proptest]
-    fn table_size_is_an_upper_limit(o: Options) {
+    fn has_is_an_upper_limit_for_table_size(o: Options) {
         let s = Searcher::with_options(Evaluator::default(), o);
         prop_assume!(s.tt.capacity() > 1);
         assert!(s.tt.size() <= o.hash);
@@ -574,9 +574,15 @@ mod tests {
     }
 
     #[proptest]
-    fn search_avoids_tt_collisions(mut s: Searcher, pos: Position, l: Limits, t: Transposition) {
+    fn search_avoids_tt_collisions(
+        mut s: Searcher,
+        #[by_ref]
+        #[filter(#pos.outcome().is_none())]
+        pos: Position,
+        t: Transposition,
+    ) {
         s.tt.set(pos.zobrist(), t);
-        assert_eq!(s.search::<1>(&pos, l), s.tt.iter(&pos).collect());
+        assert_eq!(s.search::<1>(&pos, Limits::None).len(), 1);
     }
 
     #[proptest]

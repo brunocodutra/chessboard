@@ -5,7 +5,6 @@ use test_strategy::Arbitrary;
 
 /// Configuration for search limits.
 #[derive(Debug, Display, Copy, Clone, Eq, PartialEq, Arbitrary, Deserialize, Serialize)]
-#[arbitrary(args = (Option<u8>, Option<u8>))]
 #[serde(deny_unknown_fields, rename_all = "lowercase")]
 pub enum Limits {
     /// Unlimited search.
@@ -14,12 +13,10 @@ pub enum Limits {
 
     /// The maximum number of plies to search.
     #[display(fmt = "{}", "ron::ser::to_string(self).unwrap()")]
-    #[strategy(args.0.unwrap_or(u8::MIN)..=args.1.unwrap_or(u8::MAX))]
     Depth(u8),
 
     /// The maximum amount of time to spend searching.
     #[display(fmt = "{}", "ron::ser::to_string(self).unwrap()")]
-    #[strategy(Just(Duration::MAX))]
     #[serde(with = "humantime_serde")]
     Time(Duration),
 }
