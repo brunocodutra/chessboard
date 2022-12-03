@@ -5,6 +5,7 @@ use async_stream::try_stream;
 use derive_more::{DebugCustom, Display, Error, From};
 use futures_util::{future::BoxFuture, stream::BoxStream};
 use lib::chess::{Move, Position};
+use lib::eval::Value;
 use lib::search::{Limits, Pv};
 use std::{collections::HashMap, fmt::Debug, future::Future, io, pin::Pin, time::Instant};
 use tokio::{runtime, task::block_in_place, time::timeout};
@@ -172,12 +173,20 @@ impl<T: Io + Send + 'static> Player for Uci<T> {
                     let (mut depth, mut score, mut moves) = Default::default();
 
                     for i in info {
-                        if let UciInfoAttribute::Depth(d) = &i {
-                            depth = Some(*d);
+                        if let UciInfoAttribute::Depth(d) = i {
+                            depth = Some(d);
                         }
 
-                        if let UciInfoAttribute::Score { cp: Some(s), .. } = &i {
-                            score = Some((*s).max(i16::MIN as i32).min(i16::MAX as i32) as i16);
+                        if let UciInfoAttribute::Score { mate: Some(d), .. } = i {
+                            if d > 0 {
+                                score = Some(Value::MAX);
+                            } else {
+                                score = Some(Value::MIN);
+                            }
+                        }
+
+                        if let UciInfoAttribute::Score { cp: Some(s), .. } = i {
+                            score = Some(Value::saturate(s));
                         }
 
                         if let UciInfoAttribute::Pv(m) = i {
@@ -759,7 +768,7 @@ mod tests {
 
             if let Some((d, s)) = Option::zip(pv.depth(), pv.score()) {
                 attrs.push(UciInfoAttribute::Depth(d));
-                attrs.push(UciInfoAttribute::from_centipawns(s.try_into()?));
+                attrs.push(UciInfoAttribute::from_centipawns(s.get().into()));
             }
 
             attrs.push(UciInfoAttribute::Pv(

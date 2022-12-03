@@ -1,4 +1,4 @@
-use crate::{chess::Move, transposition::Transposition};
+use crate::{chess::Move, eval::Value, transposition::Transposition};
 use arrayvec::ArrayVec;
 use derive_more::{Deref, DerefMut, Display, IntoIterator};
 use proptest::prelude::*;
@@ -20,13 +20,13 @@ pub struct Pv<const N: usize> {
     #[deref_mut(forward)]
     #[into_iterator(owned, ref, ref_mut)]
     moves: ArrayVec<Move, N>,
-    #[strategy(any::<(u8, i16)>().prop_map(move |i| #moves.first().map(move |_| i)))]
-    info: Option<(u8, i16)>,
+    #[strategy(any::<(u8, Value)>().prop_map(move |i| #moves.first().map(move |_| i)))]
+    info: Option<(u8, Value)>,
 }
 
 impl<const N: usize> Pv<N> {
     /// Constructs a new [`Pv`] given depth, score, and sequence of moves.
-    pub fn new<I: IntoIterator<Item = Move>>(depth: u8, score: i16, moves: I) -> Self {
+    pub fn new<I: IntoIterator<Item = Move>>(depth: u8, score: Value, moves: I) -> Self {
         Self {
             moves: moves.into_iter().take(N).collect(),
             info: Some((depth, score)),
@@ -39,7 +39,7 @@ impl<const N: usize> Pv<N> {
     }
 
     /// This sequence's score from the point of view of the side to move.
-    pub fn score(&self) -> Option<i16> {
+    pub fn score(&self) -> Option<Value> {
         self.info.map(|(_, s)| s)
     }
 
@@ -101,7 +101,7 @@ mod tests {
     use test_strategy::proptest;
 
     #[proptest]
-    fn new_truncates_moves(d: u8, s: i16, #[any(size_range(10..20).lift())] m: Vec<Move>) {
+    fn new_truncates_moves(d: u8, s: Value, #[any(size_range(10..20).lift())] m: Vec<Move>) {
         assert_eq!(
             Pv::<10>::new(d, s, m.clone()),
             Pv {
@@ -135,7 +135,7 @@ mod tests {
         #[by_ref]
         #[filter(#pos.moves(MoveKind::ANY).len() > 0)]
         pos: Position,
-        s: i16,
+        s: Value,
         #[strategy(1u8..=Transposition::MAX_DEPTH)] d: u8,
         selector: Selector,
     ) {
@@ -144,11 +144,11 @@ mod tests {
 
         let (n, _) = selector.select(next.moves(MoveKind::ANY));
 
-        let t = Transposition::lower(s, d, m);
+        let t = Transposition::lower(d, s, m);
         tt.unset(pos.zobrist());
         tt.set(pos.zobrist(), t);
 
-        let u = Transposition::lower(s, d - 1, n);
+        let u = Transposition::lower(d - 1, s, n);
         tt.unset(next.zobrist());
         tt.set(next.zobrist(), u);
 
@@ -165,7 +165,7 @@ mod tests {
         #[by_ref]
         #[filter(#pos.moves(MoveKind::ANY).len() > 0)]
         pos: Position,
-        s: i16,
+        s: Value,
         #[strategy(1..=Transposition::MAX_DEPTH)] a: u8,
         selector: Selector,
     ) {
@@ -174,11 +174,11 @@ mod tests {
 
         let (n, _) = selector.select(next.moves(MoveKind::ANY));
 
-        let t = Transposition::lower(s, a, m);
+        let t = Transposition::lower(a, s, m);
         tt.unset(pos.zobrist());
         tt.set(pos.zobrist(), t);
 
-        let u = Transposition::lower(s, 0, n);
+        let u = Transposition::lower(0, s, n);
         tt.unset(next.zobrist());
         tt.set(next.zobrist(), u);
 
@@ -198,13 +198,13 @@ mod tests {
         #[by_ref]
         #[filter(#pos.moves(MoveKind::ANY).len() > 0)]
         pos: Position,
-        s: i16,
+        s: Value,
         #[strategy(1..Transposition::MAX_DEPTH)] d: u8,
         selector: Selector,
     ) {
         let (m, _) = selector.select(pos.moves(MoveKind::ANY));
 
-        let t = Transposition::lower(s, d, m);
+        let t = Transposition::lower(d, s, m);
         tt.unset(pos.zobrist());
         tt.set(pos.zobrist(), t);
 
@@ -220,12 +220,12 @@ mod tests {
         #[by_ref]
         #[filter(#pos.moves(MoveKind::ANY).len() > 0)]
         pos: Position,
-        s: i16,
+        s: Value,
         selector: Selector,
     ) {
         let (m, _) = selector.select(pos.moves(MoveKind::ANY));
 
-        let t = Transposition::lower(s, 0, m);
+        let t = Transposition::lower(0, s, m);
         tt.unset(pos.zobrist());
         tt.set(pos.zobrist(), t);
 
