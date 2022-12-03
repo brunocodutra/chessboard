@@ -1,5 +1,5 @@
-use crate::chess::Move;
 use crate::util::{Binary, Bits};
+use crate::{chess::Move, eval::Value};
 use derive_more::{Display, Error};
 use std::{cmp::Ordering, ops::RangeInclusive};
 use test_strategy::Arbitrary;
@@ -23,7 +23,7 @@ pub struct Transposition {
     kind: Kind,
     #[strategy(0..=Self::MAX_DEPTH)]
     depth: u8,
-    score: i16,
+    score: Value,
     best: Move,
 }
 
@@ -42,7 +42,7 @@ impl Ord for Transposition {
 impl Transposition {
     pub const MAX_DEPTH: u8 = (u8::MAX >> 3);
 
-    fn new(kind: Kind, score: i16, depth: u8, best: Move) -> Self {
+    fn new(kind: Kind, depth: u8, score: Value, best: Move) -> Self {
         assert!(depth <= Self::MAX_DEPTH, "{} <= {}", depth, Self::MAX_DEPTH);
 
         Transposition {
@@ -53,26 +53,26 @@ impl Transposition {
         }
     }
 
-    /// Constructs a [`Transposition`] given a lower bound for the score, depth searched, and best [`Move`].
-    pub fn lower(score: i16, depth: u8, best: Move) -> Self {
-        Transposition::new(Kind::Lower, score, depth, best)
+    /// Constructs a [`Transposition`] given a lower bound for the score, the depth searched, and best [`Move`].
+    pub fn lower(depth: u8, score: Value, best: Move) -> Self {
+        Transposition::new(Kind::Lower, depth, score, best)
     }
 
-    /// Constructs a [`Transposition`] given an upper bound for the score, depth searched, and best [`Move`].
-    pub fn upper(score: i16, depth: u8, best: Move) -> Self {
-        Transposition::new(Kind::Upper, score, depth, best)
+    /// Constructs a [`Transposition`] given an upper bound for the score, the depth searched, and best [`Move`].
+    pub fn upper(depth: u8, score: Value, best: Move) -> Self {
+        Transposition::new(Kind::Upper, depth, score, best)
     }
 
-    /// Constructs a [`Transposition`] given the exact score, depth searched, and best [`Move`].
-    pub fn exact(score: i16, depth: u8, best: Move) -> Self {
-        Transposition::new(Kind::Exact, score, depth, best)
+    /// Constructs a [`Transposition`] given the exact score, the depth searched, and best [`Move`].
+    pub fn exact(depth: u8, score: Value, best: Move) -> Self {
+        Transposition::new(Kind::Exact, depth, score, best)
     }
 
     /// Bounds for the exact score.
-    pub fn bounds(&self) -> RangeInclusive<i16> {
+    pub fn bounds(&self) -> RangeInclusive<Value> {
         match self.kind {
-            Kind::Lower => self.score..=i16::MAX,
-            Kind::Upper => i16::MIN..=self.score,
+            Kind::Lower => self.score..=Value::MAX,
+            Kind::Upper => Value::MIN..=self.score,
             Kind::Exact => self.score..=self.score,
         }
     }
@@ -83,7 +83,7 @@ impl Transposition {
     }
 
     /// Partial score.
-    pub fn score(&self) -> i16 {
+    pub fn score(&self) -> Value {
         self.score
     }
 
@@ -93,7 +93,7 @@ impl Transposition {
     }
 }
 
-type Signature = Bits<u32, 26>;
+type Signature = Bits<u32, 29>;
 type OptionalSignedTransposition = Option<(Transposition, Signature)>;
 
 /// The reason why decoding [`Transposition`] from binary failed.
@@ -103,6 +103,12 @@ pub struct DecodeTranspositionError;
 
 impl From<<Move as Binary>::Error> for DecodeTranspositionError {
     fn from(_: <Move as Binary>::Error) -> Self {
+        DecodeTranspositionError
+    }
+}
+
+impl From<<Value as Binary>::Error> for DecodeTranspositionError {
+    fn from(_: <Value as Binary>::Error) -> Self {
         DecodeTranspositionError
     }
 }
@@ -118,7 +124,7 @@ impl Binary for OptionalSignedTransposition {
                 let mut bits = Bits::default();
                 bits.push(*sig);
                 bits.push(t.best.encode());
-                bits.push(Bits::<u16, 16>::new(t.score as _));
+                bits.push(t.score.encode());
                 bits.push(Bits::<u8, 5>::new(t.depth as _));
                 bits.push(Bits::<u8, 2>::new(t.kind as _));
 
@@ -140,7 +146,7 @@ impl Binary for OptionalSignedTransposition {
                         .nth(bits.pop::<_, 2>().get())
                         .ok_or(DecodeTranspositionError)?,
                     depth: bits.pop::<_, 5>().get(),
-                    score: bits.pop::<u16, 16>().get() as _,
+                    score: Value::decode(bits.pop())?,
                     best: Move::decode(bits.pop())?,
                 },
                 bits.pop(),
@@ -156,37 +162,37 @@ mod tests {
 
     #[proptest]
     fn lower_constructs_lower_bound_transposition(
-        s: i16,
+        s: Value,
         #[strategy(0..=Transposition::MAX_DEPTH)] d: u8,
         m: Move,
     ) {
         assert_eq!(
-            Transposition::lower(s, d, m),
-            Transposition::new(Kind::Lower, s, d, m)
+            Transposition::lower(d, s, m),
+            Transposition::new(Kind::Lower, d, s, m)
         );
     }
 
     #[proptest]
     fn upper_constructs_upper_bound_transposition(
-        s: i16,
+        s: Value,
         #[strategy(0..=Transposition::MAX_DEPTH)] d: u8,
         m: Move,
     ) {
         assert_eq!(
-            Transposition::upper(s, d, m),
-            Transposition::new(Kind::Upper, s, d, m)
+            Transposition::upper(d, s, m),
+            Transposition::new(Kind::Upper, d, s, m)
         );
     }
 
     #[proptest]
     fn exact_constructs_exact_transposition(
-        s: i16,
+        s: Value,
         #[strategy(0..=Transposition::MAX_DEPTH)] d: u8,
         m: Move,
     ) {
         assert_eq!(
-            Transposition::exact(s, d, m),
-            Transposition::new(Kind::Exact, s, d, m)
+            Transposition::exact(d, s, m),
+            Transposition::new(Kind::Exact, d, s, m)
         );
     }
 
@@ -194,11 +200,11 @@ mod tests {
     #[should_panic]
     fn transposition_panics_if_depth_grater_than_max(
         k: Kind,
-        s: i16,
+        s: Value,
         #[strategy(Transposition::MAX_DEPTH + 1..)] d: u8,
         m: Move,
     ) {
-        Transposition::new(k, s, d, m);
+        Transposition::new(k, d, s, m);
     }
 
     #[proptest]

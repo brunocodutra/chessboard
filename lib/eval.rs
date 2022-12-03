@@ -4,16 +4,18 @@ use test_strategy::Arbitrary;
 
 mod end;
 mod mid;
+mod value;
 
 pub use end::*;
 pub use mid::*;
+pub use value::*;
 
-/// Trait for types that can evaluate other types.
-pub trait Eval<T> {
-    /// Evaluates an item.
+/// Trait for types that can evaluate [`Position`]s.
+pub trait Eval {
+    /// Evaluates a [`Position`].
     ///
     /// Positive values favor the current side to play.
-    fn eval(&self, item: &T) -> i16;
+    fn eval(&self, item: &Position) -> Value;
 }
 
 /// A tapered evaluator.
@@ -61,8 +63,8 @@ impl Evaluator {
     }
 }
 
-impl Eval<Position> for Evaluator {
-    fn eval(&self, pos: &Position) -> i16 {
+impl Eval for Evaluator {
+    fn eval(&self, pos: &Position) -> Value {
         let turn = pos.turn();
         let phase = self.phase(pos);
 
@@ -75,7 +77,7 @@ impl Eval<Position> for Evaluator {
             }
         }
 
-        score[turn as usize] - score[!turn as usize]
+        Value::saturate(score[turn as usize] - score[!turn as usize])
     }
 }
 

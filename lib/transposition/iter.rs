@@ -35,7 +35,7 @@ impl<'a> Iterator for Iter<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::chess::MoveKind;
+    use crate::{chess::MoveKind, eval::Value};
     use proptest::{prop_assume, sample::Selector};
     use test_strategy::proptest;
 
@@ -48,7 +48,7 @@ mod tests {
         #[filter(#pos.moves(MoveKind::ANY).len() > 0)]
         pos: Position,
         #[strategy(0..=Transposition::MAX_DEPTH)] d: u8,
-        s: i16,
+        s: Value,
         selector: Selector,
     ) {
         let (m, next) = selector.select(pos.moves(MoveKind::ANY));
@@ -56,11 +56,11 @@ mod tests {
 
         let (n, _) = selector.select(next.moves(MoveKind::ANY));
 
-        let t = Transposition::lower(s, d, m);
+        let t = Transposition::lower(d, s, m);
         tt.unset(pos.zobrist());
         tt.set(pos.zobrist(), t);
 
-        let u = Transposition::lower(s.saturating_neg(), d, n);
+        let u = Transposition::lower(d, -s, n);
         tt.unset(next.zobrist());
         tt.set(next.zobrist(), u);
 

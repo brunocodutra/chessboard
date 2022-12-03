@@ -29,8 +29,8 @@ impl Analyze {
                 Option::zip(pv.depth(), pv.score()).context("no principal variation found")?;
 
             info!(
-                depth = d,
-                score = match pos.turn() {
+                depth = %d,
+                score = %match pos.turn() {
                     Color::White => s,
                     Color::Black => -s,
                 },

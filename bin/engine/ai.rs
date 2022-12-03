@@ -6,6 +6,7 @@ use lib::eval::Evaluator;
 use lib::search::{Limits, Options, Pv};
 use std::{convert::Infallible, time::Instant};
 use tokio::task::block_in_place;
+use tracing::field::display;
 use tracing::{instrument, Span};
 
 #[cfg(test)]
@@ -57,7 +58,9 @@ impl Player for Ai {
             let pv = block_in_place(|| self.strategy.search::<1>(pos, self.limits));
 
             if let Some((d, s)) = Option::zip(pv.depth(), pv.score()) {
-                Span::current().record("depth", d).record("score", s);
+                Span::current()
+                    .record("depth", d)
+                    .record("score", display(s));
             }
 
             Ok(*pv.first().expect("expected at least one legal move"))
