@@ -200,7 +200,14 @@ impl Searcher {
         time: Duration,
         metrics: &MetricsCounters,
     ) -> Result<Score, Timeout> {
-        let mut w = 32;
+        let mut w = match draft {
+            i8::MIN..=1 => 512,
+            2 => 256,
+            3 => 128,
+            4 => 64,
+            _ => 32,
+        };
+
         let (alpha, beta) = (-i16::MAX, i16::MAX);
         let mut lower = guess.saturating_sub(w / 2).clamp(alpha, beta - w);
         let mut upper = guess.saturating_add(w / 2).clamp(alpha + w, beta);
