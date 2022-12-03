@@ -145,24 +145,12 @@ impl Searcher {
         &self,
         pos: &Position,
         kind: MoveKind,
-        pv: Option<Move>,
-    ) -> Vec<(Move, Position, i16)> {
-        let mut moves: Vec<_> = pos
-            .moves(kind)
-            .map(|(m, next)| {
-                let value = if pv == Some(m) {
-                    i16::MAX
-                } else {
-                    let mut exchanges = next.exchanges(m.whither());
-                    -self.see(&next, &mut exchanges, -i16::MAX..i16::MAX)
-                };
-
-                (m, next, value)
-            })
-            .collect();
-
-        moves.sort_unstable_by_key(|(_, _, value)| *value);
-        moves
+    ) -> impl DoubleEndedIterator<Item = (Move, Position, i16)> + ExactSizeIterator + '_ {
+        pos.moves(kind).map(|(m, next)| {
+            let mut exchanges = next.exchanges(m.whither());
+            let value = -self.see(&next, &mut exchanges, -i16::MAX..i16::MAX);
+            (m, next, value)
+        })
     }
 
     /// An implementation of [null move pruning].
@@ -208,20 +196,12 @@ impl Searcher {
         &self,
         pos: &Position,
         guess: i16,
-        bounds: Range<i16>,
         draft: i8,
         time: Duration,
         metrics: &MetricsCounters,
     ) -> Result<Score, Timeout> {
-        assert!(!bounds.is_empty(), "{:?} ≠ ∅", bounds);
-        assert!(!bounds.contains(&i16::MIN), "{:?} ∌ {}", bounds, i16::MIN);
-
         let mut w = 32;
-        if bounds.len() <= 4 * w as usize {
-            return self.pvs(pos, bounds, draft, time, metrics);
-        }
-
-        let (alpha, beta) = (bounds.start, bounds.end);
+        let (alpha, beta) = (-i16::MAX, i16::MAX);
         let mut lower = guess.saturating_sub(w / 2).clamp(alpha, beta - w);
         let mut upper = guess.saturating_add(w / 2).clamp(alpha + w, beta);
 
@@ -317,12 +297,20 @@ impl Searcher {
             MoveKind::ANY
         };
 
-        let mut moves = self.moves(pos, kind, transposition.map(|t| t.best()));
+        let mut moves: Vec<_> = self.moves(pos, kind).collect();
 
-        let (score, pv) = match moves.pop() {
+        moves.sort_unstable_by_key(|&(m, _, value)| {
+            if Some(m) == transposition.map(|t| t.best()) {
+                i16::MAX
+            } else {
+                value
+            }
+        });
+
+        let (score, best) = match moves.pop() {
             None => return Ok(Score(value, draft)),
             Some((m, next, _)) => {
-                let score = -self.aw(&next, -value, -beta..-alpha, draft - 1, time, metrics)?;
+                let score = -self.pvs(&next, -beta..-alpha, draft - 1, time, metrics)?;
 
                 if *score >= beta {
                     metrics.pv_cut();
@@ -340,43 +328,38 @@ impl Searcher {
             .into_par_iter()
             .rev()
             .map(|(m, next, value)| {
-                let mut score = Score(-i16::MAX, -i8::MAX);
                 let mut alpha = cutoff.load(Ordering::Relaxed);
 
-                if alpha >= beta {
-                    return Ok(None);
-                }
-
-                if !in_check {
+                if !(alpha..beta).is_empty() && !in_check {
                     if let Some(d) = self.lmp(&next, value, alpha, draft) {
                         if d < 0 || *-self.nw(&next, -alpha - 1, d, time, metrics)? < alpha {
                             #[cfg(not(test))]
                             // The late move pruning heuristic is not exact.
-                            return Ok(Some((score, m)));
-                        } else {
-                            alpha = cutoff.load(Ordering::Relaxed);
+                            return Ok(None);
                         }
                     }
                 }
 
-                while *score < alpha && alpha < beta {
-                    score = -self.nw(&next, -alpha - 1, draft - 1, time, metrics)?;
-
-                    if *score < alpha {
-                        break;
-                    } else {
-                        alpha = cutoff.fetch_max(*score, Ordering::Relaxed).max(*score);
+                while (alpha..beta).len() > 1 {
+                    match -self.nw(&next, -alpha - 1, draft - 1, time, metrics)? {
+                        s if *s < alpha => return Ok(Some((s, m))),
+                        s => match cutoff.fetch_max(*s, Ordering::Relaxed) {
+                            _ if *s >= beta => return Ok(Some((s, m))),
+                            a if *s >= a => break,
+                            a => alpha = a,
+                        },
                     }
                 }
 
-                if (alpha..beta).contains(&score) {
-                    score = -self.aw(&next, -alpha, -beta..-alpha, draft - 1, time, metrics)?;
+                if !(alpha..beta).is_empty() {
+                    let score = -self.pvs(&next, -beta..-alpha, draft - 1, time, metrics)?;
                     cutoff.fetch_max(*score, Ordering::Relaxed);
+                    return Ok(Some((score, m)));
                 }
 
-                Ok(Some((score, m)))
+                Ok(None)
             })
-            .chain(once(Ok(Some((score, pv)))))
+            .chain(once(Ok(Some((score, best)))))
             .try_reduce(|| None, |a, b| Ok(max_by_key(a, b, |x| x.map(|(s, _)| s))))?
             .expect("expected at least one legal move");
 
@@ -388,22 +371,22 @@ impl Searcher {
     /// Searches for the strongest [variation][`Pv`].
     pub fn search<const N: usize>(&mut self, pos: &Position, limits: Limits) -> Pv<N> {
         let mut pv: Pv<N> = self.tt.iter(pos).collect();
-
-        let (mut score, start) = Option::zip(pv.score(), pv.depth()).unwrap_or_else(|| {
-            self.tt.unset(pos.zobrist());
-            (self.eval(pos), 0)
-        });
+        let (mut score, start) = match Option::zip(pv.score(), pv.depth()) {
+            Some((s, d)) => (s, d + 1),
+            None => {
+                self.tt.unset(pos.zobrist());
+                (self.eval(pos), 0)
+            }
+        };
 
         self.executor.install(|| {
             let mut metrics = Metrics::default();
             let mut counters = MetricsCounters::default();
             for depth in start..=limits.depth().min(Self::MAX_DRAFT as u8) {
-                let bounds = -i16::MAX..i16::MAX;
-                (score, pv) =
-                    match self.aw(pos, score, bounds, depth as i8, limits.time(), &counters) {
-                        Ok(s) => (*s, self.tt.iter(pos).collect()),
-                        Err(_) => break,
-                    };
+                (score, pv) = match self.aw(pos, score, depth as i8, limits.time(), &counters) {
+                    Ok(s) => (*s, self.tt.iter(pos).collect()),
+                    Err(_) => break,
+                };
 
                 metrics = counters.snapshot() - metrics;
                 debug!(depth, score, %pv, %metrics);
@@ -550,9 +533,9 @@ mod tests {
         #[strategy(0..=Searcher::MAX_DRAFT)] d: i8,
     ) {
         let metrics = MetricsCounters::default();
+
         assert_eq!(
-            s.aw(&pos, g, -i16::MAX..i16::MAX, d, Duration::MAX, &metrics)
-                .as_deref(),
+            s.aw(&pos, g, d, Duration::MAX, &metrics).as_deref(),
             Ok(&negamax(&s.evaluator, &pos, d))
         );
     }
@@ -566,11 +549,10 @@ mod tests {
         #[strategy(0..=Searcher::MAX_DRAFT)] d: i8,
     ) {
         let metrics = MetricsCounters::default();
+
         assert_eq!(
-            s.aw(&pos, g, -i16::MAX..i16::MAX, d, Duration::MAX, &metrics)
-                .as_deref(),
-            s.aw(&pos, h, -i16::MAX..i16::MAX, d, Duration::MAX, &metrics)
-                .as_deref()
+            s.aw(&pos, g, d, Duration::MAX, &metrics).as_deref(),
+            s.aw(&pos, h, d, Duration::MAX, &metrics).as_deref()
         );
     }
 
