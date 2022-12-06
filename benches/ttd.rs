@@ -1,6 +1,7 @@
 use criterion::{criterion_group, criterion_main, BatchSize, Criterion};
-use lib::chess::Fen;
-use lib::search::{Limits, Searcher};
+use lib::search::{Limits, Options, Searcher};
+use lib::{chess::Fen, eval::Evaluator};
+use std::thread::available_parallelism;
 
 fn ttd(c: &mut Criterion, fens: &[&str]) {
     let mut positions = fens.iter().cycle().map(|s| {
@@ -8,9 +9,22 @@ fn ttd(c: &mut Criterion, fens: &[&str]) {
         fen.try_into().unwrap()
     });
 
+    let options = match available_parallelism() {
+        Err(_) => Options::default(),
+        Ok(threads) => Options {
+            threads,
+            ..Options::default()
+        },
+    };
+
     c.benchmark_group("benches").bench_function("ttd", |b| {
         b.iter_batched_ref(
-            || (Searcher::default(), positions.next().unwrap()),
+            || {
+                (
+                    Searcher::with_options(Evaluator::default(), options),
+                    positions.next().unwrap(),
+                )
+            },
             |(s, pos)| s.search::<0>(pos, Limits::Depth(8)),
             BatchSize::SmallInput,
         );

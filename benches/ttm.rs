@@ -1,7 +1,8 @@
 use criterion::{criterion_group, criterion_main, BatchSize, Criterion};
-use lib::chess::Fen;
-use lib::search::{Limits, Searcher};
+use lib::search::{Limits, Options, Searcher};
+use lib::{chess::Fen, eval::Evaluator};
 use shakmaty as sm;
+use std::thread::available_parallelism;
 use std::time::{Duration, Instant};
 
 fn ttm(c: &mut Criterion, name: &str, edps: &[(&str, &str)]) {
@@ -11,10 +12,23 @@ fn ttm(c: &mut Criterion, name: &str, edps: &[(&str, &str)]) {
         (fen.try_into().unwrap(), uci.into())
     });
 
+    let options = match available_parallelism() {
+        Err(_) => Options::default(),
+        Ok(threads) => Options {
+            threads,
+            ..Options::default()
+        },
+    };
+
     c.benchmark_group("benches")
         .bench_function(format!("ttm/{}", name), |b| {
             b.iter_batched_ref(
-                || (Searcher::default(), positions.next().unwrap()),
+                || {
+                    (
+                        Searcher::with_options(Evaluator::default(), options),
+                        positions.next().unwrap(),
+                    )
+                },
                 |(s, (pos, m))| {
                     let timer = Instant::now();
                     for d in 1.. {

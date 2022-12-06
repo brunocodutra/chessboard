@@ -1,6 +1,7 @@
 use derive_more::{Display, Error, From};
+use proptest::prelude::*;
 use serde::{Deserialize, Serialize};
-use std::str::FromStr;
+use std::{num::NonZeroUsize, str::FromStr};
 use test_strategy::Arbitrary;
 
 /// Configuration for adversarial search algorithms.
@@ -13,11 +14,18 @@ pub struct Options {
     /// This is an upper limit, the actual memory allocation may be smaller.
     #[strategy(0usize..=1024)]
     pub hash: usize,
+
+    /// The number of threads to use while searching.
+    #[strategy((1usize..=4).prop_filter_map("zero", |t| NonZeroUsize::new(t)))]
+    pub threads: NonZeroUsize,
 }
 
 impl Default for Options {
     fn default() -> Self {
-        Self { hash: 1 << 25 }
+        Self {
+            hash: 1 << 25,
+            threads: NonZeroUsize::new(1).unwrap(),
+        }
     }
 }
 
