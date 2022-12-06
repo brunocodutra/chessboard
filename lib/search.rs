@@ -4,6 +4,7 @@ use crate::transposition::{Table, Transposition};
 use derive_more::{Deref, Display, Error, Neg};
 use proptest::prelude::*;
 use rayon::{iter::once, prelude::*};
+use rayon::{ThreadPool, ThreadPoolBuilder};
 use std::sync::atomic::{AtomicI16, Ordering};
 use std::{cmp::max_by_key, ops::Range, time::Duration};
 use test_strategy::Arbitrary;
@@ -32,6 +33,9 @@ pub struct Timeout;
 #[derive(Debug, Arbitrary)]
 pub struct Searcher {
     evaluator: Evaluator,
+    #[strategy(any::<Options>().prop_map(|o|
+        ThreadPoolBuilder::new().num_threads(o.threads.get()).build().unwrap()))]
+    executor: ThreadPool,
     #[strategy(any::<Options>().prop_map(|o| Table::new(o.hash)))]
     tt: Table,
 }
@@ -62,6 +66,10 @@ impl Searcher {
     pub fn with_options(evaluator: Evaluator, options: Options) -> Self {
         Searcher {
             evaluator,
+            executor: ThreadPoolBuilder::new()
+                .num_threads(options.threads.get())
+                .build()
+                .unwrap(),
             tt: Table::new(options.hash),
         }
     }
@@ -386,18 +394,21 @@ impl Searcher {
             (self.eval(pos), 0)
         });
 
-        let mut metrics = Metrics::default();
-        let mut counters = MetricsCounters::default();
-        for depth in start..=limits.depth().min(Self::MAX_DRAFT as u8) {
-            let bounds = -i16::MAX..i16::MAX;
-            (score, pv) = match self.aw(pos, score, bounds, depth as i8, limits.time(), &counters) {
-                Ok(s) => (*s, self.tt.iter(pos).collect()),
-                Err(_) => break,
-            };
+        self.executor.install(|| {
+            let mut metrics = Metrics::default();
+            let mut counters = MetricsCounters::default();
+            for depth in start..=limits.depth().min(Self::MAX_DRAFT as u8) {
+                let bounds = -i16::MAX..i16::MAX;
+                (score, pv) =
+                    match self.aw(pos, score, bounds, depth as i8, limits.time(), &counters) {
+                        Ok(s) => (*s, self.tt.iter(pos).collect()),
+                        Err(_) => break,
+                    };
 
-            metrics = counters.snapshot() - metrics;
-            debug!(depth, score, %pv, %metrics);
-        }
+                metrics = counters.snapshot() - metrics;
+                debug!(depth, score, %pv, %metrics);
+            }
+        });
 
         pv
     }
