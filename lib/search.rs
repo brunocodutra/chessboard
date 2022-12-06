@@ -412,11 +412,6 @@ impl Searcher {
 
         pv
     }
-
-    /// Clear the transposition table.
-    pub fn clear(&mut self) {
-        self.tt.clear()
-    }
 }
 
 #[cfg(test)]

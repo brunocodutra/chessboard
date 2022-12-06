@@ -2,11 +2,13 @@ use crate::io::{Io, Pipe};
 use anyhow::{Context, Error as Anyhow};
 use clap::Parser;
 use lib::chess::{Fen, Position};
-use lib::search::{Limits, Searcher};
+use lib::eval::Evaluator;
+use lib::search::{Limits, Options, Searcher};
+use std::num::NonZeroUsize;
 use tokio::io::{stdin, stdout};
 use tokio::task::block_in_place;
 use tracing::{debug, error, instrument, warn};
-use vampirc_uci::{self as uci, UciMessage, UciSearchControl, UciTimeControl};
+use vampirc_uci::{self as uci, UciMessage, UciOptionConfig, UciSearchControl, UciTimeControl};
 
 /// A basic *not fully compliant* UCI server.
 #[derive(Debug, Default, Parser)]
@@ -22,6 +24,7 @@ impl Uci {
 }
 
 struct Server<T: Io> {
+    options: Options,
     strategy: Searcher,
     position: Position,
     io: T,
@@ -30,10 +33,35 @@ struct Server<T: Io> {
 impl<T: Io> Server<T> {
     fn new(io: T) -> Self {
         Server {
+            options: Options::default(),
             strategy: Searcher::default(),
             position: Position::default(),
             io,
         }
+    }
+
+    fn new_game(&mut self) {
+        self.strategy = Searcher::with_options(Evaluator::default(), self.options)
+    }
+
+    fn set_hash(&mut self, value: &str) -> Result<(), Anyhow> {
+        self.options = Options {
+            hash: value.parse::<usize>().context("invalid hash size")? * (1 << 20),
+            ..self.options
+        };
+
+        Ok(())
+    }
+
+    fn set_threads(&mut self, value: &str) -> Result<(), Anyhow> {
+        self.options = Options {
+            threads: value
+                .parse::<NonZeroUsize>()
+                .context("invalid thread count")?,
+            ..self.options
+        };
+
+        Ok(())
     }
 
     async fn run(&mut self) -> Result<(), Anyhow> {
@@ -46,11 +74,46 @@ impl<T: Io> Server<T> {
                     self.io.send(&name.to_string()).await?;
                     self.io.send(&authors.to_string()).await?;
                     self.io.send(&UciMessage::UciOk.to_string()).await?;
+
+                    let hash = UciMessage::Option(UciOptionConfig::Spin {
+                        name: "Hash".to_string(),
+                        default: Some(Options::default().hash as _),
+                        min: Some(0),
+                        max: None,
+                    });
+
+                    self.io.send(&hash.to_string()).await?;
+
+                    let thread = UciMessage::Option(UciOptionConfig::Spin {
+                        name: "Threads".to_string(),
+                        default: Some(Options::default().threads.get() as _),
+                        min: Some(1),
+                        max: None,
+                    });
+
+                    self.io.send(&thread.to_string()).await?;
                 }
 
-                UciMessage::Quit => break Ok(()),
-                UciMessage::UciNewGame => self.strategy.clear(),
+                UciMessage::SetOption {
+                    name,
+                    value: Some(value),
+                } if name.to_lowercase() == "hash" => match self.set_hash(&value) {
+                    Ok(_) => self.new_game(),
+                    Err(e) => warn!("{:?}", e),
+                },
+
+                UciMessage::SetOption {
+                    name,
+                    value: Some(value),
+                } if name.to_lowercase() == "threads" => match self.set_threads(&value) {
+                    Ok(_) => self.new_game(),
+                    Err(e) => warn!("{:?}", e),
+                },
+
+                UciMessage::UciNewGame => self.new_game(),
                 UciMessage::IsReady => self.io.send(&UciMessage::ReadyOk.to_string()).await?,
+                UciMessage::Quit => break Ok(()),
+
                 UciMessage::Position { fen, moves, .. } => {
                     match fen {
                         None => self.position = Position::default(),
