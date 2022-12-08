@@ -52,6 +52,7 @@ tokio = { version = "1.22.0", default-features = false, features = [
     "macros",
     "process",
     "rt-multi-thread",
+    "sync",
     "time",
 ] }
 tracing = { version = "0.1.37", default-features = false, features = ["attributes", "std"] }
