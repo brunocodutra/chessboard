@@ -41,7 +41,7 @@ derive_more = { version = "0.99.16", default-features = false, features = [
 futures-util = { version = "0.3.25", default-features = false, features = ["alloc"] }
 humantime-serde = { version = "1.1.1", default-features = false }
 proptest = { version = "1.0.0", default-features = false, features = ["std"] }
-rayon = { version = "1.6.0", default-features = false }
+rayon = { version = "1.6.1", default-features = false }
 ron = { version = "0.8.0", default-features = false }
 serde = { version = "1.0.148", default-features = false, features = ["derive", "std"] }
 shakmaty = { version = "0.22.0", default-features = false }
