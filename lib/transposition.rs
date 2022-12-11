@@ -1,6 +1,5 @@
 use crate::chess::Move;
-use crate::util::{Binary, Bits, Register};
-use bitvec::field::BitField;
+use crate::util::{Binary, Bits};
 use derive_more::{Display, Error};
 use std::{cmp::Ordering, ops::RangeInclusive};
 use test_strategy::Arbitrary;
@@ -22,9 +21,9 @@ enum Kind {
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash, Arbitrary)]
 pub struct Transposition {
     kind: Kind,
-    score: i16,
     #[strategy(0..=Self::MAX_DEPTH)]
     depth: u8,
+    score: i16,
     best: Move,
 }
 
@@ -48,8 +47,8 @@ impl Transposition {
 
         Transposition {
             kind,
-            score,
             depth,
+            score,
             best,
         }
     }
@@ -94,64 +93,57 @@ impl Transposition {
     }
 }
 
-type Signature = Bits<u32, 26>;
+type Signature = Bits<26>;
 type OptionalSignedTransposition = Option<(Transposition, Signature)>;
-type OptionalSignedTranspositionRegister = <OptionalSignedTransposition as Binary>::Register;
 
 /// The reason why decoding [`Transposition`] from binary failed.
 #[derive(Debug, Display, Clone, Eq, PartialEq, Arbitrary, Error)]
-#[display(fmt = "`{}` is not a valid transposition", _0)]
-pub struct DecodeTranspositionError(#[error(not(source))] OptionalSignedTranspositionRegister);
+#[display(fmt = "not a valid transposition")]
+pub struct DecodeTranspositionError;
+
+impl From<<Move as Binary>::Error> for DecodeTranspositionError {
+    fn from(_: <Move as Binary>::Error) -> Self {
+        DecodeTranspositionError
+    }
+}
 
 impl Binary for OptionalSignedTransposition {
-    type Register = Bits<u64, 64>;
+    type Bits = Bits<64>;
     type Error = DecodeTranspositionError;
 
-    fn encode(&self) -> Self::Register {
+    fn encode(&self) -> Self::Bits {
         match self {
             None => Bits::default(),
             Some((t, sig)) => {
-                let mut register = Bits::default();
-                let (kind, rest) = register.split_at_mut(2);
-                let (score, rest) = rest.split_at_mut(16);
-                let (depth, rest) = rest.split_at_mut(5);
-                let (best, rest) = rest.split_at_mut(<Move as Binary>::Register::WIDTH);
+                let mut bits = Bits::default();
+                bits.push(*sig);
+                bits.push(t.best.encode());
+                bits.push(Bits::<16>::new(t.score as u16 as _));
+                bits.push(Bits::<5>::new(t.depth as _));
+                bits.push(Bits::<2>::new(t.kind as _));
 
-                kind.store(t.kind as u8);
-                score.store(t.score);
-                depth.store(t.depth);
-                best.clone_from_bitslice(&t.best.encode());
-                rest.clone_from_bitslice(sig);
+                debug_assert_ne!(bits, Bits::default());
 
-                debug_assert_ne!(register, Bits::default());
-
-                register
+                bits
             }
         }
     }
 
-    fn decode(register: Self::Register) -> Result<Self, Self::Error> {
-        if register == Bits::default() {
+    fn decode(mut bits: Self::Bits) -> Result<Self, Self::Error> {
+        if bits == Bits::default() {
             Ok(None)
         } else {
-            let (kind, rest) = register.split_at(2);
-            let (score, rest) = rest.split_at(16);
-            let (depth, rest) = rest.split_at(5);
-            let (best, rest) = rest.split_at(<Move as Binary>::Register::WIDTH);
-
-            use Kind::*;
             Ok(Some((
                 Transposition {
-                    kind: [Lower, Upper, Exact]
+                    kind: [Kind::Lower, Kind::Upper, Kind::Exact]
                         .into_iter()
-                        .nth(kind.load())
-                        .ok_or(DecodeTranspositionError(register))?,
-                    score: score.load(),
-                    depth: depth.load(),
-                    best: Binary::decode(best.into())
-                        .map_err(|_| DecodeTranspositionError(register))?,
+                        .nth(bits.pop::<2>().into())
+                        .ok_or(DecodeTranspositionError)?,
+                    depth: bits.pop::<5>().into(),
+                    score: u16::from(bits.pop::<16>()) as _,
+                    best: Move::decode(bits.pop())?,
                 },
-                rest.into(),
+                bits.pop(),
             )))
         }
     }

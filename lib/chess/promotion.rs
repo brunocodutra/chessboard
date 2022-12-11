@@ -1,6 +1,5 @@
 use super::Role;
 use crate::util::{Binary, Bits};
-use bitvec::{field::BitField, order::Lsb0, view::BitView};
 use derive_more::{Display, Error};
 use shakmaty as sm;
 use test_strategy::Arbitrary;
@@ -23,23 +22,23 @@ pub enum Promotion {
 
 /// The reason why decoding [`Promotion`] from binary failed.
 #[derive(Debug, Display, Clone, Eq, PartialEq, Arbitrary, Error)]
-#[display(fmt = "`{}` is not a valid promotion", _0)]
-pub struct DecodePromotionError(#[error(not(source))] <Promotion as Binary>::Register);
+#[display(fmt = "not a valid promotion")]
+pub struct DecodePromotionError;
 
 impl Binary for Promotion {
-    type Register = Bits<u8, 3>;
+    type Bits = Bits<3>;
     type Error = DecodePromotionError;
 
-    fn encode(&self) -> Self::Register {
-        (*self as u8).view_bits::<Lsb0>().into()
+    fn encode(&self) -> Self::Bits {
+        Bits::new(*self as _)
     }
 
-    fn decode(register: Self::Register) -> Result<Self, Self::Error> {
+    fn decode(bits: Self::Bits) -> Result<Self, Self::Error> {
         use Promotion::*;
         [None, Knight, Bishop, Rook, Queen]
             .into_iter()
-            .nth(register.load())
-            .ok_or(DecodePromotionError(register))
+            .nth(bits.into())
+            .ok_or(DecodePromotionError)
     }
 }
 
@@ -120,8 +119,9 @@ mod tests {
     }
 
     #[proptest]
-    fn decoding_promotion_fails_for_invalid_register(#[any(5)] b: Bits<u8, 3>) {
-        assert_eq!(Promotion::decode(b), Err(DecodePromotionError(b)));
+    fn decoding_promotion_fails_for_invalid_bits(#[strategy(5u8..8)] n: u8) {
+        let b = <Promotion as Binary>::Bits::new(n as _);
+        assert_eq!(Promotion::decode(b), Err(DecodePromotionError));
     }
 
     #[proptest]
