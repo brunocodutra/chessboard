@@ -1,8 +1,8 @@
-use super::{Iter, OptionalSignedTranspositionRegister, Signature, Transposition};
+use super::{Iter, OptionalSignedTransposition, Signature, Transposition};
 use crate::chess::{Position, Zobrist};
-use crate::util::{Binary, Cache, Register};
-use bitvec::field::BitField;
+use crate::util::{Binary, Cache};
 use proptest::{collection::*, prelude::*};
+use std::mem::size_of;
 use test_strategy::Arbitrary;
 
 /// A cache for [`Transposition`]s.
@@ -13,15 +13,15 @@ pub struct Table {
 
         for (pos, t) in ts {
             let key = pos.zobrist();
-            let idx = key.load::<usize>() & (cache.len() - 1);
-            let sig = key[(Zobrist::WIDTH - Signature::WIDTH)..].into();
+            let idx = key.get(..cache.len().trailing_zeros()).into();
+            let sig = key.get(cache.len().trailing_zeros()..).pop();
             cache.store(idx, Some((t, sig)).encode());
         }
 
         cache
     })
     .no_shrink())]
-    cache: Cache<OptionalSignedTranspositionRegister>,
+    cache: Cache<<OptionalSignedTransposition as Binary>::Bits>,
 }
 
 impl Table {
@@ -29,7 +29,7 @@ impl Table {
     ///
     /// The `size` specifies an upper bound, as long as the table is not empty.
     pub fn new(size: usize) -> Self {
-        let entry_size = OptionalSignedTranspositionRegister::SIZE;
+        let entry_size = size_of::<<OptionalSignedTransposition as Binary>::Bits>();
         let cache_size = (size / entry_size + 1).next_power_of_two() / 2;
 
         Table {
@@ -39,7 +39,7 @@ impl Table {
 
     /// The actual size of this [`Table`] in bytes.
     pub fn size(&self) -> usize {
-        self.capacity() * OptionalSignedTranspositionRegister::SIZE
+        self.capacity() * size_of::<<OptionalSignedTransposition as Binary>::Bits>()
     }
 
     /// The actual size of this [`Table`] in number of entries.
@@ -53,18 +53,18 @@ impl Table {
     }
 
     fn signature_of(&self, key: Zobrist) -> Signature {
-        key[(Zobrist::WIDTH - Signature::WIDTH)..].into()
+        key.get(self.capacity().trailing_zeros()..).pop()
     }
 
     fn index_of(&self, key: Zobrist) -> usize {
-        key.load::<usize>() & (self.capacity() - 1)
+        key.get(..self.capacity().trailing_zeros()).into()
     }
 
     /// Loads the [`Transposition`] from the slot associated with `key`.
     pub fn get(&self, key: Zobrist) -> Option<Transposition> {
         let sig = self.signature_of(key);
-        let register = self.cache.load(self.index_of(key));
-        match Binary::decode(register).expect("expected valid encoding") {
+        let bits = self.cache.load(self.index_of(key));
+        match Binary::decode(bits).expect("expected valid encoding") {
             Some((t, s)) if s == sig => Some(t),
             _ => None,
         }
@@ -75,11 +75,11 @@ impl Table {
     /// In the slot if not empty, the [`Transposition`] with greater depth is chosen.
     pub fn set(&self, key: Zobrist, transposition: Transposition) {
         let sig = self.signature_of(key);
-        let register = Some((transposition, sig)).encode();
+        let bits = Some((transposition, sig)).encode();
         self.cache.update(self.index_of(key), |r| {
             match Binary::decode(r).expect("expected valid encoding") {
                 Some((t, _)) if t > transposition => None,
-                _ => Some(register),
+                _ => Some(bits),
             }
         })
     }
@@ -99,27 +99,26 @@ impl Table {
 mod tests {
     use super::*;
     use crate::util::Bits;
-    use bitvec::view::BitView;
     use test_strategy::proptest;
 
     #[proptest]
     fn size_returns_table_capacity_in_bytes(tt: Table) {
         assert_eq!(
             tt.size(),
-            tt.cache.len() * OptionalSignedTranspositionRegister::SIZE
+            tt.cache.len() * size_of::<<OptionalSignedTransposition as Binary>::Bits>()
         );
     }
 
     #[proptest]
     fn input_size_is_an_upper_limit(
-        #[strategy(OptionalSignedTranspositionRegister::SIZE..=1024)] s: usize,
+        #[strategy(size_of::<<OptionalSignedTransposition as Binary>::Bits>()..=1024)] s: usize,
     ) {
         assert!(Table::new(s).size() <= s);
     }
 
     #[proptest]
     fn size_is_exact_if_input_is_power_of_two(
-        #[strategy(OptionalSignedTranspositionRegister::SIZE..=1024)] s: usize,
+        #[strategy(size_of::<<OptionalSignedTransposition as Binary>::Bits>()..=1024)] s: usize,
     ) {
         assert_eq!(
             Table::new(s.next_power_of_two()).size(),
@@ -140,7 +139,7 @@ mod tests {
 
     #[proptest]
     fn get_returns_none_if_signature_does_not_match(tt: Table, t: Transposition, k: Zobrist) {
-        let sig = tt.signature_of((!k.load::<u64>()).view_bits().into());
+        let sig = !tt.signature_of(k);
         tt.cache.store(tt.index_of(k), Some((t, sig)).encode());
         assert_eq!(tt.get(k), None);
     }
@@ -172,7 +171,7 @@ mod tests {
         #[filter(#u.depth() > #t.depth())] u: Transposition,
         k: Zobrist,
     ) {
-        let sig = tt.signature_of((!k.load::<u64>()).view_bits().into());
+        let sig = !tt.signature_of(k);
         tt.cache.store(tt.index_of(k), Some((t, sig)).encode());
         tt.set(k, u);
         assert_eq!(tt.get(k), Some(u));

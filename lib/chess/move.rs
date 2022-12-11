@@ -1,5 +1,5 @@
 use super::{Promotion, Square};
-use crate::util::{Binary, Bits, Register};
+use crate::util::{Binary, Bits};
 use derive_more::{DebugCustom, Display, Error};
 use shakmaty as sm;
 use test_strategy::Arbitrary;
@@ -31,35 +31,38 @@ impl Move {
 
 /// The reason why decoding [`Move`] from binary failed.
 #[derive(Debug, Display, Clone, Eq, PartialEq, Arbitrary, Error)]
-#[display(fmt = "`{}` is not a valid Move", _0)]
-pub struct DecodeMoveError(#[error(not(source))] <Move as Binary>::Register);
+#[display(fmt = "not a valid Move")]
+pub struct DecodeMoveError;
+
+impl From<<Square as Binary>::Error> for DecodeMoveError {
+    fn from(_: <Square as Binary>::Error) -> Self {
+        DecodeMoveError
+    }
+}
+
+impl From<<Promotion as Binary>::Error> for DecodeMoveError {
+    fn from(_: <Promotion as Binary>::Error) -> Self {
+        DecodeMoveError
+    }
+}
 
 impl Binary for Move {
-    type Register = Bits<u16, 15>;
+    type Bits = Bits<15>;
     type Error = DecodeMoveError;
 
-    fn encode(&self) -> Self::Register {
-        let mut register = Bits::default();
-        let (whence, rest) = register.split_at_mut(<Square as Binary>::Register::WIDTH);
-        let (whither, rest) = rest.split_at_mut(<Square as Binary>::Register::WIDTH);
-        let (promotion, _) = rest.split_at_mut(<Promotion as Binary>::Register::WIDTH);
-
-        whence.clone_from_bitslice(&self.whence().encode());
-        whither.clone_from_bitslice(&self.whither().encode());
-        promotion.clone_from_bitslice(&self.promotion().encode());
-
-        register
+    fn encode(&self) -> Self::Bits {
+        let mut bits = Bits::default();
+        bits.push(self.promotion().encode());
+        bits.push(self.whither().encode());
+        bits.push(self.whence().encode());
+        bits
     }
 
-    fn decode(register: Self::Register) -> Result<Self, Self::Error> {
-        let (whence, rest) = register.split_at(<Square as Binary>::Register::WIDTH);
-        let (whither, rest) = rest.split_at(<Square as Binary>::Register::WIDTH);
-        let (promotion, _) = rest.split_at(<Promotion as Binary>::Register::WIDTH);
-
+    fn decode(mut bits: Self::Bits) -> Result<Self, Self::Error> {
         Ok(Move(
-            Square::decode(whence.into()).map_err(|_| DecodeMoveError(register))?,
-            Square::decode(whither.into()).map_err(|_| DecodeMoveError(register))?,
-            Promotion::decode(promotion.into()).map_err(|_| DecodeMoveError(register))?,
+            Square::decode(bits.pop())?,
+            Square::decode(bits.pop())?,
+            Promotion::decode(bits.pop())?,
         ))
     }
 }
@@ -125,8 +128,9 @@ mod tests {
     }
 
     #[proptest]
-    fn decoding_move_fails_for_invalid_register(#[any(64 * 64 * 5)] b: Bits<u16, 15>) {
-        assert_eq!(Move::decode(b), Err(DecodeMoveError(b)));
+    fn decoding_move_fails_for_invalid_bits(#[strategy(20480u16..32768)] n: u16) {
+        let b = <Move as Binary>::Bits::new(n as _);
+        assert_eq!(Move::decode(b), Err(DecodeMoveError));
     }
 
     #[proptest]

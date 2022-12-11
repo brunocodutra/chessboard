@@ -1,16 +1,14 @@
-use crate::util::Register;
-
 /// Trait for types that can be encoded to binary.
 pub trait Binary: Sized {
     /// A fixed width collection of bits.
-    type Register: Register;
+    type Bits;
 
     /// The reason why decoding failed.
     type Error;
 
     /// Encodes `Self` to its binary representation.
-    fn encode(&self) -> Self::Register;
+    fn encode(&self) -> Self::Bits;
 
     /// Decodes `Self` from its binary representation.
-    fn decode(register: Self::Register) -> Result<Self, Self::Error>;
+    fn decode(bits: Self::Bits) -> Result<Self, Self::Error>;
 }

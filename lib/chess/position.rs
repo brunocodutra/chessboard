@@ -1,7 +1,6 @@
 use super::{Color, Fen, Move, Outcome, Piece, Role, San, Square};
 use crate::util::Bits;
 use bitflags::bitflags;
-use bitvec::{order::Lsb0, view::BitView};
 use derive_more::{DebugCustom, Display, Error};
 use proptest::{prelude::*, sample::Selector};
 use shakmaty as sm;
@@ -47,7 +46,7 @@ impl From<&mut sm::Move> for MoveKind {
     }
 }
 
-pub type Zobrist = Bits<u64, 64>;
+pub type Zobrist = Bits<64>;
 
 /// Represents an illegal [`Move`] in a given [`Position`].
 #[derive(Debug, Display, Clone, Eq, PartialEq, Arbitrary, Error)]
@@ -105,9 +104,7 @@ impl Position {
     ///
     /// [zobrist hash]: https://www.chessprogramming.org/Zobrist_Hashing
     pub fn zobrist(&self) -> Zobrist {
-        sm::zobrist::ZobristHash::zobrist_hash::<u64>(&self.0)
-            .view_bits::<Lsb0>()
-            .into()
+        Bits::new(sm::zobrist::ZobristHash::zobrist_hash::<u64>(&self.0))
     }
 
     /// [`Square`]s occupied.
@@ -417,7 +414,6 @@ impl AsRef<sm::Chess> for Position {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use bitvec::field::BitField;
     use proptest::sample::Selector;
     use std::collections::HashSet;
     use test_strategy::proptest;
@@ -440,7 +436,7 @@ mod tests {
     #[proptest]
     fn zobrist_returns_the_zobrist_hash(pos: Position) {
         assert_eq!(
-            pos.zobrist().load::<u64>(),
+            u64::from(pos.zobrist()),
             sm::zobrist::ZobristHash::zobrist_hash(&pos.0)
         );
     }

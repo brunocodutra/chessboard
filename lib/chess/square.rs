@@ -1,6 +1,5 @@
 use super::{File, Rank};
 use crate::util::{Binary, Bits};
-use bitvec::{field::BitField, order::Lsb0, view::BitView};
 use derive_more::{DebugCustom, Display, Error};
 use proptest::sample::select;
 use shakmaty as sm;
@@ -59,15 +58,15 @@ impl Square {
 }
 
 impl Binary for Square {
-    type Register = Bits<u8, 6>;
+    type Bits = Bits<6>;
     type Error = Infallible;
 
-    fn encode(&self) -> Self::Register {
-        self.index().view_bits::<Lsb0>().into()
+    fn encode(&self) -> Self::Bits {
+        Bits::new(self.index() as _)
     }
 
-    fn decode(register: Self::Register) -> Result<Self, Self::Error> {
-        Ok(Square::from_index(register.load()))
+    fn decode(bits: Self::Bits) -> Result<Self, Self::Error> {
+        Ok(Square::from_index(bits.into()))
     }
 }
 
@@ -170,8 +169,8 @@ mod tests {
     }
 
     #[proptest]
-    fn decoding_square_never_fails(b: Bits<u8, 6>) {
-        assert!(Square::decode(b).is_ok());
+    fn decoding_square_never_fails(r: <Square as Binary>::Bits) {
+        assert!(Square::decode(r).is_ok());
     }
 
     #[proptest]
