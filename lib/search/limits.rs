@@ -1,10 +1,11 @@
+use super::Depth;
 use derive_more::{Display, Error, From};
-use serde::{Deserialize, Serialize};
+use serde::{de, Deserialize, Deserializer, Serialize, Serializer};
 use std::{str::FromStr, time::Duration};
 use test_strategy::Arbitrary;
 
 /// Configuration for search limits.
-#[derive(Debug, Display, Copy, Clone, Eq, PartialEq, Arbitrary, Deserialize, Serialize)]
+#[derive(Debug, Display, Copy, Clone, Eq, PartialEq, Arbitrary, From, Deserialize, Serialize)]
 #[serde(deny_unknown_fields, rename_all = "lowercase")]
 pub enum Limits {
     /// Unlimited search.
@@ -13,7 +14,11 @@ pub enum Limits {
 
     /// The maximum number of plies to search.
     #[display(fmt = "{}", "ron::ser::to_string(self).unwrap()")]
-    Depth(u8),
+    #[serde(
+        serialize_with = "serialize_depth",
+        deserialize_with = "deserialize_depth"
+    )]
+    Depth(Depth),
 
     /// The maximum amount of time to spend searching.
     #[display(fmt = "{}", "ron::ser::to_string(self).unwrap()")]
@@ -25,6 +30,14 @@ impl Default for Limits {
     fn default() -> Self {
         Limits::None
     }
+}
+
+fn deserialize_depth<'de, D: Deserializer<'de>>(de: D) -> Result<Depth, D::Error> {
+    Depth::try_from(u8::deserialize(de)?).map_err(|e| de::Error::custom(e.to_string()))
+}
+
+fn serialize_depth<S: Serializer>(d: &Depth, ser: S) -> Result<S::Ok, S::Error> {
+    ser.serialize_u8(d.get())
 }
 
 /// The reason why parsing [`Limits`] failed.
@@ -41,11 +54,11 @@ impl FromStr for Limits {
 }
 
 impl Limits {
-    /// Depth or [`u8::MAX`].
-    pub fn depth(&self) -> u8 {
+    /// Depth or [`Depth::MAX`].
+    pub fn depth(&self) -> Depth {
         match self {
             Limits::Depth(d) => *d,
-            _ => u8::MAX,
+            _ => Depth::MAX,
         }
     }
 
@@ -70,14 +83,14 @@ mod tests {
     }
 
     #[proptest]
-    fn depth_returns_value_if_set(d: u8) {
+    fn depth_returns_value_if_set(d: Depth) {
         assert_eq!(Limits::Depth(d).depth(), d);
     }
 
     #[proptest]
     fn depth_returns_max_by_default(d: Duration) {
-        assert_eq!(Limits::None.depth(), u8::MAX);
-        assert_eq!(Limits::Time(d).depth(), u8::MAX);
+        assert_eq!(Limits::None.depth(), Depth::MAX);
+        assert_eq!(Limits::Time(d).depth(), Depth::MAX);
     }
 
     #[proptest]
@@ -86,7 +99,7 @@ mod tests {
     }
 
     #[proptest]
-    fn time_returns_max_by_default(d: u8) {
+    fn time_returns_max_by_default(d: Depth) {
         assert_eq!(Limits::None.time(), Duration::MAX);
         assert_eq!(Limits::Depth(d).time(), Duration::MAX);
     }

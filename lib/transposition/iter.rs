@@ -25,8 +25,8 @@ impl<'a> Iterator for Iter<'a> {
     fn next(&mut self) -> Option<Self::Item> {
         let d = self.depth?;
         let key = self.pos.zobrist();
-        let t = self.tt.get(key).filter(|t| t.depth() <= d)?;
-        self.depth = t.depth().checked_sub(1);
+        let t = self.tt.get(key).filter(|t| t.depth().get() <= d)?;
+        self.depth = t.depth().get().checked_sub(1);
         self.pos.make(t.best()).ok()?;
         Some(t)
     }
@@ -35,7 +35,7 @@ impl<'a> Iterator for Iter<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{chess::MoveKind, eval::Value};
+    use crate::{chess::MoveKind, eval::Value, search::Depth};
     use proptest::{prop_assume, sample::Selector};
     use test_strategy::proptest;
 
@@ -47,7 +47,7 @@ mod tests {
         #[by_ref]
         #[filter(#pos.moves(MoveKind::ANY).len() > 0)]
         pos: Position,
-        #[strategy(0..=Transposition::MAX_DEPTH)] d: u8,
+        d: Depth,
         s: Value,
         selector: Selector,
     ) {

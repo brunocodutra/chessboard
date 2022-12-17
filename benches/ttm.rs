@@ -1,5 +1,5 @@
 use criterion::{criterion_group, criterion_main, BatchSize, Criterion};
-use lib::search::{Limits, Options, Searcher};
+use lib::search::{Depth, Limits, Options, Searcher};
 use lib::{chess::Fen, eval::Evaluator};
 use shakmaty as sm;
 use std::thread::available_parallelism;
@@ -31,8 +31,8 @@ fn ttm(c: &mut Criterion, name: &str, edps: &[(&str, &str)]) {
                 },
                 |(s, (pos, m))| {
                     let timer = Instant::now();
-                    for d in 1.. {
-                        let pv = s.search::<1>(pos, Limits::Depth(d));
+                    for d in 1..=Depth::MAX.get() {
+                        let pv = s.search::<1>(pos, Limits::Depth(Depth::new(d)));
                         if pv.first() == Some(m) || timer.elapsed() >= Duration::from_millis(80) {
                             break;
                         }

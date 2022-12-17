@@ -10,10 +10,12 @@ use std::sync::atomic::{AtomicI16, Ordering};
 use std::{cmp::max_by_key, ops::Range};
 use test_strategy::Arbitrary;
 
+mod depth;
 mod limits;
 mod options;
 mod pv;
 
+pub use depth::*;
 pub use limits::*;
 pub use options::*;
 pub use pv::*;
@@ -41,16 +43,6 @@ impl Default for Searcher {
 }
 
 impl Searcher {
-    #[cfg(test)]
-    const MIN_DRAFT: i8 = -2;
-    #[cfg(test)]
-    const MAX_DRAFT: i8 = 2;
-
-    #[cfg(not(test))]
-    const MIN_DRAFT: i8 = -32;
-    #[cfg(not(test))]
-    const MAX_DRAFT: i8 = Transposition::MAX_DEPTH as i8;
-
     /// Constructs [`Searcher`] with the default [`Options`].
     pub fn new(evaluator: Evaluator) -> Self {
         Self::with_options(evaluator, Options::default())
@@ -77,15 +69,13 @@ impl Searcher {
     fn probe(
         &self,
         zobrist: Zobrist,
-        bounds: &Range<Value>,
-        depth: u8,
+        bounds: Range<Value>,
+        draft: i8,
     ) -> (Option<Transposition>, Value, Value) {
         let transposition = self.tt.get(zobrist);
-
+        let depth = Depth::saturate(draft.max(0) as u8);
         let (alpha, beta) = match transposition.filter(|t| t.depth() >= depth) {
             None => (bounds.start, bounds.end),
-            #[cfg(test)]
-            Some(t) if t.depth() == 0 => (bounds.start, bounds.end),
             Some(t) => {
                 let (lower, upper) = t.bounds().into_inner();
 
@@ -100,7 +90,9 @@ impl Searcher {
     }
 
     /// Records a `[Transposition`].
-    fn record(&self, zobrist: Zobrist, bounds: &Range<Value>, depth: u8, score: Score, best: Move) {
+    fn record(&self, zobrist: Zobrist, bounds: Range<Value>, draft: i8, score: Score, best: Move) {
+        let depth = Depth::saturate(draft.max(0) as u8);
+
         self.tt.set(
             zobrist,
             if *score >= bounds.end {
@@ -229,7 +221,7 @@ impl Searcher {
 
         timer.elapsed()?;
         let zobrist = pos.zobrist();
-        let (transposition, alpha, beta) = self.probe(zobrist, &bounds, draft.max(0) as _);
+        let (transposition, alpha, beta) = self.probe(zobrist, bounds.clone(), draft);
 
         if alpha >= beta {
             return Ok(Score(alpha, draft));
@@ -246,7 +238,8 @@ impl Searcher {
             },
         };
 
-        if draft <= Self::MIN_DRAFT {
+        #[cfg(test)]
+        if draft < 0 {
             return Ok(Score(value, draft));
         }
 
@@ -284,7 +277,7 @@ impl Searcher {
                 let score = -self.pvs(&next, -beta..-alpha, draft - 1, timer)?;
 
                 if *score >= beta {
-                    self.record(zobrist, &bounds, draft.max(0) as _, score, m);
+                    self.record(zobrist, bounds, draft, score, m);
                     return Ok(score);
                 }
 
@@ -333,7 +326,7 @@ impl Searcher {
             .try_reduce(|| None, |a, b| Ok(max_by_key(a, b, |x| x.map(|(s, _)| s))))?
             .expect("expected at least one legal move");
 
-        self.record(zobrist, &bounds, draft.max(0) as _, score, best);
+        self.record(zobrist, bounds, draft, score, best);
 
         Ok(score)
     }
@@ -343,7 +336,7 @@ impl Searcher {
         let timer = Timer::start(limits.time());
         let mut pv: Pv<N> = self.tt.iter(pos).collect();
         let (mut score, start) = match Option::zip(pv.score(), pv.depth()) {
-            Some((s, d)) => (s, d + 1),
+            Some((s, d)) => (s, d.get() + 1),
             None => {
                 self.tt.unset(pos.zobrist());
                 (self.eval(pos), 0)
@@ -351,8 +344,8 @@ impl Searcher {
         };
 
         self.executor.install(|| {
-            for depth in start..=limits.depth().min(Self::MAX_DRAFT as u8) {
-                (score, pv) = match self.aw(pos, score, depth as i8, timer) {
+            for depth in start..=limits.depth().get() {
+                (score, pv) = match self.aw(pos, score, depth as _, timer) {
                     Ok(s) => (*s, self.tt.iter(pos).collect()),
                     Err(_) => break,
                 };
@@ -367,7 +360,7 @@ impl Searcher {
 mod tests {
     use super::*;
     use proptest::prop_assume;
-    use std::time::Duration;
+    use std::{cmp::Ordering, time::Duration};
     use test_strategy::proptest;
     use tokio::{runtime, time::timeout};
 
@@ -378,12 +371,10 @@ mod tests {
             None => evaluator.eval(pos),
         };
 
-        let kind = if draft <= Searcher::MIN_DRAFT {
-            return score;
-        } else if draft <= 0 {
-            MoveKind::CAPTURE | MoveKind::PROMOTION
-        } else {
-            MoveKind::ANY
+        let kind = match i8::cmp(&0, &draft) {
+            Ordering::Greater => return score,
+            Ordering::Equal => MoveKind::CAPTURE | MoveKind::PROMOTION,
+            Ordering::Less => MoveKind::ANY,
         };
 
         pos.moves(kind)
@@ -417,21 +408,6 @@ mod tests {
     }
 
     #[proptest]
-    fn pvs_evaluates_position_if_draft_is_lower_than_minimum(
-        s: Searcher,
-        #[by_ref]
-        #[filter(#pos.outcome().is_none())]
-        pos: Position,
-        #[filter(!#b.is_empty())] b: Range<Value>,
-        #[strategy(i8::MIN..=Searcher::MIN_DRAFT)] d: i8,
-    ) {
-        assert_eq!(
-            s.pvs(&pos, b, d, Timer::start(Duration::MAX)),
-            Ok(Score(s.eval(&pos), d))
-        );
-    }
-
-    #[proptest]
     fn pvs_aborts_if_time_is_up(
         s: Searcher,
         pos: Position,
@@ -444,15 +420,13 @@ mod tests {
     }
 
     #[proptest]
-    fn pvs_finds_best_score(
-        s: Searcher,
-        pos: Position,
-        #[strategy(0..=Searcher::MAX_DRAFT)] d: i8,
-    ) {
+    fn pvs_finds_best_score(s: Searcher, pos: Position, d: Depth) {
+        let timer = Timer::start(Duration::MAX);
+
         assert_eq!(
-            s.pvs(&pos, Value::MIN..Value::MAX, d, Timer::start(Duration::MAX))
+            s.pvs(&pos, Value::MIN..Value::MAX, d.get() as _, timer)
                 .as_deref(),
-            Ok(&negamax(&s.evaluator, &pos, d))
+            Ok(&negamax(&s.evaluator, &pos, d.get() as _))
         );
     }
 
@@ -462,29 +436,28 @@ mod tests {
         x: Options,
         y: Options,
         pos: Position,
-        #[strategy(0..=Searcher::MAX_DRAFT)] d: i8,
+        d: Depth,
     ) {
         let x = Searcher::with_options(e.clone(), x);
         let y = Searcher::with_options(e, y);
 
+        let timer = Timer::start(Duration::MAX);
+
         assert_eq!(
-            x.pvs(&pos, Value::MIN..Value::MAX, d, Timer::start(Duration::MAX))
+            x.pvs(&pos, Value::MIN..Value::MAX, d.get() as _, timer)
                 .as_deref(),
-            y.pvs(&pos, Value::MIN..Value::MAX, d, Timer::start(Duration::MAX))
+            y.pvs(&pos, Value::MIN..Value::MAX, d.get() as _, timer)
                 .as_deref()
         );
     }
 
     #[proptest]
-    fn aw_finds_best_score(
-        s: Searcher,
-        pos: Position,
-        g: Value,
-        #[strategy(0..=Searcher::MAX_DRAFT)] d: i8,
-    ) {
+    fn aw_finds_best_score(s: Searcher, pos: Position, g: Value, d: Depth) {
+        let timer = Timer::start(Duration::MAX);
+
         assert_eq!(
-            s.aw(&pos, g, d, Timer::start(Duration::MAX)).as_deref(),
-            Ok(&negamax(&s.evaluator, &pos, d))
+            s.aw(&pos, g, d.get() as _, timer).as_deref(),
+            Ok(&negamax(&s.evaluator, &pos, d.get() as _))
         );
     }
 
@@ -494,17 +467,22 @@ mod tests {
         pos: Position,
         g: Value,
         h: Value,
-        #[strategy(0..=Searcher::MAX_DRAFT)] d: i8,
+        d: Depth,
     ) {
+        let timer = Timer::start(Duration::MAX);
+
         assert_eq!(
-            s.aw(&pos, g, d, Timer::start(Duration::MAX)).as_deref(),
-            s.aw(&pos, h, d, Timer::start(Duration::MAX)).as_deref()
+            s.aw(&pos, g, d.get() as _, timer).as_deref(),
+            s.aw(&pos, h, d.get() as _, timer).as_deref()
         );
     }
 
     #[proptest]
-    fn search_finds_the_principal_variation(mut s: Searcher, pos: Position, l: Limits) {
-        assert_eq!(s.search::<256>(&pos, l), s.tt.iter(&pos).collect());
+    fn search_finds_the_principal_variation(mut s: Searcher, pos: Position, d: Depth) {
+        assert_eq!(
+            s.search::<4>(&pos, Limits::Depth(d)),
+            s.tt.iter(&pos).collect()
+        );
     }
 
     #[proptest]
@@ -513,15 +491,19 @@ mod tests {
         #[by_ref]
         #[filter(#pos.outcome().is_none())]
         pos: Position,
+        #[filter(#d > Depth::ZERO)] d: Depth,
         t: Transposition,
     ) {
         s.tt.set(pos.zobrist(), t);
-        assert_eq!(s.search::<1>(&pos, Limits::None).len(), 1);
+        assert_eq!(s.search::<1>(&pos, Limits::Depth(d)).len(), 1);
     }
 
     #[proptest]
-    fn search_is_stable(mut s: Searcher, pos: Position, l: Limits) {
-        assert_eq!(s.search::<0>(&pos, l), s.search::<0>(&pos, l));
+    fn search_is_stable(mut s: Searcher, pos: Position, d: Depth) {
+        assert_eq!(
+            s.search::<0>(&pos, Limits::Depth(d)),
+            s.search::<0>(&pos, Limits::Depth(d))
+        );
     }
 
     #[proptest]

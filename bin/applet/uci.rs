@@ -3,7 +3,7 @@ use anyhow::{Context, Error as Anyhow};
 use clap::Parser;
 use lib::chess::{Fen, Position};
 use lib::eval::Evaluator;
-use lib::search::{Limits, Options, Searcher};
+use lib::search::{Depth, Limits, Options, Searcher};
 use std::num::NonZeroUsize;
 use tokio::io::{stdin, stdout};
 use tokio::task::block_in_place;
@@ -184,7 +184,7 @@ impl<T: Io> Server<T> {
                         warn!("ignored request to terminate the search after {} nodes", n);
                     }
 
-                    self.go(Limits::Depth(depth)).await?;
+                    self.go(Depth::saturate(depth).into()).await?;
                 }
 
                 UciMessage::Unknown(m, cause) => {

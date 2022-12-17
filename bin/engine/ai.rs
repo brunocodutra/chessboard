@@ -3,7 +3,7 @@ use async_stream::try_stream;
 use futures_util::{future::BoxFuture, stream::BoxStream};
 use lib::chess::{Move, Position};
 use lib::eval::Evaluator;
-use lib::search::{Limits, Options, Pv};
+use lib::search::{Depth, Limits, Options, Pv};
 use std::{convert::Infallible, time::Instant};
 use tokio::task::block_in_place;
 use tracing::field::display;
@@ -12,7 +12,7 @@ use tracing::{instrument, Span};
 #[cfg(test)]
 #[mockall::automock]
 trait Searcher {
-    fn search<const N: usize>(&mut self, pos: &Position, limits: Limits) -> Pv<10>;
+    fn search<const N: usize>(&mut self, pos: &Position, limits: Limits) -> Pv<4>;
 }
 
 #[cfg(test)]
@@ -59,7 +59,7 @@ impl Player for Ai {
 
             if let Some((d, s)) = Option::zip(pv.depth(), pv.score()) {
                 Span::current()
-                    .record("depth", d)
+                    .record("depth", display(d))
                     .record("score", display(s));
             }
 
@@ -78,10 +78,10 @@ impl Player for Ai {
     {
         Box::pin(try_stream! {
             let timer = Instant::now();
-            for d in 1..=self.limits.depth() {
+            for d in 1..=self.limits.depth().get() {
                 let elapsed = timer.elapsed();
                 let limits = if elapsed < self.limits.time() / 2 {
-                    Limits::Depth(d)
+                    Depth::new(d).into()
                 } else if elapsed < self.limits.time() {
                     Limits::Time(self.limits.time() - elapsed)
                 } else {
@@ -100,6 +100,7 @@ mod tests {
     use futures_util::TryStreamExt;
     use lib::search::Pv;
     use mockall::predicate::eq;
+    use proptest::sample::size_range;
     use std::time::Duration;
     use test_strategy::proptest;
     use tokio::runtime;
@@ -110,7 +111,7 @@ mod tests {
         pos: Position,
         #[by_ref]
         #[filter(!#pv.is_empty())]
-        pv: Pv<10>,
+        pv: Pv<4>,
     ) {
         let rt = runtime::Builder::new_multi_thread().build()?;
 
@@ -142,7 +143,10 @@ mod tests {
     }
 
     #[proptest]
-    fn analyze_returns_sequence_of_principal_variations(pos: Position, pvs: Vec<Pv<10>>) {
+    fn analyze_returns_sequence_of_principal_variations(
+        pos: Position,
+        #[any(size_range(1..=3).lift())] pvs: Vec<Pv<4>>,
+    ) {
         let rt = runtime::Builder::new_multi_thread().build()?;
 
         let mut strategy = Strategy::new();
@@ -150,13 +154,13 @@ mod tests {
         for (d, pv) in pvs.iter().enumerate() {
             strategy
                 .expect_search()
-                .with(eq(pos.clone()), eq(Limits::Depth((d + 1).try_into()?)))
+                .with(eq(pos.clone()), eq(Limits::Depth(Depth::saturate(d + 1))))
                 .return_const(pv.clone());
         }
 
         let mut ai = Ai {
             strategy,
-            limits: Limits::Depth(pvs.len().try_into()?),
+            limits: Limits::Depth(Depth::saturate(pvs.len())),
         };
 
         assert_eq!(
@@ -175,7 +179,7 @@ mod tests {
         };
 
         assert_eq!(
-            rt.block_on(ai.analyze::<10>(&pos).try_collect::<Vec<_>>()),
+            rt.block_on(ai.analyze::<4>(&pos).try_collect::<Vec<_>>()),
             Ok(Vec::new())
         );
     }

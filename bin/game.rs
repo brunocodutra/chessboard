@@ -96,7 +96,7 @@ mod tests {
             fn analyze<'a, 'b, 'c>(
                 &'a mut self,
                 pos: &'b Position,
-            ) -> BoxStream<'c, Result<Pv<10>, String>>
+            ) -> BoxStream<'c, Result<Pv<4>, String>>
             where
                 'a: 'c,
                 'b: 'c;

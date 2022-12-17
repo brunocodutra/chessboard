@@ -1,5 +1,5 @@
 use criterion::{criterion_group, criterion_main, BatchSize, Criterion};
-use lib::search::{Limits, Options, Searcher};
+use lib::search::{Depth, Options, Searcher};
 use lib::{chess::Fen, eval::Evaluator};
 use std::thread::available_parallelism;
 
@@ -25,7 +25,7 @@ fn ttd(c: &mut Criterion, fens: &[&str]) {
                     positions.next().unwrap(),
                 )
             },
-            |(s, pos)| s.search::<0>(pos, Limits::Depth(8)),
+            |(s, pos)| s.search::<0>(pos, Depth::new(8).into()),
             BatchSize::SmallInput,
         );
     });
