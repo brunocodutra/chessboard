@@ -6,7 +6,7 @@ use derive_more::{DebugCustom, Display, Error, From};
 use futures_util::{future::BoxFuture, stream::BoxStream};
 use lib::chess::{Move, Position};
 use lib::eval::Value;
-use lib::search::{Limits, Pv};
+use lib::search::{Depth, Limits, Pv};
 use std::{collections::HashMap, fmt::Debug, future::Future, io, pin::Pin, time::Instant};
 use tokio::{runtime, task::block_in_place, time::timeout};
 use tracing::{debug, error, instrument};
@@ -88,7 +88,7 @@ impl<T: Io + Send + 'static> Uci<T> {
         let go = match self.limits {
             Limits::None => UciMessage::go(),
             Limits::Depth(d) => UciMessage::Go {
-                search_control: Some(UciSearchControl::depth(d)),
+                search_control: Some(UciSearchControl::depth(d.get())),
                 time_control: None,
             },
             Limits::Time(t) => UciMessage::go_movetime(
@@ -195,9 +195,15 @@ impl<T: Io + Send + 'static> Player for Uci<T> {
                     }
 
                     if let Some((d, s)) = Option::zip(depth, score) {
-                        yield Pv::new(d, s, moves);
-                        if d >= self.limits.depth() {
-                            break;
+                        match Depth::try_from(d) {
+                            Err(_) => break,
+                            Ok(d) if d > self.limits.depth() => break,
+                            Ok(d) => {
+                                yield Pv::new(d, s, moves);
+                                if d == self.limits.depth() {
+                                    break;
+                                }
+                            }
                         }
                     }
                 }
@@ -551,7 +557,7 @@ mod tests {
         let go = match l {
             Limits::None => UciMessage::go(),
             Limits::Depth(d) => UciMessage::Go {
-                search_control: Some(UciSearchControl::depth(d)),
+                search_control: Some(UciSearchControl::depth(d.get())),
                 time_control: None,
             },
             Limits::Time(t) => UciMessage::go_movetime(
@@ -746,7 +752,7 @@ mod tests {
     }
 
     #[proptest]
-    fn analyze_stops_when_target_depth_is_reached(pos: Position, pvs: Vec<Pv<10>>) {
+    fn analyze_stops_when_target_depth_is_reached(pos: Position, pvs: Vec<Pv<4>>) {
         let rt = runtime::Builder::new_multi_thread().enable_time().build()?;
         let mut io = MockIo::new();
 
@@ -767,7 +773,7 @@ mod tests {
             let mut attrs = vec![];
 
             if let Some((d, s)) = Option::zip(pv.depth(), pv.score()) {
-                attrs.push(UciInfoAttribute::Depth(d));
+                attrs.push(UciInfoAttribute::Depth(d.get()));
                 attrs.push(UciInfoAttribute::from_centipawns(s.get().into()));
             }
 
@@ -818,7 +824,7 @@ mod tests {
         };
 
         assert_eq!(
-            rt.block_on(uci.analyze::<10>(&pos).try_collect::<Vec<_>>())
+            rt.block_on(uci.analyze::<4>(&pos).try_collect::<Vec<_>>())
                 .map_err(|UciError(e)| e.kind()),
             Ok(Vec::new())
         );
