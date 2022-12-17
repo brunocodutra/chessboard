@@ -2,7 +2,7 @@ use derive_more::{DebugCustom, Display, Error};
 use proptest::sample::select;
 use shakmaty as sm;
 use std::convert::{TryFrom, TryInto};
-use std::{num::TryFromIntError, ops::Sub};
+use std::ops::Sub;
 use test_strategy::Arbitrary;
 
 /// Denotes a column on the chess board.
@@ -18,12 +18,12 @@ impl File {
     ///
     /// Panics if `i` is not in the range (0..=7).
     pub fn from_index(i: u8) -> Self {
-        i.try_into().unwrap()
+        File(i.try_into().unwrap())
     }
 
     /// This files's index in the range (0..=7).
     pub fn index(&self) -> u8 {
-        (*self).into()
+        self.0.into()
     }
 
     /// Returns an iterator over [`File`]s ordered by [index][`File::index`].
@@ -61,31 +61,6 @@ impl TryFrom<char> for File {
 impl From<File> for char {
     fn from(f: File) -> char {
         f.0.char()
-    }
-}
-
-/// The reason why converting [`File`] from index failed.
-#[derive(Debug, Display, Clone, Eq, PartialEq, Error)]
-#[display(fmt = "expected integer in the range `(0..=7)`")]
-pub struct FileOutOfRange;
-
-impl From<TryFromIntError> for FileOutOfRange {
-    fn from(_: TryFromIntError) -> Self {
-        FileOutOfRange
-    }
-}
-
-impl TryFrom<u8> for File {
-    type Error = FileOutOfRange;
-
-    fn try_from(i: u8) -> Result<Self, Self::Error> {
-        Ok(File(i.try_into()?))
-    }
-}
-
-impl From<File> for u8 {
-    fn from(f: File) -> u8 {
-        f.0.into()
     }
 }
 
@@ -149,7 +124,7 @@ mod tests {
 
     #[proptest]
     fn file_has_an_index(f: File) {
-        assert_eq!(f.index().try_into(), Ok(f));
+        assert_eq!(File::from_index(f.index()), f);
     }
 
     #[proptest]
@@ -171,11 +146,6 @@ mod tests {
     #[should_panic]
     fn from_index_panics_if_index_out_of_range(#[strategy(8u8..)] i: u8) {
         File::from_index(i);
-    }
-
-    #[proptest]
-    fn converting_file_from_index_out_of_range_fails(#[strategy(8u8..)] i: u8) {
-        assert_eq!(File::try_from(i), Err(FileOutOfRange));
     }
 
     #[proptest]

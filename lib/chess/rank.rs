@@ -2,7 +2,7 @@ use derive_more::{DebugCustom, Display, Error};
 use proptest::sample::select;
 use shakmaty as sm;
 use std::convert::{TryFrom, TryInto};
-use std::{num::TryFromIntError, ops::Sub};
+use std::ops::Sub;
 use test_strategy::Arbitrary;
 
 /// Denotes a row on the chess board.
@@ -18,12 +18,12 @@ impl Rank {
     ///
     /// Panics if `i` is not in the range (0..=7).
     pub fn from_index(i: u8) -> Self {
-        i.try_into().unwrap()
+        Rank(i.try_into().unwrap())
     }
 
     /// This rank's index in the range (0..=7).
     pub fn index(&self) -> u8 {
-        (*self).into()
+        self.0.into()
     }
 
     /// Returns an iterator over [`Rank`]s ordered by [index][`Rank::index`].
@@ -61,31 +61,6 @@ impl TryFrom<char> for Rank {
 impl From<Rank> for char {
     fn from(r: Rank) -> Self {
         r.0.char()
-    }
-}
-
-/// The reason why converting [`Rank`] from index failed.
-#[derive(Debug, Display, Clone, Eq, PartialEq, Error)]
-#[display(fmt = "expected integer in the range `(0..=7)`")]
-pub struct RankOutOfRange;
-
-impl From<TryFromIntError> for RankOutOfRange {
-    fn from(_: TryFromIntError) -> Self {
-        RankOutOfRange
-    }
-}
-
-impl TryFrom<u8> for Rank {
-    type Error = RankOutOfRange;
-
-    fn try_from(i: u8) -> Result<Self, Self::Error> {
-        Ok(Rank(i.try_into()?))
-    }
-}
-
-impl From<Rank> for u8 {
-    fn from(f: Rank) -> u8 {
-        f.0.into()
     }
 }
 
@@ -149,7 +124,7 @@ mod tests {
 
     #[proptest]
     fn rank_has_an_index(r: Rank) {
-        assert_eq!(r.index().try_into(), Ok(r));
+        assert_eq!(Rank::from_index(r.index()), r);
     }
 
     #[proptest]
@@ -171,11 +146,6 @@ mod tests {
     #[should_panic]
     fn from_index_panics_if_index_out_of_range(#[strategy(8u8..)] i: u8) {
         Rank::from_index(i);
-    }
-
-    #[proptest]
-    fn converting_rank_from_index_out_of_range_fails(#[strategy(8u8..)] i: u8) {
-        assert_eq!(Rank::try_from(i), Err(RankOutOfRange));
     }
 
     #[proptest]

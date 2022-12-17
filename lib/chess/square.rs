@@ -1,10 +1,9 @@
 use super::{File, Rank};
 use crate::util::{Binary, Bits};
-use derive_more::{DebugCustom, Display, Error};
+use derive_more::{DebugCustom, Display};
 use proptest::sample::select;
 use shakmaty as sm;
-use std::convert::{Infallible, TryFrom, TryInto};
-use std::num::TryFromIntError;
+use std::convert::{Infallible, TryInto};
 use test_strategy::Arbitrary;
 use vampirc_uci::UciSquare;
 
@@ -26,14 +25,14 @@ impl Square {
     ///
     /// Panics if `i` is not in the range (0..64).
     pub fn from_index(i: u8) -> Self {
-        i.try_into().unwrap()
+        Square(i.try_into().unwrap())
     }
 
     /// This squares's index in the range (0..64).
     ///
     /// Squares are ordered from a1 = 0 to h8 = 63, files then ranks, so b1 = 2 and a2 = 8.
     pub fn index(&self) -> u8 {
-        (*self).into()
+        self.0.into()
     }
 
     /// Returns an iterator over [`Square`]s ordered by [index][`Square::index`].
@@ -70,31 +69,6 @@ impl Binary for Square {
     }
 }
 
-/// The reason why converting [`Square`] from index failed.
-#[derive(Debug, Display, Clone, Eq, PartialEq, Error)]
-#[display(fmt = "expected integer in the range `(0..64)`")]
-pub struct SquareOutOfRange;
-
-impl From<TryFromIntError> for SquareOutOfRange {
-    fn from(_: TryFromIntError) -> Self {
-        SquareOutOfRange
-    }
-}
-
-impl TryFrom<u8> for Square {
-    type Error = SquareOutOfRange;
-
-    fn try_from(i: u8) -> Result<Self, Self::Error> {
-        Ok(Square(i.try_into()?))
-    }
-}
-
-impl From<Square> for u8 {
-    fn from(s: Square) -> u8 {
-        s.0.into()
-    }
-}
-
 #[doc(hidden)]
 impl From<Square> for UciSquare {
     fn from(s: Square) -> Self {
@@ -108,7 +82,10 @@ impl From<Square> for UciSquare {
 #[doc(hidden)]
 impl From<UciSquare> for Square {
     fn from(s: UciSquare) -> Self {
-        Square::new(s.file.try_into().unwrap(), (s.rank - 1).try_into().unwrap())
+        Square::new(
+            s.file.try_into().unwrap(),
+            char::from(b'0' + s.rank).try_into().unwrap(),
+        )
     }
 }
 
@@ -175,7 +152,7 @@ mod tests {
 
     #[proptest]
     fn square_has_an_index(s: Square) {
-        assert_eq!(s.index().try_into(), Ok(s));
+        assert_eq!(Square::from_index(s.index()), s);
     }
 
     #[proptest]
@@ -192,11 +169,6 @@ mod tests {
     #[should_panic]
     fn from_index_panics_if_index_out_of_range(#[strategy(64u8..)] i: u8) {
         Square::from_index(i);
-    }
-
-    #[proptest]
-    fn converting_square_from_index_out_of_range_fails(#[strategy(64u8..)] i: u8) {
-        assert_eq!(Square::try_from(i), Err(SquareOutOfRange));
     }
 
     #[proptest]
