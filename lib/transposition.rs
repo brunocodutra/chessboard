@@ -93,7 +93,7 @@ impl Transposition {
     }
 }
 
-type Signature = Bits<26>;
+type Signature = Bits<u32, 26>;
 type OptionalSignedTransposition = Option<(Transposition, Signature)>;
 
 /// The reason why decoding [`Transposition`] from binary failed.
@@ -108,7 +108,7 @@ impl From<<Move as Binary>::Error> for DecodeTranspositionError {
 }
 
 impl Binary for OptionalSignedTransposition {
-    type Bits = Bits<64>;
+    type Bits = Bits<u64, 64>;
     type Error = DecodeTranspositionError;
 
     fn encode(&self) -> Self::Bits {
@@ -118,9 +118,9 @@ impl Binary for OptionalSignedTransposition {
                 let mut bits = Bits::default();
                 bits.push(*sig);
                 bits.push(t.best.encode());
-                bits.push(Bits::<16>::new(t.score as u16 as _));
-                bits.push(Bits::<5>::new(t.depth as _));
-                bits.push(Bits::<2>::new(t.kind as _));
+                bits.push(Bits::<u16, 16>::new(t.score as _));
+                bits.push(Bits::<u8, 5>::new(t.depth as _));
+                bits.push(Bits::<u8, 2>::new(t.kind as _));
 
                 debug_assert_ne!(bits, Bits::default());
 
@@ -137,10 +137,10 @@ impl Binary for OptionalSignedTransposition {
                 Transposition {
                     kind: [Kind::Lower, Kind::Upper, Kind::Exact]
                         .into_iter()
-                        .nth(bits.pop::<2>().into())
+                        .nth(bits.pop::<_, 2>().get())
                         .ok_or(DecodeTranspositionError)?,
-                    depth: bits.pop::<5>().into(),
-                    score: u16::from(bits.pop::<16>()) as _,
+                    depth: bits.pop::<_, 5>().get(),
+                    score: bits.pop::<u16, 16>().get() as _,
                     best: Move::decode(bits.pop())?,
                 },
                 bits.pop(),

@@ -6,7 +6,7 @@ use derive_more::{DebugCustom, Display, Error, From};
 use futures_util::{future::BoxFuture, stream::BoxStream};
 use lib::chess::{Move, Position};
 use lib::search::{Limits, Pv};
-use std::{collections::HashMap, future::Future, io, pin::Pin, time::Instant};
+use std::{collections::HashMap, fmt::Debug, future::Future, io, pin::Pin, time::Instant};
 use tokio::{runtime, task::block_in_place, time::timeout};
 use tracing::{debug, error, instrument};
 use vampirc_uci::{self as uci, UciFen, UciInfoAttribute, UciMessage, UciSearchControl};
@@ -14,7 +14,7 @@ use vampirc_uci::{self as uci, UciFen, UciInfoAttribute, UciMessage, UciSearchCo
 pub type UciOptions = HashMap<String, Option<String>>;
 
 #[derive(DebugCustom)]
-#[debug(bound = "T: std::fmt::Debug")]
+#[debug(bound = "T: Debug")]
 #[debug(fmt = "Lazy({})")]
 enum Lazy<T, E> {
     #[debug(fmt = "{:?}", _0)]

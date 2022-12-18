@@ -178,6 +178,7 @@ dependencies = [
  "futures-util",
  "humantime-serde",
  "mockall",
+ "num-traits",
  "pgn-reader",
  "proptest",
  "rayon",

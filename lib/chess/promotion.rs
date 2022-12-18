@@ -26,7 +26,7 @@ pub enum Promotion {
 pub struct DecodePromotionError;
 
 impl Binary for Promotion {
-    type Bits = Bits<3>;
+    type Bits = Bits<u8, 3>;
     type Error = DecodePromotionError;
 
     fn encode(&self) -> Self::Bits {
@@ -37,7 +37,7 @@ impl Binary for Promotion {
         use Promotion::*;
         [None, Knight, Bishop, Rook, Queen]
             .into_iter()
-            .nth(bits.into())
+            .nth(bits.get() as _)
             .ok_or(DecodePromotionError)
     }
 }
