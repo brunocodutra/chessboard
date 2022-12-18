@@ -47,7 +47,7 @@ impl From<<Promotion as Binary>::Error> for DecodeMoveError {
 }
 
 impl Binary for Move {
-    type Bits = Bits<15>;
+    type Bits = Bits<u16, 15>;
     type Error = DecodeMoveError;
 
     fn encode(&self) -> Self::Bits {

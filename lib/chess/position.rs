@@ -46,7 +46,7 @@ impl From<&mut sm::Move> for MoveKind {
     }
 }
 
-pub type Zobrist = Bits<64>;
+pub type Zobrist = Bits<u64, 64>;
 
 /// Represents an illegal [`Move`] in a given [`Position`].
 #[derive(Debug, Display, Clone, Eq, PartialEq, Arbitrary, Error)]
@@ -436,7 +436,7 @@ mod tests {
     #[proptest]
     fn zobrist_returns_the_zobrist_hash(pos: Position) {
         assert_eq!(
-            u64::from(pos.zobrist()),
+            pos.zobrist().get(),
             sm::zobrist::ZobristHash::zobrist_hash(&pos.0)
         );
     }

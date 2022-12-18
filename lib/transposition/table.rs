@@ -13,8 +13,8 @@ pub struct Table {
 
         for (pos, t) in ts {
             let key = pos.zobrist();
-            let idx = key.get(..cache.len().trailing_zeros()).into();
-            let sig = key.get(cache.len().trailing_zeros()..).pop();
+            let idx = key.slice(..cache.len().trailing_zeros()).get() as _;
+            let sig = key.slice(cache.len().trailing_zeros()..).pop();
             cache.store(idx, Some((t, sig)).encode());
         }
 
@@ -53,11 +53,11 @@ impl Table {
     }
 
     fn signature_of(&self, key: Zobrist) -> Signature {
-        key.get(self.capacity().trailing_zeros()..).pop()
+        key.slice(self.capacity().trailing_zeros()..).pop()
     }
 
     fn index_of(&self, key: Zobrist) -> usize {
-        key.get(..self.capacity().trailing_zeros()).into()
+        key.slice(..self.capacity().trailing_zeros()).get() as _
     }
 
     /// Loads the [`Transposition`] from the slot associated with `key`.

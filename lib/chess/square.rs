@@ -57,7 +57,7 @@ impl Square {
 }
 
 impl Binary for Square {
-    type Bits = Bits<6>;
+    type Bits = Bits<u8, 6>;
     type Error = Infallible;
 
     fn encode(&self) -> Self::Bits {
@@ -65,7 +65,7 @@ impl Binary for Square {
     }
 
     fn decode(bits: Self::Bits) -> Result<Self, Self::Error> {
-        Ok(Square::from_index(bits.into()))
+        Ok(Square::from_index(bits.get()))
     }
 }
 

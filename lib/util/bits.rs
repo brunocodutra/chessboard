@@ -1,32 +1,46 @@
 use derive_more::{DebugCustom, Display};
-use std::ops::{Bound, Not, RangeBounds};
+use num_traits::{AsPrimitive, PrimInt, Unsigned};
+use proptest::prelude::*;
+use std::fmt::{Binary, Debug};
+use std::ops::{Bound, Not, RangeBounds, RangeInclusive};
 use test_strategy::Arbitrary;
 
-const fn ones(n: u32) -> u64 {
+#[inline]
+fn ones<T: PrimInt + Unsigned>(n: u32) -> T {
     match n {
-        0 => 0,
-        n => u64::MAX >> (64 - n),
+        0 => T::zero(),
+        n => T::max_value() >> (T::zero().trailing_zeros() - n) as _,
     }
 }
 
 /// A fixed width collection of bits.
-#[derive(DebugCustom, Display, Default, Copy, Clone, Eq, PartialEq, Hash, Arbitrary)]
+#[derive(DebugCustom, Display, Copy, Clone, Eq, PartialEq, Hash, Arbitrary)]
+#[arbitrary(bound(T: Debug, RangeInclusive<T>: Strategy<Value = T>))]
 #[debug(fmt = "Bits({})", self)]
 #[display(fmt = "{:b}", _0)]
-pub struct Bits<const W: u32>(#[strategy(0..=ones(W))] u64);
+pub struct Bits<T: 'static + Binary + PrimInt + Unsigned, const W: u32>(
+    #[strategy(T::zero()..=ones(W))] T,
+);
 
-impl<const W: u32> Bits<W> {
+impl<T: 'static + Binary + PrimInt + Unsigned, const W: u32> Bits<T, W> {
     /// Constructs [`Bits`] from raw collection of bits.
     ///
     /// Overflown bits are discarded.
-    #[inline(always)]
-    pub fn new(b: u64) -> Self {
+    #[inline]
+    pub fn new(b: T) -> Self {
         Bits(b & ones(W))
     }
 
+    /// Get raw collection of bits.
+    #[inline]
+    pub fn get(&self) -> T {
+        debug_assert_eq!(*self, Bits::new(self.0));
+        self.0
+    }
+
     /// Returns a slice of bits.
-    #[inline(always)]
-    pub fn get<R: RangeBounds<u32>>(&self, r: R) -> Self {
+    #[inline]
+    pub fn slice<R: RangeBounds<u32>>(&self, r: R) -> Self {
         let a = match r.start_bound() {
             Bound::Included(&i) => i,
             Bound::Excluded(&i) => i + 1,
@@ -39,20 +53,22 @@ impl<const W: u32> Bits<W> {
             Bound::Unbounded => W,
         };
 
-        Bits((self.0 & ones(b)) >> a)
+        Bits((self.get() & ones(b)) >> a as _)
     }
 
     /// Shifts bits into the collection.
     ///
     /// Overflown bits are discarded.
-    ///
-    /// # Panics
-    ///
-    /// Panics if `N` is greater than `W`.
-    #[inline(always)]
-    pub fn push<const N: u32>(&mut self, bits: Bits<N>) {
-        assert!(W >= N);
-        *self = Bits::new((self.0 << N) | bits.0)
+    #[inline]
+    pub fn push<U: 'static + Binary + PrimInt + Unsigned + AsPrimitive<T>, const N: u32>(
+        &mut self,
+        bits: Bits<U, N>,
+    ) {
+        *self = if N >= W {
+            Bits::new(bits.get().as_())
+        } else {
+            Bits::new((self.get() << N as _) | bits.get().as_())
+        };
     }
 
     /// Shifts bits out of the collection.
@@ -60,40 +76,38 @@ impl<const W: u32> Bits<W> {
     /// # Panics
     ///
     /// Panics if `N` is greater than `W`.
-    #[inline(always)]
-    pub fn pop<const N: u32>(&mut self) -> Bits<N> {
-        assert!(W >= N);
-        let bits = Bits::new(self.0);
-        self.0 >>= N;
+    #[inline]
+    pub fn pop<U: 'static + Binary + PrimInt + Unsigned, const N: u32>(&mut self) -> Bits<U, N>
+    where
+        T: AsPrimitive<U>,
+    {
+        let bits = Bits::new(self.get().as_());
+
+        *self = if N >= W {
+            Bits(T::zero())
+        } else {
+            Bits(self.get() >> N as _)
+        };
+
         bits
     }
 }
 
-impl<const W: u32> Not for Bits<W> {
-    type Output = Self;
-
-    #[inline(always)]
-    fn not(self) -> Self::Output {
-        Bits::new(!self.0)
+impl<T: 'static + Binary + PrimInt + Unsigned, const W: u32> Default for Bits<T, W> {
+    #[inline]
+    fn default() -> Self {
+        Bits::new(T::zero())
     }
 }
 
-macro_rules! impl_from_bits_for_integer {
-    ( $type: ty ) => {
-        impl<const W: u32> From<Bits<W>> for $type {
-            #[inline(always)]
-            fn from(b: Bits<W>) -> Self {
-                b.0 as _
-            }
-        }
-    };
-}
+impl<T: 'static + Binary + PrimInt + Unsigned, const W: u32> Not for Bits<T, W> {
+    type Output = Self;
 
-impl_from_bits_for_integer!(usize);
-impl_from_bits_for_integer!(u64);
-impl_from_bits_for_integer!(u32);
-impl_from_bits_for_integer!(u16);
-impl_from_bits_for_integer!(u8);
+    #[inline]
+    fn not(self) -> Self::Output {
+        Bits::new(!self.get())
+    }
+}
 
 #[cfg(test)]
 mod tests {
@@ -101,84 +115,65 @@ mod tests {
     use test_strategy::proptest;
 
     #[proptest]
-    fn can_be_constructed_from_raw_collection_of_bits(n: u64) {
-        assert_eq!(Bits::<64>::new(n), Bits(n));
+    #[should_panic]
+    fn panics_if_type_is_not_wide_enough() {
+        Bits::<u8, 11>::default();
     }
 
     #[proptest]
-    fn overflown_bits_are_discarded_by_constructor(#[strategy(ones(16)..)] n: u64) {
-        assert_eq!(Bits::<16>::new(n), Bits(n & ones(16)));
+    fn can_be_constructed_from_raw_collection_of_bits(n: u8) {
+        assert_eq!(Bits::<_, 8>::new(n), Bits(n));
     }
 
     #[proptest]
-    fn get_slices_bits(b: Bits<48>, #[strategy(..48u32)] i: u32) {
-        assert_eq!(b.get(0..), b.get(..));
-        assert_eq!(b.get(..48), b.get(..));
-        assert_eq!(b.get(0..48), b.get(..));
+    fn overflown_bits_are_discarded_by_constructor(#[strategy(ones::<u8>(6)..)] n: u8) {
+        assert_ne!(Bits::<_, 5>::new(n), Bits(n));
+        assert_eq!(Bits::<_, 5>::new(n), Bits(n & ones::<u8>(5)));
+    }
 
-        assert_eq!(b.get(i..i), Bits::default());
-        assert_eq!(b.get(..=i), b.get(..i + 1));
+    #[proptest]
+    fn get_returns_raw_collection_of_bits(b: Bits<u8, 5>) {
+        assert_eq!(b.get(), b.0);
+    }
+
+    #[proptest]
+    fn slice_retrieves_range_of_bits(b: Bits<u8, 8>, #[strategy(..8u32)] i: u32) {
+        assert_eq!(b.slice(0..), b.slice(..));
+        assert_eq!(b.slice(..8), b.slice(..));
+        assert_eq!(b.slice(0..8), b.slice(..));
+
+        assert_eq!(b.slice(i..i), Bits::default());
+        assert_eq!(b.slice(..=i), b.slice(..i + 1));
     }
 
     #[proptest]
     #[should_panic]
-    fn get_panics_if_index_is_out_of_range(b: Bits<48>, #[strategy(48u32..)] i: u32) {
-        b.get(..=i);
+    fn slice_panics_if_index_is_out_of_range(b: Bits<u64, 48>, #[strategy(48u32..)] i: u32) {
+        b.slice(i..i);
     }
 
     #[proptest]
-    fn can_be_converted_into_usize(n: usize) {
-        assert_eq!(n, Bits::<64>::new(n as _).into());
-    }
-
-    #[proptest]
-    fn can_be_converted_into_u64(n: u64) {
-        assert_eq!(n, Bits::<64>::new(n as _).into());
-    }
-
-    #[proptest]
-    fn can_be_converted_into_u32(n: u32) {
-        assert_eq!(n, Bits::<48>::new(n as _).into());
-    }
-
-    #[proptest]
-    fn can_be_converted_into_u16(n: u16) {
-        assert_eq!(n, Bits::<24>::new(n as _).into());
-    }
-
-    #[proptest]
-    fn can_be_converted_into_u8(n: u8) {
-        assert_eq!(n, Bits::<12>::new(n as _).into());
-    }
-
-    #[proptest]
-    fn push_shifts_bits_into_collection(a: Bits<3>, b: Bits<9>, c: Bits<27>) {
-        let mut bits = Bits::<39>::default();
+    fn push_shifts_bits_into_collection(a: Bits<u8, 3>, b: Bits<u16, 9>, c: Bits<u32, 27>) {
+        let mut bits = Bits::<u64, 39>::default();
 
         bits.push(a);
         bits.push(b);
         bits.push(c);
 
-        assert_eq!(u64::from(a), bits.get(36..).into());
-        assert_eq!(u64::from(b), bits.get(27..36).into());
-        assert_eq!(u64::from(c), bits.get(..27).into());
+        assert_eq!(bits.slice(36..).get(), a.get().into());
+        assert_eq!(bits.slice(27..36).get(), b.get().into());
+        assert_eq!(bits.slice(..27).get(), c.get().into());
     }
 
     #[proptest]
-    fn push_discards_overflown_bits(mut a: Bits<16>, b: Bits<16>) {
+    fn push_discards_overflown_bits(mut a: Bits<u8, 8>, b: Bits<u8, 8>) {
         a.push(b);
         assert_eq!(a, b);
     }
 
     #[proptest]
-    #[should_panic]
-    fn push_panics_if_collection_is_too_small(mut a: Bits<12>, b: Bits<16>) {
-        a.push(b);
-    }
-
-    #[proptest]
-    fn pop_returns_pushed_bits(a: Bits<3>, b: Bits<9>, c: Bits<27>) {
-        let mut bits = Bits::<39>::default();
+    fn pop_removed_pushed_bits(a: Bits<u8, 3>, b: Bits<u16, 9>, c: Bits<u32, 27>) {
+        let mut bits = Bits::<u64, 39>::default();
 
         bits.push(a);
         bits.push(b);
@@ -190,8 +185,14 @@ mod tests {
     }
 
     #[proptest]
-    #[should_panic]
-    fn pop_panics_if_collection_is_too_small(mut a: Bits<12>) {
-        a.pop::<16>();
+    fn pop_removes_bits(mut b: Bits<u8, 8>) {
+        assert_eq!(b.clone(), b.pop());
+        assert_eq!(b, Bits(0));
+    }
+
+    #[proptest]
+    fn not_inverts_bits(b: Bits<u8, 5>) {
+        assert_ne!((!b).get(), !b.get());
+        assert_eq!((!b).get(), !b.get() & ones::<u8>(5));
     }
 }
