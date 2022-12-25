@@ -43,7 +43,7 @@ proptest = { version = "1.0.0", default-features = false, features = ["std"] }
 rayon = { version = "1.6.1", default-features = false }
 ron = { version = "0.8.0", default-features = false }
 serde = { version = "1.0.151", default-features = false, features = ["derive", "std"] }
-shakmaty = { version = "0.22.0", default-features = false }
+shakmaty = { version = "0.23.0", default-features = false }
 test-strategy = { version = "0.2.1", default-features = false }
 tokio = { version = "1.23.0", default-features = false, features = [
     "io-std",
@@ -66,7 +66,7 @@ vampirc-uci = { version = "0.11.0", default-features = false }
 [dev-dependencies]
 criterion = { version = "0.4.0", default-features = false, features = ["rayon"] }
 mockall = { version = "0.11.3", default-features = false }
-pgn-reader = { version = "0.21.0", default-features = false }
+pgn-reader = { version = "0.22.0", default-features = false }
 
 [profile.release]
 lto = "thin"

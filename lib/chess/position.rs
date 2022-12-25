@@ -82,6 +82,7 @@ pub struct Position(
 
 impl Position {
     /// The side to move.
+    #[inline]
     pub fn turn(&self) -> Color {
         sm::Position::turn(&self.0).into()
     }
@@ -89,6 +90,7 @@ impl Position {
     /// The number of halfmoves since the last capture or pawn advance.
     ///
     /// It resets to 0 whenever a piece is captured or a pawn is moved.
+    #[inline]
     pub fn halfmoves(&self) -> u32 {
         sm::Position::halfmoves(&self.0)
     }
@@ -96,6 +98,7 @@ impl Position {
     /// The current move number since the start of the game.
     ///
     /// It starts at 1, and is incremented after every move by black.
+    #[inline]
     pub fn fullmoves(&self) -> NonZeroU32 {
         sm::Position::fullmoves(&self.0)
     }
@@ -103,11 +106,15 @@ impl Position {
     /// This position's [zobrist hash].
     ///
     /// [zobrist hash]: https://www.chessprogramming.org/Zobrist_Hashing
+    #[inline]
     pub fn zobrist(&self) -> Zobrist {
-        Bits::new(sm::zobrist::ZobristHash::zobrist_hash::<u64>(&self.0))
+        let z: sm::zobrist::Zobrist64 =
+            sm::zobrist::ZobristHash::zobrist_hash(&self.0, sm::EnPassantMode::Legal);
+        Bits::new(z.0)
     }
 
     /// [`Square`]s occupied.
+    #[inline]
     pub fn occupied(&self) -> impl DoubleEndedIterator<Item = Square> + ExactSizeIterator {
         sm::Position::board(&self.0)
             .occupied()
@@ -116,6 +123,7 @@ impl Position {
     }
 
     /// [`Square`]s occupied by a [`Color`].
+    #[inline]
     pub fn by_color(
         &self,
         c: Color,
@@ -127,6 +135,7 @@ impl Position {
     }
 
     /// [`Square`]s occupied by a [`Role`].
+    #[inline]
     pub fn by_role(&self, r: Role) -> impl DoubleEndedIterator<Item = Square> + ExactSizeIterator {
         sm::Position::board(&self.0)
             .by_role(r.into())
@@ -135,6 +144,7 @@ impl Position {
     }
 
     /// [`Square`]s occupied by a [`Piece`].
+    #[inline]
     pub fn by_piece(
         &self,
         p: Piece,
@@ -146,6 +156,7 @@ impl Position {
     }
 
     /// Into where the piece in this [`Square`] can attack.
+    #[inline]
     pub fn attacks(
         &self,
         s: Square,
@@ -157,6 +168,7 @@ impl Position {
     }
 
     /// From where pieces of this [`Color`] can attack into this [`Square`].
+    #[inline]
     pub fn attackers(
         &self,
         s: Square,
@@ -170,6 +182,7 @@ impl Position {
     }
 
     /// The [`Square`]s occupied by [`Piece`]s giving check.
+    #[inline]
     pub fn checkers(&self) -> impl DoubleEndedIterator<Item = Square> + ExactSizeIterator {
         sm::Position::checkers(&self.0)
             .into_iter()
@@ -179,6 +192,7 @@ impl Position {
     /// Whether this position is a [check].
     ///
     /// [check]: https://www.chessprogramming.org/Check
+    #[inline]
     pub fn is_check(&self) -> bool {
         sm::Position::is_check(&self.0)
     }
@@ -186,6 +200,7 @@ impl Position {
     /// Whether this position is a [checkmate].
     ///
     /// [checkmate]: https://www.chessprogramming.org/Checkmate
+    #[inline]
     pub fn is_checkmate(&self) -> bool {
         sm::Position::is_checkmate(&self.0)
     }
@@ -193,6 +208,7 @@ impl Position {
     /// Whether this position is a [stalemate].
     ///
     /// [stalemate]: https://www.chessprogramming.org/Stalemate
+    #[inline]
     pub fn is_stalemate(&self) -> bool {
         sm::Position::is_stalemate(&self.0)
     }
@@ -200,6 +216,7 @@ impl Position {
     /// Whether this position has [insufficient material].
     ///
     /// [insufficient material]: https://www.chessprogramming.org/Material#InsufficientMaterial
+    #[inline]
     pub fn is_material_insufficient(&self) -> bool {
         sm::Position::is_insufficient_material(&self.0)
     }
@@ -307,6 +324,7 @@ impl Position {
 impl Index<Square> for Position {
     type Output = Option<Piece>;
 
+    #[inline]
     fn index(&self, s: Square) -> &Self::Output {
         use Color::*;
         use Role::*;
@@ -431,14 +449,6 @@ mod tests {
     #[proptest]
     fn fullmoves_returns_the_current_move_number(pos: Position) {
         assert_eq!(pos.fullmoves(), sm::Setup::from(pos).fullmoves);
-    }
-
-    #[proptest]
-    fn zobrist_returns_the_zobrist_hash(pos: Position) {
-        assert_eq!(
-            pos.zobrist().get(),
-            sm::zobrist::ZobristHash::zobrist_hash(&pos.0)
-        );
     }
 
     #[proptest]
