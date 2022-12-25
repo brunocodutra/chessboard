@@ -235,6 +235,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "circular"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b0fc239e0f6cb375d2402d48afb92f76f5404fd1df208a41930ec81eda078bea"
+
+[[package]]
 name = "clap"
 version = "3.2.23"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -738,15 +744,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "mach"
-version = "0.3.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b823e83b2affd8f40a9ee8c29dbc56404c1e34cd2710921f2801e2cf29527afa"
-dependencies = [
- "libc",
-]
-
-[[package]]
 name = "memchr"
 version = "2.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -915,14 +912,14 @@ dependencies = [
 
 [[package]]
 name = "pgn-reader"
-version = "0.21.0"
+version = "0.22.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bda82b38f84e44927cfefa8588cd1e08cef46430aa3b9a0d4f863fefa8d44dc4"
+checksum = "e0ea9e1794721ebed88288068e05dc39a938ebe37f5e0eb7200d88e4eb27f5c3"
 dependencies = [
  "btoi",
+ "circular",
  "memchr",
  "shakmaty",
- "slice-deque",
 ]
 
 [[package]]
@@ -1212,9 +1209,9 @@ dependencies = [
 
 [[package]]
 name = "shakmaty"
-version = "0.22.0"
+version = "0.23.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0c21d64aa05e370f386703bd46acdfd13d04f202fb4ce365cc67bbf744a72003"
+checksum = "f4cd635d633ee708d7aca53e1a1a013fda5c3824e4b8306abb1f1d663543e9a4"
 dependencies = [
  "arrayvec",
  "bitflags",
@@ -1237,17 +1234,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e51e73328dc4ac0c7ccbda3a494dfa03df1de2f46018127f60c693f2648455b0"
 dependencies = [
  "libc",
-]
-
-[[package]]
-name = "slice-deque"
-version = "0.3.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "31ef6ee280cdefba6d2d0b4b78a84a1c1a3f3a4cec98c2d4231c8bc225de0f25"
-dependencies = [
- "libc",
- "mach",
- "winapi",
 ]
 
 [[package]]
