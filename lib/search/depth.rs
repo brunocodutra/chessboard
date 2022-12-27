@@ -1,22 +1,20 @@
+use super::Draft;
 use crate::util::{Binary, Bits};
-use derive_more::{Display, Error};
+use derive_more::{Display, Error, Into};
 use num_traits::{clamp, AsPrimitive};
-use std::convert::Infallible;
+use std::{cmp::Ordering, convert::Infallible};
 use test_strategy::Arbitrary;
 
-#[derive(Debug, Display, Default, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Arbitrary)]
+#[derive(
+    Debug, Display, Default, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Arbitrary, Into,
+)]
 #[display(fmt = "{}", _0)]
-pub struct Depth(#[strategy(Self::MIN.get()..Self::MAX.get())] u8);
+pub struct Depth(#[filter(#0 >= Draft::ZERO)] Draft);
 
 impl Depth {
-    pub const ZERO: Self = Depth(0);
-    pub const MIN: Self = Self::ZERO;
-
-    #[cfg(not(test))]
-    pub const MAX: Self = Depth(31);
-
-    #[cfg(test)]
-    pub const MAX: Self = Depth(3);
+    pub const ZERO: Self = Depth(Draft::ZERO);
+    pub const MIN: Self = Depth(Draft::ZERO);
+    pub const MAX: Self = Depth(Draft::MAX);
 
     /// Constructs [`Depth`] from a raw number.
     ///
@@ -31,13 +29,20 @@ impl Depth {
     /// Returns the raw depth.
     #[inline]
     pub fn get(&self) -> u8 {
-        self.0
+        self.0.get().try_into().unwrap()
     }
 
     /// Safely constructs [`Depth`] from a raw number through saturation.
     #[inline]
     pub fn saturate<T: AsPrimitive<u8> + From<u8> + PartialOrd>(i: T) -> Self {
-        Depth(clamp(i, Self::MIN.get().into(), Self::MAX.get().into()).as_())
+        Depth::new(clamp(i, Self::MIN.get().into(), Self::MAX.get().into()).as_())
+    }
+}
+
+impl From<Draft> for Depth {
+    #[inline]
+    fn from(d: Draft) -> Self {
+        Depth(d.max(Draft::ZERO))
     }
 }
 
@@ -55,11 +60,22 @@ impl TryFrom<u8> for Depth {
 
     #[inline]
     fn try_from(n: u8) -> Result<Self, Self::Error> {
-        if (Self::MIN.get()..=Self::MAX.get()).contains(&n) {
-            Ok(Depth(n))
-        } else {
-            Err(DepthOutOfRange)
-        }
+        let s: i8 = n.try_into().map_err(|_| DepthOutOfRange)?;
+        Ok(Depth(s.try_into().map_err(|_| DepthOutOfRange)?))
+    }
+}
+
+impl PartialEq<Draft> for Depth {
+    #[inline]
+    fn eq(&self, other: &Draft) -> bool {
+        self.0.eq(other)
+    }
+}
+
+impl PartialOrd<Draft> for Depth {
+    #[inline]
+    fn partial_cmp(&self, other: &Draft) -> Option<Ordering> {
+        self.0.partial_cmp(other)
     }
 }
 
@@ -83,7 +99,7 @@ mod tests {
 
     #[proptest]
     fn new_accepts_numbers_within_bounds(#[strategy(Depth::MIN.get()..=Depth::MAX.get())] d: u8) {
-        assert_eq!(Depth::new(d), Depth(d));
+        assert_eq!(Depth::new(d).get(), d);
     }
 
     #[proptest]
@@ -96,7 +112,7 @@ mod tests {
     fn saturate_preserves_numbers_within_bounds(
         #[strategy(Depth::MIN.get()..=Depth::MAX.get())] n: u8,
     ) {
-        assert_eq!(Depth::saturate(n), Depth(n));
+        assert_eq!(Depth::saturate(n), Depth::new(n));
     }
 
     #[proptest]
@@ -106,7 +122,12 @@ mod tests {
 
     #[proptest]
     fn get_returns_raw_depth(d: Depth) {
-        assert_eq!(d.get(), d.0);
+        assert_eq!(d.get(), d.0.get() as _);
+    }
+
+    #[proptest]
+    fn can_be_converted_into_draft(d: Depth) {
+        assert_eq!(d.0, d.into());
     }
 
     #[proptest]
