@@ -35,7 +35,7 @@ impl Value {
     /// Safely constructs [`Value`] from a raw value through saturation.
     #[inline]
     pub fn saturate<T: AsPrimitive<i16> + From<i16> + PartialOrd>(i: T) -> Self {
-        Value(clamp(i, Self::MIN.get().into(), Self::MAX.get().into()).as_())
+        Value::new(clamp(i, Self::MIN.get().into(), Self::MAX.get().into()).as_())
     }
 }
 
@@ -126,7 +126,7 @@ mod tests {
 
     #[proptest]
     fn new_accepts_values_within_bounds(#[strategy(Value::MIN.get()..=Value::MAX.get())] v: i16) {
-        assert_eq!(Value::new(v), Value(v));
+        assert_eq!(Value::new(v).get(), v);
     }
 
     #[proptest]
@@ -145,7 +145,7 @@ mod tests {
     fn saturate_preserves_values_within_bounds(
         #[strategy(Value::MIN.get()..=Value::MAX.get())] v: i16,
     ) {
-        assert_eq!(Value::saturate(v), Value(v));
+        assert_eq!(Value::saturate(v), Value::new(v));
     }
 
     #[proptest]

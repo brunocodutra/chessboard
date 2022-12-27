@@ -11,17 +11,19 @@ use std::{cmp::max_by_key, ops::Range};
 use test_strategy::Arbitrary;
 
 mod depth;
+mod draft;
 mod limits;
 mod options;
 mod pv;
 
 pub use depth::*;
+pub use draft::*;
 pub use limits::*;
 pub use options::*;
 pub use pv::*;
 
 #[derive(Debug, Default, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Deref, Neg)]
-struct Score(#[deref] Value, i8);
+struct Score(#[deref] Value, Draft);
 
 /// An implementation of [minimax].
 ///
@@ -70,11 +72,10 @@ impl Searcher {
         &self,
         zobrist: Zobrist,
         bounds: Range<Value>,
-        draft: i8,
+        draft: Draft,
     ) -> (Option<Transposition>, Value, Value) {
         let transposition = self.tt.get(zobrist);
-        let depth = Depth::saturate(draft.max(0) as u8);
-        let (alpha, beta) = match transposition.filter(|t| t.depth() >= depth) {
+        let (alpha, beta) = match transposition.filter(|t| t.depth() >= draft) {
             None => (bounds.start, bounds.end),
             Some(t) => {
                 let (lower, upper) = t.bounds().into_inner();
@@ -90,17 +91,22 @@ impl Searcher {
     }
 
     /// Records a `[Transposition`].
-    fn record(&self, zobrist: Zobrist, bounds: Range<Value>, draft: i8, score: Score, best: Move) {
-        let depth = Depth::saturate(draft.max(0) as u8);
-
+    fn record(
+        &self,
+        zobrist: Zobrist,
+        bounds: Range<Value>,
+        draft: Draft,
+        score: Score,
+        best: Move,
+    ) {
         self.tt.set(
             zobrist,
             if *score >= bounds.end {
-                Transposition::lower(depth, *score, best)
+                Transposition::lower(draft.into(), *score, best)
             } else if *score <= bounds.start {
-                Transposition::upper(depth, *score, best)
+                Transposition::upper(draft.into(), *score, best)
             } else {
-                Transposition::exact(depth, *score, best)
+                Transposition::exact(draft.into(), *score, best)
             },
         );
     }
@@ -141,7 +147,7 @@ impl Searcher {
     /// An implementation of [null move pruning].
     ///
     /// [null move pruning]: https://www.chessprogramming.org/Null_Move_Pruning
-    fn nmp(&self, pos: &Position, value: Value, beta: Value, draft: i8) -> Option<i8> {
+    fn nmp(&self, pos: &Position, value: Value, beta: Value, draft: Draft) -> Option<Draft> {
         let turn = pos.turn();
         let r = match pos.by_color(turn).len() - pos.by_piece(Piece(turn, Role::Pawn)).len() {
             0..=1 => return None,
@@ -151,14 +157,14 @@ impl Searcher {
         };
 
         if value > beta {
-            Some(draft.saturating_sub(r + 1 + draft.max(0) / 4))
+            Some(draft - r - 1 - draft.get().max(0) / 4)
         } else {
             None
         }
     }
 
     /// An implementation of late move pruning.
-    fn lmp(&self, next: &Position, value: Value, alpha: Value, draft: i8) -> Option<i8> {
+    fn lmp(&self, next: &Position, value: Value, alpha: Value, draft: Draft) -> Option<Draft> {
         let r = match (alpha - value).get() {
             i16::MIN..=36 => return None,
             37..=108 => 1,
@@ -168,7 +174,7 @@ impl Searcher {
         };
 
         if !next.is_check() {
-            Some(draft.saturating_sub(r + 1))
+            Some(draft - r - 1)
         } else {
             None
         }
@@ -177,9 +183,15 @@ impl Searcher {
     /// An implementation of [aspiration windows].
     ///
     /// [aspiration windows]: https://www.chessprogramming.org/Aspiration_Windows
-    fn aw(&self, pos: &Position, guess: Value, draft: i8, timer: Timer) -> Result<Score, Timeout> {
-        let mut w = match draft {
-            i8::MIN..=1 => 512,
+    fn aw(
+        &self,
+        pos: &Position,
+        guess: Value,
+        depth: Depth,
+        timer: Timer,
+    ) -> Result<Score, Timeout> {
+        let mut w = match depth.get() {
+            0..=1 => 512,
             2 => 256,
             3 => 128,
             4 => 64,
@@ -191,7 +203,7 @@ impl Searcher {
 
         loop {
             w = w.saturating_mul(2);
-            match self.pvs(pos, lower..upper, draft, timer)? {
+            match self.pvs(pos, lower..upper, depth.into(), timer)? {
                 s if (-lower..Value::MAX).contains(&-s) => lower = *s - w / 2,
                 s if (upper..Value::MAX).contains(&s) => upper = *s + w / 2,
                 s => break Ok(s),
@@ -202,7 +214,13 @@ impl Searcher {
     /// A [zero-window] wrapper for [`Self::pvs`].
     ///
     /// [zero-window]: https://www.chessprogramming.org/Null_Window
-    fn nw(&self, pos: &Position, bound: Value, draft: i8, timer: Timer) -> Result<Score, Timeout> {
+    fn nw(
+        &self,
+        pos: &Position,
+        bound: Value,
+        draft: Draft,
+        timer: Timer,
+    ) -> Result<Score, Timeout> {
         self.pvs(pos, bound..bound + 1, draft, timer)
     }
 
@@ -214,7 +232,7 @@ impl Searcher {
         &self,
         pos: &Position,
         bounds: Range<Value>,
-        draft: i8,
+        draft: Draft,
         timer: Timer,
     ) -> Result<Score, Timeout> {
         assert!(!bounds.is_empty(), "{:?} ≠ ∅", bounds);
@@ -233,13 +251,13 @@ impl Searcher {
             Some(_) => return Ok(Score(Value::MIN, draft)),
             None => match transposition {
                 Some(t) => t.score(),
-                None if draft <= 0 => self.eval(pos),
-                None => *self.nw(pos, beta - 1, 0, timer)?,
+                None if draft <= Draft::ZERO => self.eval(pos),
+                None => *self.nw(pos, beta - 1, Draft::ZERO, timer)?,
             },
         };
 
         #[cfg(test)]
-        if draft < 0 {
+        if draft < Draft::ZERO {
             return Ok(Score(value, draft));
         }
 
@@ -247,7 +265,7 @@ impl Searcher {
             if let Some(d) = self.nmp(pos, value, beta, draft) {
                 let mut next = pos.clone();
                 next.pass().expect("expected possible pass");
-                if d < 0 || *-self.nw(&next, -beta, d, timer)? >= beta {
+                if d < Draft::ZERO || *-self.nw(&next, -beta, d, timer)? >= beta {
                     #[cfg(not(test))]
                     // The null move pruning heuristic is not exact.
                     return Ok(Score(value, draft));
@@ -255,7 +273,7 @@ impl Searcher {
             }
         }
 
-        let kind = if draft <= 0 {
+        let kind = if draft <= Draft::ZERO {
             MoveKind::CAPTURE | MoveKind::PROMOTION
         } else {
             MoveKind::ANY
@@ -295,7 +313,7 @@ impl Searcher {
 
                 if alpha < beta && !in_check {
                     if let Some(d) = self.lmp(&next, value, alpha, draft) {
-                        if d < 0 || *-self.nw(&next, -alpha - 1, d, timer)? < alpha {
+                        if d < Draft::ZERO || *-self.nw(&next, -alpha - 1, d, timer)? < alpha {
                             #[cfg(not(test))]
                             // The late move pruning heuristic is not exact.
                             return Ok(None);
@@ -344,8 +362,8 @@ impl Searcher {
         };
 
         self.executor.install(|| {
-            for depth in start..=limits.depth().get() {
-                (score, pv) = match self.aw(pos, score, depth as _, timer) {
+            for d in start..=limits.depth().get() {
+                (score, pv) = match self.aw(pos, score, Depth::new(d), timer) {
                     Ok(s) => (*s, self.tt.iter(pos).collect()),
                     Err(_) => break,
                 };
@@ -364,14 +382,14 @@ mod tests {
     use test_strategy::proptest;
     use tokio::{runtime, time::timeout};
 
-    fn negamax(evaluator: &Evaluator, pos: &Position, draft: i8) -> Value {
+    fn negamax(evaluator: &Evaluator, pos: &Position, draft: Draft) -> Value {
         let score = match pos.outcome() {
             Some(o) if o.is_draw() => return Value::ZERO,
             Some(_) => return Value::MIN,
             None => evaluator.eval(pos),
         };
 
-        let kind = match i8::cmp(&0, &draft) {
+        let kind = match Draft::ZERO.cmp(&draft) {
             Ordering::Greater => return score,
             Ordering::Equal => MoveKind::CAPTURE | MoveKind::PROMOTION,
             Ordering::Less => MoveKind::ANY,
@@ -392,7 +410,7 @@ mod tests {
 
     #[proptest]
     #[should_panic]
-    fn nw_panics_if_bound_is_too_large(s: Searcher, pos: Position, d: i8) {
+    fn nw_panics_if_bound_is_too_large(s: Searcher, pos: Position, d: Draft) {
         s.nw(&pos, Value::MAX, d, Timer::start(Duration::MAX))?;
     }
 
@@ -402,7 +420,7 @@ mod tests {
         s: Searcher,
         pos: Position,
         b: Range<Value>,
-        d: i8,
+        d: Draft,
     ) {
         s.pvs(&pos, b.end..b.start, d, Timer::start(Duration::MAX))?;
     }
@@ -412,7 +430,7 @@ mod tests {
         s: Searcher,
         pos: Position,
         #[filter(!#b.is_empty())] b: Range<Value>,
-        d: i8,
+        d: Draft,
     ) {
         let timer = Timer::start(Duration::ZERO);
         std::thread::sleep(Duration::from_millis(1));
@@ -420,13 +438,12 @@ mod tests {
     }
 
     #[proptest]
-    fn pvs_finds_best_score(s: Searcher, pos: Position, d: Depth) {
+    fn pvs_finds_best_score(s: Searcher, pos: Position, d: Draft) {
         let timer = Timer::start(Duration::MAX);
 
         assert_eq!(
-            s.pvs(&pos, Value::MIN..Value::MAX, d.get() as _, timer)
-                .as_deref(),
-            Ok(&negamax(&s.evaluator, &pos, d.get() as _))
+            s.pvs(&pos, Value::MIN..Value::MAX, d, timer).as_deref(),
+            Ok(&negamax(&s.evaluator, &pos, d))
         );
     }
 
@@ -436,7 +453,7 @@ mod tests {
         x: Options,
         y: Options,
         pos: Position,
-        d: Depth,
+        d: Draft,
     ) {
         let x = Searcher::with_options(e.clone(), x);
         let y = Searcher::with_options(e, y);
@@ -444,10 +461,8 @@ mod tests {
         let timer = Timer::start(Duration::MAX);
 
         assert_eq!(
-            x.pvs(&pos, Value::MIN..Value::MAX, d.get() as _, timer)
-                .as_deref(),
-            y.pvs(&pos, Value::MIN..Value::MAX, d.get() as _, timer)
-                .as_deref()
+            x.pvs(&pos, Value::MIN..Value::MAX, d, timer).as_deref(),
+            y.pvs(&pos, Value::MIN..Value::MAX, d, timer).as_deref()
         );
     }
 
@@ -456,8 +471,8 @@ mod tests {
         let timer = Timer::start(Duration::MAX);
 
         assert_eq!(
-            s.aw(&pos, g, d.get() as _, timer).as_deref(),
-            Ok(&negamax(&s.evaluator, &pos, d.get() as _))
+            s.aw(&pos, g, d, timer).as_deref(),
+            Ok(&negamax(&s.evaluator, &pos, d.into()))
         );
     }
 
@@ -472,8 +487,8 @@ mod tests {
         let timer = Timer::start(Duration::MAX);
 
         assert_eq!(
-            s.aw(&pos, g, d.get() as _, timer).as_deref(),
-            s.aw(&pos, h, d.get() as _, timer).as_deref()
+            s.aw(&pos, g, d, timer).as_deref(),
+            s.aw(&pos, h, d, timer).as_deref()
         );
     }
 

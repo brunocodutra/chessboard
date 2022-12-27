@@ -34,7 +34,7 @@ impl<T: 'static + Binary + PrimInt + Unsigned, const W: u32> Bits<T, W> {
     /// Get raw collection of bits.
     #[inline]
     pub fn get(&self) -> T {
-        debug_assert_eq!(*self, Bits::new(self.0));
+        debug_assert_eq!(*self, Self::new(self.0));
         self.0
     }
 
