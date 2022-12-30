@@ -8,7 +8,7 @@ use test_strategy::Arbitrary;
 #[derive(
     Debug, Display, Default, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Arbitrary, Into,
 )]
-#[display(fmt = "{}", _0)]
+#[display(fmt = "{}", "self.get()")]
 pub struct Depth(#[filter(#0 >= Draft::ZERO)] Draft);
 
 impl Depth {
