@@ -5,7 +5,7 @@ use std::fmt::{Binary, Debug};
 use std::ops::{Bound, Not, RangeBounds, RangeInclusive};
 use test_strategy::Arbitrary;
 
-#[inline]
+#[inline(always)]
 fn ones<T: PrimInt + Unsigned>(n: u32) -> T {
     match n {
         0 => T::zero(),
@@ -25,16 +25,18 @@ pub struct Bits<T: 'static + Binary + PrimInt + Unsigned, const W: u32>(
 impl<T: 'static + Binary + PrimInt + Unsigned, const W: u32> Bits<T, W> {
     /// Constructs [`Bits`] from raw collection of bits.
     ///
-    /// Overflown bits are discarded.
+    /// # Panics
+    ///
+    /// Panics if `b` is too wide.
     #[inline]
     pub fn new(b: T) -> Self {
-        Bits(b & ones(W))
+        assert!(b <= ones(W));
+        Bits(b)
     }
 
     /// Get raw collection of bits.
     #[inline]
     pub fn get(&self) -> T {
-        debug_assert_eq!(*self, Self::new(self.0));
         self.0
     }
 
@@ -53,40 +55,38 @@ impl<T: 'static + Binary + PrimInt + Unsigned, const W: u32> Bits<T, W> {
             Bound::Unbounded => W,
         };
 
-        Bits((self.get() & ones(b)) >> a as _)
+        Bits::new((self.get() & ones(b)) >> a as _)
     }
 
     /// Shifts bits into the collection.
     ///
-    /// Overflown bits are discarded.
+    /// Overflow is ignored.
     #[inline]
     pub fn push<U: 'static + Binary + PrimInt + Unsigned + AsPrimitive<T>, const N: u32>(
         &mut self,
         bits: Bits<U, N>,
     ) {
         *self = if N >= W {
-            Bits::new(bits.get().as_())
+            Bits::new(bits.get().as_() & ones(W))
         } else {
-            Bits::new((self.get() << N as _) | bits.get().as_())
+            Bits::new((self.get() << N as _) & ones(W) | bits.get().as_())
         };
     }
 
     /// Shifts bits out of the collection.
     ///
-    /// # Panics
-    ///
-    /// Panics if `N` is greater than `W`.
+    /// Underflow is ignored.
     #[inline]
     pub fn pop<U: 'static + Binary + PrimInt + Unsigned, const N: u32>(&mut self) -> Bits<U, N>
     where
         T: AsPrimitive<U>,
     {
-        let bits = Bits::new(self.get().as_());
+        let bits = Bits::new(self.get().as_() & ones(N));
 
         *self = if N >= W {
             Bits(T::zero())
         } else {
-            Bits(self.get() >> N as _)
+            Bits::new(self.get() >> N as _)
         };
 
         bits
@@ -105,7 +105,7 @@ impl<T: 'static + Binary + PrimInt + Unsigned, const W: u32> Not for Bits<T, W> 
 
     #[inline]
     fn not(self) -> Self::Output {
-        Bits::new(!self.get())
+        Bits::new(!self.get() & ones(W))
     }
 }
 
@@ -126,9 +126,9 @@ mod tests {
     }
 
     #[proptest]
-    fn overflown_bits_are_discarded_by_constructor(#[strategy(ones::<u8>(6)..)] n: u8) {
-        assert_ne!(Bits::<_, 5>::new(n), Bits(n));
-        assert_eq!(Bits::<_, 5>::new(n), Bits(n & ones::<u8>(5)));
+    #[should_panic]
+    fn constructor_panics_if_value_is_too_wide(#[strategy(ones::<u8>(6)..)] n: u8) {
+        Bits::<_, 5>::new(n);
     }
 
     #[proptest]
@@ -166,13 +166,16 @@ mod tests {
     }
 
     #[proptest]
-    fn push_discards_overflown_bits(mut a: Bits<u8, 8>, b: Bits<u8, 8>) {
+    fn push_ignores_overflow(mut a: Bits<u8, 3>, b: Bits<u16, 9>, mut c: Bits<u32, 27>) {
         a.push(b);
-        assert_eq!(a, b);
+        assert_eq!(b.slice(..3).get(), a.get().into());
+
+        c.push(b);
+        assert_eq!(c.slice(..9).get(), b.get().into());
     }
 
     #[proptest]
-    fn pop_removed_pushed_bits(a: Bits<u8, 3>, b: Bits<u16, 9>, c: Bits<u32, 27>) {
+    fn pop_removes_pushed_bits(a: Bits<u8, 3>, b: Bits<u16, 9>, c: Bits<u32, 27>) {
         let mut bits = Bits::<u64, 39>::default();
 
         bits.push(a);
@@ -185,9 +188,9 @@ mod tests {
     }
 
     #[proptest]
-    fn pop_removes_bits(mut b: Bits<u8, 8>) {
-        assert_eq!(b.clone(), b.pop());
-        assert_eq!(b, Bits(0));
+    fn pop_ignores_underflow(a: Bits<u8, 3>, c: Bits<u32, 27>) {
+        assert_eq!(a.clone().pop::<u16, 9>().get(), a.get().into());
+        assert_eq!(c.slice(..9).get(), c.clone().pop::<u16, 9>().get().into());
     }
 
     #[proptest]
