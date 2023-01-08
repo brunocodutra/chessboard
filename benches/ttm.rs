@@ -31,7 +31,7 @@ fn ttm(c: &mut Criterion, name: &str, edps: &[(&str, &str)]) {
                 },
                 |(s, (pos, m))| {
                     let timer = Instant::now();
-                    for d in 1..=Depth::MAX.get() {
+                    for d in 1..=Depth::upper().get() {
                         let pv = s.search::<1>(pos, Limits::Depth(Depth::new(d)));
                         if pv.first() == Some(m) || timer.elapsed() >= Duration::from_millis(80) {
                             break;

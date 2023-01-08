@@ -25,7 +25,7 @@ impl<'a> Iterator for Iter<'a> {
     fn next(&mut self) -> Option<Self::Item> {
         let d = self.depth?;
         let key = self.pos.zobrist();
-        let t = self.tt.get(key).filter(|t| t.depth().get() <= d)?;
+        let t = self.tt.get(key).filter(|t| t.depth() <= d)?;
         self.depth = t.depth().get().checked_sub(1);
         self.pos.make(t.best()).ok()?;
         Some(t)

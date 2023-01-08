@@ -67,8 +67,8 @@ impl Transposition {
     /// Bounds for the exact score.
     pub fn bounds(&self) -> RangeInclusive<Value> {
         match self.kind {
-            Kind::Lower => self.score..=Value::MAX,
-            Kind::Upper => Value::MIN..=self.score,
+            Kind::Lower => self.score..=Value::upper(),
+            Kind::Upper => Value::lower()..=self.score,
             Kind::Exact => self.score..=self.score,
         }
     }
