@@ -102,11 +102,11 @@ impl Searcher {
         self.tt.set(
             zobrist,
             if *score >= bounds.end {
-                Transposition::lower(draft.into(), *score, best)
+                Transposition::lower(draft.cast(), *score, best)
             } else if *score <= bounds.start {
-                Transposition::upper(draft.into(), *score, best)
+                Transposition::upper(draft.cast(), *score, best)
             } else {
-                Transposition::exact(draft.into(), *score, best)
+                Transposition::exact(draft.cast(), *score, best)
             },
         );
     }
@@ -139,7 +139,7 @@ impl Searcher {
     ) -> impl DoubleEndedIterator<Item = (Move, Position, Value)> + ExactSizeIterator + '_ {
         pos.moves(kind).map(|(m, next)| {
             let mut exchanges = next.exchanges(m.whither());
-            let value = -self.see(&next, &mut exchanges, Value::MIN..Value::MAX);
+            let value = -self.see(&next, &mut exchanges, Value::lower()..Value::upper());
             (m, next, value)
         })
     }
@@ -190,7 +190,7 @@ impl Searcher {
         depth: Depth,
         timer: Timer,
     ) -> Result<Score, Timeout> {
-        let mut w = match depth.get() {
+        let mut w: i16 = match depth.get() {
             0..=1 => 512,
             2 => 256,
             3 => 128,
@@ -198,14 +198,14 @@ impl Searcher {
             _ => 32,
         };
 
-        let mut lower = (guess - w / 2).min(Value::MAX - w);
-        let mut upper = (guess + w / 2).max(Value::MIN + w);
+        let mut lower = (guess - w / 2).min(Value::upper() - w);
+        let mut upper = (guess + w / 2).max(Value::lower() + w);
 
         loop {
             w = w.saturating_mul(2);
-            match self.pvs(pos, lower..upper, depth.into(), timer)? {
-                s if (-lower..Value::MAX).contains(&-s) => lower = *s - w / 2,
-                s if (upper..Value::MAX).contains(&s) => upper = *s + w / 2,
+            match self.pvs(pos, lower..upper, depth.cast(), timer)? {
+                s if (-lower..Value::upper()).contains(&*-s) => lower = *s - w / 2,
+                s if (upper..Value::upper()).contains(&*s) => upper = *s + w / 2,
                 s => break Ok(s),
             }
         }
@@ -247,17 +247,17 @@ impl Searcher {
 
         let in_check = pos.is_check();
         let value = match pos.outcome() {
-            Some(o) if o.is_draw() => return Ok(Score(Value::ZERO, draft)),
-            Some(_) => return Ok(Score(Value::MIN, draft)),
+            Some(o) if o.is_draw() => return Ok(Score(Value::new(0), draft)),
+            Some(_) => return Ok(Score(Value::lower(), draft)),
             None => match transposition {
                 Some(t) => t.score(),
-                None if draft <= Draft::ZERO => self.eval(pos),
-                None => *self.nw(pos, beta - 1, Draft::ZERO, timer)?,
+                None if draft <= Draft::new(0) => self.eval(pos),
+                None => *self.nw(pos, beta - 1, Draft::new(0), timer)?,
             },
         };
 
         #[cfg(test)]
-        if draft < Draft::ZERO {
+        if draft < Draft::new(0) {
             return Ok(Score(value, draft));
         }
 
@@ -265,7 +265,7 @@ impl Searcher {
             if let Some(d) = self.nmp(pos, value, beta, draft) {
                 let mut next = pos.clone();
                 next.pass().expect("expected possible pass");
-                if d < Draft::ZERO || *-self.nw(&next, -beta, d, timer)? >= beta {
+                if d < Draft::new(0) || *-self.nw(&next, -beta, d, timer)? >= beta {
                     #[cfg(not(test))]
                     // The null move pruning heuristic is not exact.
                     return Ok(Score(value, draft));
@@ -273,7 +273,7 @@ impl Searcher {
             }
         }
 
-        let kind = if draft <= Draft::ZERO {
+        let kind = if draft <= Draft::new(0) {
             MoveKind::CAPTURE | MoveKind::PROMOTION
         } else {
             MoveKind::ANY
@@ -283,7 +283,7 @@ impl Searcher {
 
         moves.sort_unstable_by_key(|&(m, _, value)| {
             if Some(m) == transposition.map(|t| t.best()) {
-                Value::MAX
+                Value::upper()
             } else {
                 value
             }
@@ -313,7 +313,7 @@ impl Searcher {
 
                 if alpha < beta && !in_check {
                     if let Some(d) = self.lmp(&next, value, alpha, draft) {
-                        if d < Draft::ZERO || *-self.nw(&next, -alpha - 1, d, timer)? < alpha {
+                        if d < Draft::new(0) || *-self.nw(&next, -alpha - 1, d, timer)? < alpha {
                             #[cfg(not(test))]
                             // The late move pruning heuristic is not exact.
                             return Ok(None);
@@ -321,7 +321,7 @@ impl Searcher {
                     }
                 }
 
-                while (beta - alpha).get() > 1 {
+                while alpha + 1 < beta {
                     match -self.nw(&next, -alpha - 1, draft - 1, timer)? {
                         s if *s < alpha => return Ok(Some((s, m))),
                         s => match Value::new(cutoff.fetch_max(s.get(), Ordering::Relaxed)) {
@@ -384,12 +384,12 @@ mod tests {
 
     fn negamax(evaluator: &Evaluator, pos: &Position, draft: Draft) -> Value {
         let score = match pos.outcome() {
-            Some(o) if o.is_draw() => return Value::ZERO,
-            Some(_) => return Value::MIN,
+            Some(o) if o.is_draw() => return Value::new(0),
+            Some(_) => return Value::lower(),
             None => evaluator.eval(pos),
         };
 
-        let kind = match Draft::ZERO.cmp(&draft) {
+        let kind = match Draft::new(0).cmp(&draft) {
             Ordering::Greater => return score,
             Ordering::Equal => MoveKind::CAPTURE | MoveKind::PROMOTION,
             Ordering::Less => MoveKind::ANY,
@@ -411,7 +411,7 @@ mod tests {
     #[proptest]
     #[should_panic]
     fn nw_panics_if_bound_is_too_large(s: Searcher, pos: Position, d: Draft) {
-        s.nw(&pos, Value::MAX, d, Timer::start(Duration::MAX))?;
+        s.nw(&pos, Value::upper(), d, Timer::start(Duration::MAX))?;
     }
 
     #[proptest]
@@ -442,7 +442,8 @@ mod tests {
         let timer = Timer::start(Duration::MAX);
 
         assert_eq!(
-            s.pvs(&pos, Value::MIN..Value::MAX, d, timer).as_deref(),
+            s.pvs(&pos, Value::lower()..Value::upper(), d, timer)
+                .as_deref(),
             Ok(&negamax(&s.evaluator, &pos, d))
         );
     }
@@ -461,8 +462,10 @@ mod tests {
         let timer = Timer::start(Duration::MAX);
 
         assert_eq!(
-            x.pvs(&pos, Value::MIN..Value::MAX, d, timer).as_deref(),
-            y.pvs(&pos, Value::MIN..Value::MAX, d, timer).as_deref()
+            x.pvs(&pos, Value::lower()..Value::upper(), d, timer)
+                .as_deref(),
+            y.pvs(&pos, Value::lower()..Value::upper(), d, timer)
+                .as_deref()
         );
     }
 
@@ -472,7 +475,7 @@ mod tests {
 
         assert_eq!(
             s.aw(&pos, g, d, timer).as_deref(),
-            Ok(&negamax(&s.evaluator, &pos, d.into()))
+            Ok(&negamax(&s.evaluator, &pos, d.cast()))
         );
     }
 
@@ -506,7 +509,7 @@ mod tests {
         #[by_ref]
         #[filter(#pos.outcome().is_none())]
         pos: Position,
-        #[filter(#d > Depth::ZERO)] d: Depth,
+        #[filter(#d > Depth::new(0))] d: Depth,
         t: Transposition,
     ) {
         s.tt.set(pos.zobrist(), t);

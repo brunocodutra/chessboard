@@ -104,7 +104,7 @@ mod tests {
         assert_eq!(tt.iter(&pos).collect::<Pv<0>>().len(), 0);
         assert_eq!(
             tt.iter(&pos).collect::<Pv<4>>().len(),
-            tt.iter(&pos).filter(|t| t.depth() > Depth::ZERO).count()
+            tt.iter(&pos).filter(|t| t.depth() > Depth::lower()).count()
         );
     }
 
@@ -113,7 +113,7 @@ mod tests {
         assert!(tt.iter(&pos).collect::<Pv<0>>().is_empty());
         assert_eq!(
             tt.iter(&pos).collect::<Pv<4>>().is_empty(),
-            tt.iter(&pos).filter(|t| t.depth() > Depth::ZERO).count() == 0
+            tt.iter(&pos).filter(|t| t.depth() > Depth::lower()).count() == 0
         );
     }
 
@@ -155,7 +155,7 @@ mod tests {
         #[filter(#pos.moves(MoveKind::ANY).len() > 0)]
         pos: Position,
         s: Value,
-        #[filter(#d > Depth::ZERO)] d: Depth,
+        #[filter(#d > Depth::lower())] d: Depth,
         selector: Selector,
     ) {
         let (m, next) = selector.select(pos.moves(MoveKind::ANY));
@@ -167,7 +167,7 @@ mod tests {
         tt.unset(pos.zobrist());
         tt.set(pos.zobrist(), t);
 
-        let u = Transposition::lower(Depth::ZERO, s, n);
+        let u = Transposition::lower(Depth::lower(), s, n);
         tt.unset(next.zobrist());
         tt.set(next.zobrist(), u);
 
@@ -185,7 +185,7 @@ mod tests {
         #[filter(#pos.moves(MoveKind::ANY).len() > 0)]
         pos: Position,
         s: Value,
-        #[filter(#d > Depth::ZERO)] d: Depth,
+        #[filter(#d > Depth::lower())] d: Depth,
         selector: Selector,
     ) {
         let (m, _) = selector.select(pos.moves(MoveKind::ANY));
@@ -211,7 +211,7 @@ mod tests {
     ) {
         let (m, _) = selector.select(pos.moves(MoveKind::ANY));
 
-        let t = Transposition::lower(Depth::ZERO, s, m);
+        let t = Transposition::lower(Depth::lower(), s, m);
         tt.unset(pos.zobrist());
         tt.set(pos.zobrist(), t);
 

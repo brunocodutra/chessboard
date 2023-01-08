@@ -1,6 +1,6 @@
 use super::Depth;
 use derive_more::{Display, Error, From};
-use serde::{de, Deserialize, Deserializer, Serialize, Serializer};
+use serde::{Deserialize, Serialize};
 use std::{str::FromStr, time::Duration};
 use test_strategy::Arbitrary;
 
@@ -14,10 +14,6 @@ pub enum Limits {
 
     /// The maximum number of plies to search.
     #[display(fmt = "{}", "ron::ser::to_string(self).unwrap()")]
-    #[serde(
-        serialize_with = "serialize_depth",
-        deserialize_with = "deserialize_depth"
-    )]
     Depth(Depth),
 
     /// The maximum amount of time to spend searching.
@@ -30,14 +26,6 @@ impl Default for Limits {
     fn default() -> Self {
         Limits::None
     }
-}
-
-fn deserialize_depth<'de, D: Deserializer<'de>>(de: D) -> Result<Depth, D::Error> {
-    Depth::try_from(u8::deserialize(de)?).map_err(|e| de::Error::custom(e.to_string()))
-}
-
-fn serialize_depth<S: Serializer>(d: &Depth, ser: S) -> Result<S::Ok, S::Error> {
-    ser.serialize_u8(d.get())
 }
 
 /// The reason why parsing [`Limits`] failed.
@@ -54,11 +42,11 @@ impl FromStr for Limits {
 }
 
 impl Limits {
-    /// Depth or [`Depth::MAX`].
+    /// Depth or [`Depth::upper()`].
     pub fn depth(&self) -> Depth {
         match self {
             Limits::Depth(d) => *d,
-            _ => Depth::MAX,
+            _ => Depth::upper(),
         }
     }
 
@@ -89,8 +77,8 @@ mod tests {
 
     #[proptest]
     fn depth_returns_max_by_default(d: Duration) {
-        assert_eq!(Limits::None.depth(), Depth::MAX);
-        assert_eq!(Limits::Time(d).depth(), Depth::MAX);
+        assert_eq!(Limits::None.depth(), Depth::upper());
+        assert_eq!(Limits::Time(d).depth(), Depth::upper());
     }
 
     #[proptest]

@@ -179,9 +179,9 @@ impl<T: Io + Send + 'static> Player for Uci<T> {
 
                         if let UciInfoAttribute::Score { mate: Some(d), .. } = i {
                             if d > 0 {
-                                score = Some(Value::MAX);
+                                score = Some(Value::upper());
                             } else {
-                                score = Some(Value::MIN);
+                                score = Some(Value::lower());
                             }
                         }
 
@@ -195,14 +195,12 @@ impl<T: Io + Send + 'static> Player for Uci<T> {
                     }
 
                     if let Some((d, s)) = Option::zip(depth, score) {
-                        match Depth::try_from(d) {
-                            Err(_) => break,
-                            Ok(d) if d > self.limits.depth() => break,
-                            Ok(d) => {
-                                yield Pv::new(d, s, moves);
-                                if d == self.limits.depth() {
-                                    break;
-                                }
+                        if self.limits.depth() < d {
+                            break;
+                        } else {
+                            yield Pv::new(Depth::saturate(d), s, moves);
+                            if self.limits.depth() == d {
+                                break;
                             }
                         }
                     }
