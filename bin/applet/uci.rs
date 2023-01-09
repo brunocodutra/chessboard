@@ -1,12 +1,13 @@
+use crate::engine::Ai;
 use crate::io::{Io, Pipe};
+use crate::player::Player;
 use anyhow::{Context, Error as Anyhow};
 use clap::Parser;
 use lib::chess::{Fen, Position};
 use lib::eval::Evaluator;
-use lib::search::{Depth, Limits, Options, Searcher};
+use lib::search::{Depth, Limits, Options};
 use std::num::NonZeroUsize;
 use tokio::io::{stdin, stdout};
-use tokio::task::block_in_place;
 use tracing::{debug, error, instrument, warn};
 use vampirc_uci::{self as uci, UciMessage, UciOptionConfig, UciSearchControl, UciTimeControl};
 
@@ -24,8 +25,8 @@ impl Uci {
 }
 
 struct Server<T: Io> {
+    ai: Ai,
     options: Options,
-    strategy: Searcher,
     position: Position,
     io: T,
 }
@@ -33,15 +34,15 @@ struct Server<T: Io> {
 impl<T: Io> Server<T> {
     fn new(io: T) -> Self {
         Server {
+            ai: Ai::default(),
             options: Options::default(),
-            strategy: Searcher::default(),
             position: Position::default(),
             io,
         }
     }
 
     fn new_game(&mut self) {
-        self.strategy = Searcher::with_options(Evaluator::default(), self.options)
+        self.ai = Ai::new(Evaluator::default(), self.options)
     }
 
     fn set_hash(&mut self, value: &str) -> Result<(), Anyhow> {
@@ -208,8 +209,7 @@ impl<T: Io> Server<T> {
     }
 
     async fn go(&mut self, limits: Limits) -> Result<(), Anyhow> {
-        let pv = block_in_place(|| self.strategy.search::<1>(&self.position, limits));
-        let best = *pv.first().context("no legal move found")?;
+        let best = self.ai.play(&self.position, limits).await?;
         let msg = UciMessage::best_move(best.into());
         self.io.send(&msg.to_string()).await?;
         Ok(())

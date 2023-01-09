@@ -3,6 +3,7 @@ use anyhow::{Context, Error as Anyhow};
 use clap::Parser;
 use futures_util::TryStreamExt;
 use lib::chess::{Color, Fen};
+use lib::search::Limits;
 use tracing::{info, instrument};
 
 /// Analyzes a position.
@@ -13,6 +14,10 @@ pub struct Analyze {
     #[clap(short, long, default_value_t)]
     engine: EngineConfig,
 
+    /// Search limits to use.
+    #[clap(short, long, default_value_t)]
+    limits: Limits,
+
     /// The position to analyze in FEN notation.
     fen: Fen,
 }
@@ -22,7 +27,7 @@ impl Analyze {
     pub async fn execute(self) -> Result<(), Anyhow> {
         let pos = self.fen.try_into()?;
         let mut engine = self.engine.build()?;
-        let mut analysis = engine.analyze::<256>(&pos);
+        let mut analysis = engine.analyze::<256>(&pos, self.limits);
 
         while let Some(pv) = analysis.try_next().await? {
             let (d, s) =

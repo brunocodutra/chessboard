@@ -20,13 +20,11 @@ impl Build for EngineConfig {
 
     fn build(self) -> Result<Self::Output, Self::Error> {
         match self {
-            EngineConfig::Ai(limits, options) => {
-                Ok(Ai::new(Evaluator::new(), limits, options).into())
-            }
+            EngineConfig::Ai(options) => Ok(Ai::new(Evaluator::new(), options).into()),
 
-            EngineConfig::Uci(path, limits, options) => {
+            EngineConfig::Uci(path, options) => {
                 let io = Process::spawn(&path).map_err(UciError::from)?;
-                Ok(Uci::new(io, limits, options).into())
+                Ok(Uci::new(io, options).into())
             }
         }
     }
@@ -36,18 +34,18 @@ impl Build for EngineConfig {
 mod tests {
     use super::*;
     use crate::engine::UciOptions;
-    use lib::search::{Limits, Options};
+    use lib::search::Options;
     use test_strategy::proptest;
 
     #[proptest]
-    fn ai_can_be_configured_at_runtime(l: Limits, o: Options) {
-        assert!(matches!(EngineConfig::Ai(l, o).build(), Ok(Engine::Ai(_))));
+    fn ai_can_be_configured_at_runtime(o: Options) {
+        assert!(matches!(EngineConfig::Ai(o).build(), Ok(Engine::Ai(_))));
     }
 
     #[proptest]
-    fn uci_can_be_configured_at_runtime(s: String, l: Limits, o: UciOptions) {
+    fn uci_can_be_configured_at_runtime(s: String, o: UciOptions) {
         assert!(matches!(
-            EngineConfig::Uci(s, l, o).build(),
+            EngineConfig::Uci(s, o).build(),
             Ok(Engine::Uci(_))
         ));
     }

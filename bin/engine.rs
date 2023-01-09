@@ -25,19 +25,15 @@ pub struct ParseEngineConfigError(ron::de::SpannedError);
 #[serde(deny_unknown_fields, rename_all = "lowercase")]
 pub enum EngineConfig {
     #[display(fmt = "{}", "ron::ser::to_string(self).unwrap()")]
-    Ai(#[serde(default)] Limits, #[serde(default)] Options),
+    Ai(#[serde(default)] Options),
 
     #[display(fmt = "{}", "ron::ser::to_string(self).unwrap()")]
-    Uci(
-        String,
-        #[serde(default)] Limits,
-        #[serde(default)] UciOptions,
-    ),
+    Uci(String, #[serde(default)] UciOptions),
 }
 
 impl Default for EngineConfig {
     fn default() -> Self {
-        EngineConfig::Ai(Limits::default(), Options::default())
+        EngineConfig::Ai(Options::default())
     }
 }
 
@@ -69,15 +65,19 @@ pub enum Engine {
 impl Player for Engine {
     type Error = EngineError;
 
-    fn play<'a, 'b, 'c>(&'a mut self, pos: &'b Position) -> BoxFuture<'c, Result<Move, Self::Error>>
+    fn play<'a, 'b, 'c>(
+        &'a mut self,
+        pos: &'b Position,
+        limits: Limits,
+    ) -> BoxFuture<'c, Result<Move, Self::Error>>
     where
         'a: 'c,
         'b: 'c,
     {
         Box::pin(async move {
             match self {
-                Engine::Ai(e) => Ok(e.play(pos).await?),
-                Engine::Uci(e) => Ok(e.play(pos).await?),
+                Engine::Ai(e) => Ok(e.play(pos, limits).await?),
+                Engine::Uci(e) => Ok(e.play(pos, limits).await?),
             }
         })
     }
@@ -85,6 +85,7 @@ impl Player for Engine {
     fn analyze<'a, 'b, 'c, const N: usize>(
         &'a mut self,
         pos: &'b Position,
+        limits: Limits,
     ) -> BoxStream<'c, Result<Pv<N>, Self::Error>>
     where
         'a: 'c,
@@ -92,11 +93,11 @@ impl Player for Engine {
     {
         Box::pin(stream! {
             match self {
-                Engine::Ai(e) => for await pv in e.analyze(pos) {
+                Engine::Ai(e) => for await pv in e.analyze(pos, limits) {
                     yield Ok(pv?)
                 }
 
-                Engine::Uci(e) => for await pv in e.analyze(pos) {
+                Engine::Uci(e) => for await pv in e.analyze(pos, limits) {
                     yield Ok(pv?)
                 }
             }
@@ -115,39 +116,21 @@ mod tests {
     }
 
     #[proptest]
-    fn ai_config_is_deserializable(l: Limits, o: Options) {
-        assert_eq!(
-            "ai()".parse(),
-            Ok(EngineConfig::Ai(Limits::default(), Options::default()))
-        );
-
-        assert_eq!(
-            format!("ai({l})").parse(),
-            Ok(EngineConfig::Ai(l, Options::default()))
-        );
-
-        assert_eq!(format!("ai({l}, {o})").parse(), Ok(EngineConfig::Ai(l, o)));
+    fn ai_config_is_deserializable(o: Options) {
+        assert_eq!("ai(())".parse(), Ok(EngineConfig::Ai(Options::default())));
+        assert_eq!(format!("ai({o})").parse(), Ok(EngineConfig::Ai(o)));
     }
 
     #[proptest]
-    fn uci_config_is_deserializable(p: String, l: Limits, o: UciOptions) {
+    fn uci_config_is_deserializable(p: String, o: UciOptions) {
         assert_eq!(
             format!("uci({p:?})").parse(),
-            Ok(EngineConfig::Uci(
-                p.clone(),
-                Limits::default(),
-                UciOptions::default()
-            ))
+            Ok(EngineConfig::Uci(p.clone(), UciOptions::default()))
         );
 
         assert_eq!(
-            format!("uci({p:?}, {l})").parse(),
-            Ok(EngineConfig::Uci(p.clone(), l, UciOptions::default()))
-        );
-
-        assert_eq!(
-            format!("uci({p:?}, {l}, {})", ron::ser::to_string(&o)?).parse(),
-            Ok(EngineConfig::Uci(p, l, o))
+            format!("uci({p:?}, {})", ron::ser::to_string(&o)?).parse(),
+            Ok(EngineConfig::Uci(p, o))
         );
     }
 }
