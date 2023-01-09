@@ -1,6 +1,6 @@
 use futures_util::{future::BoxFuture, stream::BoxStream};
 use lib::chess::{Move, Position};
-use lib::search::Pv;
+use lib::search::{Limits, Pv};
 
 /// Trait for types that know how to analyze chess [`Position`]s.
 pub trait Player {
@@ -11,6 +11,7 @@ pub trait Player {
     fn play<'a, 'b, 'c>(
         &'a mut self,
         pos: &'b Position,
+        limits: Limits,
     ) -> BoxFuture<'c, Result<Move, Self::Error>>
     where
         'a: 'c,
@@ -20,6 +21,7 @@ pub trait Player {
     fn analyze<'a, 'b, 'c, const N: usize>(
         &'a mut self,
         pos: &'b Position,
+        limits: Limits,
     ) -> BoxStream<'c, Result<Pv<N>, Self::Error>>
     where
         'a: 'c,

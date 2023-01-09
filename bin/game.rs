@@ -1,6 +1,7 @@
 use crate::{build::Build, player::Player};
 use derive_more::{Constructor, Display, Error};
 use lib::chess::{Color, Pgn, Position};
+use lib::search::Limits;
 use std::fmt::Display;
 use tracing::{field::display, instrument, warn, Span};
 
@@ -31,8 +32,12 @@ where
 {
     /// Play a game of chess from the given starting [`Position`].
     #[instrument(level = "debug", skip(self), err,
-        fields(white = %self.white, black = %self.black, %pos, outcome))]
-    pub async fn play(self, mut pos: Position) -> Result<Pgn, GameInterrupted<W::Error, B::Error>> {
+        fields(white = %self.white, black = %self.black, %pos, %limits, outcome))]
+    pub async fn play(
+        self,
+        mut pos: Position,
+        limits: Limits,
+    ) -> Result<Pgn, GameInterrupted<W::Error, B::Error>> {
         use GameInterrupted::*;
 
         let white_config = self.white.to_string();
@@ -50,8 +55,8 @@ where
             }
 
             let m = match pos.turn() {
-                Color::White => white.play(&pos).await.map_err(White)?,
-                Color::Black => black.play(&pos).await.map_err(Black)?,
+                Color::White => white.play(&pos, limits).await.map_err(White)?,
+                Color::Black => black.play(&pos, limits).await.map_err(Black)?,
             };
 
             match pos.make(m) {
@@ -88,6 +93,7 @@ mod tests {
             fn play<'a, 'b, 'c>(
                 &'a mut self,
                 pos: &'b Position,
+                limits: Limits,
             ) -> BoxFuture<'c, Result<Move, String>>
             where
                 'a: 'c,
@@ -96,6 +102,7 @@ mod tests {
             fn analyze<'a, 'b, 'c>(
                 &'a mut self,
                 pos: &'b Position,
+                limits: Limits,
             ) -> BoxStream<'c, Result<Pv<4>, String>>
             where
                 'a: 'c,
@@ -109,23 +116,25 @@ mod tests {
         fn play<'a, 'b, 'c>(
             &'a mut self,
             pos: &'b Position,
+            limits: Limits,
         ) -> BoxFuture<'c, Result<Move, Self::Error>>
         where
             'a: 'c,
             'b: 'c,
         {
-            MockPlayer::play(self, pos)
+            MockPlayer::play(self, pos, limits)
         }
 
         fn analyze<'a, 'b, 'c, const N: usize>(
             &'a mut self,
             pos: &'b Position,
+            limits: Limits,
         ) -> BoxStream<'c, Result<Pv<N>, Self::Error>>
         where
             'a: 'c,
             'b: 'c,
         {
-            MockPlayer::analyze(self, pos)
+            MockPlayer::analyze(self, pos, limits)
                 .map_ok(|pv| pv.truncate())
                 .boxed()
         }
@@ -148,7 +157,7 @@ mod tests {
     }
 
     #[proptest]
-    fn game_ends_when_it_is_over(#[filter(#pos.outcome().is_some())] pos: Position) {
+    fn game_ends_when_it_is_over(#[filter(#pos.outcome().is_some())] pos: Position, l: Limits) {
         let rt = runtime::Builder::new_multi_thread().build()?;
 
         let w = MockPlayer::new();
@@ -168,7 +177,7 @@ mod tests {
         let outcome = pos.outcome().unwrap();
 
         assert_eq!(
-            rt.block_on(g.play(pos)),
+            rt.block_on(g.play(pos, l)),
             Ok(Pgn {
                 white: wc,
                 black: bc,
@@ -179,7 +188,7 @@ mod tests {
     }
 
     #[proptest]
-    fn game_returns_pgn(pos: Position, selector: Selector) {
+    fn game_returns_pgn(pos: Position, l: Limits, selector: Selector) {
         let rt = runtime::Builder::new_multi_thread().build()?;
 
         let mut next = pos.clone();
@@ -202,7 +211,7 @@ mod tests {
         let mut w = MockPlayer::new();
         let mut b = MockPlayer::new();
 
-        let act = move |_: &Position| ready(Ok(moves.pop().unwrap())).boxed();
+        let act = move |_: &Position, _: Limits| ready(Ok(moves.pop().unwrap())).boxed();
 
         w.expect_play().returning(act.clone());
         b.expect_play().returning(act);
@@ -219,7 +228,7 @@ mod tests {
         let g = Game::new(wb, bb);
 
         assert_eq!(
-            rt.block_on(g.play(pos)),
+            rt.block_on(g.play(pos, l)),
             Ok(Pgn {
                 white: wc,
                 black: bc,
@@ -230,7 +239,7 @@ mod tests {
     }
 
     #[proptest]
-    fn game_interrupts_if_player_fails_to_build(pos: Position, e: String) {
+    fn game_interrupts_if_player_fails_to_build(pos: Position, l: Limits, e: String) {
         let rt = runtime::Builder::new_multi_thread().build()?;
 
         let mut wb = MockPlayerBuilder::new();
@@ -242,12 +251,13 @@ mod tests {
         });
 
         let g = Game::new(wb, bb);
-        assert_eq!(rt.block_on(g.play(pos)), Err(GameInterrupted::White(e)));
+        assert_eq!(rt.block_on(g.play(pos, l)), Err(GameInterrupted::White(e)));
     }
 
     #[proptest]
     fn game_interrupts_if_player_fails_to_act(
         #[filter(#pos.outcome().is_none())] pos: Position,
+        l: Limits,
         e: String,
     ) {
         let rt = runtime::Builder::new_multi_thread().build()?;
@@ -263,7 +273,8 @@ mod tests {
         };
 
         let err = Err(e.clone());
-        p.expect_play().return_once(move |_| Box::pin(ready(err)));
+        p.expect_play()
+            .return_once(move |_, _| Box::pin(ready(err)));
 
         let mut wb = MockPlayerBuilder::new();
         wb.expect_build().once().return_once(move || Ok(w));
@@ -274,7 +285,7 @@ mod tests {
         let g = Game::new(wb, bb);
 
         assert_eq!(
-            rt.block_on(g.play(pos)),
+            rt.block_on(g.play(pos, l)),
             match turn {
                 Color::White => Err(GameInterrupted::White(e)),
                 Color::Black => Err(GameInterrupted::Black(e)),

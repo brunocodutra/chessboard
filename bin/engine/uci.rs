@@ -48,14 +48,12 @@ pub struct UciError(#[from(forward)] io::Error);
 #[derive(Debug)]
 pub struct Uci<T: Io> {
     io: Lazy<T, UciError>,
-    limits: Limits,
 }
 
 impl<T: Io + Send + 'static> Uci<T> {
-    /// Constructs [`Uci`] with the given search [`Limits`] and [`UciOptions`].
-    pub fn new(mut io: T, limits: Limits, options: UciOptions) -> Self {
+    /// Constructs [`Uci`] with the given [`UciOptions`].
+    pub fn new(mut io: T, options: UciOptions) -> Self {
         Uci {
-            limits,
             io: Lazy::Uninitialized(Box::pin(async move {
                 io.send(&UciMessage::Uci.to_string()).await?;
                 io.flush().await?;
@@ -78,14 +76,14 @@ impl<T: Io + Send + 'static> Uci<T> {
         }
     }
 
-    async fn go(&mut self, pos: &Position) -> Result<(), UciError> {
+    async fn go(&mut self, pos: &Position, limits: Limits) -> Result<(), UciError> {
         let position = UciMessage::Position {
             startpos: false,
             fen: Some(UciFen(pos.to_string())),
             moves: Vec::new(),
         };
 
-        let go = match self.limits {
+        let go = match limits {
             Limits::None => UciMessage::go(),
             Limits::Depth(d) => UciMessage::Go {
                 search_control: Some(UciSearchControl::depth(d.get())),
@@ -127,14 +125,18 @@ impl<T: Io> Drop for Uci<T> {
 impl<T: Io + Send + 'static> Player for Uci<T> {
     type Error = UciError;
 
-    #[instrument(level = "debug", skip(self, pos), ret(Display), err, fields(%pos))]
-    fn play<'a, 'b, 'c>(&'a mut self, pos: &'b Position) -> BoxFuture<'c, Result<Move, Self::Error>>
+    #[instrument(level = "debug", skip(self, pos), ret(Display), err, fields(%pos, %limits))]
+    fn play<'a, 'b, 'c>(
+        &'a mut self,
+        pos: &'b Position,
+        limits: Limits,
+    ) -> BoxFuture<'c, Result<Move, Self::Error>>
     where
         'a: 'c,
         'b: 'c,
     {
         Box::pin(async move {
-            self.go(pos).await?;
+            self.go(pos, limits).await?;
 
             let io = self.io.get_or_init().await?;
 
@@ -148,22 +150,23 @@ impl<T: Io + Send + 'static> Player for Uci<T> {
         })
     }
 
-    #[instrument(level = "debug", skip(self, pos), fields(%pos))]
+    #[instrument(level = "debug", skip(self, pos), fields(%pos, %limits))]
     fn analyze<'a, 'b, 'c, const N: usize>(
         &'a mut self,
         pos: &'b Position,
+        limits: Limits,
     ) -> BoxStream<'c, Result<Pv<N>, Self::Error>>
     where
         'a: 'c,
         'b: 'c,
     {
         Box::pin(try_stream! {
-            self.go(pos).await?;
+            self.go(pos, limits).await?;
             let timer = Instant::now();
             let io = self.io.get_or_init().await?;
 
             loop {
-                let limit = self.limits.time().saturating_sub(timer.elapsed());
+                let limit = limits.time().saturating_sub(timer.elapsed());
                 let msg = match timeout(limit, io.recv()).await {
                     Ok(msg) => msg?,
                     Err(_) => break,
@@ -195,11 +198,11 @@ impl<T: Io + Send + 'static> Player for Uci<T> {
                     }
 
                     if let Some((d, s)) = Option::zip(depth, score) {
-                        if self.limits.depth() < d {
+                        if limits.depth() < d {
                             break;
                         } else {
                             yield Pv::new(Depth::saturate(d), s, moves);
-                            if self.limits.depth() == d {
+                            if limits.depth() == d {
                                 break;
                             }
                         }
@@ -250,12 +253,11 @@ mod tests {
     }
 
     #[proptest]
-    fn new_schedules_engine_for_lazy_initialization(l: Limits, o: UciOptions) {
+    fn new_schedules_engine_for_lazy_initialization(o: UciOptions) {
         assert!(matches!(
-            Uci::new(MockIo::new(), l, o),
+            Uci::new(MockIo::new(), o),
             Uci {
                 io: Lazy::Uninitialized(_),
-                ..
             }
         ));
     }
@@ -324,10 +326,11 @@ mod tests {
             .once()
             .returning(move || Box::pin(ready(Ok(UciMessage::best_move(m.into()).to_string()))));
 
-        let mut uci = Uci::new(io, l, o);
+        let mut uci = Uci::new(io, o);
 
         assert_eq!(
-            rt.block_on(uci.play(&pos)).map_err(|UciError(e)| e.kind()),
+            rt.block_on(uci.play(&pos, l))
+                .map_err(|UciError(e)| e.kind()),
             Ok(m)
         );
     }
@@ -362,10 +365,11 @@ mod tests {
             .once()
             .returning(move || Box::pin(ready(Ok(UciMessage::best_move(m.into()).to_string()))));
 
-        let mut uci = Uci::new(io, l, o);
+        let mut uci = Uci::new(io, o);
 
         assert_eq!(
-            rt.block_on(uci.play(&pos)).map_err(|UciError(e)| e.kind()),
+            rt.block_on(uci.play(&pos, l))
+                .map_err(|UciError(e)| e.kind()),
             Ok(m)
         );
     }
@@ -402,10 +406,11 @@ mod tests {
             .once()
             .returning(move || Box::pin(ready(Ok(UciMessage::best_move(m.into()).to_string()))));
 
-        let mut uci = Uci::new(io, l, o);
+        let mut uci = Uci::new(io, o);
 
         assert_eq!(
-            rt.block_on(uci.play(&pos)).map_err(|UciError(e)| e.kind()),
+            rt.block_on(uci.play(&pos, l))
+                .map_err(|UciError(e)| e.kind()),
             Ok(m)
         );
     }
@@ -423,16 +428,17 @@ mod tests {
         io.expect_send().returning(|_| Box::pin(ready(Ok(()))));
         io.expect_flush().returning(|| Box::pin(ready(Ok(()))));
 
-        let mut uci = Uci::new(io, l, o);
+        let mut uci = Uci::new(io, o);
 
         assert_eq!(
-            rt.block_on(uci.play(&pos)).map_err(|UciError(e)| e.kind()),
+            rt.block_on(uci.play(&pos, l))
+                .map_err(|UciError(e)| e.kind()),
             Err(kind)
         );
     }
 
     #[proptest]
-    fn drop_gracefully_quits_initialized_engine(l: Limits) {
+    fn drop_gracefully_quits_initialized_engine() {
         let rt = runtime::Builder::new_multi_thread().build()?;
         let mut io = MockIo::new();
 
@@ -458,13 +464,12 @@ mod tests {
         rt.block_on(async move {
             drop(Uci {
                 io: Lazy::Initialized(io),
-                limits: l,
             });
         })
     }
 
     #[proptest]
-    fn drop_gracefully_quits_uninitialized_engine(l: Limits) {
+    fn drop_gracefully_quits_uninitialized_engine() {
         let rt = runtime::Builder::new_multi_thread().build()?;
         let mut io = MockIo::new();
 
@@ -503,12 +508,12 @@ mod tests {
             .returning(|| Box::pin(ready(Ok(()))));
 
         rt.block_on(async move {
-            drop(Uci::new(io, l, UciOptions::default()));
+            drop(Uci::new(io, UciOptions::default()));
         })
     }
 
     #[proptest]
-    fn drop_recovers_from_errors(l: Limits, e: io::Error) {
+    fn drop_recovers_from_errors(e: io::Error) {
         let rt = runtime::Builder::new_multi_thread().build()?;
         let mut io = MockIo::new();
         io.expect_send()
@@ -518,16 +523,14 @@ mod tests {
         rt.block_on(async move {
             drop(Uci {
                 io: Lazy::Initialized(io),
-                limits: l,
             });
         })
     }
 
     #[proptest]
-    fn drop_recovers_from_missing_runtime(l: Limits) {
+    fn drop_recovers_from_missing_runtime() {
         drop(Uci {
             io: Lazy::Initialized(MockIo::new()),
-            limits: l,
         });
     }
 
@@ -573,11 +576,10 @@ mod tests {
 
         let mut uci = Uci {
             io: Lazy::Initialized(io),
-            limits: l,
         };
 
         assert_eq!(
-            rt.block_on(uci.go(&pos)).map_err(|UciError(e)| e.kind()),
+            rt.block_on(uci.go(&pos, l)).map_err(|UciError(e)| e.kind()),
             Ok(())
         );
     }
@@ -597,11 +599,10 @@ mod tests {
 
         let mut uci = Uci {
             io: Lazy::Initialized(io),
-            limits: l,
         };
 
         assert_eq!(
-            rt.block_on(uci.go(&pos)).map_err(|UciError(e)| e.kind()),
+            rt.block_on(uci.go(&pos, l)).map_err(|UciError(e)| e.kind()),
             Err(kind)
         );
     }
@@ -621,11 +622,10 @@ mod tests {
 
         let mut uci = Uci {
             io: Lazy::Initialized(io),
-            limits: l,
         };
 
         assert_eq!(
-            rt.block_on(uci.go(&pos)).map_err(|UciError(e)| e.kind()),
+            rt.block_on(uci.go(&pos, l)).map_err(|UciError(e)| e.kind()),
             Err(kind)
         );
     }
@@ -644,11 +644,11 @@ mod tests {
 
         let mut uci = Uci {
             io: Lazy::Initialized(io),
-            limits: l,
         };
 
         assert_eq!(
-            rt.block_on(uci.play(&pos)).map_err(|UciError(e)| e.kind()),
+            rt.block_on(uci.play(&pos, l))
+                .map_err(|UciError(e)| e.kind()),
             Ok(m)
         );
     }
@@ -676,11 +676,11 @@ mod tests {
 
         let mut uci = Uci {
             io: Lazy::Initialized(io),
-            limits: l,
         };
 
         assert_eq!(
-            rt.block_on(uci.play(&pos)).map_err(|UciError(e)| e.kind()),
+            rt.block_on(uci.play(&pos, l))
+                .map_err(|UciError(e)| e.kind()),
             Ok(m)
         );
     }
@@ -710,11 +710,11 @@ mod tests {
 
         let mut uci = Uci {
             io: Lazy::Initialized(io),
-            limits: l,
         };
 
         assert_eq!(
-            rt.block_on(uci.play(&pos)).map_err(|UciError(e)| e.kind()),
+            rt.block_on(uci.play(&pos, l))
+                .map_err(|UciError(e)| e.kind()),
             Ok(m)
         );
     }
@@ -734,11 +734,11 @@ mod tests {
 
         let mut uci = Uci {
             io: Lazy::Initialized(io),
-            limits: l,
         };
 
         assert_eq!(
-            rt.block_on(uci.play(&pos)).map_err(|UciError(e)| e.kind()),
+            rt.block_on(uci.play(&pos, l))
+                .map_err(|UciError(e)| e.kind()),
             Err(kind)
         );
     }
@@ -782,11 +782,10 @@ mod tests {
 
         let mut uci = Uci {
             io: Lazy::Initialized(io),
-            limits,
         };
 
         assert_eq!(
-            rt.block_on(uci.analyze(&pos).try_collect::<Vec<_>>())
+            rt.block_on(uci.analyze(&pos, limits).try_collect::<Vec<_>>())
                 .map_err(|UciError(e)| e.kind()),
             Ok(pvs
                 .into_iter()
@@ -812,11 +811,12 @@ mod tests {
 
         let mut uci = Uci {
             io: Lazy::Initialized(io),
-            limits: Limits::Time(Duration::ZERO),
         };
 
+        let l = Limits::Time(Duration::ZERO);
+
         assert_eq!(
-            rt.block_on(uci.analyze::<4>(&pos).try_collect::<Vec<_>>())
+            rt.block_on(uci.analyze::<4>(&pos, l).try_collect::<Vec<_>>())
                 .map_err(|UciError(e)| e.kind()),
             Ok(Vec::new())
         );
@@ -837,11 +837,11 @@ mod tests {
 
         let mut uci = Uci {
             io: Lazy::Initialized(io),
-            limits: l,
         };
 
         assert_eq!(
-            rt.block_on(uci.play(&pos)).map_err(|UciError(e)| e.kind()),
+            rt.block_on(uci.play(&pos, l))
+                .map_err(|UciError(e)| e.kind()),
             Err(kind)
         );
     }

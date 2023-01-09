@@ -4,6 +4,7 @@ use clap::Parser;
 use derive_more::{DebugCustom, Display};
 use futures_util::future::try_join_all;
 use lib::chess::{Color, Position};
+use lib::search::Limits;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::{iter::repeat, num::NonZeroUsize, sync::Arc};
 use tokio::{spawn, sync::Mutex};
@@ -21,6 +22,10 @@ pub struct Play {
     #[clap(short = 'c', long, default_value = "1")]
     concurrency: NonZeroUsize,
 
+    /// Search limits to use.
+    #[clap(short, long, default_value_t)]
+    limits: Limits,
+
     /// The challenging player.
     challenger: EngineConfig,
 
@@ -31,13 +36,14 @@ pub struct Play {
 impl Play {
     #[instrument(level = "trace", skip(self), err)]
     pub async fn execute(self) -> Result<(), Anyhow> {
+        let limits = self.limits;
         let players = [self.challenger, self.defender];
         let games = Arc::new(AtomicUsize::new(self.games.into()));
         let wld = Arc::new(Mutex::new([0; 3]));
 
         let tasks = repeat((players, games, wld))
             .take(self.concurrency.into())
-            .map(move |(players, games, wld)| spawn(play(players, games, wld)));
+            .map(move |(players, games, wld)| spawn(play(limits, players, games, wld)));
 
         try_join_all(tasks).await?;
 
@@ -72,6 +78,7 @@ impl ΔELO {
 
 #[instrument(level = "trace", skip(players, games, wld), err)]
 pub async fn play(
+    limits: Limits,
     players: [EngineConfig; 2],
     games: Arc<AtomicUsize>,
     wld: Arc<Mutex<[usize; 3]>>,
@@ -79,7 +86,7 @@ pub async fn play(
     while let Ok(n) = games.fetch_update(Ordering::Relaxed, Ordering::Relaxed, |n| n.checked_sub(1))
     {
         let game = Game::new(players[(n - 1) % 2].clone(), players[n % 2].clone());
-        let pgn = game.play(Position::default()).await?;
+        let pgn = game.play(Position::default(), limits).await?;
 
         {
             let mut wld = wld.lock().await;
