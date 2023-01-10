@@ -1,5 +1,5 @@
 use crate::chess::{Move, MoveKind, Piece, Position, Role, Zobrist};
-use crate::eval::{Eval, Evaluator, Value};
+use crate::eval::{Evaluator, Value};
 use crate::transposition::{Table, Transposition};
 use crate::util::{Timeout, Timer};
 use derive_more::{Deref, Neg};

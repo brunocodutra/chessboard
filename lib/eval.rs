@@ -10,14 +10,6 @@ pub use end::*;
 pub use mid::*;
 pub use value::*;
 
-/// Trait for types that can evaluate [`Position`]s.
-pub trait Eval {
-    /// Evaluates a [`Position`].
-    ///
-    /// Positive values favor the current side to play.
-    fn eval(&self, item: &Position) -> Value;
-}
-
 /// A tapered evaluator.
 #[derive(Debug, Default, Clone, Arbitrary, Constructor)]
 pub struct Evaluator();
@@ -61,10 +53,11 @@ impl Evaluator {
             Color::Black => s.index() as usize,
         }]
     }
-}
 
-impl Eval for Evaluator {
-    fn eval(&self, pos: &Position) -> Value {
+    /// Evaluates a [`Position`].
+    ///
+    /// Positive values favor the current side to play.
+    pub fn eval(&self, pos: &Position) -> Value {
         let turn = pos.turn();
         let phase = self.phase(pos);
 
