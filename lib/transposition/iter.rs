@@ -1,12 +1,12 @@
 use super::{Table, Transposition};
 use crate::chess::Position;
 
-/// An iterator over the sequence of [`Transposition`]s in a transposition [`Table`].
+/// An iterator over a sequence of [`Transposition`]s in a transposition [`Table`].
 #[derive(Debug, Clone)]
 pub struct Iter<'a> {
     tt: &'a Table,
     pos: Position,
-    depth: Option<u8>,
+    depth: u8,
 }
 
 impl<'a> Iter<'a> {
@@ -14,7 +14,7 @@ impl<'a> Iter<'a> {
         Iter {
             tt,
             pos,
-            depth: Some(u8::MAX),
+            depth: u8::MAX,
         }
     }
 }
@@ -23,10 +23,9 @@ impl<'a> Iterator for Iter<'a> {
     type Item = Transposition;
 
     fn next(&mut self) -> Option<Self::Item> {
-        let d = self.depth?;
         let key = self.pos.zobrist();
-        let t = self.tt.get(key).filter(|t| t.depth() <= d)?;
-        self.depth = t.depth().get().checked_sub(1);
+        let t = self.tt.get(key).filter(|t| t.depth() <= self.depth)?;
+        self.depth = t.depth().get().checked_sub(1)?;
         self.pos.make(t.best()).ok()?;
         Some(t)
     }
@@ -45,7 +44,7 @@ mod tests {
         #[filter(#tt.capacity() > 1)]
         tt: Table,
         #[filter(#pos.moves(MoveKind::ANY).len() > 0)] pos: Position,
-        d: Depth,
+        #[filter(#d > Depth::new(0))] d: Depth,
         s: Value,
         selector: Selector,
     ) {

@@ -14,12 +14,14 @@ mod draft;
 mod limits;
 mod options;
 mod pv;
+mod report;
 
 pub use depth::*;
 pub use draft::*;
 pub use limits::*;
 pub use options::*;
 pub use pv::*;
+pub use report::*;
 
 #[derive(Debug, Default, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Deref, Neg)]
 struct Score(#[deref] Value, Draft);
@@ -30,7 +32,7 @@ struct Score(#[deref] Value, Draft);
 #[derive(Debug, Arbitrary)]
 pub struct Searcher {
     evaluator: Evaluator,
-    #[map(|o: Options|ThreadPoolBuilder::new().num_threads(o.threads.get()).build().unwrap())]
+    #[map(|o: Options| ThreadPoolBuilder::new().num_threads(o.threads.get()).build().unwrap())]
     executor: ThreadPool,
     #[map(|o: Options| Table::new(o.hash))]
     tt: Table,
@@ -348,27 +350,24 @@ impl Searcher {
     }
 
     /// Searches for the strongest [variation][`Pv`].
-    pub fn search<const N: usize>(&mut self, pos: &Position, limits: Limits) -> Pv<N> {
+    pub fn search(&mut self, pos: &Position, limits: Limits) -> Report {
         let timer = Timer::start(limits.time());
-        let mut pv: Pv<N> = self.tt.iter(pos).collect();
-        let (mut score, start) = match Option::zip(pv.score(), pv.depth()) {
-            Some((s, d)) => (s, d.get() + 1),
-            None => {
-                self.tt.unset(pos.zobrist());
-                (self.eval(pos), 0)
-            }
+        if self.tt.iter(pos).next().is_none() {
+            self.tt.unset(pos.zobrist());
         };
 
         self.executor.install(|| {
-            for d in start..=limits.depth().get() {
-                (score, pv) = match self.aw(pos, score, Depth::new(d), timer) {
-                    Ok(s) => (*s, self.tt.iter(pos).collect()),
+            let mut report = Report::new(Depth::new(0), self.eval(pos), Pv::default());
+
+            for d in 0..=limits.depth().get() {
+                report = match self.aw(pos, report.score(), Depth::new(d), timer) {
+                    Ok(s) => Report::new(Depth::new(d), *s, self.tt.pv(pos).collect()),
                     Err(_) => break,
                 };
             }
-        });
 
-        pv
+            report
+        })
     }
 }
 
@@ -496,8 +495,8 @@ mod tests {
     #[proptest]
     fn search_finds_the_principal_variation(mut s: Searcher, pos: Position, d: Depth) {
         assert_eq!(
-            s.search::<4>(&pos, Limits::Depth(d)),
-            s.tt.iter(&pos).collect()
+            s.search(&pos, Limits::Depth(d)).pv(),
+            &s.tt.pv(&pos).collect()
         );
     }
 
@@ -509,14 +508,14 @@ mod tests {
         t: Transposition,
     ) {
         s.tt.set(pos.zobrist(), t);
-        assert_eq!(s.search::<1>(&pos, Limits::Depth(d)).len(), 1);
+        assert!(!s.search(&pos, Limits::Depth(d)).pv().is_empty());
     }
 
     #[proptest]
     fn search_is_stable(mut s: Searcher, pos: Position, d: Depth) {
         assert_eq!(
-            s.search::<0>(&pos, Limits::Depth(d)),
-            s.search::<0>(&pos, Limits::Depth(d))
+            s.search(&pos, Limits::Depth(d)),
+            s.search(&pos, Limits::Depth(d))
         );
     }
 
@@ -526,7 +525,7 @@ mod tests {
 
         let result = rt.block_on(async {
             let l = Limits::Time(Duration::from_micros(us.into()));
-            timeout(Duration::from_millis(1), async { s.search::<1>(&pos, l) }).await
+            timeout(Duration::from_millis(1), async { s.search(&pos, l) }).await
         });
 
         assert_eq!(result.err(), None);

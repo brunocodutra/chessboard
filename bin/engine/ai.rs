@@ -3,7 +3,7 @@ use async_stream::try_stream;
 use futures_util::{future::BoxFuture, stream::BoxStream};
 use lib::chess::{Move, Position};
 use lib::eval::Evaluator;
-use lib::search::{Depth, Limits, Options, Pv};
+use lib::search::{Depth, Limits, Options, Report};
 use std::{convert::Infallible, time::Instant};
 use tokio::task::block_in_place;
 use tracing::{field::display, instrument, Span};
@@ -11,7 +11,7 @@ use tracing::{field::display, instrument, Span};
 #[cfg(test)]
 #[mockall::automock]
 trait Searcher {
-    fn search<const N: usize>(&mut self, pos: &Position, limits: Limits) -> Pv<4>;
+    fn search(&mut self, pos: &Position, limits: Limits) -> Report;
 }
 
 #[cfg(test)]
@@ -56,24 +56,22 @@ impl Player for Ai {
         'b: 'c,
     {
         Box::pin(async move {
-            let pv = block_in_place(|| self.strategy.search::<1>(pos, limits));
+            let report = block_in_place(|| self.strategy.search(pos, limits));
 
-            if let Some((d, s)) = Option::zip(pv.depth(), pv.score()) {
-                Span::current()
-                    .record("depth", display(d))
-                    .record("score", display(s));
-            }
+            Span::current()
+                .record("depth", display(report.depth()))
+                .record("score", display(report.score()));
 
-            Ok(*pv.first().expect("expected at least one legal move"))
+            Ok(*report.pv().first().expect("expected some legal move"))
         })
     }
 
     #[instrument(level = "debug", skip(self, pos), fields(%pos, %limits))]
-    fn analyze<'a, 'b, 'c, const N: usize>(
+    fn analyze<'a, 'b, 'c>(
         &'a mut self,
         pos: &'b Position,
         limits: Limits,
-    ) -> BoxStream<'c, Result<Pv<N>, Self::Error>>
+    ) -> BoxStream<'c, Result<Report, Self::Error>>
     where
         'a: 'c,
         'b: 'c,
@@ -82,15 +80,16 @@ impl Player for Ai {
             let timer = Instant::now();
             for d in 1..=limits.depth().get() {
                 let elapsed = timer.elapsed();
-                let limits = if elapsed < limits.time() / 2 {
-                    Depth::new(d).into()
+                if elapsed < limits.time() / 2 {
+                    let depth = Depth::new(d);
+                    yield block_in_place(|| self.strategy.search(pos, depth.into()));
                 } else if elapsed < limits.time() {
-                    Limits::Time(limits.time() - elapsed)
+                    let time = limits.time() - elapsed;
+                    yield block_in_place(|| self.strategy.search(pos, time.into()));
+                    break;
                 } else {
                     break;
-                };
-
-                yield block_in_place(|| self.strategy.search::<N>(pos, limits).truncate());
+                }
             }
         })
     }
@@ -100,7 +99,7 @@ impl Player for Ai {
 mod tests {
     use super::*;
     use futures_util::TryStreamExt;
-    use lib::search::Pv;
+    use lib::{eval::Value, search::Pv};
     use mockall::predicate::eq;
     use proptest::sample::size_range;
     use std::time::Duration;
@@ -108,54 +107,56 @@ mod tests {
     use tokio::runtime;
 
     #[proptest]
-    fn play_finds_best_move(l: Limits, pos: Position, #[filter(!#pv.is_empty())] pv: Pv<4>) {
+    fn play_finds_best_move(l: Limits, pos: Position, #[filter(!#r.pv().is_empty())] r: Report) {
         let rt = runtime::Builder::new_multi_thread().build()?;
 
         let mut strategy = Strategy::new();
-        strategy.expect_search().return_const(pv.clone());
+        strategy.expect_search().return_const(r.clone());
 
         let mut ai = Ai { strategy };
 
         assert_eq!(
             rt.block_on(ai.play(&pos, l)).ok(),
-            pv.iter().copied().next()
+            r.pv().iter().copied().next()
         );
     }
 
     #[proptest]
     #[should_panic]
-    fn play_panics_if_there_are_no_legal_moves(l: Limits, pos: Position) {
+    fn play_panics_if_there_are_no_legal_moves(l: Limits, pos: Position, d: Depth, s: Value) {
         let rt = runtime::Builder::new_multi_thread().build()?;
 
         let mut strategy = Strategy::new();
-        strategy.expect_search().return_const(Pv::default());
+        strategy
+            .expect_search()
+            .return_const(Report::new(d, s, Pv::default()));
 
         let mut ai = Ai { strategy };
         rt.block_on(ai.play(&pos, l))?;
     }
 
     #[proptest]
-    fn analyze_returns_sequence_of_principal_variations(
+    fn analyze_returns_sequence_of_search_reports(
         pos: Position,
-        #[any(size_range(1..=3).lift())] pvs: Vec<Pv<4>>,
+        #[any(size_range(0..=3).lift())] rs: Vec<Report>,
     ) {
         let rt = runtime::Builder::new_multi_thread().build()?;
 
         let mut strategy = Strategy::new();
 
-        for (d, pv) in pvs.iter().enumerate() {
+        for (d, r) in rs.iter().enumerate() {
             strategy
                 .expect_search()
                 .with(eq(pos.clone()), eq(Limits::Depth(Depth::saturate(d + 1))))
-                .return_const(pv.clone());
+                .return_const(r.clone());
         }
 
         let mut ai = Ai { strategy };
-        let l = Limits::Depth(Depth::saturate(pvs.len()));
+        let l = Limits::Depth(Depth::saturate(rs.len()));
 
         assert_eq!(
             rt.block_on(ai.analyze(&pos, l).try_collect::<Vec<_>>()),
-            Ok(pvs)
+            Ok(rs)
         );
     }
 
@@ -170,7 +171,7 @@ mod tests {
         let l = Limits::Time(Duration::ZERO);
 
         assert_eq!(
-            rt.block_on(ai.analyze::<4>(&pos, l).try_collect::<Vec<_>>()),
+            rt.block_on(ai.analyze(&pos, l).try_collect::<Vec<_>>()),
             Ok(Vec::new())
         );
     }

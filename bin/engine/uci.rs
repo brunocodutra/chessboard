@@ -6,7 +6,7 @@ use derive_more::{DebugCustom, Display, Error, From};
 use futures_util::{future::BoxFuture, stream::BoxStream};
 use lib::chess::{Move, Position};
 use lib::eval::Value;
-use lib::search::{Depth, Limits, Pv};
+use lib::search::{Depth, Limits, Report};
 use std::{collections::HashMap, fmt::Debug, future::Future, io, pin::Pin, time::Instant};
 use tokio::{runtime, task::block_in_place, time::timeout};
 use tracing::{debug, error, instrument};
@@ -151,11 +151,11 @@ impl<T: Io + Send + 'static> Player for Uci<T> {
     }
 
     #[instrument(level = "debug", skip(self, pos), fields(%pos, %limits))]
-    fn analyze<'a, 'b, 'c, const N: usize>(
+    fn analyze<'a, 'b, 'c>(
         &'a mut self,
         pos: &'b Position,
         limits: Limits,
-    ) -> BoxStream<'c, Result<Pv<N>, Self::Error>>
+    ) -> BoxStream<'c, Result<Report, Self::Error>>
     where
         'a: 'c,
         'b: 'c,
@@ -193,7 +193,7 @@ impl<T: Io + Send + 'static> Player for Uci<T> {
                         }
 
                         if let UciInfoAttribute::Pv(m) = i {
-                            moves = m.into_iter().map(|m| m.into()).collect::<Vec<_>>();
+                            moves = m.into_iter().map(Move::from).collect();
                         }
                     }
 
@@ -201,7 +201,7 @@ impl<T: Io + Send + 'static> Player for Uci<T> {
                         if limits.depth() < d {
                             break;
                         } else {
-                            yield Pv::new(Depth::saturate(d), s, moves);
+                            yield Report::new(Depth::saturate(d), s, moves);
                             if limits.depth() == d {
                                 break;
                             }
@@ -223,7 +223,7 @@ mod tests {
     use futures_util::TryStreamExt;
     use lib::chess::Move;
     use mockall::Sequence;
-    use proptest::prelude::*;
+    use proptest::{prelude::*, sample::size_range};
     use std::{future::ready, time::Duration};
     use test_strategy::proptest;
     use tokio::{runtime, time::sleep};
@@ -744,34 +744,32 @@ mod tests {
     }
 
     #[proptest]
-    fn analyze_stops_when_target_depth_is_reached(pos: Position, pvs: Vec<Pv<4>>) {
+    fn analyze_stops_when_target_depth_is_reached(
+        pos: Position,
+        #[any(size_range(0..=3).lift())] rs: Vec<Report>,
+    ) {
         let rt = runtime::Builder::new_multi_thread().enable_time().build()?;
         let mut io = MockIo::new();
 
         io.expect_send().returning(|_| Box::pin(ready(Ok(()))));
         io.expect_flush().returning(|| Box::pin(ready(Ok(()))));
 
-        let (n, limits) = pvs
+        let (n, limits) = rs
             .iter()
             .enumerate()
-            .filter_map(|(i, pv)| Some((i, pv.depth()?)))
+            .map(|(i, r)| (i, r.depth()))
             .max_by_key(|(i, d)| (*d, !*i))
             .map(|(i, d)| (i + 1, Limits::Depth(d)))
             .unwrap_or_default();
 
         prop_assume!(limits != Limits::None);
 
-        for pv in pvs.iter().take(n) {
-            let mut attrs = vec![];
-
-            if let Some((d, s)) = Option::zip(pv.depth(), pv.score()) {
-                attrs.push(UciInfoAttribute::Depth(d.get()));
-                attrs.push(UciInfoAttribute::from_centipawns(s.get().into()));
-            }
-
-            attrs.push(UciInfoAttribute::Pv(
-                pv.iter().copied().map(|m| m.into()).collect(),
-            ));
+        for r in rs.iter().take(n) {
+            let attrs = vec![
+                UciInfoAttribute::Depth(r.depth().get()),
+                UciInfoAttribute::from_centipawns(r.score().get().into()),
+                UciInfoAttribute::Pv(r.pv().iter().copied().map(|m| m.into()).collect()),
+            ];
 
             let info = UciMessage::Info(attrs);
 
@@ -787,11 +785,7 @@ mod tests {
         assert_eq!(
             rt.block_on(uci.analyze(&pos, limits).try_collect::<Vec<_>>())
                 .map_err(|UciError(e)| e.kind()),
-            Ok(pvs
-                .into_iter()
-                .take(n)
-                .filter(|pv| pv.depth().is_some())
-                .collect())
+            Ok(rs.into_iter().take(n).collect())
         );
     }
 
@@ -816,7 +810,7 @@ mod tests {
         let l = Limits::Time(Duration::ZERO);
 
         assert_eq!(
-            rt.block_on(uci.analyze::<4>(&pos, l).try_collect::<Vec<_>>())
+            rt.block_on(uci.analyze(&pos, l).try_collect::<Vec<_>>())
                 .map_err(|UciError(e)| e.kind()),
             Ok(Vec::new())
         );

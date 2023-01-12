@@ -1,4 +1,5 @@
 use super::{Color, Outcome, San};
+use proptest::sample::size_range;
 use std::fmt::{self, Display};
 use test_strategy::Arbitrary;
 
@@ -8,6 +9,7 @@ pub struct Pgn {
     pub white: String,
     pub black: String,
     pub outcome: Outcome,
+    #[any(size_range(0..=3).lift())]
     pub moves: Vec<San>,
 }
 
@@ -62,7 +64,7 @@ mod tests {
         }
     }
 
-    #[proptest(cases = 10)]
+    #[proptest]
     fn prints_simplified_pgn(pgn: Pgn) {
         let mut reader = BufferedReader::new_cursor(pgn.to_string());
         let mut visitor = PgnVisitor::default();
