@@ -1,215 +1,84 @@
-use super::Depth;
-use crate::{chess::Move, eval::Value, transposition::Transposition};
+use crate::chess::Move;
 use arrayvec::ArrayVec;
-use derive_more::{Deref, Display, IntoIterator};
-use proptest::prelude::*;
+use derive_more::{DebugCustom, Deref, Display, IntoIterator};
+use proptest::{collection::vec, prelude::*};
 use test_strategy::Arbitrary;
 
 /// The [principal variation].
 ///
 /// [principal variation]: https://www.chessprogramming.org/Principal_Variation
-#[derive(Debug, Display, Default, Clone, Eq, PartialEq, Hash, Arbitrary, Deref, IntoIterator)]
+#[derive(
+    DebugCustom, Display, Default, Clone, Eq, PartialEq, Hash, Arbitrary, Deref, IntoIterator,
+)]
+#[debug(fmt = "Pv({self})")]
 #[display(
     fmt = "{}",
-    "self.iter().map(Move::to_string).collect::<ArrayVec<_, N>>().join(\" \")"
+    "self.iter().map(Move::to_string).collect::<ArrayVec<_, { Pv::N }>>().join(\" \")"
 )]
-pub struct Pv<const N: usize> {
-    #[strategy(any::<Vec<Move>>().prop_map(|v| v.into_iter().take(N).collect()))]
+pub struct Pv(
+    #[strategy(vec(any::<Move>(), 0..=Self::N).prop_map(ArrayVec::from_iter))]
     #[deref(forward)]
     #[into_iterator(owned, ref, ref_mut)]
-    moves: ArrayVec<Move, N>,
-    #[strategy(any::<(Depth, Value)>().prop_map(move |i| #moves.first().map(move |_| i)))]
-    info: Option<(Depth, Value)>,
-}
+    ArrayVec<Move, { Pv::N }>,
+);
 
-impl<const N: usize> Pv<N> {
-    /// Constructs a new [`Pv`] given depth, score, and sequence of moves.
-    pub fn new<I: IntoIterator<Item = Move>>(depth: Depth, score: Value, moves: I) -> Self {
-        Self {
-            moves: moves.into_iter().take(N).collect(),
-            info: Some((depth, score)),
-        }
-    }
+impl Pv {
+    #[cfg(not(test))]
+    const N: usize = 16;
 
-    /// The depth of this sequence.
-    pub fn depth(&self) -> Option<Depth> {
-        self.info.map(|(d, _)| d)
-    }
-
-    /// This sequence's score from the point of view of the side to move.
-    pub fn score(&self) -> Option<Value> {
-        self.info.map(|(_, s)| s)
-    }
+    #[cfg(test)]
+    const N: usize = 4;
 
     /// The number of moves in this sequence.
+    #[inline]
     pub fn len(&self) -> usize {
-        self.moves.len()
+        self.0.len()
     }
 
     /// If this sequence has at least one move.
+    #[inline]
     pub fn is_empty(&self) -> bool {
-        self.moves.is_empty()
+        self.0.is_empty()
     }
 
     /// Iterate over the moves in this sequence.
+    #[inline]
     pub fn iter(&self) -> <&Self as IntoIterator>::IntoIter {
         self.into_iter()
     }
-
-    /// Truncates sequence to `M` moves.
-    ///
-    /// No moves are discarded if `M >= self.len()`.
-    pub fn truncate<const M: usize>(self) -> Pv<M> {
-        Pv {
-            info: self.info,
-            moves: self.moves.into_iter().take(M).collect(),
-        }
-    }
 }
 
-/// Create a [`Pv`] from an iterator.
+/// Create a [`Pv`] from an iterator of [`Move`]s.
 ///
-/// Truncates the sequence at the N-th [`Transposition`].
-impl<const N: usize> FromIterator<Transposition> for Pv<N> {
-    fn from_iter<I: IntoIterator<Item = Transposition>>(tts: I) -> Self {
-        let mut tts = tts.into_iter().filter(|t| t.depth().get() > 0).peekable();
-        let info = tts.peek().map(|t| (t.depth(), t.score()));
-        let moves = ArrayVec::from_iter(tts.take(N).map(|t| t.best()));
-        Pv { info, moves }
+/// The sequence might be truncated if the number of moves exceeds the internal capacity.
+impl FromIterator<Move> for Pv {
+    #[inline]
+    fn from_iter<I: IntoIterator<Item = Move>>(moves: I) -> Self {
+        Pv(moves.into_iter().take(Self::N).collect())
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::chess::{MoveKind, Position};
-    use crate::transposition::Table;
-    use proptest::prop_assume;
-    use proptest::sample::{size_range, Selector};
+    use proptest::sample::size_range;
     use test_strategy::proptest;
 
     #[proptest]
-    fn new_truncates_moves(d: Depth, s: Value, #[any(size_range(4..8).lift())] ms: Vec<Move>) {
+    fn len_returns_number_of_moves_in_the_sequence(pv: Pv) {
+        assert_eq!(pv.len(), pv.iter().len());
+    }
+
+    #[proptest]
+    fn is_empty_returns_whether_there_are_no_moves_in_the_sequence(pv: Pv) {
+        assert_eq!(pv.is_empty(), pv.iter().count() == 0);
+    }
+
+    #[proptest]
+    fn collects_truncated_sequence(#[any(size_range(0..=2 * Pv::N).lift())] ms: Vec<Move>) {
         assert_eq!(
-            Pv::<4>::new(d, s, ms.clone()),
-            Pv {
-                moves: ms[..4].iter().copied().collect(),
-                info: Some((d, s)),
-            }
+            Pv::from_iter(ms.clone()),
+            ms.into_iter().take(Pv::N).collect()
         );
-    }
-
-    #[proptest]
-    fn len_returns_number_of_moves_in_the_sequence(tt: Table, pos: Position) {
-        assert_eq!(tt.iter(&pos).collect::<Pv<0>>().len(), 0);
-        assert_eq!(
-            tt.iter(&pos).collect::<Pv<4>>().len(),
-            tt.iter(&pos).filter(|t| t.depth() > Depth::lower()).count()
-        );
-    }
-
-    #[proptest]
-    fn is_empty_returns_whether_there_are_no_moves_in_the_sequence(tt: Table, pos: Position) {
-        assert!(tt.iter(&pos).collect::<Pv<0>>().is_empty());
-        assert_eq!(
-            tt.iter(&pos).collect::<Pv<4>>().is_empty(),
-            tt.iter(&pos).filter(|t| t.depth() > Depth::lower()).count() == 0
-        );
-    }
-
-    #[proptest]
-    fn collects_truncated_sequence(
-        #[by_ref] tt: Table,
-        #[filter(#pos.moves(MoveKind::ANY).len() > 0)] pos: Position,
-        s: Value,
-        d: Depth,
-        #[filter(#e < #d)] e: Depth,
-        selector: Selector,
-    ) {
-        let (m, next) = selector.select(pos.moves(MoveKind::ANY));
-        prop_assume!(next.moves(MoveKind::ANY).len() > 0);
-
-        let (n, _) = selector.select(next.moves(MoveKind::ANY));
-
-        let t = Transposition::lower(d, s, m);
-        tt.unset(pos.zobrist());
-        tt.set(pos.zobrist(), t);
-
-        let u = Transposition::lower(e, s, n);
-        tt.unset(next.zobrist());
-        tt.set(next.zobrist(), u);
-
-        prop_assume!(tt.get(pos.zobrist()) == Some(t));
-        prop_assume!(tt.get(next.zobrist()) == Some(u));
-
-        assert!(tt.iter(&pos).count() > 1);
-        assert_eq!(&tt.iter(&pos).collect::<Pv<1>>()[..], [t.best()].as_slice());
-    }
-
-    #[proptest]
-    fn collects_positive_depth_only(
-        tt: Table,
-        #[filter(#pos.moves(MoveKind::ANY).len() > 0)] pos: Position,
-        s: Value,
-        #[filter(#d > Depth::lower())] d: Depth,
-        selector: Selector,
-    ) {
-        let (m, next) = selector.select(pos.moves(MoveKind::ANY));
-        prop_assume!(next.moves(MoveKind::ANY).len() > 0);
-
-        let (n, _) = selector.select(next.moves(MoveKind::ANY));
-
-        let t = Transposition::lower(d, s, m);
-        tt.unset(pos.zobrist());
-        tt.set(pos.zobrist(), t);
-
-        let u = Transposition::lower(Depth::lower(), s, n);
-        tt.unset(next.zobrist());
-        tt.set(next.zobrist(), u);
-
-        prop_assume!(tt.get(pos.zobrist()) == Some(t));
-        prop_assume!(tt.get(next.zobrist()) == Some(u));
-
-        assert!(tt.iter(&pos).count() > 1);
-        assert_eq!([t.best()].as_slice(), &*tt.iter(&pos).collect::<Pv<4>>());
-    }
-
-    #[proptest]
-    fn depth_and_score_are_available_even_if_n_is_0(
-        tt: Table,
-        #[filter(#pos.moves(MoveKind::ANY).len() > 0)] pos: Position,
-        s: Value,
-        #[filter(#d > Depth::lower())] d: Depth,
-        selector: Selector,
-    ) {
-        let (m, _) = selector.select(pos.moves(MoveKind::ANY));
-
-        let t = Transposition::lower(d, s, m);
-        tt.unset(pos.zobrist());
-        tt.set(pos.zobrist(), t);
-
-        let pv: Pv<0> = tt.iter(&pos).collect();
-        assert_eq!(pv.depth(), Some(t.depth()));
-        assert_eq!(pv.score(), Some(t.score()));
-        assert_eq!(&pv[..], [].as_slice())
-    }
-
-    #[proptest]
-    fn depth_and_score_are_not_available_if_depth_is_not_positive(
-        tt: Table,
-        #[filter(#pos.moves(MoveKind::ANY).len() > 0)] pos: Position,
-        s: Value,
-        selector: Selector,
-    ) {
-        let (m, _) = selector.select(pos.moves(MoveKind::ANY));
-
-        let t = Transposition::lower(Depth::lower(), s, m);
-        tt.unset(pos.zobrist());
-        tt.set(pos.zobrist(), t);
-
-        let pv: Pv<4> = tt.iter(&pos).collect();
-        assert_eq!(pv.depth(), None);
-        assert_eq!(pv.score(), None);
-        assert_eq!(&pv[..], [].as_slice())
     }
 }

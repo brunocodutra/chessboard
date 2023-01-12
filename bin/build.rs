@@ -31,6 +31,24 @@ impl Build for EngineConfig {
 }
 
 #[cfg(test)]
+mockall::mock! {
+    #[derive(Debug)]
+    pub Builder<T> {}
+    impl<T> Build for Builder<T> {
+        type Output = T;
+        type Error = String;
+        fn build(self) -> Result<T, String>;
+    }
+}
+
+#[cfg(test)]
+impl<T> std::fmt::Display for MockBuilder<T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        std::fmt::Debug::fmt(&self, f)
+    }
+}
+
+#[cfg(test)]
 mod tests {
     use super::*;
     use crate::engine::UciOptions;

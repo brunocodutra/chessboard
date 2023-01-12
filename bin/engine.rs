@@ -1,10 +1,9 @@
-use crate::io::Process;
-use crate::player::Player;
+use crate::{io::Process, player::Player};
 use async_stream::stream;
 use derive_more::{DebugCustom, Display, Error, From};
 use futures_util::{future::BoxFuture, stream::BoxStream};
 use lib::chess::{Move, Position};
-use lib::search::{Limits, Options, Pv};
+use lib::search::{Limits, Options, Report};
 use serde::{Deserialize, Serialize};
 use std::str::FromStr;
 use test_strategy::Arbitrary;
@@ -82,11 +81,11 @@ impl Player for Engine {
         })
     }
 
-    fn analyze<'a, 'b, 'c, const N: usize>(
+    fn analyze<'a, 'b, 'c>(
         &'a mut self,
         pos: &'b Position,
         limits: Limits,
-    ) -> BoxStream<'c, Result<Pv<N>, Self::Error>>
+    ) -> BoxStream<'c, Result<Report, Self::Error>>
     where
         'a: 'c,
         'b: 'c,

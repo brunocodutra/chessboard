@@ -1,5 +1,5 @@
 use crate::{build::Build, engine::EngineConfig, player::Player};
-use anyhow::{Context, Error as Anyhow};
+use anyhow::Error as Anyhow;
 use clap::Parser;
 use futures_util::TryStreamExt;
 use lib::chess::{Color, Fen};
@@ -27,19 +27,16 @@ impl Analyze {
     pub async fn execute(self) -> Result<(), Anyhow> {
         let pos = self.fen.try_into()?;
         let mut engine = self.engine.build()?;
-        let mut analysis = engine.analyze::<256>(&pos, self.limits);
+        let mut analysis = engine.analyze(&pos, self.limits);
 
-        while let Some(pv) = analysis.try_next().await? {
-            let (d, s) =
-                Option::zip(pv.depth(), pv.score()).context("no principal variation found")?;
-
+        while let Some(r) = analysis.try_next().await? {
             info!(
-                depth = %d,
+                depth = %r.depth(),
                 score = %match pos.turn() {
-                    Color::White => s,
-                    Color::Black => -s,
+                    Color::White => r.score(),
+                    Color::Black => -r.score(),
                 },
-                %pv
+                pv = %r.pv(),
             );
         }
 

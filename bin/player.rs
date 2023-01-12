@@ -1,8 +1,9 @@
 use futures_util::{future::BoxFuture, stream::BoxStream};
 use lib::chess::{Move, Position};
-use lib::search::{Limits, Pv};
+use lib::search::{Limits, Report};
 
 /// Trait for types that know how to analyze chess [`Position`]s.
+#[cfg_attr(test, mockall::automock(type Error = String;))]
 pub trait Player {
     /// The reason why the [`Player`] was unable to continue.
     type Error;
@@ -18,11 +19,11 @@ pub trait Player {
         'b: 'c;
 
     /// Analyzes a [`Position`].
-    fn analyze<'a, 'b, 'c, const N: usize>(
+    fn analyze<'a, 'b, 'c>(
         &'a mut self,
         pos: &'b Position,
         limits: Limits,
-    ) -> BoxStream<'c, Result<Pv<N>, Self::Error>>
+    ) -> BoxStream<'c, Result<Report, Self::Error>>
     where
         'a: 'c,
         'b: 'c;

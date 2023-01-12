@@ -1,5 +1,5 @@
 use super::{Iter, OptionalSignedTransposition, Signature, Transposition};
-use crate::chess::{Position, Zobrist};
+use crate::chess::{Move, Position, Zobrist};
 use crate::util::{Binary, Cache};
 use proptest::{collection::*, prelude::*};
 use std::mem::size_of;
@@ -19,8 +19,7 @@ pub struct Table {
         }
 
         cache
-    })
-    .no_shrink())]
+    }))]
     cache: Cache<<OptionalSignedTransposition as Binary>::Bits>,
 }
 
@@ -89,9 +88,14 @@ impl Table {
         self.cache.store(self.index_of(key), None.encode())
     }
 
-    /// An iterator for the principal variation from a starting [`Position`].
-    pub fn iter(&self, pos: &Position) -> Iter<'_> {
+    /// An iterator for a sequence of [`Transposition`]s from a starting [`Position`].
+    pub fn iter(&self, pos: &Position) -> impl Iterator<Item = Transposition> + '_ {
         Iter::new(self, pos.clone())
+    }
+
+    /// An iterator for the principal variation from a starting [`Position`].
+    pub fn pv(&self, pos: &Position) -> impl Iterator<Item = Move> + '_ {
+        self.iter(pos).map(|t| t.best())
     }
 }
 
