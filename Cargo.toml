@@ -16,7 +16,7 @@ async-stream = { version = "0.3.3", default-features = false }
 async-trait = { version = "0.1.61", default-features = false }
 atomic = { version = "0.5.1", default-features = false, features = ["std"] }
 bitflags = { version = "1.3.2", default-features = false }
-clap = { version = "4.0.29", default-features = false, features = [
+clap = { version = "4.1.1", default-features = false, features = [
     "color",
     "derive",
     "error-context",
