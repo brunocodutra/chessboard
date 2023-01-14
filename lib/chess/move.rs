@@ -8,8 +8,8 @@ use vampirc_uci::UciMove;
 /// A chess move.
 #[derive(DebugCustom, Display, Copy, Clone, Eq, PartialEq, Hash, Arbitrary)]
 #[filter(#self.0 != #self.1)]
-#[debug(fmt = "Move({})", self)]
-#[display(fmt = "{}{}{}", _0, _1, _2)]
+#[debug(fmt = "Move({self})")]
+#[display(fmt = "{_0}{_1}{_2}")]
 pub struct Move(Square, Square, Promotion);
 
 impl Move {
@@ -95,7 +95,7 @@ impl From<sm::uci::Uci> for Move {
                 promotion,
             } => Move(from.into(), to.into(), promotion.into()),
 
-            v => panic!("unexpected {:?}", v),
+            v => panic!("unexpected {v:?}"),
         }
     }
 }

@@ -7,8 +7,8 @@ use test_strategy::Arbitrary;
 
 /// Denotes a column on the chess board.
 #[derive(DebugCustom, Display, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Arbitrary)]
-#[debug(fmt = "{}", self)]
-#[display(fmt = "{}", _0)]
+#[debug(fmt = "{self}")]
+#[display(fmt = "{_0}")]
 pub struct File(#[strategy(select(sm::File::ALL.as_ref()))] sm::File);
 
 impl File {

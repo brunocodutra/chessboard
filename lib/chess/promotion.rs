@@ -76,7 +76,7 @@ impl From<Option<UciPiece>> for Promotion {
             Some(UciPiece::Bishop) => Promotion::Bishop,
             Some(UciPiece::Rook) => Promotion::Rook,
             Some(UciPiece::Queen) => Promotion::Queen,
-            Some(v) => panic!("unexpected {:?}", v),
+            Some(v) => panic!("unexpected {v:?}"),
         }
     }
 }
@@ -90,7 +90,7 @@ impl From<Option<sm::Role>> for Promotion {
             Some(sm::Role::Bishop) => Promotion::Bishop,
             Some(sm::Role::Rook) => Promotion::Rook,
             Some(sm::Role::Queen) => Promotion::Queen,
-            Some(v) => panic!("unexpected {:?}", v),
+            Some(v) => panic!("unexpected {v:?}"),
         }
     }
 }

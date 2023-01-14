@@ -5,10 +5,13 @@ use std::{str::FromStr, time::Duration};
 use test_strategy::Arbitrary;
 
 /// Configuration for search limits.
-#[derive(Debug, Display, Copy, Clone, Eq, PartialEq, Arbitrary, From, Deserialize, Serialize)]
+#[derive(
+    Debug, Display, Default, Copy, Clone, Eq, PartialEq, Arbitrary, From, Deserialize, Serialize,
+)]
 #[serde(deny_unknown_fields, rename_all = "lowercase")]
 pub enum Limits {
     /// Unlimited search.
+    #[default]
     #[display(fmt = "{}", "ron::ser::to_string(self).unwrap()")]
     None,
 
@@ -20,12 +23,6 @@ pub enum Limits {
     #[display(fmt = "{}", "ron::ser::to_string(self).unwrap()")]
     #[serde(with = "humantime_serde")]
     Time(Duration),
-}
-
-impl Default for Limits {
-    fn default() -> Self {
-        Limits::None
-    }
 }
 
 /// The reason why parsing [`Limits`] failed.

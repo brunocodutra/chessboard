@@ -9,7 +9,7 @@ use vampirc_uci::UciSquare;
 
 /// Denotes a square on the chess board.
 #[derive(DebugCustom, Display, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Arbitrary)]
-#[debug(fmt = "{}", self)]
+#[debug(fmt = "{self}")]
 #[display(fmt = "{}{}", "self.file()", "self.rank()")]
 pub struct Square(#[strategy(select(sm::Square::ALL.as_ref()))] sm::Square);
 
