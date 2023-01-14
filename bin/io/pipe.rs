@@ -77,7 +77,7 @@ mod tests {
         let (stdin, mut rx) = duplex(s.len() + 1);
         let (_, stdout) = duplex(1);
 
-        let expected = format!("{}\n", s);
+        let expected = format!("{s}\n");
 
         let mut pipe = Pipe::new(stdin, BufReader::new(stdout));
         rt.block_on(pipe.send(&s))?;

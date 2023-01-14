@@ -16,8 +16,8 @@ fn ones<T: PrimInt + Unsigned>(n: u32) -> T {
 /// A fixed width collection of bits.
 #[derive(DebugCustom, Display, Copy, Clone, Eq, PartialEq, Hash, Arbitrary)]
 #[arbitrary(bound(T: Debug, RangeInclusive<T>: Strategy<Value = T>))]
-#[debug(fmt = "Bits({})", self)]
-#[display(fmt = "{:b}", _0)]
+#[debug(fmt = "Bits({self})")]
+#[display(fmt = "{_0:b}")]
 pub struct Bits<T: 'static + Binary + PrimInt + Unsigned, const W: u32>(
     #[strategy(T::zero()..=ones(W))] T,
 );

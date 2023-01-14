@@ -118,7 +118,7 @@ impl Searcher {
     where
         I: Iterator<Item = Position>,
     {
-        assert!(!bounds.is_empty(), "{:?} ≠ ∅", bounds);
+        assert!(!bounds.is_empty(), "{bounds:?} ≠ ∅");
 
         let (alpha, beta) = (bounds.start.max(self.eval(pos)), bounds.end);
 
@@ -235,7 +235,7 @@ impl Searcher {
         draft: Draft,
         timer: Timer,
     ) -> Result<Score, Timeout> {
-        assert!(!bounds.is_empty(), "{:?} ≠ ∅", bounds);
+        assert!(!bounds.is_empty(), "{bounds:?} ≠ ∅");
 
         timer.elapsed()?;
         let zobrist = pos.zobrist();

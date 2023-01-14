@@ -8,8 +8,8 @@ use test_strategy::Arbitrary;
 ///
 /// [algebraic notation]: https://www.chessprogramming.org/Algebraic_Chess_Notation
 #[derive(DebugCustom, Display, Clone, Eq, PartialEq, Hash, Arbitrary)]
-#[debug(fmt = "San({})", self)]
-#[display(fmt = "{}", _0)]
+#[debug(fmt = "San({self})")]
+#[display(fmt = "{_0}")]
 pub struct San(
     #[strategy(any::<(Position, Selector)>().prop_filter_map("end position", |(pos, selector)| {
             let m = selector.try_select(sm::Position::legal_moves(pos.as_ref()))?;

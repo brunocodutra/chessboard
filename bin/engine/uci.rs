@@ -18,7 +18,7 @@ pub type UciOptions = HashMap<String, Option<String>>;
 #[debug(bound = "T: Debug")]
 #[debug(fmt = "Lazy({})")]
 enum Lazy<T, E> {
-    #[debug(fmt = "{:?}", _0)]
+    #[debug(fmt = "{_0:?}")]
     Initialized(T),
     #[debug(fmt = "?")]
     Uninitialized(Pin<Box<dyn Future<Output = Result<T, E>> + Send + 'static>>),

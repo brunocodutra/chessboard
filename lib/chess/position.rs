@@ -50,7 +50,7 @@ pub type Zobrist = Bits<u64, 64>;
 
 /// Represents an illegal [`Move`] in a given [`Position`].
 #[derive(Debug, Display, Clone, Eq, PartialEq, Arbitrary, Error)]
-#[display(fmt = "move `{}` is illegal in this position", _0)]
+#[display(fmt = "move `{_0}` is illegal in this position")]
 pub struct IllegalMove(#[error(not(source))] pub Move);
 
 /// Represents an impossible [null-move] in a given [`Position`].
@@ -64,7 +64,7 @@ pub struct ImpossiblePass;
 ///
 /// This type guarantees that it only holds valid positions.
 #[derive(DebugCustom, Display, Default, Clone, Eq, PartialEq, Hash, Arbitrary)]
-#[debug(fmt = "Position({})", self)]
+#[debug(fmt = "Position({self})")]
 #[display(fmt = "{}", "Fen::from(self.clone())")]
 pub struct Position(
     #[strategy((0..256, any::<Selector>()).prop_map(|(moves, selector)| {

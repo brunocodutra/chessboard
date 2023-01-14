@@ -46,8 +46,8 @@ impl Play {
 }
 
 #[derive(DebugCustom, Display, Copy, Clone)]
-#[debug(fmt = "{}", self)]
-#[display(fmt = "[{:+.2}, {:+.2}]", _0, _1)]
+#[debug(fmt = "{self}")]
+#[display(fmt = "[{_0:+.2}, {_1:+.2}]")]
 struct ΔELO(f64, f64);
 
 impl ΔELO {
@@ -98,7 +98,7 @@ pub async fn play(
             );
         }
 
-        println!("{}\n", pgn);
+        println!("{pgn}\n");
     }
 
     Ok(())

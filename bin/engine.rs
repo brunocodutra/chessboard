@@ -60,9 +60,9 @@ pub enum EngineError {
 #[derive(DebugCustom, From)]
 #[allow(clippy::large_enum_variant)]
 pub enum Engine {
-    #[debug(fmt = "{:?}", _0)]
+    #[debug(fmt = "{_0:?}")]
     Ai(Ai),
-    #[debug(fmt = "{:?}", _0)]
+    #[debug(fmt = "{_0:?}")]
     Uci(Uci<Process>),
 }
 
@@ -122,20 +122,17 @@ mod tests {
         );
 
         assert_eq!(
-            format!("ai({})", l).parse(),
+            format!("ai({l})").parse(),
             Ok(EngineConfig::Ai(l, Options::default()))
         );
 
-        assert_eq!(
-            format!("ai({}, {})", l, o).parse(),
-            Ok(EngineConfig::Ai(l, o))
-        );
+        assert_eq!(format!("ai({l}, {o})").parse(), Ok(EngineConfig::Ai(l, o)));
     }
 
     #[proptest]
     fn uci_config_is_deserializable(p: String, l: Limits, o: UciOptions) {
         assert_eq!(
-            format!("uci({:?})", p).parse(),
+            format!("uci({p:?})").parse(),
             Ok(EngineConfig::Uci(
                 p.clone(),
                 Limits::default(),
@@ -144,12 +141,12 @@ mod tests {
         );
 
         assert_eq!(
-            format!("uci({:?}, {})", p, l).parse(),
+            format!("uci({p:?}, {l})").parse(),
             Ok(EngineConfig::Uci(p.clone(), l, UciOptions::default()))
         );
 
         assert_eq!(
-            format!("uci({:?}, {}, {})", p, l, ron::ser::to_string(&o)?).parse(),
+            format!("uci({p:?}, {l}, {})", ron::ser::to_string(&o)?).parse(),
             Ok(EngineConfig::Uci(p, l, o))
         );
     }

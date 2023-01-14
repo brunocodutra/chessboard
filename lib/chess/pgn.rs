@@ -24,7 +24,7 @@ impl Display for Pgn {
                 write!(f, "{}. ", i / 2 + 1)?;
             }
 
-            write!(f, "{} ", san)?;
+            write!(f, "{san} ")?;
         }
 
         match self.outcome {

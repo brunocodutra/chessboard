@@ -7,8 +7,8 @@ use test_strategy::Arbitrary;
 
 /// Denotes a row on the chess board.
 #[derive(DebugCustom, Display, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Arbitrary)]
-#[debug(fmt = "{}", self)]
-#[display(fmt = "{}", _0)]
+#[debug(fmt = "{self}")]
+#[display(fmt = "{_0}")]
 pub struct Rank(#[strategy(select(sm::Rank::ALL.as_ref()))] sm::Rank);
 
 impl Rank {

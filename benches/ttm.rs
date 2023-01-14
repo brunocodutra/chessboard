@@ -21,7 +21,7 @@ fn ttm(c: &mut Criterion, name: &str, edps: &[(&str, &str)]) {
     };
 
     c.benchmark_group("benches")
-        .bench_function(format!("ttm/{}", name), |b| {
+        .bench_function(format!("ttm/{name}"), |b| {
             b.iter_batched_ref(
                 || {
                     (

@@ -3,15 +3,16 @@ use num_traits::{cast, clamp, Bounded, NumCast, PrimInt};
 use proptest::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::ops::{Add, Neg, RangeInclusive, Sub};
-use std::{cmp::Ordering, fmt::Debug};
+use std::{cmp::Ordering, fmt};
 use test_strategy::Arbitrary;
 
 /// A saturating numeric type.
 #[derive(
     Debug, Display, Default, Copy, Clone, Eq, Ord, Hash, Arbitrary, Serialize, Deserialize,
 )]
-#[arbitrary(bound(T: Debug + 'static, RangeInclusive<T>: Strategy<Value = T>))]
-#[display(fmt = "{}", _0)]
+#[arbitrary(bound(T: fmt::Debug + 'static, RangeInclusive<T>: Strategy<Value = T>))]
+#[display(bound = "T: fmt::Display")]
+#[display(fmt = "{_0}")]
 #[serde(into = "i64", try_from = "i64")]
 pub struct Saturating<T: PrimInt, const MIN: i64, const MAX: i64>(
     #[strategy(Self::lower().get()..=Self::upper().get())] T,
@@ -71,7 +72,7 @@ impl<T: PrimInt, const MIN: i64, const MAX: i64> From<Saturating<T, MIN, MAX>> f
 
 /// The reason why converting [`Saturating`] from an integer failed.
 #[derive(Debug, Display, Clone, Eq, PartialEq, Error)]
-#[display(fmt = "expected integer in the range `({}..={})`", MIN, MAX)]
+#[display(fmt = "expected integer in the range `({MIN}..={MAX})`")]
 pub struct OutOfRange<const MIN: i64, const MAX: i64>;
 
 impl<T: PrimInt, const MIN: i64, const MAX: i64> TryFrom<i64> for Saturating<T, MIN, MAX> {
