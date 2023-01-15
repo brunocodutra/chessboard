@@ -106,13 +106,7 @@ mod tests {
     use tokio::runtime;
 
     #[proptest]
-    fn play_finds_best_move(
-        l: Limits,
-        pos: Position,
-        #[by_ref]
-        #[filter(!#pv.is_empty())]
-        pv: Pv<4>,
-    ) {
+    fn play_finds_best_move(l: Limits, pos: Position, #[filter(!#pv.is_empty())] pv: Pv<4>) {
         let rt = runtime::Builder::new_multi_thread().build()?;
 
         let mut strategy = Strategy::new();

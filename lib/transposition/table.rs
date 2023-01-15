@@ -166,7 +166,7 @@ mod tests {
 
     #[proptest]
     fn set_ignores_the_signature_mismatch(
-        tt: Table,
+        #[by_ref] tt: Table,
         t: Transposition,
         #[filter(#u.depth() > #t.depth())] u: Transposition,
         k: Zobrist,

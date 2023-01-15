@@ -338,9 +338,7 @@ mod tests {
         o: UciOptions,
         pos: Position,
         m: Move,
-        #[by_ref]
-        #[filter(matches!(uci::parse_one(#msg.trim()), UciMessage::Unknown(_, _)))]
-        msg: String,
+        #[filter(matches!(uci::parse_one(#msg.trim()), UciMessage::Unknown(_, _)))] msg: String,
     ) {
         let rt = runtime::Builder::new_multi_thread().build()?;
         let mut io = MockIo::new();
@@ -378,7 +376,6 @@ mod tests {
         o: UciOptions,
         pos: Position,
         m: Move,
-        #[by_ref]
         #[filter(!matches!(#msg, UciMessage::UciOk))]
         #[strategy(any_uci_message())]
         msg: UciMessage,
@@ -661,9 +658,7 @@ mod tests {
         l: Limits,
         pos: Position,
         m: Move,
-        #[by_ref]
-        #[filter(matches!(uci::parse_one(#msg.trim()), UciMessage::Unknown(_, _)))]
-        msg: String,
+        #[filter(matches!(uci::parse_one(#msg.trim()), UciMessage::Unknown(_, _)))] msg: String,
     ) {
         let rt = runtime::Builder::new_multi_thread().build()?;
         let mut io = MockIo::new();
@@ -695,7 +690,6 @@ mod tests {
         l: Limits,
         pos: Position,
         m: Move,
-        #[by_ref]
         #[filter(!matches!(#msg, UciMessage::BestMove { .. }))]
         #[strategy(any_uci_message())]
         msg: UciMessage,

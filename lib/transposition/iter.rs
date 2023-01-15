@@ -44,9 +44,7 @@ mod tests {
         #[by_ref]
         #[filter(#tt.capacity() > 1)]
         tt: Table,
-        #[by_ref]
-        #[filter(#pos.moves(MoveKind::ANY).len() > 0)]
-        pos: Position,
+        #[filter(#pos.moves(MoveKind::ANY).len() > 0)] pos: Position,
         d: Depth,
         s: Value,
         selector: Selector,
@@ -74,8 +72,8 @@ mod tests {
 
     #[proptest]
     fn iterates_over_legal_moves_only(
-        tt: Table,
-        #[by_ref] pos: Position,
+        #[by_ref] tt: Table,
+        pos: Position,
         #[filter(#pos.clone().make(#t.best()).is_err())] t: Transposition,
     ) {
         tt.unset(pos.zobrist());
