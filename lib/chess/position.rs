@@ -490,7 +490,7 @@ mod tests {
 
     #[proptest]
     fn attacks_returns_empty_iterator_if_square_is_not_occupied(
-        #[by_ref] pos: Position,
+        pos: Position,
         #[filter(#pos[#s].is_none())] s: Square,
     ) {
         assert_eq!(pos.attacks(s).len(), 0);
@@ -588,9 +588,7 @@ mod tests {
 
     #[proptest]
     fn legal_move_updates_position(
-        #[by_ref]
-        #[filter(#pos.moves(MoveKind::ANY).len() > 0)]
-        mut pos: Position,
+        #[filter(#pos.moves(MoveKind::ANY).len() > 0)] mut pos: Position,
         selector: Selector,
     ) {
         let (m, next) = selector.select(pos.moves(MoveKind::ANY));
@@ -602,7 +600,7 @@ mod tests {
 
     #[proptest]
     fn illegal_move_fails_without_changing_position(
-        #[by_ref] mut pos: Position,
+        mut pos: Position,
         #[filter(#pos.clone().make(#m).is_err())] m: Move,
     ) {
         let before = pos.clone();
@@ -611,11 +609,7 @@ mod tests {
     }
 
     #[proptest]
-    fn pass_updates_position(
-        #[by_ref]
-        #[filter(!#pos.is_check())]
-        mut pos: Position,
-    ) {
+    fn pass_updates_position(#[filter(!#pos.is_check())] mut pos: Position) {
         let before = pos.clone();
         assert_eq!(pos.pass(), Ok(San::null()));
         assert_ne!(pos, before);
@@ -623,9 +617,7 @@ mod tests {
 
     #[proptest]
     fn impossible_pass_fails_without_changing_position(
-        #[by_ref]
-        #[filter(#pos.clone().pass().is_err())]
-        mut pos: Position,
+        #[filter(#pos.clone().pass().is_err())] mut pos: Position,
     ) {
         let before = pos.clone();
         assert_eq!(pos.pass(), Err(ImpossiblePass));

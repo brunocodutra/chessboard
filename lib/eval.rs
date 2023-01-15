@@ -87,12 +87,7 @@ mod tests {
     use test_strategy::proptest;
 
     #[proptest]
-    fn position_evaluation_is_symmetric(
-        e: Evaluator,
-        #[by_ref]
-        #[filter(!#pos.is_check())]
-        pos: Position,
-    ) {
+    fn position_evaluation_is_symmetric(e: Evaluator, #[filter(!#pos.is_check())] pos: Position) {
         let mut mirror = pos.clone();
         mirror.pass()?;
 

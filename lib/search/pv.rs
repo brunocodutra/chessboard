@@ -119,10 +119,8 @@ mod tests {
 
     #[proptest]
     fn collects_truncated_sequence(
-        tt: Table,
-        #[by_ref]
-        #[filter(#pos.moves(MoveKind::ANY).len() > 0)]
-        pos: Position,
+        #[by_ref] tt: Table,
+        #[filter(#pos.moves(MoveKind::ANY).len() > 0)] pos: Position,
         s: Value,
         d: Depth,
         #[filter(#e < #d)] e: Depth,
@@ -151,9 +149,7 @@ mod tests {
     #[proptest]
     fn collects_positive_depth_only(
         tt: Table,
-        #[by_ref]
-        #[filter(#pos.moves(MoveKind::ANY).len() > 0)]
-        pos: Position,
+        #[filter(#pos.moves(MoveKind::ANY).len() > 0)] pos: Position,
         s: Value,
         #[filter(#d > Depth::lower())] d: Depth,
         selector: Selector,
@@ -181,9 +177,7 @@ mod tests {
     #[proptest]
     fn depth_and_score_are_available_even_if_n_is_0(
         tt: Table,
-        #[by_ref]
-        #[filter(#pos.moves(MoveKind::ANY).len() > 0)]
-        pos: Position,
+        #[filter(#pos.moves(MoveKind::ANY).len() > 0)] pos: Position,
         s: Value,
         #[filter(#d > Depth::lower())] d: Depth,
         selector: Selector,
@@ -203,9 +197,7 @@ mod tests {
     #[proptest]
     fn depth_and_score_are_not_available_if_depth_is_not_positive(
         tt: Table,
-        #[by_ref]
-        #[filter(#pos.moves(MoveKind::ANY).len() > 0)]
-        pos: Position,
+        #[filter(#pos.moves(MoveKind::ANY).len() > 0)] pos: Position,
         s: Value,
         selector: Selector,
     ) {

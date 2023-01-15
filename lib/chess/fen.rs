@@ -94,7 +94,7 @@ mod test {
 
     #[proptest]
     fn parsing_invalid_fen_fails(
-        #[by_ref] fen: Fen,
+        fen: Fen,
         #[strategy(..=#fen.to_string().len())] n: usize,
         #[strategy("[^[:ascii:]]+")] r: String,
     ) {

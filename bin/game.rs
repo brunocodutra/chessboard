@@ -148,11 +148,7 @@ mod tests {
     }
 
     #[proptest]
-    fn game_ends_when_it_is_over(
-        #[by_ref]
-        #[filter(#pos.outcome().is_some())]
-        pos: Position,
-    ) {
+    fn game_ends_when_it_is_over(#[filter(#pos.outcome().is_some())] pos: Position) {
         let rt = runtime::Builder::new_multi_thread().build()?;
 
         let w = MockPlayer::new();
@@ -251,9 +247,7 @@ mod tests {
 
     #[proptest]
     fn game_interrupts_if_player_fails_to_act(
-        #[by_ref]
-        #[filter(#pos.outcome().is_none())]
-        pos: Position,
+        #[filter(#pos.outcome().is_none())] pos: Position,
         e: String,
     ) {
         let rt = runtime::Builder::new_multi_thread().build()?;

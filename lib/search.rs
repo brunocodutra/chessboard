@@ -3,7 +3,6 @@ use crate::eval::{Eval, Evaluator, Value};
 use crate::transposition::{Table, Transposition};
 use crate::util::{Timeout, Timer};
 use derive_more::{Deref, Neg};
-use proptest::prelude::*;
 use rayon::{iter::once, prelude::*};
 use rayon::{ThreadPool, ThreadPoolBuilder};
 use std::sync::atomic::{AtomicI16, Ordering};
@@ -31,10 +30,9 @@ struct Score(#[deref] Value, Draft);
 #[derive(Debug, Arbitrary)]
 pub struct Searcher {
     evaluator: Evaluator,
-    #[strategy(any::<Options>().prop_map(|o|
-        ThreadPoolBuilder::new().num_threads(o.threads.get()).build().unwrap()))]
+    #[map(|o: Options|ThreadPoolBuilder::new().num_threads(o.threads.get()).build().unwrap())]
     executor: ThreadPool,
-    #[strategy(any::<Options>().prop_map(|o| Table::new(o.hash)))]
+    #[map(|o: Options| Table::new(o.hash))]
     tt: Table,
 }
 
@@ -506,9 +504,7 @@ mod tests {
     #[proptest]
     fn search_avoids_tt_collisions(
         mut s: Searcher,
-        #[by_ref]
-        #[filter(#pos.outcome().is_none())]
-        pos: Position,
+        #[filter(#pos.outcome().is_none())] pos: Position,
         #[filter(#d > Depth::new(0))] d: Depth,
         t: Transposition,
     ) {
