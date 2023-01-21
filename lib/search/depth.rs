@@ -1,5 +1,5 @@
 use crate::util::{Binary, Bits, Bounds, Saturating};
-use std::convert::Infallible;
+use std::{convert::Infallible, fmt};
 
 pub struct DepthBounds;
 
@@ -14,6 +14,7 @@ impl Bounds for DepthBounds {
     const UPPER: Self::Integer = 3;
 }
 
+/// The search depth.
 pub type Depth = Saturating<DepthBounds>;
 
 impl Binary for Depth {
@@ -26,6 +27,12 @@ impl Binary for Depth {
 
     fn decode(bits: Self::Bits) -> Result<Self, Self::Error> {
         Ok(Depth::new(bits.get()))
+    }
+}
+
+impl fmt::Display for Depth {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.get())
     }
 }
 

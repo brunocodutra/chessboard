@@ -1,6 +1,6 @@
-use crate::search::Depth;
+use crate::chess::Move;
+use crate::search::{Depth, Score};
 use crate::util::{Binary, Bits};
-use crate::{chess::Move, eval::Value};
 use derive_more::{Display, Error};
 use std::{cmp::Ordering, ops::RangeInclusive};
 use test_strategy::Arbitrary;
@@ -23,7 +23,7 @@ enum Kind {
 pub struct Transposition {
     kind: Kind,
     depth: Depth,
-    score: Value,
+    score: Score,
     best: Move,
 }
 
@@ -40,7 +40,7 @@ impl Ord for Transposition {
 }
 
 impl Transposition {
-    fn new(kind: Kind, depth: Depth, score: Value, best: Move) -> Self {
+    fn new(kind: Kind, depth: Depth, score: Score, best: Move) -> Self {
         Transposition {
             kind,
             depth,
@@ -50,25 +50,25 @@ impl Transposition {
     }
 
     /// Constructs a [`Transposition`] given a lower bound for the score, the depth searched, and best [`Move`].
-    pub fn lower(depth: Depth, score: Value, best: Move) -> Self {
+    pub fn lower(depth: Depth, score: Score, best: Move) -> Self {
         Transposition::new(Kind::Lower, depth, score, best)
     }
 
     /// Constructs a [`Transposition`] given an upper bound for the score, the depth searched, and best [`Move`].
-    pub fn upper(depth: Depth, score: Value, best: Move) -> Self {
+    pub fn upper(depth: Depth, score: Score, best: Move) -> Self {
         Transposition::new(Kind::Upper, depth, score, best)
     }
 
     /// Constructs a [`Transposition`] given the exact score, the depth searched, and best [`Move`].
-    pub fn exact(depth: Depth, score: Value, best: Move) -> Self {
+    pub fn exact(depth: Depth, score: Score, best: Move) -> Self {
         Transposition::new(Kind::Exact, depth, score, best)
     }
 
     /// Bounds for the exact score.
-    pub fn bounds(&self) -> RangeInclusive<Value> {
+    pub fn bounds(&self) -> RangeInclusive<Score> {
         match self.kind {
-            Kind::Lower => self.score..=Value::upper(),
-            Kind::Upper => Value::lower()..=self.score,
+            Kind::Lower => self.score..=Score::upper(),
+            Kind::Upper => Score::lower()..=self.score,
             Kind::Exact => self.score..=self.score,
         }
     }
@@ -79,7 +79,7 @@ impl Transposition {
     }
 
     /// Partial score.
-    pub fn score(&self) -> Value {
+    pub fn score(&self) -> Score {
         self.score
     }
 
@@ -103,8 +103,8 @@ impl From<<Move as Binary>::Error> for DecodeTranspositionError {
     }
 }
 
-impl From<<Value as Binary>::Error> for DecodeTranspositionError {
-    fn from(_: <Value as Binary>::Error) -> Self {
+impl From<<Score as Binary>::Error> for DecodeTranspositionError {
+    fn from(_: <Score as Binary>::Error) -> Self {
         DecodeTranspositionError
     }
 }
@@ -148,7 +148,7 @@ impl Binary for OptionalSignedTransposition {
                         .nth(bits.pop::<_, 2>().get())
                         .ok_or(DecodeTranspositionError)?,
                     depth: Depth::decode(bits.pop())?,
-                    score: Value::decode(bits.pop())?,
+                    score: Score::decode(bits.pop())?,
                     best: Move::decode(bits.pop())?,
                 },
                 bits.pop(),
@@ -163,7 +163,7 @@ mod tests {
     use test_strategy::proptest;
 
     #[proptest]
-    fn lower_constructs_lower_bound_transposition(s: Value, d: Depth, m: Move) {
+    fn lower_constructs_lower_bound_transposition(s: Score, d: Depth, m: Move) {
         assert_eq!(
             Transposition::lower(d, s, m),
             Transposition::new(Kind::Lower, d, s, m)
@@ -171,7 +171,7 @@ mod tests {
     }
 
     #[proptest]
-    fn upper_constructs_upper_bound_transposition(s: Value, d: Depth, m: Move) {
+    fn upper_constructs_upper_bound_transposition(s: Score, d: Depth, m: Move) {
         assert_eq!(
             Transposition::upper(d, s, m),
             Transposition::new(Kind::Upper, d, s, m)
@@ -179,7 +179,7 @@ mod tests {
     }
 
     #[proptest]
-    fn exact_constructs_exact_transposition(s: Value, d: Depth, m: Move) {
+    fn exact_constructs_exact_transposition(s: Score, d: Depth, m: Move) {
         assert_eq!(
             Transposition::exact(d, s, m),
             Transposition::new(Kind::Exact, d, s, m)

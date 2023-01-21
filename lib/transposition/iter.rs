@@ -34,7 +34,8 @@ impl<'a> Iterator for Iter<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{chess::MoveKind, eval::Value, search::Depth};
+    use crate::chess::MoveKind;
+    use crate::search::{Depth, Score};
     use proptest::{prop_assume, sample::Selector};
     use test_strategy::proptest;
 
@@ -45,7 +46,7 @@ mod tests {
         tt: Table,
         #[filter(#pos.moves(MoveKind::ANY).len() > 0)] pos: Position,
         #[filter(#d > Depth::new(0))] d: Depth,
-        s: Value,
+        s: Score,
         selector: Selector,
     ) {
         let (m, next) = selector.select(pos.moves(MoveKind::ANY));

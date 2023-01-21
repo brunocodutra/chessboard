@@ -6,7 +6,7 @@ use derive_more::{DebugCustom, Display, Error, From};
 use futures_util::{future::BoxFuture, stream::BoxStream};
 use lib::chess::{Move, Position};
 use lib::eval::Value;
-use lib::search::{Depth, Limits, Report};
+use lib::search::{Depth, Limits, Ply, Report, Score};
 use std::{collections::HashMap, fmt::Debug, future::Future, io, pin::Pin, time::Instant};
 use tokio::{runtime, task::block_in_place, time::timeout};
 use tracing::{debug, error, instrument};
@@ -181,15 +181,15 @@ impl<T: Io + Send + 'static> Player for Uci<T> {
                         }
 
                         if let UciInfoAttribute::Score { mate: Some(d), .. } = i {
-                            if d > 0 {
-                                score = Some(Value::upper());
+                            score = if d > 0 {
+                                Some(Score::upper().normalize(Ply::saturate(d * 2 - 1)))
                             } else {
-                                score = Some(Value::lower());
-                            }
+                                Some(-Score::upper().normalize(Ply::saturate(d * 2)))
+                            };
                         }
 
                         if let UciInfoAttribute::Score { cp: Some(s), .. } = i {
-                            score = Some(Value::saturate(s));
+                            score = Some(Value::saturate(s).cast());
                         }
 
                         if let UciInfoAttribute::Pv(m) = i {
@@ -765,9 +765,15 @@ mod tests {
         prop_assume!(limits != Limits::None);
 
         for r in rs.iter().take(n) {
+            let score = match r.score().mate() {
+                Some(p) if p > 0 => UciInfoAttribute::from_mate((p.get() + 1) / 2),
+                Some(p) => UciInfoAttribute::from_mate((p.get() - 1) / 2),
+                None => UciInfoAttribute::from_centipawns(r.score().get().into()),
+            };
+
             let attrs = vec![
+                score,
                 UciInfoAttribute::Depth(r.depth().get()),
-                UciInfoAttribute::from_centipawns(r.score().get().into()),
                 UciInfoAttribute::Pv(r.pv().iter().copied().map(|m| m.into()).collect()),
             ];
 

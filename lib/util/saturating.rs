@@ -9,10 +9,9 @@ use std::{cmp::Ordering, marker::PhantomData};
 use test_strategy::Arbitrary;
 
 /// A saturating bounded integer.
-#[derive(DebugCustom, Display, Arbitrary, Serialize, Deserialize)]
+#[derive(DebugCustom, Arbitrary, Serialize, Deserialize)]
 #[arbitrary(bound(RangeInclusive<T::Integer>: Strategy<Value = T::Integer>))]
 #[debug(fmt = "Saturating({_0:?})")]
-#[display(fmt = "{_0}")]
 #[serde(into = "i64", try_from = "i64")]
 pub struct Saturating<T: Bounds>(#[strategy(T::LOWER..=T::UPPER)] T::Integer);
 
@@ -341,18 +340,13 @@ mod tests {
     }
 
     #[proptest]
-    fn display_is_transparent(s: Saturating<AsymmetricBounds>) {
-        assert_eq!(s.to_string(), s.get().to_string());
-    }
-
-    #[proptest]
     fn serialization_is_transparent(s: Saturating<AsymmetricBounds>) {
         assert_eq!(ron::ser::to_string(&s), ron::ser::to_string(&s.get()));
     }
 
     #[proptest]
     fn deserializing_succeeds_if_within_bounds(s: Saturating<AsymmetricBounds>) {
-        assert_eq!(ron::de::from_str(&s.to_string()), Ok(s));
+        assert_eq!(ron::de::from_str(&s.get().to_string()), Ok(s));
     }
 
     #[proptest]
