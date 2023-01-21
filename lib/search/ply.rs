@@ -1,16 +1,17 @@
 use crate::util::{Bounds, Saturating};
 
-pub struct DraftBounds;
+pub struct PlyBounds;
 
-impl Bounds for DraftBounds {
+impl Bounds for PlyBounds {
     type Integer = i8;
     const LOWER: Self::Integer = -Self::UPPER;
 
     #[cfg(not(test))]
-    const UPPER: Self::Integer = 31;
+    const UPPER: Self::Integer = 127;
 
     #[cfg(test)]
     const UPPER: Self::Integer = 3;
 }
 
-pub type Draft = Saturating<DraftBounds>;
+/// The number of half-moves played.
+pub type Ply = Saturating<PlyBounds>;

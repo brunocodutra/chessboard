@@ -99,7 +99,7 @@ impl Player for Ai {
 mod tests {
     use super::*;
     use futures_util::TryStreamExt;
-    use lib::{eval::Value, search::Pv};
+    use lib::search::{Pv, Score};
     use mockall::predicate::eq;
     use proptest::sample::size_range;
     use std::time::Duration;
@@ -123,7 +123,7 @@ mod tests {
 
     #[proptest]
     #[should_panic]
-    fn play_panics_if_there_are_no_legal_moves(l: Limits, pos: Position, d: Depth, s: Value) {
+    fn play_panics_if_there_are_no_legal_moves(l: Limits, pos: Position, d: Depth, s: Score) {
         let rt = runtime::Builder::new_multi_thread().build()?;
 
         let mut strategy = Strategy::new();

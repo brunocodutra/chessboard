@@ -1,13 +1,17 @@
-use super::{Depth, Pv};
-use crate::eval::Value;
+use super::{Depth, Pv, Score};
 use derive_more::Constructor;
 use test_strategy::Arbitrary;
 
-/// The result of an  .
+/// The search result.
 #[derive(Debug, Clone, Eq, PartialEq, Hash, Arbitrary, Constructor)]
 pub struct Report {
     depth: Depth,
-    score: Value,
+    #[map(|s: Score| match s.mate() {
+        Some(p) if p > 0 => Score::upper().normalize(p / 2 * 2 + 1),
+        Some(p) => -Score::upper().normalize(p / 2 * 2),
+        None => s
+    })]
+    score: Score,
     pv: Pv,
 }
 
@@ -20,7 +24,7 @@ impl Report {
 
     /// The score from the point of view of the side to move.
     #[inline]
-    pub fn score(&self) -> Value {
+    pub fn score(&self) -> Score {
         self.score
     }
 
