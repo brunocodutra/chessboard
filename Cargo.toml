@@ -74,10 +74,6 @@ lto = "thin"
 [profile.dev]
 opt-level = 1
 
-[profile.cov]
-inherits = "dev"
-opt-level = 0
-
 [profile.bench]
 debug = true
 

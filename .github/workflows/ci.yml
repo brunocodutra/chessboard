@@ -90,8 +90,6 @@ jobs:
     - uses: dtolnay/rust-toolchain@stable
     - run: cargo install --force cargo-tarpaulin
     - run: cargo tarpaulin --all-features --workspace --engine llvm -o Xml
-      env:
-        PROPTEST_CASES: 32
     - uses: codecov/codecov-action@v3
       with:
         token: ${{secrets.CODECOV_TOKEN}}
