@@ -1,6 +1,6 @@
 use criterion::{criterion_group, criterion_main, BatchSize, Criterion};
 use lib::search::{Depth, Limits, Options, Searcher};
-use lib::{chess::Fen, eval::Evaluator};
+use lib::{chess::Fen, eval::Evaluator, util::Saturate};
 use shakmaty as sm;
 use std::thread::available_parallelism;
 use std::time::{Duration, Instant};
@@ -31,7 +31,7 @@ fn ttm(c: &mut Criterion, name: &str, edps: &[(&str, &str)]) {
                 },
                 |(s, (pos, m))| {
                     let timer = Instant::now();
-                    for d in 1..=Depth::upper().get() {
+                    for d in 1..=Depth::MAX.get() {
                         let report = s.search(pos, Limits::Depth(Depth::new(d)));
                         if report.pv().first() == Some(m)
                             || timer.elapsed() >= Duration::from_millis(80)

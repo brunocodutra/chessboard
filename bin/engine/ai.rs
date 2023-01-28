@@ -2,8 +2,8 @@ use super::Player;
 use async_stream::try_stream;
 use futures_util::{future::BoxFuture, stream::BoxStream};
 use lib::chess::{Move, Position};
-use lib::eval::Evaluator;
 use lib::search::{Depth, Limits, Options, Report};
+use lib::{eval::Evaluator, util::Saturate};
 use std::{convert::Infallible, time::Instant};
 use tokio::task::block_in_place;
 use tracing::{field::display, instrument, Span};
@@ -99,7 +99,7 @@ impl Player for Ai {
 mod tests {
     use super::*;
     use futures_util::TryStreamExt;
-    use lib::{eval::Value, search::Pv};
+    use lib::{eval::Value, search::Pv, util::Saturate};
     use mockall::predicate::eq;
     use proptest::sample::size_range;
     use std::time::Duration;

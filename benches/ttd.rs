@@ -1,6 +1,6 @@
 use criterion::{criterion_group, criterion_main, BatchSize, Criterion};
 use lib::search::{Depth, Options, Searcher};
-use lib::{chess::Fen, eval::Evaluator};
+use lib::{chess::Fen, eval::Evaluator, util::Saturate};
 use std::thread::available_parallelism;
 
 fn ttd(c: &mut Criterion, fens: &[&str]) {

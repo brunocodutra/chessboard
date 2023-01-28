@@ -1,4 +1,5 @@
 use super::Depth;
+use crate::util::Saturate;
 use derive_more::{Display, Error, From};
 use serde::{Deserialize, Serialize};
 use std::{str::FromStr, time::Duration};
@@ -39,11 +40,11 @@ impl FromStr for Limits {
 }
 
 impl Limits {
-    /// Depth or [`Depth::upper()`].
+    /// Depth or [`Depth::MAX`].
     pub fn depth(&self) -> Depth {
         match self {
             Limits::Depth(d) => *d,
-            _ => Depth::upper(),
+            _ => Depth::MAX,
         }
     }
 
@@ -74,8 +75,8 @@ mod tests {
 
     #[proptest]
     fn depth_returns_max_by_default(d: Duration) {
-        assert_eq!(Limits::None.depth(), Depth::upper());
-        assert_eq!(Limits::Time(d).depth(), Depth::upper());
+        assert_eq!(Limits::None.depth(), Depth::MAX);
+        assert_eq!(Limits::Time(d).depth(), Depth::MAX);
     }
 
     #[proptest]

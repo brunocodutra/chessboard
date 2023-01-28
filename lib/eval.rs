@@ -1,4 +1,5 @@
 use crate::chess::{Color, Piece, Position, Role, Square};
+use crate::util::Saturate;
 use derive_more::Constructor;
 use test_strategy::Arbitrary;
 

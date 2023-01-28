@@ -1,5 +1,5 @@
 use crate::search::Depth;
-use crate::util::{Binary, Bits};
+use crate::util::{Binary, Bits, Saturate};
 use crate::{chess::Move, eval::Value};
 use derive_more::{Display, Error};
 use std::{cmp::Ordering, ops::RangeInclusive};
@@ -67,8 +67,8 @@ impl Transposition {
     /// Bounds for the exact score.
     pub fn bounds(&self) -> RangeInclusive<Value> {
         match self.kind {
-            Kind::Lower => self.score..=Value::upper(),
-            Kind::Upper => Value::lower()..=self.score,
+            Kind::Lower => self.score..=Value::MAX,
+            Kind::Upper => Value::MIN..=self.score,
             Kind::Exact => self.score..=self.score,
         }
     }

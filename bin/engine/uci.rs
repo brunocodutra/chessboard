@@ -5,8 +5,8 @@ use async_stream::try_stream;
 use derive_more::{DebugCustom, Display, Error, From};
 use futures_util::{future::BoxFuture, stream::BoxStream};
 use lib::chess::{Move, Position};
-use lib::eval::Value;
 use lib::search::{Depth, Limits, Report};
+use lib::{eval::Value, util::Saturate};
 use std::{collections::HashMap, fmt::Debug, future::Future, io, pin::Pin, time::Instant};
 use tokio::{runtime, task::block_in_place, time::timeout};
 use tracing::{debug, error, instrument};
@@ -182,9 +182,9 @@ impl<T: Io + Send + 'static> Player for Uci<T> {
 
                         if let UciInfoAttribute::Score { mate: Some(d), .. } = i {
                             if d > 0 {
-                                score = Some(Value::upper());
+                                score = Some(Value::MAX);
                             } else {
-                                score = Some(Value::lower());
+                                score = Some(Value::MIN);
                             }
                         }
 
@@ -198,11 +198,11 @@ impl<T: Io + Send + 'static> Player for Uci<T> {
                     }
 
                     if let Some((d, s)) = Option::zip(depth, score) {
-                        if limits.depth() < d {
+                        if limits.depth().get() < d {
                             break;
                         } else {
                             yield Report::new(Depth::saturate(d), s, moves);
-                            if limits.depth() == d {
+                            if limits.depth().get() == d {
                                 break;
                             }
                         }
