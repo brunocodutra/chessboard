@@ -40,7 +40,7 @@ futures-util = { version = "0.3.26", default-features = false, features = ["allo
 humantime-serde = { version = "1.1.1", default-features = false }
 num-traits = { version = "0.2.15", default-features = false, features = ["std"] }
 proptest = { version = "1.1.0", default-features = false, features = ["std"] }
-rayon = { version = "1.6.1", default-features = false }
+rayon = { version = "1.7.0", default-features = false }
 ron = { version = "0.8.0", default-features = false }
 serde = { version = "1.0.151", default-features = false, features = ["derive", "std"] }
 shakmaty = { version = "0.23.0", default-features = false }
