@@ -42,7 +42,7 @@ num-traits = { version = "0.2.15", default-features = false, features = ["std"] 
 proptest = { version = "1.1.0", default-features = false, features = ["std"] }
 rayon = { version = "1.7.0", default-features = false }
 ron = { version = "0.8.0", default-features = false }
-serde = { version = "1.0.151", default-features = false, features = ["derive", "std"] }
+serde = { version = "1.0.163", default-features = false, features = ["derive", "std"] }
 shakmaty = { version = "0.23.0", default-features = false }
 test-strategy = { version = "0.3.0", default-features = false }
 tokio = { version = "1.25.0", default-features = false, features = [
