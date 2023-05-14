@@ -66,7 +66,7 @@ vampirc-uci = { version = "0.11.0", default-features = false }
 [dev-dependencies]
 criterion = { version = "0.4.0", default-features = false, features = ["rayon"] }
 mockall = { version = "0.11.4", default-features = false }
-pgn-reader = { version = "0.22.0", default-features = false }
+pgn-reader = { version = "0.24.0", default-features = false }
 
 [profile.release]
 lto = "thin"
