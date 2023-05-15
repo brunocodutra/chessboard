@@ -281,6 +281,11 @@ impl Searcher {
 
         let mut moves: Vec<_> = self.moves(pos, kind).collect();
 
+        #[cfg(not(test))]
+        if draft <= Draft::new(0) {
+            moves.retain(|(_, _, value)| *value >= alpha)
+        }
+
         moves.sort_unstable_by_key(|&(m, _, value)| {
             if Some(m) == transposition.map(|t| t.best()) {
                 Value::upper()
