@@ -1,8 +1,15 @@
-use crate::util::{Binary, Bits, Saturating};
+use crate::util::{Binary, Bits, Bounds, Saturating};
 use derive_more::{Display, Error};
 use test_strategy::Arbitrary;
 
-pub type Value = Saturating<i16, -4095, 4095>;
+pub struct ValueBounds;
+
+impl Bounds<i16> for ValueBounds {
+    const LOWER: i16 = -Self::UPPER;
+    const UPPER: i16 = 4095;
+}
+
+pub type Value = Saturating<i16, ValueBounds>;
 
 /// The reason why decoding [`Value`] from binary failed.
 #[derive(Debug, Display, Clone, Eq, PartialEq, Arbitrary, Error)]
@@ -14,14 +21,14 @@ impl Binary for Value {
     type Error = DecodeValueError;
 
     fn encode(&self) -> Self::Bits {
-        Bits::new((self.get() - Self::lower().get()) as _)
+        Bits::new((self.get() - ValueBounds::LOWER) as _)
     }
 
     fn decode(bits: Self::Bits) -> Result<Self, Self::Error> {
         if bits == !Bits::default() {
             Err(DecodeValueError)
         } else {
-            Ok(Value::new(bits.get() as i16 + Self::lower().get()))
+            Ok(Value::new(bits.get() as i16 + ValueBounds::LOWER))
         }
     }
 }
