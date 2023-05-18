@@ -31,7 +31,7 @@ impl Move {
 
 /// The reason why decoding [`Move`] from binary failed.
 #[derive(Debug, Display, Clone, Eq, PartialEq, Arbitrary, Error)]
-#[display(fmt = "not a valid Move")]
+#[display(fmt = "not a valid move")]
 pub struct DecodeMoveError;
 
 impl From<<Square as Binary>::Error> for DecodeMoveError {
