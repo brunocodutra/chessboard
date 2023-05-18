@@ -10,7 +10,6 @@ use test_strategy::Arbitrary;
 /// [Forsyth–Edwards Notation]: https://www.chessprogramming.org/Forsyth-Edwards_Notation
 #[derive(DebugCustom, Display, Default, Clone, Eq, PartialEq, Hash, Arbitrary)]
 #[debug(fmt = "Fen({self})")]
-#[display(fmt = "{_0}")]
 pub struct Fen(
     #[strategy(hash_map(any::<Square>().prop_map_into(), any::<Piece>().prop_map_into(), 0..=64)
         .prop_map(|setup| setup.into_iter().collect())
