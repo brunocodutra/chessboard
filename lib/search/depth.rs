@@ -1,11 +1,19 @@
-use crate::util::{Binary, Bits, Saturating};
+use crate::util::{Binary, Bits, Bounds, Saturating};
 use std::convert::Infallible;
 
-#[cfg(not(test))]
-pub type Depth = Saturating<u8, 0, 31>;
+pub struct DepthBounds;
 
-#[cfg(test)]
-pub type Depth = Saturating<u8, 0, 3>;
+impl Bounds<u8> for DepthBounds {
+    const LOWER: u8 = 0;
+
+    #[cfg(not(test))]
+    const UPPER: u8 = 31;
+
+    #[cfg(test)]
+    const UPPER: u8 = 3;
+}
+
+pub type Depth = Saturating<u8, DepthBounds>;
 
 impl Binary for Depth {
     type Bits = Bits<u8, 5>;
