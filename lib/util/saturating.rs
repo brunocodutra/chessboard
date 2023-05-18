@@ -12,7 +12,6 @@ use test_strategy::Arbitrary;
 )]
 #[arbitrary(bound(T: fmt::Debug + 'static, RangeInclusive<T>: Strategy<Value = T>))]
 #[display(bound = "T: fmt::Display")]
-#[display(fmt = "{_0}")]
 #[serde(into = "i64", try_from = "i64")]
 pub struct Saturating<T: PrimInt, const MIN: i64, const MAX: i64>(
     #[strategy(Self::lower().get()..=Self::upper().get())] T,
