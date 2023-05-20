@@ -15,7 +15,7 @@ arrayvec = { version = "0.7.2", default-features = false, features = ["std"] }
 async-stream = { version = "0.3.5", default-features = false }
 async-trait = { version = "0.1.64", default-features = false }
 atomic = { version = "0.5.3", default-features = false, features = ["std"] }
-bitflags = { version = "2.2.1", default-features = false }
+bitflags = { version = "2.3.1", default-features = false }
 clap = { version = "4.1.14", default-features = false, features = [
     "color",
     "derive",
