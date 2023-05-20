@@ -3,6 +3,7 @@ use crate::eval::{Evaluator, Value};
 use crate::transposition::{Table, Transposition};
 use crate::util::{Timeout, Timer};
 use derive_more::{Deref, Neg};
+use proptest::prelude::*;
 use rayon::{iter::once, prelude::*};
 use rayon::{ThreadPool, ThreadPoolBuilder};
 use std::sync::atomic::{AtomicI16, Ordering};
@@ -32,7 +33,9 @@ struct Score(#[deref] Value, Draft);
 #[derive(Debug, Arbitrary)]
 pub struct Searcher {
     evaluator: Evaluator,
-    #[map(|o: Options| ThreadPoolBuilder::new().num_threads(o.threads.get()).build().unwrap())]
+    #[strategy(any::<Options>().prop_filter_map("out of threads", |o: Options|
+        ThreadPoolBuilder::new().num_threads(o.threads.get()).build().ok())
+    )]
     executor: ThreadPool,
     #[map(|o: Options| Table::new(o.hash))]
     tt: Table,
