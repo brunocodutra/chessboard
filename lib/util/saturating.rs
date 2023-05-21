@@ -119,10 +119,10 @@ where
     }
 }
 
-impl<T: PrimInt + Into<i64>, X: Bounds<T>> Eq for Saturating<T, X> {}
+impl<T: PrimInt, X: Bounds<T>> Eq for Saturating<T, X> {}
 
-impl<T: PrimInt + Into<i64>, X: Bounds<T>, U: PrimInt + Into<i64>, Y: Bounds<U>>
-    PartialEq<Saturating<U, Y>> for Saturating<T, X>
+impl<T: PrimInt, X: Bounds<T>, U: PrimInt, Y: Bounds<U>> PartialEq<Saturating<U, Y>>
+    for Saturating<T, X>
 {
     #[inline]
     fn eq(&self, other: &Saturating<U, Y>) -> bool {
@@ -130,24 +130,22 @@ impl<T: PrimInt + Into<i64>, X: Bounds<T>, U: PrimInt + Into<i64>, Y: Bounds<U>>
     }
 }
 
-impl<T: PrimInt + Into<i64>, X: Bounds<T>, U: PrimInt + Into<i64>> PartialEq<U>
-    for Saturating<T, X>
-{
+impl<T: PrimInt, X: Bounds<T>, U: PrimInt> PartialEq<U> for Saturating<T, X> {
     #[inline]
     fn eq(&self, &other: &U) -> bool {
-        i64::eq(&self.get().into(), &other.into())
+        i64::eq(&self.get().to_i64().unwrap(), &other.to_i64().unwrap())
     }
 }
 
-impl<T: PrimInt + Into<i64>, X: Bounds<T>> Ord for Saturating<T, X> {
+impl<T: PrimInt, X: Bounds<T>> Ord for Saturating<T, X> {
     #[inline]
     fn cmp(&self, other: &Self) -> Ordering {
         self.get().cmp(&other.get())
     }
 }
 
-impl<T: PrimInt + Into<i64>, X: Bounds<T>, U: PrimInt + Into<i64>, Y: Bounds<U>>
-    PartialOrd<Saturating<U, Y>> for Saturating<T, X>
+impl<T: PrimInt, X: Bounds<T>, U: PrimInt, Y: Bounds<U>> PartialOrd<Saturating<U, Y>>
+    for Saturating<T, X>
 {
     #[inline]
     fn partial_cmp(&self, other: &Saturating<U, Y>) -> Option<Ordering> {
@@ -155,26 +153,24 @@ impl<T: PrimInt + Into<i64>, X: Bounds<T>, U: PrimInt + Into<i64>, Y: Bounds<U>>
     }
 }
 
-impl<T: PrimInt + Into<i64>, X: Bounds<T>, U: PrimInt + Into<i64>> PartialOrd<U>
-    for Saturating<T, X>
-{
+impl<T: PrimInt, X: Bounds<T>, U: PrimInt> PartialOrd<U> for Saturating<T, X> {
     #[inline]
     fn partial_cmp(&self, &other: &U) -> Option<Ordering> {
-        i64::partial_cmp(&self.get().into(), &other.into())
+        i64::partial_cmp(&self.get().to_i64().unwrap(), &other.to_i64().unwrap())
     }
 }
 
-impl<T: PrimInt + Into<i64>, X: Bounds<T>> Neg for Saturating<T, X> {
+impl<T: PrimInt, X: Bounds<T>> Neg for Saturating<T, X> {
     type Output = Self;
 
     #[inline]
     fn neg(self) -> Self::Output {
-        Saturating::saturate(i64::saturating_neg(self.get().into()))
+        Saturating::saturate(i64::saturating_neg(self.get().to_i64().unwrap()))
     }
 }
 
-impl<T: PrimInt + Into<i64>, X: Bounds<T>, U: PrimInt + Into<i64>, Y: Bounds<U>>
-    Add<Saturating<U, Y>> for Saturating<T, X>
+impl<T: PrimInt, X: Bounds<T>, U: PrimInt, Y: Bounds<U>> Add<Saturating<U, Y>>
+    for Saturating<T, X>
 {
     type Output = Self;
 
@@ -184,17 +180,20 @@ impl<T: PrimInt + Into<i64>, X: Bounds<T>, U: PrimInt + Into<i64>, Y: Bounds<U>>
     }
 }
 
-impl<T: PrimInt + Into<i64>, X: Bounds<T>, U: PrimInt + Into<i64>> Add<U> for Saturating<T, X> {
+impl<T: PrimInt, X: Bounds<T>, U: PrimInt> Add<U> for Saturating<T, X> {
     type Output = Self;
 
     #[inline]
     fn add(self, rhs: U) -> Self::Output {
-        Saturating::saturate(i64::saturating_add(self.get().into(), rhs.into()))
+        Saturating::saturate(i64::saturating_add(
+            self.get().to_i64().unwrap(),
+            rhs.to_i64().unwrap(),
+        ))
     }
 }
 
-impl<T: PrimInt + Into<i64>, X: Bounds<T>, U: PrimInt + Into<i64>, Y: Bounds<U>>
-    Sub<Saturating<U, Y>> for Saturating<T, X>
+impl<T: PrimInt, X: Bounds<T>, U: PrimInt, Y: Bounds<U>> Sub<Saturating<U, Y>>
+    for Saturating<T, X>
 {
     type Output = Self;
 
@@ -204,17 +203,20 @@ impl<T: PrimInt + Into<i64>, X: Bounds<T>, U: PrimInt + Into<i64>, Y: Bounds<U>>
     }
 }
 
-impl<T: PrimInt + Into<i64>, X: Bounds<T>, U: PrimInt + Into<i64>> Sub<U> for Saturating<T, X> {
+impl<T: PrimInt, X: Bounds<T>, U: PrimInt> Sub<U> for Saturating<T, X> {
     type Output = Self;
 
     #[inline]
     fn sub(self, rhs: U) -> Self::Output {
-        Saturating::saturate(i64::saturating_sub(self.get().into(), rhs.into()))
+        Saturating::saturate(i64::saturating_sub(
+            self.get().to_i64().unwrap(),
+            rhs.to_i64().unwrap(),
+        ))
     }
 }
 
-impl<T: PrimInt + Into<i64>, B: Bounds<T>, U: PrimInt + Into<i64>, C: Bounds<U>>
-    Mul<Saturating<U, C>> for Saturating<T, B>
+impl<T: PrimInt, B: Bounds<T>, U: PrimInt, C: Bounds<U>> Mul<Saturating<U, C>>
+    for Saturating<T, B>
 {
     type Output = Self;
 
@@ -224,17 +226,20 @@ impl<T: PrimInt + Into<i64>, B: Bounds<T>, U: PrimInt + Into<i64>, C: Bounds<U>>
     }
 }
 
-impl<T: PrimInt + Into<i64>, B: Bounds<T>, U: PrimInt + Into<i64>> Mul<U> for Saturating<T, B> {
+impl<T: PrimInt, B: Bounds<T>, U: PrimInt> Mul<U> for Saturating<T, B> {
     type Output = Self;
 
     #[inline]
     fn mul(self, rhs: U) -> Self::Output {
-        Saturating::saturate(i64::saturating_mul(self.get().into(), rhs.into()))
+        Saturating::saturate(i64::saturating_mul(
+            self.get().to_i64().unwrap(),
+            rhs.to_i64().unwrap(),
+        ))
     }
 }
 
-impl<T: PrimInt + Into<i64>, B: Bounds<T>, U: PrimInt + Into<i64>, C: Bounds<U>>
-    Div<Saturating<U, C>> for Saturating<T, B>
+impl<T: PrimInt, B: Bounds<T>, U: PrimInt, C: Bounds<U>> Div<Saturating<U, C>>
+    for Saturating<T, B>
 {
     type Output = Self;
 
@@ -244,12 +249,15 @@ impl<T: PrimInt + Into<i64>, B: Bounds<T>, U: PrimInt + Into<i64>, C: Bounds<U>>
     }
 }
 
-impl<T: PrimInt + Into<i64>, B: Bounds<T>, U: PrimInt + Into<i64>> Div<U> for Saturating<T, B> {
+impl<T: PrimInt, B: Bounds<T>, U: PrimInt> Div<U> for Saturating<T, B> {
     type Output = Self;
 
     #[inline]
     fn div(self, rhs: U) -> Self::Output {
-        Saturating::saturate(i64::saturating_div(self.get().into(), rhs.into()))
+        Saturating::saturate(i64::saturating_div(
+            self.get().to_i64().unwrap(),
+            rhs.to_i64().unwrap(),
+        ))
     }
 }
 
