@@ -1,39 +1,32 @@
 use super::Bounds;
 use derive_more::{DebugCustom, Display, Error};
-use num_traits::{cast, clamp, PrimInt};
+use num_traits::{cast, clamp, PrimInt, ToPrimitive};
 use proptest::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::hash::{Hash, Hasher};
 use std::ops::{Add, Div, Mul, Neg, RangeInclusive, Sub};
-use std::{cmp::Ordering, fmt, marker::PhantomData};
+use std::{cmp::Ordering, marker::PhantomData};
 use test_strategy::Arbitrary;
 
 /// A saturating bounded integer.
 #[derive(DebugCustom, Display, Arbitrary, Serialize, Deserialize)]
-#[arbitrary(bound(T: fmt::Debug + 'static, X: 'static, RangeInclusive<T>: Strategy<Value = T>))]
-#[debug(bound = "T: fmt::Debug")]
+#[arbitrary(bound(RangeInclusive<T::Integer>: Strategy<Value = T::Integer>))]
 #[debug(fmt = "Saturating({_0:?})")]
-#[display(bound = "T: fmt::Display")]
 #[display(fmt = "{_0}")]
 #[serde(into = "i64", try_from = "i64")]
-pub struct Saturating<T: PrimInt, X: Bounds<T>>(
-    #[strategy(X::LOWER..=X::UPPER)]
-    #[serde(bound = "T: Into<i64>")]
-    T,
-    PhantomData<X>,
-);
+pub struct Saturating<T: Bounds>(#[strategy(T::LOWER..=T::UPPER)] T::Integer);
 
-impl<T: PrimInt, X: Bounds<T>> Saturating<T, X> {
+impl<T: Bounds> Saturating<T> {
     /// Returns the lower bound.
     #[inline]
     pub fn lower() -> Self {
-        Saturating(X::LOWER, PhantomData)
+        Saturating(T::LOWER)
     }
 
     /// Returns the upper bound.
     #[inline]
     pub fn upper() -> Self {
-        Saturating(X::UPPER, PhantomData)
+        Saturating(T::UPPER)
     }
 
     /// Constructs `Self` from the raw integer.
@@ -42,125 +35,116 @@ impl<T: PrimInt, X: Bounds<T>> Saturating<T, X> {
     ///
     /// Panics if `i` is outside of the bounds.
     #[inline]
-    pub fn new(i: T) -> Self {
-        assert!((X::LOWER..=X::UPPER).contains(&i));
-        Saturating(i, PhantomData)
+    pub fn new(i: T::Integer) -> Self {
+        assert!((T::LOWER..=T::UPPER).contains(&i));
+        Saturating(i)
     }
 
     /// Returns the raw integer.
     #[inline]
-    pub fn get(&self) -> T {
+    pub fn get(&self) -> T::Integer {
         self.0
     }
 
     /// Constructs `Self` from a raw integer through saturation.
     #[inline]
     pub fn saturate<U: PrimInt>(i: U) -> Self {
-        let min = cast(X::LOWER).unwrap_or_else(U::min_value);
-        let max = cast(X::UPPER).unwrap_or_else(U::max_value);
+        let min = cast(T::LOWER).unwrap_or_else(U::min_value);
+        let max = cast(T::UPPER).unwrap_or_else(U::max_value);
         Saturating::new(cast(clamp(i, min, max)).unwrap())
     }
 
     /// Lossy conversion between saturating integers.
     #[inline]
-    pub fn cast<U: PrimInt, Y: Bounds<U>>(&self) -> Saturating<U, Y> {
+    pub fn cast<U: Bounds>(&self) -> Saturating<U> {
         Saturating::saturate(self.get())
     }
 }
 
-impl<T: PrimInt + Default, X: Bounds<T>> Default for Saturating<T, X> {
-    #[inline]
-    fn default() -> Self {
-        Self(Default::default(), PhantomData)
-    }
-}
+impl<T: Bounds> Copy for Saturating<T> {}
 
-impl<T: PrimInt, X: Bounds<T>> Copy for Saturating<T, X> {}
-
-impl<T: PrimInt, X: Bounds<T>> Clone for Saturating<T, X> {
+impl<T: Bounds> Clone for Saturating<T> {
     #[inline]
     fn clone(&self) -> Self {
-        Self(self.0, PhantomData)
+        Self(self.get())
     }
 }
 
-impl<T: PrimInt + Hash, X: Bounds<T>> Hash for Saturating<T, X> {
+impl<T: Bounds> Hash for Saturating<T> {
     #[inline]
     fn hash<H: Hasher>(&self, state: &mut H) {
-        self.0.hash(state);
+        state.write_i64(self.get().to_i64().unwrap());
     }
 }
 
-impl<T: PrimInt + Into<i64>, X: Bounds<T>> From<Saturating<T, X>> for i64 {
+impl<T: Bounds> From<Saturating<T>> for i64 {
     #[inline]
-    fn from(s: Saturating<T, X>) -> Self {
+    fn from(s: Saturating<T>) -> Self {
         s.get().into()
     }
 }
 
 /// The reason why converting [`Saturating`] from an integer failed.
 #[derive(Debug, Display, Clone, Eq, PartialEq, Error)]
-#[display(fmt = "expected integer in the range `({_0}..={_1})`")]
-pub struct OutOfRange(i64, i64);
-
-impl<T, X> TryFrom<i64> for Saturating<T, X>
+#[display(
+    fmt = "expected integer in the range `({}..={})`",
+    "T::LOWER",
+    "T::UPPER"
+)]
+pub struct OutOfRange<T>(PhantomData<T>)
 where
-    T: PrimInt + Into<i64>,
-    X: Bounds<T>,
-{
-    type Error = OutOfRange;
+    T: Bounds;
+
+impl<T: Bounds> TryFrom<i64> for Saturating<T> {
+    type Error = OutOfRange<T>;
 
     fn try_from(i: i64) -> Result<Self, Self::Error> {
-        if (X::LOWER.into()..=X::UPPER.into()).contains(&i) {
+        if (T::LOWER.into()..=T::UPPER.into()).contains(&i) {
             Ok(Saturating::saturate(i))
         } else {
-            Err(OutOfRange(X::LOWER.into(), X::UPPER.into()))
+            Err(OutOfRange(PhantomData))
         }
     }
 }
 
-impl<T: PrimInt, X: Bounds<T>> Eq for Saturating<T, X> {}
+impl<T: Bounds> Eq for Saturating<T> {}
 
-impl<T: PrimInt, X: Bounds<T>, U: PrimInt, Y: Bounds<U>> PartialEq<Saturating<U, Y>>
-    for Saturating<T, X>
-{
+impl<T: Bounds, U: Bounds> PartialEq<Saturating<U>> for Saturating<T> {
     #[inline]
-    fn eq(&self, other: &Saturating<U, Y>) -> bool {
+    fn eq(&self, other: &Saturating<U>) -> bool {
         self.eq(&other.get())
     }
 }
 
-impl<T: PrimInt, X: Bounds<T>, U: PrimInt> PartialEq<U> for Saturating<T, X> {
+impl<T: Bounds, U: PrimInt + Into<i64>> PartialEq<U> for Saturating<T> {
     #[inline]
-    fn eq(&self, &other: &U) -> bool {
+    fn eq(&self, other: &U) -> bool {
         i64::eq(&self.get().to_i64().unwrap(), &other.to_i64().unwrap())
     }
 }
 
-impl<T: PrimInt, X: Bounds<T>> Ord for Saturating<T, X> {
+impl<T: Bounds> Ord for Saturating<T> {
     #[inline]
     fn cmp(&self, other: &Self) -> Ordering {
         self.get().cmp(&other.get())
     }
 }
 
-impl<T: PrimInt, X: Bounds<T>, U: PrimInt, Y: Bounds<U>> PartialOrd<Saturating<U, Y>>
-    for Saturating<T, X>
-{
+impl<T: Bounds, U: Bounds> PartialOrd<Saturating<U>> for Saturating<T> {
     #[inline]
-    fn partial_cmp(&self, other: &Saturating<U, Y>) -> Option<Ordering> {
+    fn partial_cmp(&self, other: &Saturating<U>) -> Option<Ordering> {
         self.partial_cmp(&other.get())
     }
 }
 
-impl<T: PrimInt, X: Bounds<T>, U: PrimInt> PartialOrd<U> for Saturating<T, X> {
+impl<T: Bounds, U: PrimInt + Into<i64>> PartialOrd<U> for Saturating<T> {
     #[inline]
-    fn partial_cmp(&self, &other: &U) -> Option<Ordering> {
+    fn partial_cmp(&self, other: &U) -> Option<Ordering> {
         i64::partial_cmp(&self.get().to_i64().unwrap(), &other.to_i64().unwrap())
     }
 }
 
-impl<T: PrimInt, X: Bounds<T>> Neg for Saturating<T, X> {
+impl<T: Bounds> Neg for Saturating<T> {
     type Output = Self;
 
     #[inline]
@@ -169,18 +153,16 @@ impl<T: PrimInt, X: Bounds<T>> Neg for Saturating<T, X> {
     }
 }
 
-impl<T: PrimInt, X: Bounds<T>, U: PrimInt, Y: Bounds<U>> Add<Saturating<U, Y>>
-    for Saturating<T, X>
-{
+impl<T: Bounds, U: Bounds> Add<Saturating<U>> for Saturating<T> {
     type Output = Self;
 
     #[inline]
-    fn add(self, rhs: Saturating<U, Y>) -> Self::Output {
+    fn add(self, rhs: Saturating<U>) -> Self::Output {
         self + rhs.get()
     }
 }
 
-impl<T: PrimInt, X: Bounds<T>, U: PrimInt> Add<U> for Saturating<T, X> {
+impl<T: Bounds, U: PrimInt + Into<i64>> Add<U> for Saturating<T> {
     type Output = Self;
 
     #[inline]
@@ -192,18 +174,16 @@ impl<T: PrimInt, X: Bounds<T>, U: PrimInt> Add<U> for Saturating<T, X> {
     }
 }
 
-impl<T: PrimInt, X: Bounds<T>, U: PrimInt, Y: Bounds<U>> Sub<Saturating<U, Y>>
-    for Saturating<T, X>
-{
+impl<T: Bounds, U: Bounds> Sub<Saturating<U>> for Saturating<T> {
     type Output = Self;
 
     #[inline]
-    fn sub(self, rhs: Saturating<U, Y>) -> Self::Output {
+    fn sub(self, rhs: Saturating<U>) -> Self::Output {
         self - rhs.get()
     }
 }
 
-impl<T: PrimInt, X: Bounds<T>, U: PrimInt> Sub<U> for Saturating<T, X> {
+impl<T: Bounds, U: PrimInt + Into<i64>> Sub<U> for Saturating<T> {
     type Output = Self;
 
     #[inline]
@@ -215,18 +195,16 @@ impl<T: PrimInt, X: Bounds<T>, U: PrimInt> Sub<U> for Saturating<T, X> {
     }
 }
 
-impl<T: PrimInt, B: Bounds<T>, U: PrimInt, C: Bounds<U>> Mul<Saturating<U, C>>
-    for Saturating<T, B>
-{
+impl<T: Bounds, U: Bounds> Mul<Saturating<U>> for Saturating<T> {
     type Output = Self;
 
     #[inline]
-    fn mul(self, rhs: Saturating<U, C>) -> Self::Output {
+    fn mul(self, rhs: Saturating<U>) -> Self::Output {
         self * rhs.get()
     }
 }
 
-impl<T: PrimInt, B: Bounds<T>, U: PrimInt> Mul<U> for Saturating<T, B> {
+impl<T: Bounds, U: PrimInt + Into<i64>> Mul<U> for Saturating<T> {
     type Output = Self;
 
     #[inline]
@@ -238,18 +216,16 @@ impl<T: PrimInt, B: Bounds<T>, U: PrimInt> Mul<U> for Saturating<T, B> {
     }
 }
 
-impl<T: PrimInt, B: Bounds<T>, U: PrimInt, C: Bounds<U>> Div<Saturating<U, C>>
-    for Saturating<T, B>
-{
+impl<T: Bounds, U: Bounds> Div<Saturating<U>> for Saturating<T> {
     type Output = Self;
 
     #[inline]
-    fn div(self, rhs: Saturating<U, C>) -> Self::Output {
+    fn div(self, rhs: Saturating<U>) -> Self::Output {
         self / rhs.get()
     }
 }
 
-impl<T: PrimInt, B: Bounds<T>, U: PrimInt> Div<U> for Saturating<T, B> {
+impl<T: Bounds, U: PrimInt + Into<i64>> Div<U> for Saturating<T> {
     type Output = Self;
 
     #[inline]
@@ -268,32 +244,33 @@ mod tests {
 
     struct AsymmetricBounds;
 
-    impl Bounds<i8> for AsymmetricBounds {
-        const LOWER: i8 = -5;
-        const UPPER: i8 = 9;
+    impl Bounds for AsymmetricBounds {
+        type Integer = i8;
+        const LOWER: Self::Integer = -5;
+        const UPPER: Self::Integer = 9;
     }
 
     #[proptest]
     fn new_accepts_integers_within_bounds(
         #[strategy(AsymmetricBounds::LOWER..=AsymmetricBounds::UPPER)] i: i8,
     ) {
-        assert_eq!(Saturating::<i8, AsymmetricBounds>::new(i).get(), i);
+        assert_eq!(Saturating::<AsymmetricBounds>::new(i).get(), i);
     }
 
     #[proptest]
     #[should_panic]
     fn new_panics_if_integer_greater_than_max(#[strategy(AsymmetricBounds::UPPER + 1..)] i: i8) {
-        Saturating::<i8, AsymmetricBounds>::new(i);
+        Saturating::<AsymmetricBounds>::new(i);
     }
 
     #[proptest]
     #[should_panic]
     fn new_panics_if_integer_smaller_than_min(#[strategy(..AsymmetricBounds::LOWER)] i: i8) {
-        Saturating::<i8, AsymmetricBounds>::new(i);
+        Saturating::<AsymmetricBounds>::new(i);
     }
 
     #[proptest]
-    fn get_returns_raw_integer(s: Saturating<i8, AsymmetricBounds>) {
+    fn get_returns_raw_integer(s: Saturating<AsymmetricBounds>) {
         assert_eq!(s.get(), s.0);
     }
 
@@ -302,60 +279,51 @@ mod tests {
         #[strategy(AsymmetricBounds::LOWER..=AsymmetricBounds::UPPER)] i: i8,
     ) {
         assert_eq!(
-            Saturating::<i8, AsymmetricBounds>::saturate(i),
-            Saturating::<i8, AsymmetricBounds>::new(i)
+            Saturating::<AsymmetricBounds>::saturate(i),
+            Saturating::<AsymmetricBounds>::new(i)
         );
     }
 
     #[proptest]
     fn saturate_caps_if_greater_than_max(#[strategy(AsymmetricBounds::UPPER + 1..)] i: i8) {
         assert_eq!(
-            Saturating::<i8, AsymmetricBounds>::saturate(i),
-            Saturating::<i8, AsymmetricBounds>::upper()
+            Saturating::<AsymmetricBounds>::saturate(i),
+            Saturating::<AsymmetricBounds>::upper()
         );
     }
 
     #[proptest]
     fn saturate_caps_if_smaller_than_min(#[strategy(..AsymmetricBounds::LOWER)] i: i8) {
         assert_eq!(
-            Saturating::<i8, AsymmetricBounds>::saturate(i),
-            Saturating::<i8, AsymmetricBounds>::lower()
+            Saturating::<AsymmetricBounds>::saturate(i),
+            Saturating::<AsymmetricBounds>::lower()
         );
     }
 
     #[proptest]
-    fn negation_saturates(s: Saturating<i8, AsymmetricBounds>) {
-        assert_eq!(-s, Saturating::<i8, AsymmetricBounds>::saturate(-s.get()));
+    fn negation_saturates(s: Saturating<AsymmetricBounds>) {
+        assert_eq!(-s, Saturating::<AsymmetricBounds>::saturate(-s.get()));
     }
 
     #[proptest]
-    fn addition_saturates(
-        a: Saturating<i8, AsymmetricBounds>,
-        b: Saturating<i8, AsymmetricBounds>,
-    ) {
-        let r = Saturating::<i8, AsymmetricBounds>::saturate(a.get() + b.get());
+    fn addition_saturates(a: Saturating<AsymmetricBounds>, b: Saturating<AsymmetricBounds>) {
+        let r = Saturating::<AsymmetricBounds>::saturate(a.get() + b.get());
 
         assert_eq!(a + b, r);
         assert_eq!(a + b.get(), r);
     }
 
     #[proptest]
-    fn subtraction_saturates(
-        a: Saturating<i8, AsymmetricBounds>,
-        b: Saturating<i8, AsymmetricBounds>,
-    ) {
-        let r = Saturating::<i8, AsymmetricBounds>::saturate(a.get() - b.get());
+    fn subtraction_saturates(a: Saturating<AsymmetricBounds>, b: Saturating<AsymmetricBounds>) {
+        let r = Saturating::<AsymmetricBounds>::saturate(a.get() - b.get());
 
         assert_eq!(a - b, r);
         assert_eq!(a - b.get(), r);
     }
 
     #[proptest]
-    fn multiplication_saturates(
-        a: Saturating<i8, AsymmetricBounds>,
-        b: Saturating<i8, AsymmetricBounds>,
-    ) {
-        let r = Saturating::<i8, AsymmetricBounds>::saturate(a.get() * b.get());
+    fn multiplication_saturates(a: Saturating<AsymmetricBounds>, b: Saturating<AsymmetricBounds>) {
+        let r = Saturating::<AsymmetricBounds>::saturate(a.get() * b.get());
 
         assert_eq!(a * b, r);
         assert_eq!(a * b.get(), r);
@@ -363,37 +331,37 @@ mod tests {
 
     #[proptest]
     fn division_saturates(
-        a: Saturating<i8, AsymmetricBounds>,
-        #[filter(#b != 0)] b: Saturating<i8, AsymmetricBounds>,
+        a: Saturating<AsymmetricBounds>,
+        #[filter(#b != 0)] b: Saturating<AsymmetricBounds>,
     ) {
-        let r = Saturating::<i8, AsymmetricBounds>::saturate(a.get() / b.get());
+        let r = Saturating::<AsymmetricBounds>::saturate(a.get() / b.get());
 
         assert_eq!(a / b, r);
         assert_eq!(a / b.get(), r);
     }
 
     #[proptest]
-    fn display_is_transparent(s: Saturating<i8, AsymmetricBounds>) {
+    fn display_is_transparent(s: Saturating<AsymmetricBounds>) {
         assert_eq!(s.to_string(), s.get().to_string());
     }
 
     #[proptest]
-    fn serialization_is_transparent(s: Saturating<i8, AsymmetricBounds>) {
+    fn serialization_is_transparent(s: Saturating<AsymmetricBounds>) {
         assert_eq!(ron::ser::to_string(&s), ron::ser::to_string(&s.get()));
     }
 
     #[proptest]
-    fn deserializing_succeeds_if_within_bounds(s: Saturating<i8, AsymmetricBounds>) {
+    fn deserializing_succeeds_if_within_bounds(s: Saturating<AsymmetricBounds>) {
         assert_eq!(ron::de::from_str(&s.to_string()), Ok(s));
     }
 
     #[proptest]
     fn deserializing_fails_if_greater_than_max(#[strategy(AsymmetricBounds::UPPER + 1..)] i: i8) {
-        assert!(ron::de::from_str::<Saturating<i8, AsymmetricBounds>>(&i.to_string()).is_err());
+        assert!(ron::de::from_str::<Saturating<AsymmetricBounds>>(&i.to_string()).is_err());
     }
 
     #[proptest]
     fn deserializing_fails_if_smaller_than_max(#[strategy(..AsymmetricBounds::LOWER)] i: i8) {
-        assert!(ron::de::from_str::<Saturating<i8, AsymmetricBounds>>(&i.to_string()).is_err());
+        assert!(ron::de::from_str::<Saturating<AsymmetricBounds>>(&i.to_string()).is_err());
     }
 }

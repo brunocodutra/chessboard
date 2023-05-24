@@ -4,12 +4,13 @@ use test_strategy::Arbitrary;
 
 pub struct ValueBounds;
 
-impl Bounds<i16> for ValueBounds {
-    const LOWER: i16 = -Self::UPPER;
-    const UPPER: i16 = 4095;
+impl Bounds for ValueBounds {
+    type Integer = i16;
+    const LOWER: Self::Integer = -Self::UPPER;
+    const UPPER: Self::Integer = 4095;
 }
 
-pub type Value = Saturating<i16, ValueBounds>;
+pub type Value = Saturating<ValueBounds>;
 
 /// The reason why decoding [`Value`] from binary failed.
 #[derive(Debug, Display, Clone, Eq, PartialEq, Arbitrary, Error)]
