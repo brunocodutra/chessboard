@@ -23,7 +23,7 @@ pub use options::*;
 pub use pv::*;
 pub use report::*;
 
-#[derive(Debug, Default, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Deref, Neg)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Deref, Neg)]
 struct Score(#[deref] Value, Draft);
 
 /// An implementation of [minimax].

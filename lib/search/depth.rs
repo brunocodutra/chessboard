@@ -3,17 +3,18 @@ use std::convert::Infallible;
 
 pub struct DepthBounds;
 
-impl Bounds<u8> for DepthBounds {
-    const LOWER: u8 = 0;
+impl Bounds for DepthBounds {
+    type Integer = u8;
+    const LOWER: Self::Integer = 0;
 
     #[cfg(not(test))]
-    const UPPER: u8 = 31;
+    const UPPER: Self::Integer = 31;
 
     #[cfg(test)]
-    const UPPER: u8 = 3;
+    const UPPER: Self::Integer = 3;
 }
 
-pub type Depth = Saturating<u8, DepthBounds>;
+pub type Depth = Saturating<DepthBounds>;
 
 impl Binary for Depth {
     type Bits = Bits<u8, 5>;
