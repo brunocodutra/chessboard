@@ -65,9 +65,9 @@ mod tests {
         prop_assume!(tt.get(pos.zobrist()) == Some(t));
         prop_assume!(tt.get(next.zobrist()) == Some(u));
 
-        let mut pv = Iter::new(&tt, pos);
-        assert_eq!(pv.next(), Some(t));
-        assert_eq!(pv.next(), None);
+        let mut it = Iter::new(&tt, pos);
+        assert_eq!(it.next(), Some(t));
+        assert_eq!(it.next(), None);
     }
 
     #[proptest]
@@ -83,11 +83,11 @@ mod tests {
 
     #[proptest]
     fn is_fused(tt: Table, pos: Position) {
-        let mut pv = Iter::new(&tt, pos);
+        let mut it = Iter::new(&tt, pos);
 
-        while pv.next().is_some() {}
+        while it.next().is_some() {}
 
-        assert_eq!(pv.next(), None);
-        assert_eq!(pv.next(), None);
+        assert_eq!(it.next(), None);
+        assert_eq!(it.next(), None);
     }
 }

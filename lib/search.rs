@@ -11,18 +11,18 @@ use test_strategy::Arbitrary;
 
 mod depth;
 mod limits;
+mod line;
 mod options;
 mod ply;
 mod pv;
-mod report;
 mod score;
 
 pub use depth::*;
 pub use limits::*;
+pub use line::*;
 pub use options::*;
 pub use ply::*;
 pub use pv::*;
-pub use report::*;
 pub use score::*;
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Deref, Neg)]
@@ -369,24 +369,24 @@ impl Searcher {
         Ok(score)
     }
 
-    /// Searches for the strongest [variation][`Pv`].
-    pub fn search(&mut self, pos: &Position, limits: Limits) -> Report {
+    /// Searches for the [principal variation][`Pv`].
+    pub fn search(&mut self, pos: &Position, limits: Limits) -> Pv {
         let timer = Timer::start(limits.time());
         if self.tt.iter(pos).next().is_none() {
             self.tt.unset(pos.zobrist());
         };
 
         self.executor.install(|| {
-            let mut report = Report::new(Depth::new(0), Score::new(0), Pv::default());
+            let mut pv = Pv::new(Depth::new(0), Score::new(0), Line::empty());
 
             for d in 0..=limits.depth().get() {
-                report = match self.aw(pos, report.score(), Depth::new(d), timer) {
-                    Ok(s) => Report::new(Depth::new(d), s, self.tt.pv(pos).collect()),
+                pv = match self.aw(pos, pv.score(), Depth::new(d), timer) {
+                    Ok(s) => Pv::new(Depth::new(d), s, self.tt.line(pos).collect()),
                     Err(_) => break,
                 };
             }
 
-            report
+            pv
         })
     }
 }
@@ -516,10 +516,7 @@ mod tests {
 
     #[proptest]
     fn search_finds_the_principal_variation(mut s: Searcher, pos: Position, d: Depth) {
-        assert_eq!(
-            s.search(&pos, Limits::Depth(d)).pv(),
-            &s.tt.pv(&pos).collect()
-        );
+        assert_eq!(*s.search(&pos, Limits::Depth(d)), s.tt.line(&pos).collect());
     }
 
     #[proptest]
@@ -530,7 +527,7 @@ mod tests {
         t: Transposition,
     ) {
         s.tt.set(pos.zobrist(), t);
-        assert!(!s.search(&pos, Limits::Depth(d)).pv().is_empty());
+        assert!(!s.search(&pos, Limits::Depth(d)).is_empty());
     }
 
     #[proptest]
