@@ -201,38 +201,6 @@ impl Searcher {
         }
     }
 
-    /// An implementation of [aspiration windows].
-    ///
-    /// [aspiration windows]: https://www.chessprogramming.org/Aspiration_Windows
-    fn aw(
-        &self,
-        pos: &Position,
-        guess: Score,
-        depth: Depth,
-        timer: Timer,
-    ) -> Result<Score, Timeout> {
-        let mut w: i16 = match depth.get() {
-            0 => i16::MAX,
-            1 => 512,
-            2 => 256,
-            3 => 128,
-            4 => 64,
-            _ => 32,
-        };
-
-        let mut lower = (guess - w / 2).min(Score::upper() - w);
-        let mut upper = (guess + w / 2).max(Score::lower() + w);
-
-        loop {
-            w = w.saturating_mul(2);
-            match *self.pvs(pos, lower..upper, depth, Ply::new(0), timer)? {
-                s if (-lower..Score::upper()).contains(&-s) => lower = s - w / 2,
-                s if (upper..Score::upper()).contains(&s) => upper = s + w / 2,
-                s => break Ok(s),
-            }
-        }
-    }
-
     /// A [zero-window] wrapper for [`Self::pvs`].
     ///
     /// [zero-window]: https://www.chessprogramming.org/Null_Window
@@ -379,10 +347,36 @@ impl Searcher {
         self.executor.install(|| {
             let mut pv = Pv::new(Depth::new(0), Score::new(0), Line::empty());
 
-            for d in 0..=limits.depth().get() {
-                pv = match self.aw(pos, pv.score(), Depth::new(d), timer) {
-                    Ok(s) => Pv::new(Depth::new(d), s, self.tt.line(pos).collect()),
-                    Err(_) => break,
+            'id: for d in 0..=limits.depth().get() {
+                let mut w: i16 = match d {
+                    0 => i16::MAX,
+                    1 => 512,
+                    2 => 256,
+                    3 => 128,
+                    4 => 64,
+                    _ => 32,
+                };
+
+                let depth = Depth::new(d);
+                let mut lower = (pv.score() - w / 2).min(Score::upper() - w);
+                let mut upper = (pv.score() + w / 2).max(Score::lower() + w);
+
+                pv = 'aw: loop {
+                    w = w.saturating_mul(2);
+                    let score = match self.pvs(pos, lower..upper, depth, Ply::new(0), timer) {
+                        Err(_) => break 'id,
+                        Ok(s) => *s,
+                    };
+
+                    match score {
+                        s if (-lower..Score::upper()).contains(&-s) => lower = s - w / 2,
+                        s if (upper..Score::upper()).contains(&s) => upper = s + w / 2,
+                        _ => break 'aw Pv::new(depth, score, self.tt.line(pos).collect()),
+                    }
+
+                    if score >= pv.score() {
+                        pv = Pv::new(depth, score, self.tt.line(pos).collect());
+                    }
                 };
             }
 
@@ -489,29 +483,6 @@ mod tests {
             y.pvs(&pos, Score::lower()..Score::upper(), d, p, timer)
                 .as_deref()
         );
-    }
-
-    #[proptest]
-    fn aw_finds_best_score(s: Searcher, pos: Position, g: Score, d: Depth) {
-        let timer = Timer::start(Duration::MAX);
-
-        assert_eq!(
-            s.aw(&pos, g, d, timer),
-            Ok(negamax(&s.evaluator, &pos, d.cast(), Ply::new(0)))
-        );
-    }
-
-    #[proptest]
-    fn aw_does_not_depend_on_initial_guess(
-        s: Searcher,
-        pos: Position,
-        g: Score,
-        h: Score,
-        d: Depth,
-    ) {
-        let timer = Timer::start(Duration::MAX);
-
-        assert_eq!(s.aw(&pos, g, d, timer), s.aw(&pos, h, d, timer));
     }
 
     #[proptest]
