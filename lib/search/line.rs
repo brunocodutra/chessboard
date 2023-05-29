@@ -11,22 +11,16 @@ use test_strategy::Arbitrary;
 #[debug(fmt = "Line({self})")]
 #[display(
     fmt = "{}",
-    "self.iter().map(Move::to_string).collect::<ArrayVec<_, { Line::N }>>().join(\" \")"
+    "self.iter().map(Move::to_string).collect::<ArrayVec<_, N>>().join(\" \")"
 )]
-pub struct Line(
-    #[strategy(vec(any::<Move>(), 0..=Self::N).prop_map(ArrayVec::from_iter))]
+pub struct Line<const N: usize>(
+    #[strategy(vec(any::<Move>(), 0..=N).prop_map(ArrayVec::from_iter))]
     #[deref(forward)]
     #[into_iterator(owned, ref, ref_mut)]
-    ArrayVec<Move, { Line::N }>,
+    ArrayVec<Move, N>,
 );
 
-impl Line {
-    #[cfg(not(test))]
-    const N: usize = 16;
-
-    #[cfg(test)]
-    const N: usize = 4;
-
+impl<const N: usize> Line<N> {
     /// Returns an empty sequence.
     pub fn empty() -> Self {
         Self::default()
@@ -54,10 +48,10 @@ impl Line {
 /// Create a [`Line`] from an iterator of [`Move`]s.
 ///
 /// The sequence might be truncated if the number of moves exceeds the internal capacity.
-impl FromIterator<Move> for Line {
+impl<const N: usize> FromIterator<Move> for Line<N> {
     #[inline]
     fn from_iter<I: IntoIterator<Item = Move>>(moves: I) -> Self {
-        Line(moves.into_iter().take(Self::N).collect())
+        Line(moves.into_iter().take(N).collect())
     }
 }
 
@@ -68,20 +62,20 @@ mod tests {
     use test_strategy::proptest;
 
     #[proptest]
-    fn len_returns_number_of_moves_in_the_sequence(l: Line) {
+    fn len_returns_number_of_moves_in_the_sequence(l: Line<3>) {
         assert_eq!(l.len(), l.iter().len());
     }
 
     #[proptest]
-    fn is_empty_returns_whether_there_are_no_moves_in_the_sequence(l: Line) {
+    fn is_empty_returns_whether_there_are_no_moves_in_the_sequence(l: Line<3>) {
         assert_eq!(l.is_empty(), l.iter().count() == 0);
     }
 
     #[proptest]
-    fn collects_truncated_sequence(#[any(size_range(0..=2 * Line::N).lift())] ms: Vec<Move>) {
+    fn collects_truncated_sequence(#[any(size_range(0..=6).lift())] ms: Vec<Move>) {
         assert_eq!(
-            Line::from_iter(ms.clone()),
-            ms.into_iter().take(Line::N).collect()
+            Line::<3>::from_iter(ms.clone()),
+            ms.into_iter().take(3).collect()
         );
     }
 }

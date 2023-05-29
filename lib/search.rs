@@ -338,7 +338,7 @@ impl Searcher {
     }
 
     /// Searches for the [principal variation][`Pv`].
-    pub fn search(&mut self, pos: &Position, limits: Limits) -> Pv {
+    pub fn search<const N: usize>(&mut self, pos: &Position, limits: Limits) -> Pv<N> {
         let timer = Timer::start(limits.time());
         if self.tt.iter(pos).next().is_none() {
             self.tt.unset(pos.zobrist());
@@ -487,7 +487,10 @@ mod tests {
 
     #[proptest]
     fn search_finds_the_principal_variation(mut s: Searcher, pos: Position, d: Depth) {
-        assert_eq!(*s.search(&pos, Limits::Depth(d)), s.tt.line(&pos).collect());
+        assert_eq!(
+            *s.search::<3>(&pos, Limits::Depth(d)),
+            s.tt.line(&pos).collect()
+        );
     }
 
     #[proptest]
@@ -498,14 +501,14 @@ mod tests {
         t: Transposition,
     ) {
         s.tt.set(pos.zobrist(), t);
-        assert!(!s.search(&pos, Limits::Depth(d)).is_empty());
+        assert!(!s.search::<3>(&pos, Limits::Depth(d)).is_empty());
     }
 
     #[proptest]
     fn search_is_stable(mut s: Searcher, pos: Position, d: Depth) {
         assert_eq!(
-            s.search(&pos, Limits::Depth(d)),
-            s.search(&pos, Limits::Depth(d))
+            s.search::<1>(&pos, Limits::Depth(d)),
+            s.search::<1>(&pos, Limits::Depth(d))
         );
     }
 
@@ -515,7 +518,7 @@ mod tests {
 
         let result = rt.block_on(async {
             let l = Limits::Time(Duration::from_micros(us.into()));
-            timeout(Duration::from_millis(1), async { s.search(&pos, l) }).await
+            timeout(Duration::from_millis(1), async { s.search::<1>(&pos, l) }).await
         });
 
         assert_eq!(result.err(), None);
