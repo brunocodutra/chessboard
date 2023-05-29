@@ -25,7 +25,7 @@ fn ttd(c: &mut Criterion, fens: &[&str]) {
                     positions.next().unwrap(),
                 )
             },
-            |(s, pos)| s.search(pos, Depth::new(8).into()),
+            |(s, pos)| s.search::<1>(pos, Depth::new(8).into()),
             BatchSize::SmallInput,
         );
     });

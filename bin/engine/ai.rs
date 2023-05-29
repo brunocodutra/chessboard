@@ -16,6 +16,11 @@ trait Searcher {
 
 #[cfg(test)]
 impl MockSearcher {
+    fn search<const N: usize>(&mut self, pos: &Position, limits: Limits) -> Pv<N> {
+        let pv = Searcher::search(self, pos, limits);
+        Pv::new(pv.depth(), pv.score(), pv.iter().copied().collect())
+    }
+
     fn with_options(_: Evaluator, _: Options) -> Self {
         Self::new()
     }
@@ -56,7 +61,7 @@ impl Player for Ai {
         'b: 'c,
     {
         Box::pin(async move {
-            let pv = block_in_place(|| self.strategy.search(pos, limits));
+            let pv: Pv<1> = block_in_place(|| self.strategy.search(pos, limits));
 
             Span::current()
                 .record("depth", display(pv.depth()))

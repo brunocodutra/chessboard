@@ -1,4 +1,5 @@
-use super::{Depth, Line, Score};
+use super::{Depth, Line, PlyBounds, Score};
+use crate::util::Bounds;
 use derive_more::{Constructor, Deref};
 use test_strategy::Arbitrary;
 
@@ -6,7 +7,7 @@ use test_strategy::Arbitrary;
 ///
 /// [principal variation]: https://www.chessprogramming.org/Principal_Variation
 #[derive(Debug, Clone, Eq, PartialEq, Hash, Arbitrary, Constructor, Deref)]
-pub struct Pv {
+pub struct Pv<const N: usize = { PlyBounds::UPPER as _ }> {
     depth: Depth,
     #[map(|s: Score| match s.mate() {
         Some(p) if p > 0 => Score::upper().normalize(p / 2 * 2 + 1),
@@ -15,10 +16,10 @@ pub struct Pv {
     })]
     score: Score,
     #[deref]
-    line: Line,
+    line: Line<N>,
 }
 
-impl Pv {
+impl<const N: usize> Pv<N> {
     /// The depth searched.
     #[inline]
     pub fn depth(&self) -> Depth {
@@ -33,7 +34,7 @@ impl Pv {
 
     /// The strongest [`Line`].
     #[inline]
-    pub fn line(&self) -> &Line {
+    pub fn line(&self) -> &Line<N> {
         &self.line
     }
 }
