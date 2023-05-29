@@ -7,7 +7,7 @@ impl Bounds for PlyBounds {
     const LOWER: Self::Integer = -Self::UPPER;
 
     #[cfg(not(test))]
-    const UPPER: Self::Integer = 127;
+    const UPPER: Self::Integer = 95;
 
     #[cfg(test)]
     const UPPER: Self::Integer = 3;
