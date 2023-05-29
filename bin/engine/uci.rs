@@ -6,7 +6,7 @@ use derive_more::{DebugCustom, Display, Error, From};
 use futures_util::{future::BoxFuture, stream::BoxStream};
 use lib::chess::{Move, Position};
 use lib::eval::Value;
-use lib::search::{Depth, Limits, Ply, Report, Score};
+use lib::search::{Depth, Limits, Ply, Pv, Score};
 use std::{collections::HashMap, fmt::Debug, future::Future, io, pin::Pin, time::Instant};
 use tokio::{runtime, task::block_in_place, time::timeout};
 use tracing::{debug, error, instrument};
@@ -155,7 +155,7 @@ impl<T: Io + Send + 'static> Player for Uci<T> {
         &'a mut self,
         pos: &'b Position,
         limits: Limits,
-    ) -> BoxStream<'c, Result<Report, Self::Error>>
+    ) -> BoxStream<'c, Result<Pv, Self::Error>>
     where
         'a: 'c,
         'b: 'c,
@@ -201,7 +201,7 @@ impl<T: Io + Send + 'static> Player for Uci<T> {
                         if limits.depth() < d {
                             break;
                         } else {
-                            yield Report::new(Depth::saturate(d), s, moves);
+                            yield Pv::new(Depth::saturate(d), s, moves);
                             if limits.depth() == d {
                                 break;
                             }
@@ -746,7 +746,7 @@ mod tests {
     #[proptest]
     fn analyze_stops_when_target_depth_is_reached(
         pos: Position,
-        #[any(size_range(0..=3).lift())] rs: Vec<Report>,
+        #[any(size_range(0..=3).lift())] pvs: Vec<Pv>,
     ) {
         let rt = runtime::Builder::new_multi_thread().enable_time().build()?;
         let mut io = MockIo::new();
@@ -754,27 +754,27 @@ mod tests {
         io.expect_send().returning(|_| Box::pin(ready(Ok(()))));
         io.expect_flush().returning(|| Box::pin(ready(Ok(()))));
 
-        let (n, limits) = rs
+        let (n, limits) = pvs
             .iter()
             .enumerate()
-            .map(|(i, r)| (i, r.depth()))
+            .map(|(i, pv)| (i, pv.depth()))
             .max_by_key(|(i, d)| (*d, !*i))
             .map(|(i, d)| (i + 1, Limits::Depth(d)))
             .unwrap_or_default();
 
         prop_assume!(limits != Limits::None);
 
-        for r in rs.iter().take(n) {
-            let score = match r.score().mate() {
+        for pv in pvs.iter().take(n) {
+            let score = match pv.score().mate() {
                 Some(p) if p > 0 => UciInfoAttribute::from_mate((p.get() + 1) / 2),
                 Some(p) => UciInfoAttribute::from_mate((p.get() - 1) / 2),
-                None => UciInfoAttribute::from_centipawns(r.score().get().into()),
+                None => UciInfoAttribute::from_centipawns(pv.score().get().into()),
             };
 
             let attrs = vec![
                 score,
-                UciInfoAttribute::Depth(r.depth().get()),
-                UciInfoAttribute::Pv(r.pv().iter().copied().map(|m| m.into()).collect()),
+                UciInfoAttribute::Depth(pv.depth().get()),
+                UciInfoAttribute::Pv(pv.iter().copied().map(|m| m.into()).collect()),
             ];
 
             let info = UciMessage::Info(attrs);
@@ -791,7 +791,7 @@ mod tests {
         assert_eq!(
             rt.block_on(uci.analyze(&pos, limits).try_collect::<Vec<_>>())
                 .map_err(|UciError(e)| e.kind()),
-            Ok(rs.into_iter().take(n).collect())
+            Ok(pvs.into_iter().take(n).collect())
         );
     }
 

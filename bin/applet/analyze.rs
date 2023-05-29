@@ -29,14 +29,14 @@ impl Analyze {
         let mut engine = self.engine.build()?;
         let mut analysis = engine.analyze(&pos, self.limits);
 
-        while let Some(r) = analysis.try_next().await? {
+        while let Some(pv) = analysis.try_next().await? {
             info!(
-                depth = %r.depth(),
+                depth = %pv.depth(),
                 score = %match pos.turn() {
-                    Color::White => r.score(),
-                    Color::Black => -r.score(),
+                    Color::White => pv.score(),
+                    Color::Black => -pv.score(),
                 },
-                pv = %r.pv(),
+                pv = %pv.line(),
             );
         }
 

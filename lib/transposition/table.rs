@@ -93,8 +93,8 @@ impl Table {
         Iter::new(self, pos.clone())
     }
 
-    /// An iterator for the principal variation from a starting [`Position`].
-    pub fn pv(&self, pos: &Position) -> impl Iterator<Item = Move> + '_ {
+    /// An iterator for a sequence of moves from a starting [`Position`].
+    pub fn line(&self, pos: &Position) -> impl Iterator<Item = Move> + '_ {
         self.iter(pos).map(|t| t.best())
     }
 }
