@@ -3,10 +3,8 @@ use crate::eval::{Evaluator, Value};
 use crate::transposition::{Table, Transposition};
 use crate::util::{Timeout, Timer};
 use derive_more::{Deref, Neg};
-use rayon::prelude::*;
 use rayon::{ThreadPool, ThreadPoolBuilder};
-use std::sync::atomic::{AtomicI16, Ordering};
-use std::{cmp::max_by_key, ops::Range, time::Duration};
+use std::{ops::Range, time::Duration};
 use test_strategy::Arbitrary;
 
 mod depth;
@@ -277,63 +275,60 @@ impl Searcher {
             }
         });
 
-        let (score, best) = match moves.pop() {
+        let (mut cutoff, mut best) = match moves.pop() {
             None => return Ok(ScoreWithTempo::new(score, depth, ply)),
-            Some((m, ref next, _)) => {
-                let score = -self.pvs(next, -beta..-alpha, depth, ply + 1, timer)?;
-
-                if *score >= beta {
-                    self.record(zobrist, bounds, depth, ply, *score, m);
-                    return Ok(score);
-                }
-
-                (score, m)
-            }
+            Some((m, ref next, _)) => (-self.pvs(next, -beta..-alpha, depth, ply + 1, timer)?, m),
         };
 
-        let cutoff = AtomicI16::new(alpha.max(*score).get());
+        while let Some((m, ref next, value)) = moves.pop() {
+            let alpha = alpha.max(*cutoff);
 
-        let (score, best) = moves
-            .into_par_iter()
-            .rev()
-            .map(|(m, ref next, value)| {
-                let mut alpha = Score::new(cutoff.load(Ordering::Relaxed));
-
-                if alpha >= beta {
-                    return Ok(None);
-                } else if !in_check {
-                    if let Some(d) = self.lmp(next, value, alpha.cast(), depth) {
-                        if d <= ply || *-self.nw(next, -alpha, d, ply + 1, timer)? < alpha {
-                            #[cfg(not(test))]
-                            // The late move pruning heuristic is not exact.
-                            return Ok(None);
-                        }
+            if alpha >= beta {
+                break;
+            } else if !in_check {
+                if let Some(d) = self.lmp(next, value, alpha.cast(), depth) {
+                    if d <= ply || *-self.nw(next, -alpha, d, ply + 1, timer)? < alpha {
+                        #[cfg(not(test))]
+                        // The late move pruning heuristic is not exact.
+                        continue;
                     }
                 }
+            }
 
-                loop {
-                    match -self.nw(next, -alpha, depth, ply + 1, timer)? {
-                        s if *s < alpha => return Ok(Some((s, m))),
-                        s => match Score::new(cutoff.fetch_max(s.get(), Ordering::Relaxed)) {
-                            _ if *s >= beta => return Ok(Some((s, m))),
-                            a if a >= beta => return Ok(None),
-                            a if *s < a => alpha = a,
-                            a => {
-                                let s = -self.pvs(next, -beta..-a, depth, ply + 1, timer)?;
-                                cutoff.fetch_max(s.get(), Ordering::Relaxed);
-                                return Ok(Some((s, m)));
-                            }
-                        },
-                    }
-                }
-            })
-            .chain([Ok(Some((score, best)))])
-            .try_reduce(|| None, |a, b| Ok(max_by_key(a, b, |x| x.map(|(s, _)| s))))?
-            .expect("expected at least one legal move");
+            let score = match -self.nw(next, -alpha, depth, ply + 1, timer)? {
+                s if !(alpha..beta).contains(&*s) => s,
+                _ => -self.pvs(next, -beta..-alpha, depth, ply + 1, timer)?,
+            };
 
-        self.record(zobrist, bounds, depth, ply, *score, best);
+            if score > cutoff {
+                (cutoff, best) = (score, m);
+            }
+        }
 
-        Ok(score)
+        self.record(zobrist, bounds, depth, ply, *cutoff, best);
+
+        Ok(cutoff)
+    }
+
+    /// An implementation of [lazy SMP].
+    ///
+    /// [lazy SMP]: https://www.chessprogramming.org/Lazy_SMP
+    fn lsmp(
+        &self,
+        pos: &Position,
+        bounds: Range<Score>,
+        depth: Depth,
+        ply: Ply,
+        timer: Timer,
+    ) -> Result<ScoreWithTempo, Timeout> {
+        assert!(!bounds.is_empty(), "{bounds:?} ≠ ∅");
+
+        timer.elapsed()?;
+        self.executor
+            .broadcast(|_| self.pvs(pos, bounds.clone(), depth, ply, timer))
+            .into_iter()
+            .min()
+            .expect("expected at least one thread in the pool")
     }
 
     fn time_to_search(&self, pos: &Position, limits: Limits) -> Duration {
@@ -356,52 +351,50 @@ impl Searcher {
             self.tt.unset(pos.zobrist());
         };
 
-        self.executor.install(|| {
-            let mut pv = Pv::new(Depth::new(0), Score::new(0), Line::empty());
+        let mut pv = Pv::new(Depth::new(0), Score::new(0), Line::empty());
 
-            'id: for d in 0..=limits.depth().get() {
-                let mut w: i16 = match d {
-                    0 => i16::MAX,
-                    1 => 512,
-                    2 => 256,
-                    3 => 128,
-                    4 => 64,
-                    _ => 32,
+        'id: for d in 0..=limits.depth().get() {
+            let mut w: i16 = match d {
+                0 => i16::MAX,
+                1 => 512,
+                2 => 256,
+                3 => 128,
+                4 => 64,
+                _ => 32,
+            };
+
+            let depth = Depth::new(d);
+            let mut lower = (pv.score() - w / 2).min(Score::upper() - w);
+            let mut upper = (pv.score() + w / 2).max(Score::lower() + w);
+
+            pv = 'aw: loop {
+                // Ignore time limits until some pv is found.
+                let timer = if pv.is_empty() {
+                    Timer::start(Duration::MAX)
+                } else {
+                    timer
                 };
 
-                let depth = Depth::new(d);
-                let mut lower = (pv.score() - w / 2).min(Score::upper() - w);
-                let mut upper = (pv.score() + w / 2).max(Score::lower() + w);
-
-                pv = 'aw: loop {
-                    // Ignore time limits until some pv is found.
-                    let timer = if pv.is_empty() {
-                        Timer::start(Duration::MAX)
-                    } else {
-                        timer
-                    };
-
-                    let score = match self.pvs(pos, lower..upper, depth, Ply::new(0), timer) {
-                        Err(_) => break 'id,
-                        Ok(s) => *s,
-                    };
-
-                    w = w.saturating_mul(2);
-
-                    match score {
-                        s if (-lower..Score::upper()).contains(&-s) => lower = s - w / 2,
-                        s if (upper..Score::upper()).contains(&s) => upper = s + w / 2,
-                        _ => break 'aw Pv::new(depth, score, self.tt.line(pos).collect()),
-                    }
-
-                    if score >= pv.score() {
-                        pv = Pv::new(depth, score, self.tt.line(pos).collect());
-                    }
+                let score = match self.lsmp(pos, lower..upper, depth, Ply::new(0), timer) {
+                    Err(_) => break 'id,
+                    Ok(s) => *s,
                 };
-            }
 
-            pv
-        })
+                w = w.saturating_mul(2);
+
+                match score {
+                    s if (-lower..Score::upper()).contains(&-s) => lower = s - w / 2,
+                    s if (upper..Score::upper()).contains(&s) => upper = s + w / 2,
+                    _ => break 'aw Pv::new(depth, score, self.tt.line(pos).collect()),
+                }
+
+                if score >= pv.score() {
+                    pv = Pv::new(depth, score, self.tt.line(pos).collect());
+                }
+            };
+        }
+
+        pv
     }
 }
 
@@ -501,6 +494,43 @@ mod tests {
             x.pvs(&pos, Score::lower()..Score::upper(), d, p, timer)
                 .as_deref(),
             y.pvs(&pos, Score::lower()..Score::upper(), d, p, timer)
+                .as_deref()
+        );
+    }
+
+    #[proptest]
+    #[should_panic]
+    fn lsmp_panics_if_alpha_is_not_greater_than_beta(
+        s: Searcher,
+        pos: Position,
+        b: Range<Score>,
+        d: Depth,
+        p: Ply,
+    ) {
+        s.lsmp(&pos, b.end..b.start, d, p, Timer::start(Duration::MAX))?;
+    }
+
+    #[proptest]
+    fn lsmp_aborts_if_time_is_up(
+        s: Searcher,
+        pos: Position,
+        #[filter(!#b.is_empty())] b: Range<Score>,
+        d: Depth,
+        p: Ply,
+    ) {
+        let timer = Timer::start(Duration::ZERO);
+        std::thread::sleep(Duration::from_millis(1));
+        assert_eq!(s.lsmp(&pos, b, d, p, timer), Err(Timeout));
+    }
+
+    #[proptest]
+    fn lsmp_is_equivalent_to_pvs(s: Searcher, pos: Position, d: Depth, #[filter(#p >= 0)] p: Ply) {
+        let timer = Timer::start(Duration::MAX);
+
+        assert_eq!(
+            s.lsmp(&pos, Score::lower()..Score::upper(), d, p, timer)
+                .as_deref(),
+            s.pvs(&pos, Score::lower()..Score::upper(), d, p, timer)
                 .as_deref()
         );
     }
