@@ -166,6 +166,13 @@ impl Engine {
             };
         }
 
+        let depth = match tpos {
+            #[cfg(not(test))]
+            // Reductions are not exact.
+            None => depth - 1,
+            _ => depth,
+        };
+
         let score = match tpos {
             Some(t) => t.score().normalize(ply),
             None if ply >= depth => pos.value().cast(),
