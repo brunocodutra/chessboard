@@ -176,22 +176,23 @@ impl Searcher {
         assert!(!bounds.is_empty(), "{bounds:?} ≠ ∅");
 
         timer.elapsed()?;
-        let zobrist = pos.zobrist();
+        let in_check = pos.is_check();
+        let zobrist = match pos.outcome() {
+            Some(o) if o.is_draw() => return Ok(ScoreWithTempo::zero(depth, ply)),
+            Some(_) => return Ok(ScoreWithTempo::lower(depth, ply)),
+            None => pos.zobrist(),
+        };
+
         let (transposition, alpha, beta) = self.probe(zobrist, bounds.clone(), depth, ply);
 
         if alpha >= beta {
             return Ok(ScoreWithTempo::new(alpha, depth, ply));
         }
 
-        let in_check = pos.is_check();
-        let score = match pos.outcome() {
-            Some(o) if o.is_draw() => return Ok(ScoreWithTempo::zero(depth, ply)),
-            Some(_) => return Ok(ScoreWithTempo::lower(depth, ply)),
-            None => match transposition {
-                Some(t) => t.score().normalize(ply),
-                None if depth <= ply => pos.value().cast(),
-                None => *self.nw(pos, beta, ply.cast(), ply, timer)?,
-            },
+        let score = match transposition {
+            Some(t) => t.score().normalize(ply),
+            None if ply < depth => *self.nw(pos, beta, ply.cast(), ply, timer)?,
+            None => pos.value().cast(),
         };
 
         let kind = if ply < depth {
@@ -360,7 +361,7 @@ impl Searcher {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use proptest::prop_assume;
+    use proptest::{prop_assume, sample::Selector};
     use std::time::Duration;
     use test_strategy::proptest;
     use tokio::{runtime, time::timeout};
@@ -429,6 +430,54 @@ mod tests {
         let timer = Timer::start(Duration::ZERO);
         std::thread::sleep(Duration::from_millis(1));
         assert_eq!(s.pvs(&pos, b, d, p, timer), Err(Timeout));
+    }
+
+    #[proptest]
+    fn pvs_returns_balanced_score_if_game_ends_in_a_draw(
+        s: Searcher,
+        #[filter(#pos.outcome().is_some_and(|o| o.is_draw()))] pos: Position,
+        #[filter(!#b.is_empty())] b: Range<Score>,
+        d: Depth,
+        p: Ply,
+    ) {
+        let pos = Evaluator::borrow(&pos);
+        let timer = Timer::start(Duration::MAX);
+        assert_eq!(s.pvs(&pos, b, d, p, timer), Ok(ScoreWithTempo::zero(d, p)));
+    }
+
+    #[proptest]
+    fn pvs_returns_lowest_score_if_game_ends_in_checkmate(
+        s: Searcher,
+        #[filter(#pos.outcome().is_some_and(|o| o.is_decisive()))] pos: Position,
+        #[filter(!#b.is_empty())] b: Range<Score>,
+        d: Depth,
+        p: Ply,
+    ) {
+        let pos = Evaluator::borrow(&pos);
+        let timer = Timer::start(Duration::MAX);
+        assert_eq!(s.pvs(&pos, b, d, p, timer), Ok(ScoreWithTempo::lower(d, p)));
+    }
+
+    #[proptest]
+    fn pvs_returns_transposition_score_if_exact(
+        s: Searcher,
+        #[filter(#pos.outcome().is_none())] pos: Position,
+        #[filter(!#b.is_empty())] b: Range<Score>,
+        d: Depth,
+        #[filter(#p >= 0)] p: Ply,
+        #[filter(#sc.mate().is_none())] sc: Score,
+        selector: Selector,
+    ) {
+        let m = *selector.select(pos.moves(MoveKind::ANY));
+        s.tt.set(pos.zobrist(), Transposition::exact(d, sc, m));
+
+        let pos = Evaluator::borrow(&pos);
+        let timer = Timer::start(Duration::MAX);
+
+        assert_eq!(
+            s.pvs(&pos, b, d, p, timer),
+            Ok(ScoreWithTempo::new(sc, d, p))
+        );
     }
 
     #[proptest]
