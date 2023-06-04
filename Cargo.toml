@@ -71,6 +71,7 @@ pgn-reader = { version = "0.24.0", default-features = false }
 [profile.release]
 codegen-units = 1
 lto = true
+panic = "abort"
 
 [profile.dev]
 opt-level = 1
