@@ -9,11 +9,6 @@ use test_strategy::Arbitrary;
 #[derive(Debug, Clone, Eq, PartialEq, Hash, Arbitrary, Constructor, Deref)]
 pub struct Pv<const N: usize = { PlyBounds::UPPER as _ }> {
     depth: Depth,
-    #[map(|s: Score| match s.mate() {
-        Some(p) if p > 0 => Score::upper().normalize(p / 2 * 2 + 1),
-        Some(p) => -Score::upper().normalize(p / 2 * 2),
-        None => s
-    })]
     score: Score,
     #[deref]
     line: Line<N>,

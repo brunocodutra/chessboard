@@ -1,16 +1,13 @@
-use super::Player;
-use crate::io::Io;
+use crate::{io::Io, play::Play};
 use anyhow::{Context, Error as Anyhow};
-use async_stream::try_stream;
+use async_trait::async_trait;
 use derive_more::{DebugCustom, Display, Error, From};
-use futures_util::{future::BoxFuture, stream::BoxStream};
 use lib::chess::{Move, Position};
-use lib::eval::Value;
-use lib::search::{Depth, Limits, Ply, Pv, Score};
-use std::{collections::HashMap, fmt::Debug, future::Future, io, pin::Pin, time::Instant};
-use tokio::{runtime, task::block_in_place, time::timeout};
+use lib::search::Limits;
+use std::{collections::HashMap, fmt::Debug, future::Future, io, pin::Pin};
+use tokio::{runtime, task::block_in_place};
 use tracing::{debug, error, instrument};
-use vampirc_uci::{self as uci, UciFen, UciInfoAttribute, UciMessage, UciSearchControl};
+use vampirc_uci::{self as uci, UciFen, UciMessage, UciSearchControl};
 
 pub type UciOptions = HashMap<String, Option<String>>;
 
@@ -122,97 +119,22 @@ impl<T: Io> Drop for Uci<T> {
     }
 }
 
-impl<T: Io + Send + 'static> Player for Uci<T> {
+#[async_trait]
+impl<T: Io + Send + 'static> Play for Uci<T> {
     type Error = UciError;
 
     #[instrument(level = "debug", skip(self, pos), ret(Display), err, fields(%pos, %limits))]
-    fn play<'a, 'b, 'c>(
-        &'a mut self,
-        pos: &'b Position,
-        limits: Limits,
-    ) -> BoxFuture<'c, Result<Move, Self::Error>>
-    where
-        'a: 'c,
-        'b: 'c,
-    {
-        Box::pin(async move {
-            self.go(pos, limits).await?;
+    async fn play(&mut self, pos: &Position, limits: Limits) -> Result<Move, Self::Error> {
+        self.go(pos, limits).await?;
+        let io = self.io.get_or_init().await?;
 
-            let io = self.io.get_or_init().await?;
-
-            loop {
-                if let UciMessage::BestMove { best_move: m, .. } =
-                    uci::parse_one(io.recv().await?.trim())
-                {
-                    break Ok(m.into());
-                }
+        loop {
+            if let UciMessage::BestMove { best_move: m, .. } =
+                uci::parse_one(io.recv().await?.trim())
+            {
+                break Ok(m.into());
             }
-        })
-    }
-
-    #[instrument(level = "debug", skip(self, pos), fields(%pos, %limits))]
-    fn analyze<'a, 'b, 'c>(
-        &'a mut self,
-        pos: &'b Position,
-        limits: Limits,
-    ) -> BoxStream<'c, Result<Pv, Self::Error>>
-    where
-        'a: 'c,
-        'b: 'c,
-    {
-        Box::pin(try_stream! {
-            self.go(pos, limits).await?;
-            let timer = Instant::now();
-            let io = self.io.get_or_init().await?;
-
-            loop {
-                let limit = limits.time().saturating_sub(timer.elapsed());
-                let msg = match timeout(limit, io.recv()).await {
-                    Ok(msg) => msg?,
-                    Err(_) => break,
-                };
-
-                if let UciMessage::Info(info) = uci::parse_one(msg.trim()) {
-                    let (mut depth, mut score, mut moves) = Default::default();
-
-                    for i in info {
-                        if let UciInfoAttribute::Depth(d) = i {
-                            depth = Some(d);
-                        }
-
-                        if let UciInfoAttribute::Score { mate: Some(d), .. } = i {
-                            score = if d > 0 {
-                                Some(Score::upper().normalize(Ply::saturate(d * 2 - 1)))
-                            } else {
-                                Some(-Score::upper().normalize(Ply::saturate(d * 2)))
-                            };
-                        }
-
-                        if let UciInfoAttribute::Score { cp: Some(s), .. } = i {
-                            score = Some(Value::saturate(s).cast());
-                        }
-
-                        if let UciInfoAttribute::Pv(m) = i {
-                            moves = m.into_iter().map(Move::from).collect();
-                        }
-                    }
-
-                    if let Some((d, s)) = Option::zip(depth, score) {
-                        if limits.depth() < d {
-                            break;
-                        } else {
-                            yield Pv::new(Depth::saturate(d), s, moves);
-                            if limits.depth() == d {
-                                break;
-                            }
-                        }
-                    }
-                }
-            }
-
-            io.send(&UciMessage::Stop.to_string()).await?;
-            io.flush().await?;
-        })
+        }
     }
 }
 
@@ -220,13 +142,12 @@ impl<T: Io + Send + 'static> Player for Uci<T> {
 mod tests {
     use super::*;
     use crate::io::MockIo;
-    use futures_util::TryStreamExt;
     use lib::chess::Move;
     use mockall::Sequence;
-    use proptest::{prelude::*, sample::size_range};
-    use std::{future::ready, time::Duration};
+    use proptest::prelude::*;
+    use std::future::ready;
     use test_strategy::proptest;
-    use tokio::{runtime, time::sleep};
+    use tokio::runtime;
 
     fn any_uci_message() -> impl Strategy<Value = UciMessage> {
         prop_oneof![
@@ -722,109 +643,6 @@ mod tests {
     #[proptest]
     fn search_can_fail_reading(l: Limits, pos: Position, e: io::Error) {
         let rt = runtime::Builder::new_multi_thread().build()?;
-        let mut io = MockIo::new();
-
-        io.expect_send().returning(|_| Box::pin(ready(Ok(()))));
-        io.expect_flush().returning(|| Box::pin(ready(Ok(()))));
-
-        let kind = e.kind();
-        io.expect_recv()
-            .once()
-            .return_once(move || Box::pin(ready(Err(e))));
-
-        let mut uci = Uci {
-            io: Lazy::Initialized(io),
-        };
-
-        assert_eq!(
-            rt.block_on(uci.play(&pos, l))
-                .map_err(|UciError(e)| e.kind()),
-            Err(kind)
-        );
-    }
-
-    #[proptest]
-    fn analyze_stops_when_target_depth_is_reached(
-        pos: Position,
-        #[any(size_range(0..=3).lift())] pvs: Vec<Pv>,
-    ) {
-        let rt = runtime::Builder::new_multi_thread().enable_time().build()?;
-        let mut io = MockIo::new();
-
-        io.expect_send().returning(|_| Box::pin(ready(Ok(()))));
-        io.expect_flush().returning(|| Box::pin(ready(Ok(()))));
-
-        let (n, limits) = pvs
-            .iter()
-            .enumerate()
-            .map(|(i, pv)| (i, pv.depth()))
-            .max_by_key(|(i, d)| (*d, !*i))
-            .map(|(i, d)| (i + 1, Limits::Depth(d)))
-            .unwrap_or_default();
-
-        prop_assume!(limits != Limits::None);
-
-        for pv in pvs.iter().take(n) {
-            let score = match pv.score().mate() {
-                Some(p) if p > 0 => UciInfoAttribute::from_mate((p.get() + 1) / 2),
-                Some(p) => UciInfoAttribute::from_mate((p.get() - 1) / 2),
-                None => UciInfoAttribute::from_centipawns(pv.score().get().into()),
-            };
-
-            let attrs = vec![
-                score,
-                UciInfoAttribute::Depth(pv.depth().get()),
-                UciInfoAttribute::Pv(pv.iter().copied().map(|m| m.into()).collect()),
-            ];
-
-            let info = UciMessage::Info(attrs);
-
-            io.expect_recv()
-                .once()
-                .return_once(move || Box::pin(ready(Ok(info.to_string()))));
-        }
-
-        let mut uci = Uci {
-            io: Lazy::Initialized(io),
-        };
-
-        assert_eq!(
-            rt.block_on(uci.analyze(&pos, limits).try_collect::<Vec<_>>())
-                .map_err(|UciError(e)| e.kind()),
-            Ok(pvs.into_iter().take(n).collect())
-        );
-    }
-
-    #[proptest]
-    fn analyze_can_be_limited_by_time(pos: Position) {
-        let rt = runtime::Builder::new_multi_thread().enable_time().build()?;
-        let mut io = MockIo::new();
-
-        io.expect_send().returning(|_| Box::pin(ready(Ok(()))));
-        io.expect_flush().returning(|| Box::pin(ready(Ok(()))));
-        io.expect_recv().returning(|| {
-            Box::pin(async move {
-                sleep(Duration::from_secs(1)).await;
-                Ok(String::new())
-            })
-        });
-
-        let mut uci = Uci {
-            io: Lazy::Initialized(io),
-        };
-
-        let l = Limits::Time(Duration::ZERO);
-
-        assert_eq!(
-            rt.block_on(uci.analyze(&pos, l).try_collect::<Vec<_>>())
-                .map_err(|UciError(e)| e.kind()),
-            Ok(Vec::new())
-        );
-    }
-
-    #[proptest]
-    fn analyze_can_fail_reading(l: Limits, pos: Position, e: io::Error) {
-        let rt = runtime::Builder::new_multi_thread().enable_time().build()?;
         let mut io = MockIo::new();
 
         io.expect_send().returning(|_| Box::pin(ready(Ok(()))));

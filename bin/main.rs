@@ -1,13 +1,14 @@
 use anyhow::Error as Anyhow;
 use clap::Parser;
 
+mod analyze;
 mod applet;
 mod build;
 mod cli;
 mod engine;
 mod game;
 mod io;
-mod player;
+mod play;
 
 #[tokio::main]
 async fn main() -> Result<(), Anyhow> {
