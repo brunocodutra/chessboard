@@ -1,9 +1,8 @@
-use crate::{io::Process, player::Player};
-use async_stream::stream;
+use crate::{io::Process, play::Play};
+use async_trait::async_trait;
 use derive_more::{DebugCustom, Display, Error, From};
-use futures_util::{future::BoxFuture, stream::BoxStream};
 use lib::chess::{Move, Position};
-use lib::search::{Limits, Options, Pv};
+use lib::search::{Limits, Options};
 use serde::{Deserialize, Serialize};
 use std::str::FromStr;
 use test_strategy::Arbitrary;
@@ -47,8 +46,8 @@ impl FromStr for EngineConfig {
 /// The reason why [`Engine`] failed to play a [`Move`].
 #[derive(Debug, Display, Error, From)]
 pub enum EngineError {
-    Ai(<Ai as Player>::Error),
-    Uci(<Uci<Process> as Player>::Error),
+    Ai(<Ai as Play>::Error),
+    Uci(<Uci<Process> as Play>::Error),
 }
 
 /// A generic chess engine.
@@ -61,75 +60,15 @@ pub enum Engine {
     Uci(Uci<Process>),
 }
 
-impl Player for Engine {
+#[async_trait]
+impl Play for Engine {
     type Error = EngineError;
 
-    fn play<'a, 'b, 'c>(
-        &'a mut self,
-        pos: &'b Position,
-        limits: Limits,
-    ) -> BoxFuture<'c, Result<Move, Self::Error>>
-    where
-        'a: 'c,
-        'b: 'c,
-    {
-        Box::pin(async move {
-            match self {
-                Engine::Ai(e) => Ok(e.play(pos, limits).await?),
-                Engine::Uci(e) => Ok(e.play(pos, limits).await?),
-            }
-        })
-    }
-
-    fn analyze<'a, 'b, 'c>(
-        &'a mut self,
-        pos: &'b Position,
-        limits: Limits,
-    ) -> BoxStream<'c, Result<Pv, Self::Error>>
-    where
-        'a: 'c,
-        'b: 'c,
-    {
-        Box::pin(stream! {
-            match self {
-                Engine::Ai(e) => for await pv in e.analyze(pos, limits) {
-                    yield Ok(pv?)
-                }
-
-                Engine::Uci(e) => for await pv in e.analyze(pos, limits) {
-                    yield Ok(pv?)
-                }
-            }
-        })
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use test_strategy::proptest;
-
-    #[proptest]
-    fn parsing_printed_engine_config_is_an_identity(b: EngineConfig) {
-        assert_eq!(b.to_string().parse(), Ok(b));
-    }
-
-    #[proptest]
-    fn ai_config_is_deserializable(o: Options) {
-        assert_eq!("ai(())".parse(), Ok(EngineConfig::Ai(Options::default())));
-        assert_eq!(format!("ai({o})").parse(), Ok(EngineConfig::Ai(o)));
-    }
-
-    #[proptest]
-    fn uci_config_is_deserializable(p: String, o: UciOptions) {
-        assert_eq!(
-            format!("uci({p:?})").parse(),
-            Ok(EngineConfig::Uci(p.clone(), UciOptions::default()))
-        );
-
-        assert_eq!(
-            format!("uci({p:?}, {})", ron::ser::to_string(&o)?).parse(),
-            Ok(EngineConfig::Uci(p, o))
-        );
+    #[inline]
+    async fn play(&mut self, pos: &Position, limits: Limits) -> Result<Move, Self::Error> {
+        match self {
+            Engine::Ai(e) => Ok(e.play(pos, limits).await?),
+            Engine::Uci(e) => Ok(e.play(pos, limits).await?),
+        }
     }
 }

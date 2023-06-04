@@ -1,4 +1,4 @@
-use crate::{build::Build, player::Player};
+use crate::{build::Build, play::Play};
 use derive_more::{Constructor, Display, Error};
 use lib::chess::{Color, Pgn, Position};
 use lib::search::Limits;
@@ -27,8 +27,8 @@ impl<W, B> Game<W, B>
 where
     W: Build + Display,
     B: Build + Display,
-    W::Output: Player<Error = W::Error>,
-    B::Output: Player<Error = B::Error>,
+    W::Output: Play<Error = W::Error>,
+    B::Output: Play<Error = B::Error>,
 {
     /// Play a game of chess from the given starting [`Position`].
     #[instrument(level = "debug", skip(self), err,
@@ -77,7 +77,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{build::MockBuilder, player::MockPlayer};
+    use crate::{build::MockBuilder, play::MockPlay};
     use futures_util::FutureExt;
     use lib::chess::MoveKind;
     use proptest::sample::Selector;
@@ -89,13 +89,13 @@ mod tests {
     fn game_ends_when_it_is_over(#[filter(#pos.outcome().is_some())] pos: Position, l: Limits) {
         let rt = runtime::Builder::new_multi_thread().build()?;
 
-        let w = MockPlayer::new();
-        let b = MockPlayer::new();
+        let w = MockPlay::new();
+        let b = MockPlay::new();
 
-        let mut wb = MockBuilder::<MockPlayer>::new();
+        let mut wb = MockBuilder::<MockPlay>::new();
         wb.expect_build().once().return_once(move || Ok(w));
 
-        let mut bb = MockBuilder::<MockPlayer>::new();
+        let mut bb = MockBuilder::<MockPlay>::new();
         bb.expect_build().once().return_once(move || Ok(b));
 
         let wc = wb.to_string();
@@ -137,18 +137,18 @@ mod tests {
 
         moves.reverse();
 
-        let mut w = MockPlayer::new();
-        let mut b = MockPlayer::new();
+        let mut w = MockPlay::new();
+        let mut b = MockPlay::new();
 
         let act = move |_: &Position, _: Limits| ready(Ok(moves.pop().unwrap())).boxed();
 
         w.expect_play().returning(act.clone());
         b.expect_play().returning(act);
 
-        let mut wb = MockBuilder::<MockPlayer>::new();
+        let mut wb = MockBuilder::<MockPlay>::new();
         wb.expect_build().once().return_once(move || Ok(w));
 
-        let mut bb = MockBuilder::<MockPlayer>::new();
+        let mut bb = MockBuilder::<MockPlay>::new();
         bb.expect_build().once().return_once(move || Ok(b));
 
         let wc = wb.to_string();
@@ -171,8 +171,8 @@ mod tests {
     fn game_interrupts_if_player_fails_to_build(pos: Position, l: Limits, e: String) {
         let rt = runtime::Builder::new_multi_thread().build()?;
 
-        let mut wb = MockBuilder::<MockPlayer>::new();
-        let bb = MockBuilder::<MockPlayer>::new();
+        let mut wb = MockBuilder::<MockPlay>::new();
+        let bb = MockBuilder::<MockPlay>::new();
 
         wb.expect_build().once().return_once({
             let e = e.clone();
@@ -193,8 +193,8 @@ mod tests {
 
         let turn = pos.turn();
 
-        let mut w = MockPlayer::new();
-        let mut b = MockPlayer::new();
+        let mut w = MockPlay::new();
+        let mut b = MockPlay::new();
 
         let p = match turn {
             Color::White => &mut w,
@@ -205,10 +205,10 @@ mod tests {
         p.expect_play()
             .return_once(move |_, _| Box::pin(ready(err)));
 
-        let mut wb = MockBuilder::<MockPlayer>::new();
+        let mut wb = MockBuilder::<MockPlay>::new();
         wb.expect_build().once().return_once(move || Ok(w));
 
-        let mut bb = MockBuilder::<MockPlayer>::new();
+        let mut bb = MockBuilder::<MockPlay>::new();
         bb.expect_build().once().return_once(move || Ok(b));
 
         let g = Game::new(wb, bb);

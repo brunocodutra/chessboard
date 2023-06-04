@@ -1,10 +1,8 @@
-use crate::engine::Ai;
 use crate::io::{Io, Pipe};
-use crate::player::Player;
+use crate::{engine::Ai, play::Play};
 use anyhow::{Context, Error as Anyhow};
 use clap::Parser;
 use lib::chess::{Fen, Position};
-use lib::eval::Evaluator;
 use lib::search::{Depth, Limits, Options};
 use std::num::NonZeroUsize;
 use tokio::io::{stdin, stdout};
@@ -42,7 +40,7 @@ impl<T: Io> Server<T> {
     }
 
     fn new_game(&mut self) {
-        self.ai = Ai::new(Evaluator::default(), self.options)
+        self.ai = Ai::new(self.options)
     }
 
     fn set_hash(&mut self, value: &str) -> Result<(), Anyhow> {

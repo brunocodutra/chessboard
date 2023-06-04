@@ -1,6 +1,7 @@
-use super::Player;
+use crate::{analyze::Analyze, play::Play};
 use async_stream::try_stream;
-use futures_util::{future::BoxFuture, stream::BoxStream};
+use async_trait::async_trait;
+use futures_util::stream::BoxStream;
 use lib::chess::{Move, Position};
 use lib::eval::Evaluator;
 use lib::search::{Depth, Limits, Options, Pv};
@@ -40,36 +41,31 @@ pub struct Ai {
 
 impl Ai {
     /// Constructs [`Ai`] with the given [`Options`].
-    pub fn new(evaluator: Evaluator, options: Options) -> Self {
+    pub fn new(options: Options) -> Self {
         Ai {
-            strategy: Strategy::with_options(evaluator, options),
+            strategy: Strategy::with_options(Evaluator::new(), options),
         }
     }
 }
 
-impl Player for Ai {
+#[async_trait]
+impl Play for Ai {
     type Error = Infallible;
 
     #[instrument(level = "debug", skip(self, pos), ret(Display), err, fields(%pos, %limits, depth, score))]
-    fn play<'a, 'b, 'c>(
-        &'a mut self,
-        pos: &'b Position,
-        limits: Limits,
-    ) -> BoxFuture<'c, Result<Move, Self::Error>>
-    where
-        'a: 'c,
-        'b: 'c,
-    {
-        Box::pin(async move {
-            let pv: Pv<1> = block_in_place(|| self.strategy.search(pos, limits));
+    async fn play(&mut self, pos: &Position, limits: Limits) -> Result<Move, Self::Error> {
+        let pv: Pv<1> = block_in_place(|| self.strategy.search(pos, limits));
 
-            Span::current()
-                .record("depth", display(pv.depth()))
-                .record("score", display(pv.score()));
+        Span::current()
+            .record("depth", display(pv.depth()))
+            .record("score", display(pv.score()));
 
-            Ok(*pv.first().expect("expected some legal move"))
-        })
+        Ok(*pv.first().expect("expected some legal move"))
     }
+}
+
+impl Analyze for Ai {
+    type Error = Infallible;
 
     #[instrument(level = "debug", skip(self, pos), fields(%pos, %limits))]
     fn analyze<'a, 'b, 'c>(

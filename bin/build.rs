@@ -1,6 +1,5 @@
 use crate::engine::{Ai, Engine, EngineConfig, EngineError, Uci, UciError};
 use crate::io::Process;
-use lib::eval::Evaluator;
 
 /// Trait for types that build other types.
 pub trait Build {
@@ -20,7 +19,7 @@ impl Build for EngineConfig {
 
     fn build(self) -> Result<Self::Output, Self::Error> {
         match self {
-            EngineConfig::Ai(options) => Ok(Ai::new(Evaluator::new(), options).into()),
+            EngineConfig::Ai(options) => Ok(Ai::new(options).into()),
 
             EngineConfig::Uci(path, options) => {
                 let io = Process::spawn(&path).map_err(UciError::from)?;
