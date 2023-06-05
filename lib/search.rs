@@ -3,10 +3,10 @@ use crate::eval::{Evaluator, Value};
 use crate::transposition::{Table, Transposition};
 use crate::util::{Timeout, Timer};
 use derive_more::{Deref, Neg};
-use rayon::{iter::once, prelude::*};
+use rayon::prelude::*;
 use rayon::{ThreadPool, ThreadPoolBuilder};
 use std::sync::atomic::{AtomicI16, Ordering};
-use std::{cmp::max_by_key, ops::Range};
+use std::{cmp::max_by_key, ops::Range, time::Duration};
 use test_strategy::Arbitrary;
 
 mod depth;
@@ -328,7 +328,7 @@ impl Searcher {
 
                 Ok(None)
             })
-            .chain(once(Ok(Some((score, best)))))
+            .chain([Ok(Some((score, best)))])
             .try_reduce(|| None, |a, b| Ok(max_by_key(a, b, |x| x.map(|(s, _)| s))))?
             .expect("expected at least one legal move");
 
@@ -362,11 +362,19 @@ impl Searcher {
                 let mut upper = (pv.score() + w / 2).max(Score::lower() + w);
 
                 pv = 'aw: loop {
-                    w = w.saturating_mul(2);
+                    // Ignore time limits until some pv is found.
+                    let timer = if pv.is_empty() {
+                        Timer::start(Duration::MAX)
+                    } else {
+                        timer
+                    };
+
                     let score = match self.pvs(pos, lower..upper, depth, Ply::new(0), timer) {
                         Err(_) => break 'id,
                         Ok(s) => *s,
                     };
+
+                    w = w.saturating_mul(2);
 
                     match score {
                         s if (-lower..Score::upper()).contains(&-s) => lower = s - w / 2,
@@ -522,5 +530,13 @@ mod tests {
         });
 
         assert_eq!(result.err(), None);
+    }
+
+    #[proptest]
+    fn search_extends_time_to_find_some_pv(
+        mut s: Searcher,
+        #[filter(#pos.outcome().is_none())] pos: Position,
+    ) {
+        assert!(!s.search::<1>(&pos, Limits::Time(Duration::ZERO)).is_empty());
     }
 }
