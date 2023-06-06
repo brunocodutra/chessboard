@@ -2,9 +2,9 @@ use crate::io::{Io, Pipe};
 use crate::{engine::Ai, play::Play};
 use anyhow::{Context, Error as Anyhow};
 use clap::Parser;
-use lib::chess::{Fen, Position};
+use lib::chess::{Color, Fen, Position};
 use lib::search::{Depth, Limits, Options};
-use std::num::NonZeroUsize;
+use std::{num::NonZeroUsize, time::Duration};
 use tokio::io::{stdin, stdout};
 use tracing::{debug, error, instrument, warn};
 use vampirc_uci::{self as uci, UciMessage, UciOptionConfig, UciSearchControl, UciTimeControl};
@@ -148,41 +148,56 @@ impl<T: Io> Server<T> {
                     time_control: Some(UciTimeControl::MoveTime(time)),
                     search_control: None,
                 } => {
-                    let limits = match time.to_std() {
-                        Ok(time) => Limits::Time(time),
-                        Err(_) => Limits::None,
-                    };
+                    let time = time.to_std().unwrap_or(Duration::MAX);
+                    self.go(Limits::Time(time)).await?;
+                }
+
+                UciMessage::Go {
+                    search_control: None,
+                    time_control:
+                        Some(UciTimeControl::TimeLeft {
+                            white_time: Some(time),
+                            white_increment: Some(increment),
+                            moves_to_go: Some(1),
+                            ..
+                        }),
+                } if self.position.turn() == Color::White => {
+                    let limits = Limits::Clock(
+                        time.to_std().unwrap_or(Duration::MAX),
+                        increment.to_std().unwrap_or(Duration::MAX),
+                    );
 
                     self.go(limits).await?;
                 }
 
                 UciMessage::Go {
-                    time_control,
+                    search_control: None,
+                    time_control:
+                        Some(UciTimeControl::TimeLeft {
+                            black_time: Some(time),
+                            black_increment: Some(increment),
+                            moves_to_go: Some(1),
+                            ..
+                        }),
+                } if self.position.turn() == Color::Black => {
+                    let limits = Limits::Clock(
+                        time.to_std().unwrap_or(Duration::MAX),
+                        increment.to_std().unwrap_or(Duration::MAX),
+                    );
+
+                    self.go(limits).await?;
+                }
+
+                UciMessage::Go {
+                    time_control: None,
                     search_control:
                         Some(UciSearchControl {
                             depth: Some(depth),
                             search_moves,
-                            mate,
-                            nodes,
+                            mate: None,
+                            nodes: None,
                         }),
-                } => {
-                    if let Some(ctrl) = time_control {
-                        warn!("ignored time control {:#?}", ctrl);
-                    }
-
-                    if !search_moves.is_empty() {
-                        let moves: Vec<_> = search_moves.iter().map(ToString::to_string).collect();
-                        warn!("ignored request to limit search to [{}]", moves.join(","));
-                    }
-
-                    if let Some(n) = mate {
-                        warn!("ignored request to search for mate in {} moves", n);
-                    }
-
-                    if let Some(n) = nodes {
-                        warn!("ignored request to terminate the search after {} nodes", n);
-                    }
-
+                } if search_moves.is_empty() => {
                     self.go(Depth::saturate(depth).into()).await?;
                 }
 

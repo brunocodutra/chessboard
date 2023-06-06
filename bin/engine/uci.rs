@@ -2,7 +2,7 @@ use crate::{io::Io, play::Play};
 use anyhow::{Context, Error as Anyhow};
 use async_trait::async_trait;
 use derive_more::{DebugCustom, Display, Error, From};
-use lib::chess::{Move, Position};
+use lib::chess::{Color, Move, Position};
 use lib::search::Limits;
 use std::{collections::HashMap, fmt::Debug, future::Future, io, pin::Pin};
 use tokio::{runtime, task::block_in_place};
@@ -74,29 +74,56 @@ impl<T: Io + Send + 'static> Uci<T> {
     }
 
     async fn go(&mut self, pos: &Position, limits: Limits) -> Result<(), UciError> {
-        let position = UciMessage::Position {
-            startpos: false,
-            fen: Some(UciFen(pos.to_string())),
-            moves: Vec::new(),
-        };
-
-        let go = match limits {
-            Limits::None => UciMessage::go(),
-            Limits::Depth(d) => UciMessage::Go {
-                search_control: Some(UciSearchControl::depth(d.get())),
-                time_control: None,
-            },
-            Limits::Time(t) => UciMessage::go_movetime(
-                uci::Duration::from_std(t).unwrap_or_else(|_| uci::Duration::max_value()),
-            ),
-        };
+        let fen = uci_position(pos);
+        let ctrl = uci_search_control(limits, pos.turn());
 
         let io = self.io.get_or_init().await?;
-        io.send(&position.to_string()).await?;
-        io.send(&go.to_string()).await?;
+        io.send(&fen.to_string()).await?;
+        io.send(&ctrl.to_string()).await?;
         io.flush().await?;
 
         Ok(())
+    }
+}
+
+fn uci_position(pos: &Position) -> UciMessage {
+    UciMessage::Position {
+        startpos: false,
+        fen: Some(UciFen(pos.to_string())),
+        moves: Vec::new(),
+    }
+}
+
+fn uci_search_control(limits: Limits, turn: Color) -> UciMessage {
+    match limits {
+        Limits::None => UciMessage::go(),
+        Limits::Depth(d) => UciMessage::Go {
+            search_control: Some(UciSearchControl::depth(d.get())),
+            time_control: None,
+        },
+        Limits::Time(t) => UciMessage::go_movetime(
+            uci::Duration::from_std(t).unwrap_or_else(|_| uci::Duration::max_value()),
+        ),
+        Limits::Clock(t, i) => {
+            let t = uci::Duration::from_std(t).unwrap_or_else(|_| uci::Duration::max_value());
+            let i = uci::Duration::from_std(i).unwrap_or_else(|_| uci::Duration::max_value());
+
+            let [(white_time, white_increment), (black_time, black_increment)] = match turn {
+                Color::White => [(Some(t), Some(i)), (None, None)],
+                Color::Black => [(None, None), (Some(t), Some(i))],
+            };
+
+            UciMessage::Go {
+                search_control: None,
+                time_control: Some(uci::UciTimeControl::TimeLeft {
+                    white_time,
+                    black_time,
+                    white_increment,
+                    black_increment,
+                    moves_to_go: Some(1),
+                }),
+            }
+        }
     }
 }
 
@@ -142,7 +169,6 @@ impl<T: Io + Send + 'static> Play for Uci<T> {
 mod tests {
     use super::*;
     use crate::io::MockIo;
-    use lib::chess::Move;
     use mockall::Sequence;
     use proptest::prelude::*;
     use std::future::ready;
@@ -461,33 +487,20 @@ mod tests {
         let mut io = MockIo::new();
         let mut seq = Sequence::new();
 
-        let p = UciMessage::Position {
-            startpos: false,
-            fen: Some(UciFen(pos.to_string())),
-            moves: Vec::new(),
-        };
+        let fen = uci_position(&pos);
 
         io.expect_send()
             .once()
             .in_sequence(&mut seq)
-            .withf(move |msg| msg == p.to_string())
+            .withf(move |msg| msg == fen.to_string())
             .returning(|_| Box::pin(ready(Ok(()))));
 
-        let go = match l {
-            Limits::None => UciMessage::go(),
-            Limits::Depth(d) => UciMessage::Go {
-                search_control: Some(UciSearchControl::depth(d.get())),
-                time_control: None,
-            },
-            Limits::Time(t) => UciMessage::go_movetime(
-                uci::Duration::from_std(t).unwrap_or_else(|_| uci::Duration::max_value()),
-            ),
-        };
+        let ctrl = uci_search_control(l, pos.turn());
 
         io.expect_send()
             .once()
             .in_sequence(&mut seq)
-            .withf(move |msg| msg == go.to_string())
+            .withf(move |msg| msg == ctrl.to_string())
             .returning(|_| Box::pin(ready(Ok(()))));
 
         io.expect_flush()

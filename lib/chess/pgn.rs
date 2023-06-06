@@ -33,6 +33,8 @@ impl Display for Pgn {
             Outcome::DrawBy75MoveRule => write!(f, "{{75-move rule}} 1/2-1/2"),
             Outcome::DrawByInsufficientMaterial => write!(f, "{{insufficient material}} 1/2-1/2"),
             Outcome::Stalemate => write!(f, "{{stalemate}} 1/2-1/2"),
+            Outcome::LossOnTime(Color::Black) => write!(f, "{{loss on time}} 1-0"),
+            Outcome::LossOnTime(Color::White) => write!(f, "{{loss on time}} 0-1"),
             Outcome::Checkmate(Color::Black) => write!(f, "0-1"),
             Outcome::Checkmate(Color::White) => write!(f, "1-0"),
         }
