@@ -337,9 +337,22 @@ impl Searcher {
         Ok(score)
     }
 
+    fn time_to_search(&self, pos: &Position, limits: Limits) -> Duration {
+        let (clock, inc) = match limits {
+            Limits::Clock(c, i) => (c, i),
+            _ => return limits.time(),
+        };
+
+        let cap = clock.mul_f64(0.8);
+        let excess = clock.saturating_sub(inc);
+        let moves_left = 45 - (pos.fullmoves().get() - 1).min(20);
+        inc.saturating_add(excess / moves_left).min(cap)
+    }
+
     /// Searches for the [principal variation][`Pv`].
     pub fn search<const N: usize>(&mut self, pos: &Position, limits: Limits) -> Pv<N> {
-        let timer = Timer::start(limits.time());
+        let timer = Timer::start(self.time_to_search(pos, limits));
+
         if self.tt.iter(pos).next().is_none() {
             self.tt.unset(pos.zobrist());
         };

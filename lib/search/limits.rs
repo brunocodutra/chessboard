@@ -21,8 +21,19 @@ pub enum Limits {
 
     /// The maximum amount of time to spend searching.
     #[display(fmt = "{}", "ron::ser::to_string(self).unwrap()")]
-    #[serde(with = "humantime_serde")]
-    Time(Duration),
+    Time(#[serde(with = "humantime_serde")] Duration),
+
+    /// The time remaining on the clock.
+    #[from(ignore)]
+    #[display(fmt = "{}", "ron::ser::to_string(self).unwrap()")]
+    Clock(
+        #[serde(with = "humantime_serde")] Duration,
+        #[serde(with = "humantime_serde", default = "no_increment")] Duration,
+    ),
+}
+
+fn no_increment() -> Duration {
+    Duration::ZERO
 }
 
 /// The reason why parsing [`Limits`] failed.
@@ -39,7 +50,7 @@ impl FromStr for Limits {
 }
 
 impl Limits {
-    /// Depth or [`Depth::upper()`].
+    /// Maximum depth or [`Depth::upper()`].
     pub fn depth(&self) -> Depth {
         match self {
             Limits::Depth(d) => *d,
@@ -47,11 +58,28 @@ impl Limits {
         }
     }
 
-    /// Time or [`Duration::MAX`].
+    /// Maximum time or [`Duration::MAX`].
     pub fn time(&self) -> Duration {
         match self {
             Limits::Time(t) => *t,
+            Limits::Clock(t, _) => *t,
             _ => Duration::MAX,
+        }
+    }
+
+    /// Time left on the clock or [`Duration::MAX`].
+    pub fn clock(&self) -> Duration {
+        match self {
+            Limits::Clock(t, _) => *t,
+            _ => Duration::MAX,
+        }
+    }
+
+    /// Time increment or [`Duration::ZERO`].
+    pub fn increment(&self) -> Duration {
+        match self {
+            Limits::Clock(_, i) => *i,
+            _ => Duration::ZERO,
         }
     }
 }
@@ -73,19 +101,45 @@ mod tests {
     }
 
     #[proptest]
-    fn depth_returns_max_by_default(d: Duration) {
+    fn depth_returns_max_by_default(t: Duration, i: Duration) {
         assert_eq!(Limits::None.depth(), Depth::upper());
-        assert_eq!(Limits::Time(d).depth(), Depth::upper());
+        assert_eq!(Limits::Time(t).depth(), Depth::upper());
+        assert_eq!(Limits::Clock(t, i).depth(), Depth::upper());
     }
 
     #[proptest]
-    fn time_returns_value_if_set(d: Duration) {
-        assert_eq!(Limits::Time(d).time(), d);
+    fn time_returns_value_if_set(t: Duration) {
+        assert_eq!(Limits::Time(t).time(), t);
     }
 
     #[proptest]
-    fn time_returns_max_by_default(d: Depth) {
+    fn time_returns_max_or_clock_by_default(d: Depth, t: Duration, i: Duration) {
         assert_eq!(Limits::None.time(), Duration::MAX);
         assert_eq!(Limits::Depth(d).time(), Duration::MAX);
+        assert_eq!(Limits::Clock(t, i).time(), t);
+    }
+
+    #[proptest]
+    fn clock_returns_value_if_set(t: Duration, i: Duration) {
+        assert_eq!(Limits::Clock(t, i).clock(), t);
+    }
+
+    #[proptest]
+    fn clock_returns_max_by_default(d: Depth, t: Duration) {
+        assert_eq!(Limits::None.clock(), Duration::MAX);
+        assert_eq!(Limits::Depth(d).clock(), Duration::MAX);
+        assert_eq!(Limits::Time(t).clock(), Duration::MAX);
+    }
+
+    #[proptest]
+    fn increment_returns_value_if_set(t: Duration, i: Duration) {
+        assert_eq!(Limits::Clock(t, i).increment(), i);
+    }
+
+    #[proptest]
+    fn increment_returns_zero_by_default(d: Depth, t: Duration) {
+        assert_eq!(Limits::None.increment(), Duration::ZERO);
+        assert_eq!(Limits::Depth(d).increment(), Duration::ZERO);
+        assert_eq!(Limits::Time(t).increment(), Duration::ZERO);
     }
 }
