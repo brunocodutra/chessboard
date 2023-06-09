@@ -279,8 +279,8 @@ impl Searcher {
 
         let (score, best) = match moves.pop() {
             None => return Ok(ScoreWithTempo::new(score, depth, ply)),
-            Some((m, next, _)) => {
-                let score = -self.pvs(&next, -beta..-alpha, depth, ply + 1, timer)?;
+            Some((m, ref next, _)) => {
+                let score = -self.pvs(next, -beta..-alpha, depth, ply + 1, timer)?;
 
                 if *score >= beta {
                     self.record(zobrist, bounds, depth, ply, *score, m);
@@ -296,12 +296,14 @@ impl Searcher {
         let (score, best) = moves
             .into_par_iter()
             .rev()
-            .map(|(m, next, value)| {
+            .map(|(m, ref next, value)| {
                 let mut alpha = Score::new(cutoff.load(Ordering::Relaxed));
 
-                if alpha < beta && !in_check {
-                    if let Some(d) = self.lmp(&next, value, alpha.cast(), depth) {
-                        if d <= ply || *-self.nw(&next, -alpha, d, ply + 1, timer)? < alpha {
+                if alpha >= beta {
+                    return Ok(None);
+                } else if !in_check {
+                    if let Some(d) = self.lmp(next, value, alpha.cast(), depth) {
+                        if d <= ply || *-self.nw(next, -alpha, d, ply + 1, timer)? < alpha {
                             #[cfg(not(test))]
                             // The late move pruning heuristic is not exact.
                             return Ok(None);
@@ -309,24 +311,21 @@ impl Searcher {
                     }
                 }
 
-                while alpha + 1 < beta {
-                    match -self.nw(&next, -alpha, depth, ply + 1, timer)? {
+                loop {
+                    match -self.nw(next, -alpha, depth, ply + 1, timer)? {
                         s if *s < alpha => return Ok(Some((s, m))),
                         s => match Score::new(cutoff.fetch_max(s.get(), Ordering::Relaxed)) {
                             _ if *s >= beta => return Ok(Some((s, m))),
-                            a if *s >= a => break,
-                            a => alpha = a,
+                            a if a >= beta => return Ok(None),
+                            a if *s < a => alpha = a,
+                            a => {
+                                let s = -self.pvs(next, -beta..-a, depth, ply + 1, timer)?;
+                                cutoff.fetch_max(s.get(), Ordering::Relaxed);
+                                return Ok(Some((s, m)));
+                            }
                         },
                     }
                 }
-
-                if alpha < beta {
-                    let score = -self.pvs(&next, -beta..-alpha, depth, ply + 1, timer)?;
-                    cutoff.fetch_max(score.get(), Ordering::Relaxed);
-                    return Ok(Some((score, m)));
-                }
-
-                Ok(None)
             })
             .chain([Ok(Some((score, best)))])
             .try_reduce(|| None, |a, b| Ok(max_by_key(a, b, |x| x.map(|(s, _)| s))))?
