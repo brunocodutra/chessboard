@@ -20,8 +20,8 @@ pub enum Outcome {
     #[display(fmt = "draw by insufficient material")]
     DrawByInsufficientMaterial,
 
-    #[display(fmt = "draw by the 75-move rule")]
-    DrawBy75MoveRule,
+    #[display(fmt = "draw by the 50-move rule")]
+    DrawBy50MoveRule,
 }
 
 impl Outcome {
