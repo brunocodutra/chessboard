@@ -26,7 +26,7 @@ impl<'a> Iterator for Iter<'a> {
         let key = self.pos.zobrist();
         let t = self.tt.get(key).filter(|t| t.depth() <= self.depth)?;
         self.depth = t.depth().get().checked_sub(1)?;
-        self.pos.make(t.best()).ok()?;
+        self.pos.play(t.best()).ok()?;
         Some(t)
     }
 }
@@ -74,7 +74,7 @@ mod tests {
     fn iterates_over_legal_moves_only(
         #[by_ref] tt: Table,
         pos: Position,
-        #[filter(#pos.clone().make(#t.best()).is_err())] t: Transposition,
+        #[filter(#pos.clone().play(#t.best()).is_err())] t: Transposition,
     ) {
         tt.unset(pos.zobrist());
         tt.set(pos.zobrist(), t);

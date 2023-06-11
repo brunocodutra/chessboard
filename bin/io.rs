@@ -1,22 +1,84 @@
-use async_trait::async_trait;
-use std::io;
+use tokio::io::{self, AsyncBufReadExt, AsyncRead, AsyncWrite, AsyncWriteExt, BufReader, Lines};
+use tracing::instrument;
 
-mod pipe;
-mod process;
+/// A generic io interface.
+#[derive(Debug)]
+pub struct Io<W: AsyncWrite, R: AsyncRead> {
+    writer: W,
+    reader: Lines<BufReader<R>>,
+}
 
-pub use pipe::*;
-pub use process::*;
+impl<W: AsyncWrite, R: AsyncRead> Io<W, R> {
+    pub fn new(writer: W, reader: R) -> Self {
+        Io {
+            writer,
+            reader: BufReader::new(reader).lines(),
+        }
+    }
+}
 
-/// Trait for types that communicate via message-passing.
-#[async_trait]
-#[cfg_attr(test, mockall::automock)]
-pub trait Io {
+impl<W: AsyncWrite + Send + Unpin, R: AsyncRead + Send + Unpin> Io<W, R> {
     /// Receive a message.
-    async fn recv(&mut self) -> io::Result<String>;
+    #[instrument(level = "trace", skip(self), ret, err)]
+    pub async fn recv(&mut self) -> io::Result<String> {
+        use io::ErrorKind::UnexpectedEof;
+        Ok(self.reader.next_line().await?.ok_or(UnexpectedEof)?)
+    }
 
     /// Send a message.
-    async fn send(&mut self, msg: &str) -> io::Result<()>;
+    #[instrument(level = "trace", skip(self), err)]
+    pub async fn send(&mut self, msg: &str) -> io::Result<()> {
+        self.writer.write_all(msg.as_bytes()).await?;
+        self.writer.write_u8(b'\n').await?;
+        Ok(())
+    }
 
     /// Flush the internal buffers.
-    async fn flush(&mut self) -> io::Result<()>;
+    #[instrument(level = "trace", skip(self), err)]
+    pub async fn flush(&mut self) -> io::Result<()> {
+        self.writer.flush().await?;
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::str;
+    use test_strategy::proptest;
+    use tokio::io::{duplex, AsyncReadExt, BufReader};
+    use tokio::runtime;
+
+    #[proptest]
+    fn recv_waits_for_line_break(#[strategy("[^\r\n]")] s: String) {
+        let rt = runtime::Builder::new_multi_thread().build()?;
+
+        let (stdin, _) = duplex(1);
+        let (mut tx, stdout) = duplex(s.len() + 1);
+
+        rt.block_on(tx.write_all(s.as_bytes()))?;
+        rt.block_on(tx.write_u8(b'\n'))?;
+
+        let mut pipe = Io::new(stdin, BufReader::new(stdout));
+        assert_eq!(rt.block_on(pipe.recv())?, s);
+    }
+
+    #[proptest]
+    fn send_appends_line_break(s: String) {
+        let rt = runtime::Builder::new_multi_thread().build()?;
+
+        let (stdin, mut rx) = duplex(s.len() + 1);
+        let (_, stdout) = duplex(1);
+
+        let expected = format!("{s}\n");
+
+        let mut pipe = Io::new(stdin, BufReader::new(stdout));
+        rt.block_on(pipe.send(&s))?;
+        rt.block_on(pipe.flush())?;
+
+        let mut buf = vec![0u8; expected.len()];
+        rt.block_on(rx.read_exact(&mut buf))?;
+
+        assert_eq!(str::from_utf8(&buf)?, expected);
+    }
 }

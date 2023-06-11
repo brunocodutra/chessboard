@@ -1,12 +1,11 @@
-use crate::io::{Io, Pipe};
-use crate::{engine::Ai, play::Play};
+use crate::{ai::Ai, engine::Engine, io::Io};
 use anyhow::{Context, Error as Anyhow};
 use clap::Parser;
 use lib::chess::{Color, Fen, Position};
 use lib::search::{Depth, Limits, Options};
 use rayon::max_num_threads;
 use std::{num::NonZeroUsize, time::Duration};
-use tokio::io::{stdin, stdout};
+use tokio::io::{stdin, stdout, Stdin, Stdout};
 use tracing::{debug, error, instrument, warn};
 use vampirc_uci::{self as uci, UciMessage, UciOptionConfig, UciSearchControl, UciTimeControl};
 
@@ -18,30 +17,29 @@ pub struct Uci {}
 impl Uci {
     #[instrument(level = "trace", skip(self), err)]
     pub async fn execute(self) -> Result<(), Anyhow> {
-        let io = Pipe::new(stdout(), stdin());
-        Server::new(io).run().await
+        Server::new().run().await
     }
 }
 
-struct Server<T: Io> {
-    ai: Ai,
+struct Server {
+    io: Io<Stdout, Stdin>,
+    engine: Engine,
     options: Options,
     position: Position,
-    io: T,
 }
 
-impl<T: Io> Server<T> {
-    fn new(io: T) -> Self {
+impl Server {
+    fn new() -> Self {
         Server {
-            ai: Ai::default(),
+            io: Io::new(stdout(), stdin()),
+            engine: Engine::default(),
             options: Options::default(),
             position: Position::default(),
-            io,
         }
     }
 
     fn new_game(&mut self) {
-        self.ai = Ai::new(self.options)
+        self.engine = Engine::new(self.options)
     }
 
     fn set_hash(&mut self, value: &str) -> Result<(), Anyhow> {
@@ -131,7 +129,7 @@ impl<T: Io> Server<T> {
                     }
 
                     for m in moves {
-                        if let Err(e) = self.position.make(m.into()) {
+                        if let Err(e) = self.position.play(m.into()) {
                             error!("{}", e);
                             break;
                         }
@@ -227,7 +225,7 @@ impl<T: Io> Server<T> {
     }
 
     async fn go(&mut self, limits: Limits) -> Result<(), Anyhow> {
-        let best = self.ai.play(&self.position, limits).await?;
+        let best = self.engine.play(&self.position, limits).await;
         let msg = UciMessage::best_move(best.into());
         self.io.send(&msg.to_string()).await?;
         Ok(())
