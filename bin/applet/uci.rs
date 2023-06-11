@@ -4,6 +4,7 @@ use anyhow::{Context, Error as Anyhow};
 use clap::Parser;
 use lib::chess::{Color, Fen, Position};
 use lib::search::{Depth, Limits, Options};
+use rayon::max_num_threads;
 use std::{num::NonZeroUsize, time::Duration};
 use tokio::io::{stdin, stdout};
 use tracing::{debug, error, instrument, warn};
@@ -45,7 +46,11 @@ impl<T: Io> Server<T> {
 
     fn set_hash(&mut self, value: &str) -> Result<(), Anyhow> {
         self.options = Options {
-            hash: value.parse::<usize>().context("invalid hash size")? * (1 << 20),
+            hash: value
+                .parse::<usize>()
+                .context("invalid hash size")?
+                .checked_shl(20)
+                .unwrap_or(usize::MAX),
             ..self.options
         };
 
@@ -72,13 +77,12 @@ impl<T: Io> Server<T> {
 
                     self.io.send(&name.to_string()).await?;
                     self.io.send(&authors.to_string()).await?;
-                    self.io.send(&UciMessage::UciOk.to_string()).await?;
 
                     let hash = UciMessage::Option(UciOptionConfig::Spin {
                         name: "Hash".to_string(),
-                        default: Some(Options::default().hash as _),
-                        min: Some(0),
-                        max: None,
+                        default: Some((Options::default().hash >> 20) as _),
+                        min: Some(1),
+                        max: Some(u16::MAX.into()),
                     });
 
                     self.io.send(&hash.to_string()).await?;
@@ -87,10 +91,11 @@ impl<T: Io> Server<T> {
                         name: "Threads".to_string(),
                         default: Some(Options::default().threads.get() as _),
                         min: Some(1),
-                        max: None,
+                        max: Some(max_num_threads().try_into().unwrap()),
                     });
 
                     self.io.send(&thread.to_string()).await?;
+                    self.io.send(&UciMessage::UciOk.to_string()).await?;
                 }
 
                 UciMessage::SetOption {
