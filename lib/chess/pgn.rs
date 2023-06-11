@@ -30,7 +30,7 @@ impl Display for Pgn {
         }
 
         match self.outcome {
-            Outcome::DrawBy75MoveRule => write!(f, "{{75-move rule}} 1/2-1/2"),
+            Outcome::DrawBy50MoveRule => write!(f, "{{50-move rule}} 1/2-1/2"),
             Outcome::DrawByInsufficientMaterial => write!(f, "{{insufficient material}} 1/2-1/2"),
             Outcome::Stalemate => write!(f, "{{stalemate}} 1/2-1/2"),
             Outcome::LossOnTime(Color::Black) => write!(f, "{{loss on time}} 1-0"),

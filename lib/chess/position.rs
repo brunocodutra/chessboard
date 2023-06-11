@@ -227,8 +227,8 @@ impl Position {
             Some(Outcome::Checkmate(!self.turn()))
         } else if self.is_stalemate() {
             Some(Outcome::Stalemate)
-        } else if self.halfmoves() >= 150 {
-            Some(Outcome::DrawBy75MoveRule)
+        } else if self.halfmoves() >= 100 {
+            Some(Outcome::DrawBy50MoveRule)
         } else if self.is_material_insufficient() {
             Some(Outcome::DrawByInsufficientMaterial)
         } else {
