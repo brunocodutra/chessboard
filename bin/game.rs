@@ -28,15 +28,19 @@ impl<P: Play> Player<P> {
     async fn act(&mut self, pos: &Position) -> Result<Move, PlayerError<P::Error>> {
         use PlayerError::LostOnTime;
 
+        if let Limits::Clock(t, i) = &mut self.limits {
+            *t = t.saturating_add(*i);
+        }
+
         let timer = Instant::now();
         let m = match timeout(self.limits.clock(), self.engine.play(pos, self.limits)).await {
             Err(_) => return Err(LostOnTime),
             Ok(r) => r?,
         };
 
-        if let Limits::Clock(t, i) = &mut self.limits {
+        if let Limits::Clock(t, _) = &mut self.limits {
             let time = timer.elapsed();
-            *t = t.checked_sub(time).ok_or(LostOnTime)?.saturating_add(*i);
+            *t = t.checked_sub(time).ok_or(LostOnTime)?;
         }
 
         Ok(m)
@@ -189,7 +193,6 @@ mod tests {
     fn player_loses_on_time_if_clock_reaches_zero(
         #[filter(#pos.outcome().is_none())] pos: Position,
         selector: Selector,
-        inc: u64,
     ) {
         let rt = runtime::Builder::new_multi_thread().enable_time().build()?;
 
@@ -199,7 +202,7 @@ mod tests {
         p.expect_play()
             .return_once(move |_, _| Box::pin(ready(Ok(m))));
 
-        let l = Limits::Clock(Duration::ZERO, Duration::from_micros(inc));
+        let l = Limits::Clock(Duration::ZERO, Duration::ZERO);
 
         assert_eq!(
             rt.block_on(Player::new(p, l).act(&pos)),
@@ -242,7 +245,6 @@ mod tests {
     fn game_ends_when_player_loses_on_time(
         #[filter(#pos.outcome().is_none())] pos: Position,
         selector: Selector,
-        inc: u64,
     ) {
         let rt = runtime::Builder::new_multi_thread().enable_time().build()?;
 
@@ -272,7 +274,7 @@ mod tests {
 
         let g = Game::new(wb, bb);
 
-        let l = Limits::Clock(Duration::ZERO, Duration::from_micros(inc));
+        let l = Limits::Clock(Duration::ZERO, Duration::ZERO);
 
         let outcome = Outcome::LossOnTime(turn);
 
