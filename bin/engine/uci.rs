@@ -120,7 +120,7 @@ fn uci_search_control(limits: Limits, turn: Color) -> UciMessage {
                     black_time,
                     white_increment,
                     black_increment,
-                    moves_to_go: Some(1),
+                    moves_to_go: None,
                 }),
             }
         }
