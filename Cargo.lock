@@ -110,17 +110,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "async-trait"
-version = "0.1.68"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b9ccdd8f2a161be9bd5c023df56f1b2a0bd1d83872ae53b71a84a12c9bf6e842"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn 2.0.16",
-]
-
-[[package]]
 name = "atomic"
 version = "0.5.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -211,7 +200,6 @@ dependencies = [
  "anyhow",
  "arrayvec",
  "async-stream",
- "async-trait",
  "atomic",
  "bitflags 2.3.1",
  "clap",
@@ -221,7 +209,6 @@ dependencies = [
  "humantime-serde",
  "mockall",
  "num-traits",
- "pgn-reader",
  "proptest",
  "rayon",
  "ron",
@@ -275,12 +262,6 @@ dependencies = [
  "ciborium-io",
  "half",
 ]
-
-[[package]]
-name = "circular"
-version = "0.3.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b0fc239e0f6cb375d2402d48afb92f76f5404fd1df208a41930ec81eda078bea"
 
 [[package]]
 name = "clap"
@@ -859,18 +840,6 @@ dependencies = [
  "once_cell",
  "pest",
  "sha2",
-]
-
-[[package]]
-name = "pgn-reader"
-version = "0.24.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "15653dd80064f41e672f94292cc4f31bbf93b74d5ea041340af279ff1e422720"
-dependencies = [
- "btoi",
- "circular",
- "memchr",
- "shakmaty",
 ]
 
 [[package]]

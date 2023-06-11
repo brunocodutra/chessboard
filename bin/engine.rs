@@ -1,74 +1,169 @@
-use crate::{io::Process, play::Play};
-use async_trait::async_trait;
-use derive_more::{DebugCustom, Display, Error, From};
+use crate::ai::Ai;
+use async_stream::stream;
+use futures_util::{future::BoxFuture, stream::BoxStream};
 use lib::chess::{Move, Position};
-use lib::search::{Limits, Options};
-use serde::{Deserialize, Serialize};
-use std::str::FromStr;
-use test_strategy::Arbitrary;
+use lib::eval::Evaluator;
+use lib::search::{Depth, Limits, Options, Pv};
+use std::time::Instant;
+use tokio::task::block_in_place;
+use tracing::{field::display, instrument, Span};
 
-mod ai;
-mod uci;
-
-pub use ai::*;
-pub use uci::*;
-
-/// The reason why parsing engine configuration failed.
-#[derive(Debug, Display, Eq, PartialEq, Error, From)]
-#[display(fmt = "failed to parse engine configuration")]
-pub struct ParseEngineConfigError(ron::de::SpannedError);
-
-/// Runtime configuration for an [`Engine`].
-#[derive(Debug, Display, Clone, Eq, PartialEq, Arbitrary, Deserialize, Serialize)]
-#[serde(deny_unknown_fields, rename_all = "lowercase")]
-pub enum EngineConfig {
-    #[display(fmt = "{}", "ron::ser::to_string(self).unwrap()")]
-    Ai(#[serde(default)] Options),
-
-    #[display(fmt = "{}", "ron::ser::to_string(self).unwrap()")]
-    Uci(String, #[serde(default)] UciOptions),
+#[cfg(test)]
+#[mockall::automock]
+trait Searcher {
+    fn search(&mut self, pos: &Position, limits: Limits) -> Pv;
 }
 
-impl Default for EngineConfig {
-    fn default() -> Self {
-        EngineConfig::Ai(Options::default())
+#[cfg(test)]
+impl MockSearcher {
+    fn search<const N: usize>(&mut self, pos: &Position, limits: Limits) -> Pv<N> {
+        let pv = Searcher::search(self, pos, limits);
+        Pv::new(pv.depth(), pv.score(), pv.iter().copied().collect())
+    }
+
+    fn with_options(_: Evaluator, _: Options) -> Self {
+        Self::new()
     }
 }
 
-impl FromStr for EngineConfig {
-    type Err = ParseEngineConfigError;
+#[cfg(test)]
+type Strategy = MockSearcher;
 
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        Ok(ron::de::from_str(s)?)
-    }
+#[cfg(not(test))]
+type Strategy = lib::search::Searcher;
+
+/// A chess engine.
+#[derive(Debug, Default)]
+pub struct Engine {
+    strategy: Strategy,
 }
 
-/// The reason why [`Engine`] failed to play a [`Move`].
-#[derive(Debug, Display, Error, From)]
-pub enum EngineError {
-    Ai(<Ai as Play>::Error),
-    Uci(<Uci<Process> as Play>::Error),
-}
-
-/// A generic chess engine.
-#[derive(DebugCustom, From)]
-#[allow(clippy::large_enum_variant)]
-pub enum Engine {
-    #[debug(fmt = "{_0:?}")]
-    Ai(Ai),
-    #[debug(fmt = "{_0:?}")]
-    Uci(Uci<Process>),
-}
-
-#[async_trait]
-impl Play for Engine {
-    type Error = EngineError;
-
-    #[inline]
-    async fn play(&mut self, pos: &Position, limits: Limits) -> Result<Move, Self::Error> {
-        match self {
-            Engine::Ai(e) => Ok(e.play(pos, limits).await?),
-            Engine::Uci(e) => Ok(e.play(pos, limits).await?),
+impl Engine {
+    /// Initializes the engine with the given search [`Options`].
+    pub fn new(options: Options) -> Self {
+        Engine {
+            strategy: Strategy::with_options(Evaluator::new(), options),
         }
+    }
+}
+
+impl Ai for Engine {
+    #[instrument(level = "debug", skip(self, pos), ret(Display), fields(%pos, %limits, depth, score))]
+    fn play<'a, 'b, 'c>(&'a mut self, pos: &'b Position, limits: Limits) -> BoxFuture<'c, Move>
+    where
+        'a: 'c,
+        'b: 'c,
+    {
+        Box::pin(async move {
+            let pv: Pv<1> = block_in_place(|| self.strategy.search(pos, limits));
+
+            Span::current()
+                .record("depth", display(pv.depth()))
+                .record("score", display(pv.score()));
+
+            *pv.first().expect("expected some legal move")
+        })
+    }
+
+    #[instrument(level = "debug", skip(self, pos), fields(%pos, %limits))]
+    fn analyze<'a, 'b, 'c>(&'a mut self, pos: &'b Position, limits: Limits) -> BoxStream<'c, Pv>
+    where
+        'a: 'c,
+        'b: 'c,
+    {
+        Box::pin(stream! {
+            let timer = Instant::now();
+            for d in 1..=limits.depth().get() {
+                let elapsed = timer.elapsed();
+                if elapsed < limits.time() / 2 {
+                    let depth = Depth::new(d);
+                    yield block_in_place(|| self.strategy.search(pos, depth.into()));
+                } else if elapsed < limits.time() {
+                    let time = limits.time() - elapsed;
+                    yield block_in_place(|| self.strategy.search(pos, time.into()));
+                    break;
+                } else {
+                    break;
+                }
+            }
+        })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use futures_util::StreamExt;
+    use lib::search::{Line, Score};
+    use mockall::predicate::eq;
+    use proptest::sample::size_range;
+    use std::time::Duration;
+    use test_strategy::proptest;
+    use tokio::runtime;
+
+    #[proptest]
+    fn play_finds_best_move(l: Limits, pos: Position, #[filter(!#pv.is_empty())] pv: Pv) {
+        let rt = runtime::Builder::new_multi_thread().build()?;
+
+        let mut strategy = Strategy::new();
+        strategy.expect_search().return_const(pv.clone());
+
+        let mut engine = Engine { strategy };
+        assert_eq!(Some(rt.block_on(engine.play(&pos, l))), pv.first().copied());
+    }
+
+    #[proptest]
+    #[should_panic]
+    fn play_panics_if_there_are_no_legal_moves(l: Limits, pos: Position, d: Depth, s: Score) {
+        let rt = runtime::Builder::new_multi_thread().build()?;
+
+        let mut strategy = Strategy::new();
+        strategy
+            .expect_search()
+            .return_const(Pv::new(d, s, Line::default()));
+
+        let mut engine = Engine { strategy };
+        rt.block_on(engine.play(&pos, l));
+    }
+
+    #[proptest]
+    fn analyze_returns_sequence_of_principal_variations(
+        pos: Position,
+        #[any(size_range(0..=3).lift())] pvs: Vec<Pv>,
+    ) {
+        let rt = runtime::Builder::new_multi_thread().build()?;
+
+        let mut strategy = Strategy::new();
+
+        for (d, pv) in pvs.iter().enumerate() {
+            strategy
+                .expect_search()
+                .with(eq(pos.clone()), eq(Limits::Depth(Depth::saturate(d + 1))))
+                .return_const(pv.clone());
+        }
+
+        let mut engine = Engine { strategy };
+        let l = Limits::Depth(Depth::saturate(pvs.len()));
+
+        assert_eq!(
+            rt.block_on(engine.analyze(&pos, l).collect::<Vec<_>>()),
+            pvs
+        );
+    }
+
+    #[proptest]
+    fn analyze_can_be_limited_by_time(pos: Position) {
+        let rt = runtime::Builder::new_multi_thread().build()?;
+
+        let mut engine = Engine {
+            strategy: Strategy::new(),
+        };
+
+        let l = Limits::Time(Duration::ZERO);
+
+        assert_eq!(
+            rt.block_on(engine.analyze(&pos, l).collect::<Vec<_>>()),
+            Vec::new()
+        );
     }
 }

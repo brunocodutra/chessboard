@@ -13,7 +13,6 @@ keywords = ["chess"]
 anyhow = { version = "1.0.69", default-features = false, features = ["std"] }
 arrayvec = { version = "0.7.2", default-features = false, features = ["std"] }
 async-stream = { version = "0.3.5", default-features = false }
-async-trait = { version = "0.1.64", default-features = false }
 atomic = { version = "0.5.3", default-features = false, features = ["std"] }
 bitflags = { version = "2.3.1", default-features = false }
 clap = { version = "4.3.3", default-features = false, features = [
@@ -32,7 +31,6 @@ derive_more = { version = "0.99.16", default-features = false, features = [
     "display",
     "error",
     "from",
-    "into",
     "into_iterator",
     "not",
 ] }
@@ -43,7 +41,7 @@ proptest = { version = "1.2.0", default-features = false, features = ["std"] }
 rayon = { version = "1.7.0", default-features = false }
 ron = { version = "0.8.0", default-features = false }
 serde = { version = "1.0.164", default-features = false, features = ["derive", "std"] }
-shakmaty = { version = "0.25.0", default-features = false }
+shakmaty = { version = "0.25.0", default-features = false, features = ["std"] }
 test-strategy = { version = "0.3.0", default-features = false }
 tokio = { version = "1.28.2", default-features = false, features = [
     "io-std",
@@ -66,7 +64,6 @@ vampirc-uci = { version = "0.11.0", default-features = false }
 [dev-dependencies]
 criterion = { version = "0.5.1", default-features = false, features = ["rayon"] }
 mockall = { version = "0.11.4", default-features = false }
-pgn-reader = { version = "0.24.0", default-features = false }
 
 [profile.release]
 codegen-units = 1

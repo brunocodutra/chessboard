@@ -1,4 +1,4 @@
-use super::{Color, Fen, Move, Outcome, Piece, Role, San, Square};
+use super::{Color, Fen, Move, Outcome, Piece, Role, Square};
 use crate::util::Bits;
 use bitflags::bitflags;
 use derive_more::{DebugCustom, Display, Error};
@@ -288,12 +288,11 @@ impl Position {
     }
 
     /// Play a [`Move`] if legal in this position.
-    pub fn make(&mut self, m: Move) -> Result<San, IllegalMove> {
+    pub fn play(&mut self, m: Move) -> Result<(), IllegalMove> {
         match sm::uci::Uci::to_move(&m.into(), &self.0) {
             Ok(vm) if sm::Position::is_legal(&self.0, &vm) => {
-                let san = sm::san::San::from_move(&self.0, &vm).into();
                 sm::Position::play_unchecked(&mut self.0, &vm);
-                Ok(san)
+                Ok(())
             }
 
             _ => Err(IllegalMove(m)),
@@ -303,7 +302,7 @@ impl Position {
     /// Play a [null-move] if legal in this position.
     ///
     /// [null-move]: https://www.chessprogramming.org/Null_Move
-    pub fn pass(&mut self) -> Result<San, ImpossiblePass> {
+    pub fn pass(&mut self) -> Result<(), ImpossiblePass> {
         if self.is_check() {
             Err(ImpossiblePass)
         } else {
@@ -315,7 +314,7 @@ impl Position {
             };
 
             sm::Position::play_unchecked(&mut self.0, &null);
-            Ok(San::null())
+            Ok(())
         }
     }
 }
@@ -547,7 +546,7 @@ mod tests {
         for (m, p) in pos.moves(MoveKind::ANY) {
             let mut pos = pos.clone();
             assert_eq!(pos[m.whence()].map(|p| p.color()), Some(pos.turn()));
-            assert_eq!(pos.make(m).err(), None);
+            assert_eq!(pos.play(m).err(), None);
             assert_eq!(pos, p);
         }
     }
@@ -592,26 +591,24 @@ mod tests {
         selector: Selector,
     ) {
         let (m, next) = selector.select(pos.moves(MoveKind::ANY));
-        let vm = sm::uci::Uci::to_move(&m.into(), &pos.0)?;
-        let san = sm::san::San::from_move(&pos.0, &vm).into();
-        assert_eq!(pos.make(m), Ok(san));
+        assert_eq!(pos.play(m), Ok(()));
         assert_eq!(pos, next);
     }
 
     #[proptest]
     fn illegal_move_fails_without_changing_position(
         mut pos: Position,
-        #[filter(#pos.clone().make(#m).is_err())] m: Move,
+        #[filter(#pos.clone().play(#m).is_err())] m: Move,
     ) {
         let before = pos.clone();
-        assert_eq!(pos.make(m), Err(IllegalMove(m)));
+        assert_eq!(pos.play(m), Err(IllegalMove(m)));
         assert_eq!(pos, before);
     }
 
     #[proptest]
     fn pass_updates_position(#[filter(!#pos.is_check())] mut pos: Position) {
         let before = pos.clone();
-        assert_eq!(pos.pass(), Ok(San::null()));
+        assert_eq!(pos.pass(), Ok(()));
         assert_ne!(pos, before);
     }
 
