@@ -158,7 +158,7 @@ impl<T: Io> Server<T> {
                         Some(UciTimeControl::TimeLeft {
                             white_time: Some(time),
                             white_increment: Some(increment),
-                            moves_to_go: Some(1),
+                            moves_to_go: None,
                             ..
                         }),
                 } if self.position.turn() == Color::White => {
@@ -176,7 +176,7 @@ impl<T: Io> Server<T> {
                         Some(UciTimeControl::TimeLeft {
                             black_time: Some(time),
                             black_increment: Some(increment),
-                            moves_to_go: Some(1),
+                            moves_to_go: None,
                             ..
                         }),
                 } if self.position.turn() == Color::Black => {
