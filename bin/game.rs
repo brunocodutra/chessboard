@@ -2,8 +2,7 @@ use crate::{build::Build, play::Play};
 use derive_more::{Constructor, Display, Error, From};
 use lib::chess::{Color, Move, Outcome, Pgn, Position};
 use lib::search::Limits;
-use std::fmt::Display;
-use std::time::Instant;
+use std::{fmt::Display, time::Instant};
 use tokio::time::timeout;
 use tracing::{field::display, instrument, warn, Span};
 
@@ -96,8 +95,11 @@ where
                         Color::Black => return Err(Black(e)),
                     },
                     Ok(m) => match pos.make(m) {
-                        Err(e) => warn!("{:?}", e),
                         Ok(san) => moves.push(san),
+                        Err(e) => {
+                            warn!("{:?}", e);
+                            break Outcome::Resignation(pos.turn());
+                        }
                     },
                 },
             }
@@ -121,6 +123,7 @@ mod tests {
     use futures_util::FutureExt;
     use lib::chess::MoveKind;
     use proptest::sample::Selector;
+    use std::sync::{Arc, Mutex};
     use std::{future::ready, time::Duration};
     use test_strategy::proptest;
     use tokio::{runtime, time::sleep};
@@ -236,6 +239,98 @@ mod tests {
     }
 
     #[proptest]
+    fn game_ends_when_player_loses_on_time(
+        #[filter(#pos.outcome().is_none())] pos: Position,
+        selector: Selector,
+        inc: u64,
+    ) {
+        let rt = runtime::Builder::new_multi_thread().enable_time().build()?;
+
+        let turn = pos.turn();
+
+        let mut w = MockPlay::new();
+        let mut b = MockPlay::new();
+
+        let p = match turn {
+            Color::White => &mut w,
+            Color::Black => &mut b,
+        };
+
+        let (m, _) = selector.select(pos.moves(MoveKind::ANY));
+
+        p.expect_play()
+            .return_once(move |_, _| Box::pin(ready(Ok(m))));
+
+        let mut wb = MockBuilder::<MockPlay>::new();
+        wb.expect_build().once().return_once(move || Ok(w));
+
+        let mut bb = MockBuilder::<MockPlay>::new();
+        bb.expect_build().once().return_once(move || Ok(b));
+
+        let wc = wb.to_string();
+        let bc = bb.to_string();
+
+        let g = Game::new(wb, bb);
+
+        let l = Limits::Clock(Duration::ZERO, Duration::from_micros(inc));
+
+        let outcome = Outcome::LossOnTime(turn);
+
+        assert_eq!(
+            rt.block_on(g.play(pos, l)),
+            Ok(Pgn {
+                white: wc,
+                black: bc,
+                outcome,
+                moves: vec![]
+            })
+        );
+    }
+
+    #[proptest]
+    fn game_ends_in_resignation_when_player_attempts_illegal_move(
+        #[filter(#pos.outcome().is_none())] pos: Position,
+        #[filter(#pos.moves(MoveKind::ANY).find(|&(m, _)| m == #m).is_none())] m: Move,
+    ) {
+        let rt = runtime::Builder::new_multi_thread().enable_time().build()?;
+
+        let turn = pos.turn();
+
+        let mut w = MockPlay::new();
+        let mut b = MockPlay::new();
+
+        let p = match turn {
+            Color::White => &mut w,
+            Color::Black => &mut b,
+        };
+
+        p.expect_play()
+            .return_once(move |_, _| Box::pin(ready(Ok(m))));
+
+        let mut wb = MockBuilder::<MockPlay>::new();
+        wb.expect_build().once().return_once(move || Ok(w));
+
+        let mut bb = MockBuilder::<MockPlay>::new();
+        bb.expect_build().once().return_once(move || Ok(b));
+
+        let wc = wb.to_string();
+        let bc = bb.to_string();
+
+        let g = Game::new(wb, bb);
+        let outcome = Outcome::Resignation(turn);
+
+        assert_eq!(
+            rt.block_on(g.play(pos, Limits::None)),
+            Ok(Pgn {
+                white: wc,
+                black: bc,
+                outcome,
+                moves: vec![]
+            })
+        );
+    }
+
+    #[proptest]
     fn game_returns_pgn(pos: Position, selector: Selector) {
         let rt = runtime::Builder::new_multi_thread().enable_time().build()?;
 
@@ -259,7 +354,10 @@ mod tests {
         let mut w = MockPlay::new();
         let mut b = MockPlay::new();
 
-        let act = move |_: &Position, _: Limits| ready(Ok(moves.pop().unwrap())).boxed();
+        let moves = Arc::new(Mutex::new(moves));
+
+        let act =
+            move |_: &Position, _: Limits| ready(Ok(moves.lock().unwrap().pop().unwrap())).boxed();
 
         w.expect_play().returning(act.clone());
         b.expect_play().returning(act);

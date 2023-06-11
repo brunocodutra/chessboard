@@ -11,6 +11,9 @@ pub enum Outcome {
     #[display(fmt = "{_0} player lost on time")]
     LossOnTime(Color),
 
+    #[display(fmt = "{_0} player resigned")]
+    Resignation(Color),
+
     #[display(fmt = "stalemate")]
     Stalemate,
 
@@ -32,7 +35,7 @@ impl Outcome {
     /// Whether the outcome is a decisive and one of the sides has won.
     pub fn is_decisive(&self) -> bool {
         use Outcome::*;
-        matches!(self, Checkmate(_) | LossOnTime(_))
+        matches!(self, Checkmate(_) | LossOnTime(_) | Resignation(_))
     }
 
     /// The winning side, if the outcome is [decisive](`Self::is_decisive`).
@@ -40,6 +43,7 @@ impl Outcome {
         match *self {
             Outcome::Checkmate(c) => Some(c),
             Outcome::LossOnTime(c) => Some(!c),
+            Outcome::Resignation(c) => Some(!c),
             _ => None,
         }
     }
@@ -73,5 +77,10 @@ mod tests {
     #[proptest]
     fn side_that_runs_out_of_time_loses(c: Color) {
         assert_eq!(Outcome::LossOnTime(c).winner(), Some(!c));
+    }
+
+    #[proptest]
+    fn side_that_resigns_loses(c: Color) {
+        assert_eq!(Outcome::Resignation(c).winner(), Some(!c));
     }
 }
