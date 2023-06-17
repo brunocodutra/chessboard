@@ -4,7 +4,7 @@ use bitflags::bitflags;
 use derive_more::{DebugCustom, Display, Error};
 use proptest::{prelude::*, sample::Selector};
 use shakmaty as sm;
-use std::{convert::TryFrom, iter, num::NonZeroU32, ops::Index};
+use std::{convert::TryFrom, num::NonZeroU32, ops::Index};
 use test_strategy::Arbitrary;
 
 bitflags! {
@@ -59,6 +59,11 @@ pub struct IllegalMove(#[error(not(source))] pub Move);
 #[derive(Debug, Display, Clone, Eq, PartialEq, Arbitrary, Error)]
 #[display(fmt = "passing the turn leads to illegal position")]
 pub struct ImpossiblePass;
+
+/// Represents an impossible exchange on a given [`Square`] in a given [`Position`].
+#[derive(Debug, Display, Clone, Eq, PartialEq, Arbitrary, Error)]
+#[display(fmt = "no possible exchange on square `{_0}`")]
+pub struct ImpossibleExchange(#[error(not(source))] pub Square);
 
 /// The current position on the chess board.
 ///
@@ -202,41 +207,6 @@ impl Position {
         }
     }
 
-    /// A series of exchanges on a given [`Square`] ordered by least-value-attacker.
-    pub fn exchanges(&self, s: Square) -> impl Iterator<Item = Self> {
-        let to = s.into();
-        let mut pos = self.0.clone();
-
-        iter::from_fn(move || {
-            let board = sm::Position::board(&pos);
-            let capture = board.role_at(to)?;
-
-            let (from, role) = board
-                .attacks_to(to, sm::Position::turn(&pos), board.occupied())
-                .into_iter()
-                .filter_map(|s| Some((s, board.role_at(s)?)))
-                .min_by_key(|(_, r)| *r)?;
-
-            let promotion = match (role, to.rank()) {
-                (sm::Role::Pawn, sm::Rank::First | sm::Rank::Eighth) => Some(sm::Role::Queen),
-                _ => None,
-            };
-
-            sm::Position::play_unchecked(
-                &mut pos,
-                &sm::Move::Normal {
-                    role,
-                    from,
-                    capture: Some(capture),
-                    to,
-                    promotion,
-                },
-            );
-
-            Some(pos.clone().into())
-        })
-    }
-
     /// An iterator over the legal [`Move`]s that can be played in this position.
     pub fn moves(
         &self,
@@ -282,6 +252,40 @@ impl Position {
             sm::Position::play_unchecked(&mut self.0, &null);
             Ok(())
         }
+    }
+
+    /// Exchange a piece on [`Square`] by the attacker of least value.
+    ///
+    /// This may lead
+    pub fn exchange(&mut self, s: Square) -> Result<(), ImpossibleExchange> {
+        let to = s.into();
+        let board = sm::Position::board(&self.0);
+        let capture = Some(board.role_at(to).ok_or(ImpossibleExchange(s))?);
+
+        let (from, role) = board
+            .attacks_to(to, sm::Position::turn(&self.0), board.occupied())
+            .into_iter()
+            .filter_map(|s| Some((s, board.role_at(s)?)))
+            .min_by_key(|(_, r)| *r)
+            .ok_or(ImpossibleExchange(s))?;
+
+        let promotion = match (role, to.rank()) {
+            (sm::Role::Pawn, sm::Rank::First | sm::Rank::Eighth) => Some(sm::Role::Queen),
+            _ => None,
+        };
+
+        sm::Position::play_unchecked(
+            &mut self.0,
+            &sm::Move::Normal {
+                role,
+                from,
+                capture,
+                to,
+                promotion,
+            },
+        );
+
+        Ok(())
     }
 }
 

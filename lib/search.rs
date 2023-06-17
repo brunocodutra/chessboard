@@ -1,4 +1,4 @@
-use crate::chess::{Move, MoveKind, Piece, Position, Role, Zobrist};
+use crate::chess::{Move, MoveKind, Piece, Position, Role, Square, Zobrist};
 use crate::eval::{Evaluator, Value};
 use crate::transposition::{Table, Transposition};
 use crate::util::{Timeout, Timer};
@@ -127,22 +127,19 @@ impl Searcher {
     /// The Static Exchange Evaluation ([SEE]) algorithm.
     ///
     /// [SEE]: https://www.chessprogramming.org/Static_Exchange_Evaluation
-    fn see<I>(&self, pos: &Position, exchanges: &mut I, bounds: Range<Value>) -> Value
-    where
-        I: Iterator<Item = Position>,
-    {
+    fn see(&self, mut pos: Position, square: Square, bounds: Range<Value>) -> Value {
         assert!(!bounds.is_empty(), "{bounds:?} ≠ ∅");
 
         let (alpha, beta) = (bounds.start, bounds.end);
-        let alpha = self.evaluator.eval(pos).max(alpha);
+        let alpha = self.evaluator.eval(&pos).max(alpha);
 
         if alpha >= beta {
             return beta;
         }
 
-        match exchanges.next() {
-            None => alpha,
-            Some(next) => -self.see(&next, exchanges, -beta..-alpha),
+        match pos.exchange(square) {
+            Err(_) => alpha,
+            Ok(()) => -self.see(pos, square, -beta..-alpha),
         }
     }
 
@@ -152,8 +149,7 @@ impl Searcher {
         kind: MoveKind,
     ) -> impl DoubleEndedIterator<Item = (Move, Position, Value)> + ExactSizeIterator + '_ {
         pos.moves(kind).map(|(m, next)| {
-            let mut exchanges = next.exchanges(m.whither());
-            let value = -self.see(&next, &mut exchanges, Value::lower()..Value::upper());
+            let value = -self.see(next.clone(), m.whither(), Value::lower()..Value::upper());
             (m, next, value)
         })
     }
