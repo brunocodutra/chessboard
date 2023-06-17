@@ -155,40 +155,6 @@ impl Position {
             .map(Square::from)
     }
 
-    /// Into where the piece in this [`Square`] can attack.
-    #[inline]
-    pub fn attacks(
-        &self,
-        s: Square,
-    ) -> impl DoubleEndedIterator<Item = Square> + ExactSizeIterator {
-        sm::Position::board(&self.0)
-            .attacks_from(s.into())
-            .into_iter()
-            .map(Square::from)
-    }
-
-    /// From where pieces of this [`Color`] can attack into this [`Square`].
-    #[inline]
-    pub fn attackers(
-        &self,
-        s: Square,
-        c: Color,
-    ) -> impl DoubleEndedIterator<Item = Square> + ExactSizeIterator {
-        let board = sm::Position::board(&self.0);
-        board
-            .attacks_to(s.into(), c.into(), board.occupied())
-            .into_iter()
-            .map(Square::from)
-    }
-
-    /// The [`Square`]s occupied by [`Piece`]s giving check.
-    #[inline]
-    pub fn checkers(&self) -> impl DoubleEndedIterator<Item = Square> + ExactSizeIterator {
-        sm::Position::checkers(&self.0)
-            .into_iter()
-            .map(Square::from)
-    }
-
     /// Whether this position is a [check].
     ///
     /// [check]: https://www.chessprogramming.org/Check
@@ -476,44 +442,6 @@ mod tests {
         for s in pos.by_piece(p) {
             assert_eq!(pos[s], Some(p));
         }
-    }
-
-    #[proptest]
-    fn attacks_returns_squares_attacked_by_this_piece(pos: Position, s: Square) {
-        for whither in pos.attacks(s) {
-            assert!(pos
-                .attackers(whither, pos[s].unwrap().color())
-                .any(|whence| whence == s))
-        }
-    }
-
-    #[proptest]
-    fn attacks_returns_empty_iterator_if_square_is_not_occupied(
-        pos: Position,
-        #[filter(#pos[#s].is_none())] s: Square,
-    ) {
-        assert_eq!(pos.attacks(s).len(), 0);
-    }
-
-    #[proptest]
-    fn attackers_returns_squares_from_where_pieces_of_a_color_can_attack(
-        pos: Position,
-        s: Square,
-        c: Color,
-    ) {
-        for whence in pos.attackers(s, c) {
-            assert!(pos.attacks(whence).any(|whither| whither == s))
-        }
-    }
-
-    #[proptest]
-    fn checkers_returns_squares_of_pieces_giving_check(pos: Position) {
-        assert_eq!(
-            pos.checkers().collect::<Vec<_>>(),
-            pos.by_piece(Piece(pos.turn(), Role::King))
-                .flat_map(|s| pos.attackers(s, !pos.turn()))
-                .collect::<Vec<_>>(),
-        )
     }
 
     #[proptest]
