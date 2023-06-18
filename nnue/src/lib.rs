@@ -1,5 +1,7 @@
+mod chain;
 mod feature;
 
+use chain::*;
 use feature::*;
 
 /// Trait for types that can compose a neural network.
