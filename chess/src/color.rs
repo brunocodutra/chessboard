@@ -13,10 +13,10 @@ pub enum Color {
 }
 
 impl Not for Color {
-    type Output = Color;
+    type Output = Self;
 
     #[inline]
-    fn not(self) -> Color {
+    fn not(self) -> Self {
         match self {
             Color::White => Color::Black,
             Color::Black => Color::White,

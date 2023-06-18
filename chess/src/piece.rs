@@ -18,6 +18,12 @@ impl Piece {
     pub fn role(&self) -> Role {
         self.1
     }
+
+    /// This piece's index in the range (0..12).
+    #[inline]
+    pub fn index(&self) -> u8 {
+        self.color() as u8 + self.role() as u8 * 2
+    }
 }
 
 #[doc(hidden)]
@@ -52,6 +58,11 @@ mod tests {
     #[proptest]
     fn piece_has_a_role(c: Color, r: Role) {
         assert_eq!(Piece(c, r).role(), r);
+    }
+
+    #[proptest]
+    fn piece_has_a_unique_index(p: Piece, #[filter(#p != #q)] q: Piece) {
+        assert_ne!(p.index(), q.index());
     }
 
     #[proptest]
