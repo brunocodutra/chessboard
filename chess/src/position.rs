@@ -120,6 +120,15 @@ impl Position {
         Bits::new(z.0)
     }
 
+    /// An iterator over all pieces on the board.
+    #[inline]
+    pub fn iter(&self) -> impl DoubleEndedIterator<Item = (Piece, Square)> + ExactSizeIterator {
+        sm::Position::board(&self.0)
+            .clone()
+            .into_iter()
+            .map(|(s, p)| (p.into(), s.into()))
+    }
+
     /// [`Square`]s occupied.
     #[inline]
     pub fn occupied(&self) -> impl DoubleEndedIterator<Item = Square> + ExactSizeIterator {
@@ -430,6 +439,13 @@ mod tests {
     #[proptest]
     fn fullmoves_returns_the_current_move_number(pos: Position) {
         assert_eq!(pos.fullmoves(), sm::Setup::from(pos).fullmoves);
+    }
+
+    #[proptest]
+    fn iter_returns_pieces_and_squares(pos: Position) {
+        for (p, s) in pos.iter() {
+            assert_eq!(pos[s], Some(p));
+        }
     }
 
     #[proptest]
