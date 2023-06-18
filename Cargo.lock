@@ -786,6 +786,7 @@ name = "nnue"
 version = "0.1.0"
 dependencies = [
  "chess",
+ "num-traits",
  "proptest",
  "test-strategy",
 ]
