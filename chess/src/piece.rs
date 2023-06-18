@@ -24,6 +24,12 @@ impl Piece {
     pub fn index(&self) -> u8 {
         self.color() as u8 + self.role() as u8 * 2
     }
+
+    /// This piece's mirror of the same [`Role`] and opposite [`Color`].
+    #[inline]
+    pub fn mirror(&self) -> Self {
+        Piece(!self.color(), self.role())
+    }
 }
 
 #[doc(hidden)]
@@ -63,6 +69,12 @@ mod tests {
     #[proptest]
     fn piece_has_a_unique_index(p: Piece, #[filter(#p != #q)] q: Piece) {
         assert_ne!(p.index(), q.index());
+    }
+
+    #[proptest]
+    fn piece_has_a_mirror_of_the_same_role_and_opposite_color(p: Piece) {
+        assert_eq!(p.mirror().role(), p.role());
+        assert_eq!(p.mirror().color(), !p.color());
     }
 
     #[proptest]
