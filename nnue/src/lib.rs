@@ -1,8 +1,10 @@
+mod affine;
 mod chain;
 mod crelu;
 mod damp;
 mod feature;
 
+use affine::*;
 use chain::*;
 use crelu::*;
 use damp::*;
