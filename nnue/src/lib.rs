@@ -5,12 +5,14 @@ mod chain;
 mod crelu;
 mod damp;
 mod feature;
+mod transformer;
 
 use affine::*;
 use chain::*;
 use crelu::*;
 use damp::*;
 use feature::*;
+use transformer::*;
 
 /// Trait for types that can compose a neural network.
 trait Layer<Input> {
