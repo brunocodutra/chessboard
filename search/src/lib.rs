@@ -1,3 +1,5 @@
+#![allow(clippy::arc_with_non_send_sync)]
+
 use chess::{Move, MoveKind, Piece, Position, Role, Square, Zobrist};
 use derive_more::{Deref, Neg};
 use eval::Evaluator;

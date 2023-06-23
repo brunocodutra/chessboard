@@ -1,3 +1,5 @@
+#![allow(clippy::arc_with_non_send_sync)]
+
 mod color;
 mod fen;
 mod file;
