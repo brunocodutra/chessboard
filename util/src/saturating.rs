@@ -65,7 +65,7 @@ impl<T: Bounds> Copy for Saturating<T> {}
 impl<T: Bounds> Clone for Saturating<T> {
     #[inline]
     fn clone(&self) -> Self {
-        Self(self.get())
+        *self
     }
 }
 

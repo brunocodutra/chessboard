@@ -15,7 +15,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v3
-    - uses: dtolnay/rust-toolchain@stable
+    - uses: dtolnay/rust-toolchain@nightly
       with:
         components: rustfmt
     - run: cargo fmt --all -- --check
@@ -24,7 +24,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v3
-    - uses: dtolnay/rust-toolchain@stable
+    - uses: dtolnay/rust-toolchain@nightly
       with:
         components: clippy
     - run: cargo clippy --all-targets --all-features -- -D warnings
@@ -41,14 +41,14 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v3
-    - uses: dtolnay/rust-toolchain@stable
+    - uses: dtolnay/rust-toolchain@nightly
     - run: cargo check --all-targets --all-features --workspace
 
   doc:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v3
-    - uses: dtolnay/rust-toolchain@stable
+    - uses: dtolnay/rust-toolchain@nightly
     - run: cargo doc --all-features --workspace --no-deps
 
   test:
@@ -58,12 +58,9 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, windows-latest, macOS-latest]
-        rust: [stable, nightly]
     steps:
     - uses: actions/checkout@v3
-    - uses: dtolnay/rust-toolchain@master
-      with:
-        toolchain: ${{ matrix.rust }}
+    - uses: dtolnay/rust-toolchain@nightly
     - run: cargo test --all-targets --all-features --workspace
 
   sanitize:
@@ -87,7 +84,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v3
-    - uses: dtolnay/rust-toolchain@stable
+    - uses: dtolnay/rust-toolchain@nightly
     - run: cargo install --force cargo-tarpaulin
     - run: cargo tarpaulin --all-features --workspace --engine llvm -o Xml
     - uses: codecov/codecov-action@v3
