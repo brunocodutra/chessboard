@@ -254,6 +254,7 @@ dependencies = [
  "eval",
  "futures-util",
  "mockall",
+ "nnue",
  "num_cpus",
  "proptest",
  "rayon",
@@ -779,6 +780,10 @@ dependencies = [
  "quote",
  "syn 1.0.109",
 ]
+
+[[package]]
+name = "nnue"
+version = "0.1.0"
 
 [[package]]
 name = "normalize-line-endings"

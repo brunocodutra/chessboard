@@ -10,11 +10,12 @@ readme = "README.md"
 keywords = ["chess"]
 
 [workspace]
-members = ["chess", "eval", "search", "util"]
+members = ["chess", "eval", "nnue", "search", "util"]
 
 [dependencies]
 chess = { path = "./chess/" }
 eval = { path = "./eval/" }
+nnue = { path = "./nnue/" }
 search = { path = "./search/" }
 util = { path = "./util/" }
 
@@ -61,6 +62,9 @@ panic = "abort"
 
 [profile.dev]
 opt-level = 1
+
+[profile.dev.package.nnue]
+opt-level = 3
 
 [[bin]]
 name = "cli"
