@@ -784,6 +784,11 @@ dependencies = [
 [[package]]
 name = "nnue"
 version = "0.1.0"
+dependencies = [
+ "chess",
+ "proptest",
+ "test-strategy",
+]
 
 [[package]]
 name = "normalize-line-endings"

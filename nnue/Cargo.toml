@@ -5,3 +5,7 @@ authors = ["Bruno Dutra <brunocodutra@gmail.com>"]
 edition = "2021"
 
 [dependencies]
+chess = { path = "../chess/" }
+
+proptest = { version = "1.2.0", default-features = false, features = ["std"] }
+test-strategy = { version = "0.3.0", default-features = false }
