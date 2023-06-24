@@ -1,15 +1,13 @@
 use criterion::{criterion_group, criterion_main, BatchSize, Criterion};
 use lib::search::{Depth, DepthBounds, Limits, Options, Searcher};
 use lib::{chess::Fen, eval::Evaluator, util::Bounds};
-use shakmaty as sm;
 use std::thread::available_parallelism;
 use std::time::{Duration, Instant};
 
 fn ttm(c: &mut Criterion, name: &str, edps: &[(&str, &str)]) {
     let mut positions = edps.iter().cycle().map(|(p, m)| {
         let fen: Fen = p.parse().unwrap();
-        let uci: sm::uci::Uci = m.parse().unwrap();
-        (fen.try_into().unwrap(), uci.into())
+        (fen.try_into().unwrap(), m.parse().unwrap())
     });
 
     let options = match available_parallelism() {
