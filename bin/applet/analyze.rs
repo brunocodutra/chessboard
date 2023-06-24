@@ -1,9 +1,9 @@
 use crate::{ai::Ai, engine::Engine};
 use anyhow::Error as Anyhow;
+use chess::{Color, Fen};
 use clap::Parser;
 use futures_util::StreamExt;
-use lib::chess::{Color, Fen};
-use lib::search::{Limits, Options};
+use search::{Limits, Options};
 use tracing::{info, instrument};
 
 /// Analyzes a position.

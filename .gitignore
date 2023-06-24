@@ -1,6 +1,7 @@
 /target
-/proptest-regressions
 /engines
+/proptest-regressions
+/*/proptest-regressions
 .vscode
 cobertura.xml
 lcov.info
