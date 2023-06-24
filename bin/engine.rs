@@ -1,12 +1,13 @@
 use crate::ai::Ai;
 use async_stream::stream;
+use chess::{Move, Position};
+use eval::Evaluator;
 use futures_util::{future::BoxFuture, stream::BoxStream};
-use lib::chess::{Move, Position};
-use lib::eval::Evaluator;
-use lib::search::{Depth, Limits, Options, Pv};
+use search::{Limits, Options, Pv};
 use std::time::Instant;
 use tokio::task::block_in_place;
 use tracing::{field::display, instrument, Span};
+use util::Depth;
 
 #[cfg(test)]
 #[mockall::automock]
@@ -30,7 +31,7 @@ impl MockSearcher {
 type Strategy = MockSearcher;
 
 #[cfg(not(test))]
-type Strategy = lib::search::Searcher;
+type Strategy = search::Searcher;
 
 /// A chess engine.
 #[derive(Debug, Default)]
@@ -94,12 +95,13 @@ impl Ai for Engine {
 mod tests {
     use super::*;
     use futures_util::StreamExt;
-    use lib::search::{Line, Score};
     use mockall::predicate::eq;
     use proptest::sample::size_range;
+    use search::Line;
     use std::time::Duration;
     use test_strategy::proptest;
     use tokio::runtime;
+    use util::Score;
 
     #[proptest]
     fn play_finds_best_move(l: Limits, pos: Position, #[filter(!#pv.is_empty())] pv: Pv) {

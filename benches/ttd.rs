@@ -1,7 +1,9 @@
+use chess::Fen;
 use criterion::{criterion_group, criterion_main, BatchSize, Criterion};
-use lib::search::{Depth, Options, Searcher};
-use lib::{chess::Fen, eval::Evaluator};
+use eval::Evaluator;
+use search::{Options, Searcher};
 use std::thread::available_parallelism;
+use util::Depth;
 
 fn ttd(c: &mut Criterion, fens: &[&str]) {
     let mut positions = fens.iter().cycle().map(|s| {

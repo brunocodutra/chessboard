@@ -1,11 +1,10 @@
 use anyhow::Error as Anyhow;
 use clap::Subcommand;
-use derive_more::From;
 
 mod analyze;
 mod uci;
 
-#[derive(From, Subcommand)]
+#[derive(Subcommand)]
 pub enum Applet {
     Analyze(analyze::Analyze),
     Uci(uci::Uci),
@@ -13,7 +12,7 @@ pub enum Applet {
 
 impl Default for Applet {
     fn default() -> Self {
-        uci::Uci::default().into()
+        Applet::Uci(uci::Uci::default())
     }
 }
 

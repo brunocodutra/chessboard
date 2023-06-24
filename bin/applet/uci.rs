@@ -1,12 +1,13 @@
 use crate::{ai::Ai, engine::Engine, io::Io};
 use anyhow::{Context, Error as Anyhow};
+use chess::{Color, Fen, Position};
 use clap::Parser;
-use lib::chess::{Color, Fen, Position};
-use lib::search::{Depth, Limits, Options};
 use rayon::max_num_threads;
+use search::{Limits, Options};
 use std::{num::NonZeroUsize, time::Duration};
 use tokio::io::{stdin, stdout, Stdin, Stdout};
 use tracing::{debug, error, instrument, warn};
+use util::Depth;
 use vampirc_uci::{self as uci, UciMessage, UciOptionConfig, UciSearchControl, UciTimeControl};
 
 /// A basic *not fully compliant* UCI server.

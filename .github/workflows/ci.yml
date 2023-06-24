@@ -42,14 +42,14 @@ jobs:
     steps:
     - uses: actions/checkout@v3
     - uses: dtolnay/rust-toolchain@stable
-    - run: cargo check --workspace
+    - run: cargo check --all-targets --all-features --workspace
 
   doc:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v3
     - uses: dtolnay/rust-toolchain@stable
-    - run: cargo doc --all-features --no-deps
+    - run: cargo doc --all-features --workspace --no-deps
 
   test:
     needs: [fmt, clippy, audit, check, doc]
@@ -64,7 +64,7 @@ jobs:
     - uses: dtolnay/rust-toolchain@master
       with:
         toolchain: ${{ matrix.rust }}
-    - run: cargo test
+    - run: cargo test --all-targets --all-features --workspace
 
   sanitize:
     needs: [test]
@@ -78,7 +78,7 @@ jobs:
     - uses: dtolnay/rust-toolchain@nightly
       with:
         components: rust-src
-    - run: cargo test --tests --lib --all-features --target x86_64-unknown-linux-gnu -Z build-std -- --test-threads=1
+    - run: cargo test --tests --all-features --workspace --target x86_64-unknown-linux-gnu -Z build-std -- --test-threads=1
       env:
         RUSTFLAGS: "-Z sanitizer=${{ matrix.sanitizer }}"
 
