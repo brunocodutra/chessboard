@@ -11,7 +11,7 @@ keywords = ["chess"]
 
 [dependencies]
 anyhow = { version = "1.0.69", default-features = false, features = ["std"] }
-arrayvec = { version = "0.7.3", default-features = false, features = ["std"] }
+arrayvec = { version = "0.7.4", default-features = false, features = ["std"] }
 async-stream = { version = "0.3.5", default-features = false }
 atomic = { version = "0.5.3", default-features = false, features = ["std"] }
 bitflags = { version = "2.3.2", default-features = false }
