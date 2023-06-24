@@ -2,6 +2,7 @@ use super::{Promotion, Square};
 use crate::util::{Binary, Bits};
 use derive_more::{DebugCustom, Display, Error};
 use shakmaty as sm;
+use std::str::FromStr;
 use test_strategy::Arbitrary;
 use vampirc_uci::UciMove;
 
@@ -26,6 +27,23 @@ impl Move {
     /// The [`Promotion`] specifier.
     pub fn promotion(&self) -> Promotion {
         self.2
+    }
+}
+
+/// The reason why the string is not valid move.
+#[derive(Debug, Display, Clone, Eq, PartialEq, Error)]
+#[display(fmt = "failed to parse move")]
+
+pub struct ParseMoveError;
+
+impl FromStr for Move {
+    type Err = ParseMoveError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.parse::<sm::uci::Uci>() {
+            Ok(m) => Ok(m.into()),
+            Err(_) => Err(ParseMoveError),
+        }
     }
 }
 
@@ -136,6 +154,11 @@ mod tests {
     #[proptest]
     fn move_serializes_to_pure_coordinate_notation(m: Move) {
         assert_eq!(m.to_string(), UciMove::from(m).to_string());
+    }
+
+    #[proptest]
+    fn parsing_printed_move_is_an_identity(m: Move) {
+        assert_eq!(m.to_string().parse(), Ok(m));
     }
 
     #[proptest]
