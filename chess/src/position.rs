@@ -286,20 +286,18 @@ impl Position {
     }
 
     /// Exchange a piece on [`Square`] by the attacker of least value.
-    ///
-    /// This may lead to invalid positions.
     #[inline]
-    pub fn exchange(&mut self, s: Square) -> Result<MoveContext, ImpossibleExchange> {
-        let to = s.into();
+    pub fn exchange(&mut self, whither: Square) -> Result<MoveContext, ImpossibleExchange> {
+        let to = whither.into();
         let board = sm::Position::board(&self.0);
-        let capture = Some(board.role_at(to).ok_or(ImpossibleExchange(s))?);
+        let capture = board.role_at(to).ok_or(ImpossibleExchange(whither))?;
 
         let (from, role) = board
             .attacks_to(to, sm::Position::turn(&self.0), board.occupied())
             .into_iter()
             .filter_map(|s| Some((s, board.role_at(s)?)))
             .min_by_key(|(_, r)| *r)
-            .ok_or(ImpossibleExchange(s))?;
+            .ok_or(ImpossibleExchange(whither))?;
 
         let promotion = match (role, to.rank()) {
             (sm::Role::Pawn, sm::Rank::First | sm::Rank::Eighth) => Some(sm::Role::Queen),
@@ -309,13 +307,17 @@ impl Position {
         let vm = sm::Move::Normal {
             role,
             from,
-            capture,
+            capture: Some(capture),
             to,
             promotion,
         };
 
-        sm::Position::play_unchecked(&mut self.0, &vm);
-        Ok(vm.into())
+        if sm::Position::is_legal(&self.0, &vm) {
+            sm::Position::play_unchecked(&mut self.0, &vm);
+            Ok(vm.into())
+        } else {
+            Err(ImpossibleExchange(whither))
+        }
     }
 }
 
