@@ -1,7 +1,8 @@
 /target
-cobertura.xml
-.vscode
 /proptest-regressions
+/engines
+.vscode
+cobertura.xml
 lcov.info
 perf.data
 perf.data.old
