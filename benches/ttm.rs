@@ -1,8 +1,9 @@
 use chess::Fen;
 use criterion::{criterion_group, criterion_main, BatchSize, Criterion};
 use eval::Evaluator;
+use num_cpus::get_physical;
 use search::{Limits, Options, Searcher};
-use std::thread::available_parallelism;
+use std::num::NonZeroUsize;
 use std::time::{Duration, Instant};
 use util::{Bounds, Depth, DepthBounds};
 
@@ -12,9 +13,9 @@ fn ttm(c: &mut Criterion, name: &str, edps: &[(&str, &str)]) {
         (fen.try_into().unwrap(), m.parse().unwrap())
     });
 
-    let options = match available_parallelism() {
-        Err(_) => Options::default(),
-        Ok(threads) => Options {
+    let options = match NonZeroUsize::new(get_physical()) {
+        None => Options::default(),
+        Some(threads) => Options {
             threads,
             ..Options::default()
         },

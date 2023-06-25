@@ -224,6 +224,7 @@ dependencies = [
  "eval",
  "futures-util",
  "mockall",
+ "num_cpus",
  "proptest",
  "rayon",
  "search",
