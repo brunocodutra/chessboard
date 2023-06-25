@@ -1,6 +1,5 @@
 use chess::Fen;
 use criterion::{criterion_group, criterion_main, BatchSize, Criterion};
-use eval::Evaluator;
 use num_cpus::get_physical;
 use search::{Options, Searcher};
 use std::num::NonZeroUsize;
@@ -22,12 +21,7 @@ fn ttd(c: &mut Criterion, fens: &[&str]) {
 
     c.benchmark_group("benches").bench_function("ttd", |b| {
         b.iter_batched_ref(
-            || {
-                (
-                    Searcher::with_options(Evaluator::default(), options),
-                    positions.next().unwrap(),
-                )
-            },
+            || (Searcher::with_options(options), positions.next().unwrap()),
             |(s, pos)| s.search::<1>(pos, Depth::new(8).into()),
             BatchSize::SmallInput,
         );

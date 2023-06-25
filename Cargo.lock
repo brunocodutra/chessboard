@@ -251,7 +251,6 @@ dependencies = [
  "chess",
  "clap",
  "criterion",
- "eval",
  "futures-util",
  "mockall",
  "nnue",
@@ -520,17 +519,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "eval"
-version = "0.1.0"
-dependencies = [
- "chess",
- "derive_more",
- "proptest",
- "test-strategy",
- "util",
-]
-
-[[package]]
 name = "float-cmp"
 version = "0.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -785,10 +773,12 @@ dependencies = [
 name = "nnue"
 version = "0.1.0"
 dependencies = [
+ "arrayvec",
  "chess",
  "num-traits",
  "proptest",
  "test-strategy",
+ "util",
 ]
 
 [[package]]
@@ -1124,8 +1114,8 @@ dependencies = [
  "arrayvec",
  "chess",
  "derive_more",
- "eval",
  "humantime-serde",
+ "nnue",
  "proptest",
  "rayon",
  "ron",

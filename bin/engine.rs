@@ -1,7 +1,6 @@
 use crate::ai::Ai;
 use async_stream::stream;
 use chess::{Move, Position};
-use eval::Evaluator;
 use futures_util::{future::BoxFuture, stream::BoxStream};
 use search::{Limits, Options, Pv};
 use std::time::Instant;
@@ -22,7 +21,7 @@ impl MockSearcher {
         Pv::new(pv.depth(), pv.score(), pv.iter().copied().collect())
     }
 
-    fn with_options(_: Evaluator, _: Options) -> Self {
+    fn with_options(_: Options) -> Self {
         Self::new()
     }
 }
@@ -43,7 +42,7 @@ impl Engine {
     /// Initializes the engine with the given search [`Options`].
     pub fn new(options: Options) -> Self {
         Engine {
-            strategy: Strategy::with_options(Evaluator::new(), options),
+            strategy: Strategy::with_options(options),
         }
     }
 }

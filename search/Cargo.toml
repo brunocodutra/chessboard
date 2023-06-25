@@ -6,7 +6,7 @@ edition = "2021"
 
 [dependencies]
 chess = { path = "../chess/" }
-eval = { path = "../eval/" }
+nnue = { path = "../nnue/" }
 util = { path = "../util/" }
 
 arrayvec = { version = "0.7.3", default-features = false, features = ["std"] }

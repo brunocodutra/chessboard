@@ -6,7 +6,9 @@ edition = "2021"
 
 [dependencies]
 chess = { path = "../chess/" }
+util = { path = "../util/" }
 
+arrayvec = { version = "0.7.3", default-features = false, features = ["std"] }
 num-traits = { version = "0.2.15", default-features = false, features = ["std"] }
 proptest = { version = "1.2.0", default-features = false, features = ["std"] }
 test-strategy = { version = "0.3.0", default-features = false }

@@ -10,11 +10,10 @@ readme = "README.md"
 keywords = ["chess"]
 
 [workspace]
-members = ["chess", "eval", "nnue", "search", "util"]
+members = ["chess", "nnue", "search", "util"]
 
 [dependencies]
 chess = { path = "./chess/" }
-eval = { path = "./eval/" }
 nnue = { path = "./nnue/" }
 search = { path = "./search/" }
 util = { path = "./util/" }
