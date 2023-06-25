@@ -1,6 +1,5 @@
 use chess::Fen;
 use criterion::{criterion_group, criterion_main, BatchSize, Criterion};
-use eval::Evaluator;
 use num_cpus::get_physical;
 use search::{Limits, Options, Searcher};
 use std::num::NonZeroUsize;
@@ -24,12 +23,7 @@ fn ttm(c: &mut Criterion, name: &str, edps: &[(&str, &str)]) {
     c.benchmark_group("benches")
         .bench_function(format!("ttm/{name}"), |b| {
             b.iter_batched_ref(
-                || {
-                    (
-                        Searcher::with_options(Evaluator::default(), options),
-                        positions.next().unwrap(),
-                    )
-                },
+                || (Searcher::with_options(options), positions.next().unwrap()),
                 |(s, (pos, m))| {
                     let timer = Instant::now();
                     for d in 1..=DepthBounds::UPPER {

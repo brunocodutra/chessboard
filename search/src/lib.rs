@@ -1,8 +1,8 @@
 #![allow(clippy::arc_with_non_send_sync)]
 
-use chess::{Move, MoveKind, Piece, Position, Role, Square, Zobrist};
+use chess::{Move, MoveKind, Piece, Position, Role, Zobrist};
 use derive_more::{Deref, Neg};
-use eval::Evaluator;
+use nnue::{eval, see};
 use rayon::{prelude::*, ThreadPool, ThreadPoolBuilder};
 use std::sync::atomic::{AtomicI16, Ordering};
 use std::{cmp::max_by_key, ops::Range, time::Duration};
@@ -46,7 +46,6 @@ impl ScoreWithTempo {
 /// [minimax]: https://www.chessprogramming.org/Searcher
 #[derive(Debug, Arbitrary)]
 pub struct Searcher {
-    evaluator: Evaluator,
     #[map(|o: Options| ThreadPoolBuilder::new().num_threads(o.threads.get()).build().unwrap())]
     executor: ThreadPool,
     #[map(|o: Options| TranspositionTable::new(o.hash))]
@@ -55,7 +54,7 @@ pub struct Searcher {
 
 impl Default for Searcher {
     fn default() -> Self {
-        Self::new(Evaluator::default())
+        Self::new()
     }
 }
 
@@ -67,14 +66,13 @@ impl Searcher {
     const MAX_PLY: i8 = 3;
 
     /// Constructs [`Searcher`] with the default [`Options`].
-    pub fn new(evaluator: Evaluator) -> Self {
-        Self::with_options(evaluator, Options::default())
+    pub fn new() -> Self {
+        Self::with_options(Options::default())
     }
 
     /// Constructs [`Searcher`] with the given [`Options`].
-    pub fn with_options(evaluator: Evaluator, options: Options) -> Self {
+    pub fn with_options(options: Options) -> Self {
         Searcher {
-            evaluator,
             executor: ThreadPoolBuilder::new()
                 .num_threads(options.threads.get())
                 .build()
@@ -124,25 +122,6 @@ impl Searcher {
                 Transposition::exact(depth - ply, score.normalize(-ply), best)
             },
         );
-    }
-
-    /// The Static Exchange Evaluation ([SEE]) algorithm.
-    ///
-    /// [SEE]: https://www.chessprogramming.org/Static_Exchange_Evaluation
-    fn see(&self, mut pos: Position, square: Square, bounds: Range<Value>) -> Value {
-        assert!(!bounds.is_empty(), "{bounds:?} ≠ ∅");
-
-        let (alpha, beta) = (bounds.start, bounds.end);
-        let alpha = self.evaluator.eval(&pos).max(alpha);
-
-        if alpha >= beta {
-            return beta;
-        }
-
-        match pos.exchange(square) {
-            Ok(_) => -self.see(pos, square, -beta..-alpha),
-            Err(_) => alpha,
-        }
     }
 
     /// An implementation of [null move pruning].
@@ -230,7 +209,7 @@ impl Searcher {
             Some(_) => return Ok(ScoreWithTempo::lower(depth, ply)),
             None => match transposition {
                 Some(t) => t.score().normalize(ply),
-                None if depth <= ply => self.evaluator.eval(pos).cast(),
+                None if depth <= ply => eval(pos).cast(),
                 None => *self.nw(pos, beta, ply.cast(), ply, timer)?,
             },
         };
@@ -256,7 +235,7 @@ impl Searcher {
         }
 
         let mut moves = Vec::from_iter(pos.moves(kind).map(|(m, next)| {
-            let value = -self.see(next.clone(), m.whither(), Value::lower()..Value::upper());
+            let value = -see(next.clone(), m.whither(), Value::lower()..Value::upper());
             (m, next, value)
         }));
 
@@ -404,11 +383,11 @@ mod tests {
     use test_strategy::proptest;
     use tokio::{runtime, time::timeout};
 
-    fn negamax(evaluator: &Evaluator, pos: &Position, depth: Depth, ply: Ply) -> Score {
+    fn negamax(pos: &Position, depth: Depth, ply: Ply) -> Score {
         let score = match pos.outcome() {
             Some(o) if o.is_draw() => return Score::new(0),
             Some(_) => return Score::lower().normalize(ply),
-            None => evaluator.eval(pos).cast(),
+            None => eval(pos).cast(),
         };
 
         let kind = if ply < depth {
@@ -420,14 +399,14 @@ mod tests {
         };
 
         pos.moves(kind)
-            .map(|(_, pos)| -negamax(evaluator, &pos, depth, ply + 1))
+            .map(|(_, pos)| -negamax(&pos, depth, ply + 1))
             .max()
             .unwrap_or(score)
     }
 
     #[proptest]
     fn has_is_an_upper_limit_for_table_size(o: Options) {
-        let s = Searcher::with_options(Evaluator::default(), o);
+        let s = Searcher::with_options(o);
         prop_assume!(s.tt.capacity() > 1);
         assert!(s.tt.size() <= o.hash);
     }
@@ -475,21 +454,20 @@ mod tests {
         assert_eq!(
             s.pvs(&pos, Score::lower()..Score::upper(), d, p, timer)
                 .as_deref(),
-            Ok(&negamax(&s.evaluator, &pos, d, p))
+            Ok(&negamax(&pos, d, p))
         );
     }
 
     #[proptest]
     fn pvs_does_not_depend_on_table_size(
-        e: Evaluator,
         x: Options,
         y: Options,
         pos: Position,
         #[filter((1..=3).contains(&#d.get()))] d: Depth,
         #[filter(#p >= 0)] p: Ply,
     ) {
-        let x = Searcher::with_options(e.clone(), x);
-        let y = Searcher::with_options(e, y);
+        let x = Searcher::with_options(x);
+        let y = Searcher::with_options(y);
 
         let timer = Timer::start(Duration::MAX);
 

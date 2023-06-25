@@ -11,11 +11,6 @@ updates:
       interval: "weekly"
       day: "saturday"
   - package-ecosystem: "cargo"
-    directory: "/eval/"
-    schedule:
-      interval: "weekly"
-      day: "saturday"
-  - package-ecosystem: "cargo"
     directory: "/nnue/"
     schedule:
       interval: "weekly"
