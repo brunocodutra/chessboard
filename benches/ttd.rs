@@ -1,8 +1,9 @@
 use chess::Fen;
 use criterion::{criterion_group, criterion_main, BatchSize, Criterion};
 use eval::Evaluator;
+use num_cpus::get_physical;
 use search::{Options, Searcher};
-use std::thread::available_parallelism;
+use std::num::NonZeroUsize;
 use util::Depth;
 
 fn ttd(c: &mut Criterion, fens: &[&str]) {
@@ -11,9 +12,9 @@ fn ttd(c: &mut Criterion, fens: &[&str]) {
         fen.try_into().unwrap()
     });
 
-    let options = match available_parallelism() {
-        Err(_) => Options::default(),
-        Ok(threads) => Options {
+    let options = match NonZeroUsize::new(get_physical()) {
+        None => Options::default(),
+        Some(threads) => Options {
             threads,
             ..Options::default()
         },
