@@ -1,4 +1,5 @@
-use super::{Bounds, PlyBounds, Saturating, ScoreBounds};
+use super::{Bounds, PlyBounds, Saturating, Score, ScoreBounds};
+use std::fmt;
 
 pub struct ValueBounds;
 
@@ -10,3 +11,9 @@ impl Bounds for ValueBounds {
 
 /// A [`Position`]'s static evaluation.
 pub type Value = Saturating<ValueBounds>;
+
+impl fmt::Display for Value {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        fmt::Display::fmt(&Score::saturate(self.get()), f)
+    }
+}
