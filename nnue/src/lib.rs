@@ -1,9 +1,11 @@
 mod chain;
 mod crelu;
+mod damp;
 mod feature;
 
 use chain::*;
 use crelu::*;
+use damp::*;
 use feature::*;
 
 /// Trait for types that can compose a neural network.
