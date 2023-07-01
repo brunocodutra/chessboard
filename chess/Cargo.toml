@@ -7,7 +7,7 @@ edition = "2021"
 [dependencies]
 util = { path = "../util/" }
 
-bitflags = { version = "2.3.2", default-features = false }
+bitflags = { version = "2.3.3", default-features = false }
 derive_more = { version = "0.99.16", default-features = false, features = ["display", "error"] }
 proptest = { version = "1.2.0", default-features = false, features = ["std"] }
 shakmaty = { version = "0.26.0", default-features = false, features = ["std"] }
