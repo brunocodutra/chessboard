@@ -33,7 +33,7 @@ futures-util = { version = "0.3.26", default-features = false, features = ["allo
 proptest = { version = "1.2.0", default-features = false, features = ["std"] }
 rayon = { version = "1.7.0", default-features = false }
 test-strategy = { version = "0.3.0", default-features = false }
-tokio = { version = "1.28.2", default-features = false, features = [
+tokio = { version = "1.29.1", default-features = false, features = [
     "io-std",
     "io-util",
     "macros",
