@@ -93,7 +93,7 @@ impl Transposition {
     }
 }
 
-type Signature = Bits<u32, 29>;
+type Signature = Bits<u32, 27>;
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash, Arbitrary)]
 struct SignedTransposition(Transposition, Signature);

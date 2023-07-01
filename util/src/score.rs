@@ -8,7 +8,7 @@ pub struct ScoreBounds;
 impl Bounds for ScoreBounds {
     type Integer = i16;
     const LOWER: Self::Integer = -Self::UPPER;
-    const UPPER: Self::Integer = 4095;
+    const UPPER: Self::Integer = 16383;
 }
 
 /// The minimax score.
@@ -48,7 +48,7 @@ impl Score {
 pub struct DecodeScoreError;
 
 impl Binary for Score {
-    type Bits = Bits<u16, 13>;
+    type Bits = Bits<u16, 15>;
     type Error = DecodeScoreError;
 
     #[inline]
