@@ -171,6 +171,14 @@ impl Position {
             .map(Square::from)
     }
 
+    /// [`Square`] occupied by a the king of the given color.
+    #[inline]
+    pub fn king(&self, side: Color) -> Square {
+        self.by_piece(Piece(side, Role::King))
+            .next()
+            .expect("expected king on the board")
+    }
+
     /// Whether this position is a [check].
     ///
     /// [check]: https://www.chessprogramming.org/Check
@@ -259,9 +267,7 @@ impl Position {
         } else {
             let null = sm::Move::Put {
                 role: sm::Role::King,
-                to: sm::Position::our(&self.0, sm::Role::King)
-                    .first()
-                    .expect("expected king on the board"),
+                to: self.king(self.turn()).into(),
             };
 
             sm::Position::play_unchecked(&mut self.0, &null);
@@ -474,6 +480,11 @@ mod tests {
         for s in pos.by_piece(p) {
             assert_eq!(pos[s], Some(p));
         }
+    }
+
+    #[proptest]
+    fn king_returns_square_occupied_by_a_king(pos: Position, c: Color) {
+        assert_eq!(pos[pos.king(c)], Some(Piece(c, Role::King)));
     }
 
     #[proptest]
