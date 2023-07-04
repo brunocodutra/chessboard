@@ -110,6 +110,12 @@ impl Position {
         sm::Position::fullmoves(&self.0)
     }
 
+    /// The en passant square.
+    #[inline]
+    pub fn en_passant_square(&self) -> Option<Square> {
+        sm::Position::ep_square(&self.0, sm::EnPassantMode::Always).map(Square::from)
+    }
+
     /// This position's [zobrist hash].
     ///
     /// [zobrist hash]: https://www.chessprogramming.org/Zobrist_Hashing
@@ -445,6 +451,14 @@ mod tests {
     #[proptest]
     fn fullmoves_returns_the_current_move_number(pos: Position) {
         assert_eq!(pos.fullmoves(), sm::Setup::from(pos).fullmoves);
+    }
+
+    #[proptest]
+    fn en_passant_square_returns_the_en_passant_square(pos: Position) {
+        assert_eq!(
+            pos.en_passant_square(),
+            sm::Setup::from(pos).ep_square.map(Square::from)
+        );
     }
 
     #[proptest]
