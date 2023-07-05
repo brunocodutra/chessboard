@@ -1,7 +1,7 @@
 use anyhow::Error as Anyhow;
 use chess::{Color, Fen, Position};
 use clap::Parser;
-use nnue::eval;
+use nnue::Evaluator;
 use tracing::{info, instrument};
 
 /// Statically evaluates a position.
@@ -16,11 +16,14 @@ impl Eval {
     #[instrument(level = "trace", skip(self), err)]
     pub async fn execute(self) -> Result<(), Anyhow> {
         let pos: Position = self.fen.try_into()?;
+        let pos = Evaluator::own(pos);
 
-        info!(value = %match pos.turn() {
-            Color::White => eval(&pos),
-            Color::Black => -eval(&pos),
-        });
+        let (material, positional, value) = match pos.turn() {
+            Color::White => (pos.material(), pos.positional(), pos.value()),
+            Color::Black => (-pos.material(), -pos.positional(), -pos.value()),
+        };
+
+        info!(%material, %positional, %value);
 
         Ok(())
     }

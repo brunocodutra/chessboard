@@ -5,7 +5,7 @@ use test_strategy::Arbitrary;
 ///
 /// [affine]: https://en.wikipedia.org/wiki/Affine_transformation
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash, Arbitrary)]
-pub struct Affine<const I: usize, const O: usize>(pub [[i8; I]; O], pub [i32; O]);
+pub struct Affine<const I: usize, const O: usize>(pub(crate) [[i8; I]; O], pub(crate) [i32; O]);
 
 impl<const I: usize, const O: usize> Layer<[i8; I]> for Affine<I, O> {
     type Output = [i32; O];

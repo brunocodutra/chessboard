@@ -8,7 +8,7 @@ use vampirc_uci::UciMove;
 
 /// A chess move.
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash, Arbitrary, Deref)]
-pub struct MoveContext(#[deref] pub Move, pub Role, pub Option<Role>);
+pub struct MoveContext(#[deref] pub Move, pub Role, pub Option<(Role, Square)>);
 
 impl MoveContext {
     /// The [`Role`] of the piece moved.
@@ -19,7 +19,7 @@ impl MoveContext {
 
     /// The [`Role`] of the piece captured.
     #[inline]
-    pub fn capture(&self) -> Option<Role> {
+    pub fn capture(&self) -> Option<(Role, Square)> {
         self.2
     }
 }
@@ -126,13 +126,16 @@ impl From<sm::Move> for MoveContext {
             } => MoveContext(
                 Move(from.into(), to.into(), promotion.into()),
                 role.into(),
-                capture.map(Role::from),
+                capture.map(|r| (r.into(), to.into())),
             ),
 
             sm::Move::EnPassant { from, to } => MoveContext(
                 Move(from.into(), to.into(), Promotion::None),
                 Role::Pawn,
-                Some(Role::Pawn),
+                Some((
+                    Role::Pawn,
+                    Square::new(to.file().into(), from.rank().into()),
+                )),
             ),
 
             m @ sm::Move::Castle { .. } => MoveContext(

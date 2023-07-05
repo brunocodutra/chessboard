@@ -2,7 +2,7 @@
 
 use chess::{Move, MoveKind, Piece, Position, Role, Zobrist};
 use derive_more::{Deref, Neg};
-use nnue::{eval, see};
+use nnue::Evaluator;
 use rayon::{prelude::*, ThreadPool, ThreadPoolBuilder};
 use std::sync::atomic::{AtomicI16, Ordering};
 use std::{cmp::max_by_key, ops::Range, time::Duration};
@@ -172,7 +172,7 @@ impl Searcher {
     /// [zero-window]: https://www.chessprogramming.org/Null_Window
     fn nw(
         &self,
-        pos: &Position,
+        pos: &Evaluator,
         beta: Score,
         depth: Depth,
         ply: Ply,
@@ -187,7 +187,7 @@ impl Searcher {
     /// [alpha-beta pruning]: https://www.chessprogramming.org/Alpha-Beta
     fn pvs(
         &self,
-        pos: &Position,
+        pos: &Evaluator,
         bounds: Range<Score>,
         depth: Depth,
         ply: Ply,
@@ -209,7 +209,7 @@ impl Searcher {
             Some(_) => return Ok(ScoreWithTempo::lower(depth, ply)),
             None => match transposition {
                 Some(t) => t.score().normalize(ply),
-                None if depth <= ply => eval(pos).cast(),
+                None if depth <= ply => pos.value().cast(),
                 None => *self.nw(pos, beta, ply.cast(), ply, timer)?,
             },
         };
@@ -235,7 +235,8 @@ impl Searcher {
         }
 
         let mut moves = Vec::from_iter(pos.moves(kind).map(|(m, next)| {
-            let value = -see(next.clone(), m.whither(), Value::lower()..Value::upper());
+            let bounds = Value::lower()..Value::upper();
+            let value = -next.clone().see(m.whither(), bounds);
             (m, next, value)
         }));
 
@@ -320,9 +321,10 @@ impl Searcher {
 
     /// Searches for the [principal variation][`Pv`].
     pub fn search<const N: usize>(&mut self, pos: &Position, limits: Limits) -> Pv<N> {
-        let timer = Timer::start(self.time_to_search(pos, limits));
+        let pos = Evaluator::borrow(pos);
+        let timer = Timer::start(self.time_to_search(&pos, limits));
 
-        if self.tt.iter(pos).next().is_none() {
+        if self.tt.iter(&pos).next().is_none() {
             self.tt.unset(pos.zobrist());
         };
 
@@ -351,7 +353,7 @@ impl Searcher {
                         timer
                     };
 
-                    let score = match self.pvs(pos, lower..upper, depth, Ply::new(0), timer) {
+                    let score = match self.pvs(&pos, lower..upper, depth, Ply::new(0), timer) {
                         Err(_) => break 'id,
                         Ok(s) => *s,
                     };
@@ -361,11 +363,11 @@ impl Searcher {
                     match score {
                         s if (-lower..Score::upper()).contains(&-s) => lower = s - w / 2,
                         s if (upper..Score::upper()).contains(&s) => upper = s + w / 2,
-                        _ => break 'aw Pv::new(depth, score, self.tt.line(pos).collect()),
+                        _ => break 'aw Pv::new(depth, score, self.tt.line(&pos).collect()),
                     }
 
                     if score >= pv.score() {
-                        pv = Pv::new(depth, score, self.tt.line(pos).collect());
+                        pv = Pv::new(depth, score, self.tt.line(&pos).collect());
                     }
                 };
             }
@@ -383,11 +385,11 @@ mod tests {
     use test_strategy::proptest;
     use tokio::{runtime, time::timeout};
 
-    fn negamax(pos: &Position, depth: Depth, ply: Ply) -> Score {
+    fn negamax(pos: &Evaluator, depth: Depth, ply: Ply) -> Score {
         let score = match pos.outcome() {
             Some(o) if o.is_draw() => return Score::new(0),
             Some(_) => return Score::lower().normalize(ply),
-            None => eval(pos).cast(),
+            None => pos.value().cast(),
         };
 
         let kind = if ply < depth {
@@ -414,6 +416,7 @@ mod tests {
     #[proptest]
     #[should_panic]
     fn nw_panics_if_beta_is_too_small(s: Searcher, pos: Position, d: Depth, p: Ply) {
+        let pos = Evaluator::borrow(&pos);
         s.nw(&pos, Score::lower(), d, p, Timer::start(Duration::MAX))?;
     }
 
@@ -426,6 +429,7 @@ mod tests {
         d: Depth,
         p: Ply,
     ) {
+        let pos = Evaluator::borrow(&pos);
         s.pvs(&pos, b.end..b.start, d, p, Timer::start(Duration::MAX))?;
     }
 
@@ -437,6 +441,7 @@ mod tests {
         d: Depth,
         p: Ply,
     ) {
+        let pos = Evaluator::borrow(&pos);
         let timer = Timer::start(Duration::ZERO);
         std::thread::sleep(Duration::from_millis(1));
         assert_eq!(s.pvs(&pos, b, d, p, timer), Err(Timeout));
@@ -449,11 +454,12 @@ mod tests {
         #[filter((1..=3).contains(&#d.get()))] d: Depth,
         #[filter(#p >= 0)] p: Ply,
     ) {
+        let pos = Evaluator::borrow(&pos);
         let timer = Timer::start(Duration::MAX);
+        let bounds = Score::lower()..Score::upper();
 
         assert_eq!(
-            s.pvs(&pos, Score::lower()..Score::upper(), d, p, timer)
-                .as_deref(),
+            s.pvs(&pos, bounds, d, p, timer).as_deref(),
             Ok(&negamax(&pos, d, p))
         );
     }
@@ -469,6 +475,7 @@ mod tests {
         let x = Searcher::with_options(x);
         let y = Searcher::with_options(y);
 
+        let pos = Evaluator::borrow(&pos);
         let timer = Timer::start(Duration::MAX);
 
         assert_eq!(

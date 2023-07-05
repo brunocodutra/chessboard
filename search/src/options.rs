@@ -23,7 +23,7 @@ pub struct Options {
 impl Default for Options {
     fn default() -> Self {
         Self {
-            hash: 1 << 25,
+            hash: 32 << 20,
             threads: NonZeroUsize::new(1).unwrap(),
         }
     }

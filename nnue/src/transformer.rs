@@ -5,7 +5,10 @@ use test_strategy::Arbitrary;
 ///
 /// [affine]: https://en.wikipedia.org/wiki/Affine_transformation
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash, Arbitrary)]
-pub struct FeatureTransformer<const I: usize, const O: usize>(pub [[i16; O]; I], pub [i16; O]);
+pub struct FeatureTransformer<const I: usize, const O: usize>(
+    pub(crate) [[i16; O]; I],
+    pub(crate) [i16; O],
+);
 
 impl<const I: usize, const O: usize> Transformer for FeatureTransformer<I, O> {
     type Accumulator = [i16; O];
