@@ -122,7 +122,7 @@ impl Position {
     #[inline]
     pub fn zobrist(&self) -> Zobrist {
         let z: sm::zobrist::Zobrist64 =
-            sm::zobrist::ZobristHash::zobrist_hash(&self.0, sm::EnPassantMode::Legal);
+            sm::zobrist::ZobristHash::zobrist_hash(&self.0, sm::EnPassantMode::Always);
         Bits::new(z.0)
     }
 
