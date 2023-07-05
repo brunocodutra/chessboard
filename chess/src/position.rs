@@ -126,6 +126,12 @@ impl Position {
         Bits::new(z.0)
     }
 
+    /// This position's [`Fen`] representation.
+    #[inline]
+    pub fn fen(&self) -> Fen {
+        sm::Position::into_setup(self.0.clone(), sm::EnPassantMode::Always).into()
+    }
+
     /// An iterator over all pieces on the board.
     #[inline]
     pub fn iter(&self) -> impl DoubleEndedIterator<Item = (Piece, Square)> + ExactSizeIterator {
@@ -401,33 +407,10 @@ impl TryFrom<Fen> for Position {
 }
 
 #[doc(hidden)]
-impl From<Position> for sm::Setup {
-    #[inline]
-    fn from(pos: Position) -> Self {
-        sm::Position::into_setup(pos.0, sm::EnPassantMode::Always)
-    }
-}
-
-#[doc(hidden)]
 impl From<sm::Chess> for Position {
     #[inline]
     fn from(chess: sm::Chess) -> Self {
         Position(chess)
-    }
-}
-
-#[doc(hidden)]
-impl From<Position> for sm::Chess {
-    #[inline]
-    fn from(pos: Position) -> Self {
-        pos.0
-    }
-}
-
-#[doc(hidden)]
-impl AsRef<sm::Chess> for Position {
-    fn as_ref(&self) -> &sm::Chess {
-        &self.0
     }
 }
 
@@ -440,25 +423,26 @@ mod tests {
 
     #[proptest]
     fn turn_returns_the_current_side_to_play(pos: Position) {
-        assert_eq!(pos.turn(), sm::Setup::from(pos).turn.into());
+        let setup = sm::Position::into_setup(pos.0.clone(), sm::EnPassantMode::Always);
+        assert_eq!(pos.turn(), setup.turn.into());
     }
 
     #[proptest]
     fn halfmoves_returns_the_number_of_halfmoves_since_last_irreversible_move(pos: Position) {
-        assert_eq!(pos.halfmoves(), sm::Setup::from(pos).halfmoves);
+        let setup = sm::Position::into_setup(pos.0.clone(), sm::EnPassantMode::Always);
+        assert_eq!(pos.halfmoves(), setup.halfmoves);
     }
 
     #[proptest]
     fn fullmoves_returns_the_current_move_number(pos: Position) {
-        assert_eq!(pos.fullmoves(), sm::Setup::from(pos).fullmoves);
+        let setup = sm::Position::into_setup(pos.0.clone(), sm::EnPassantMode::Always);
+        assert_eq!(pos.fullmoves(), setup.fullmoves);
     }
 
     #[proptest]
     fn en_passant_square_returns_the_en_passant_square(pos: Position) {
-        assert_eq!(
-            pos.en_passant_square(),
-            sm::Setup::from(pos).ep_square.map(Square::from)
-        );
+        let setup = sm::Position::into_setup(pos.0.clone(), sm::EnPassantMode::Always);
+        assert_eq!(pos.en_passant_square(), setup.ep_square.map(Square::from));
     }
 
     #[proptest]
@@ -619,10 +603,5 @@ mod tests {
     #[proptest]
     fn all_positions_can_be_represented_using_fen_notation(pos: Position) {
         assert_eq!(Position::try_from(Fen::from(pos.clone())), Ok(pos));
-    }
-
-    #[proptest]
-    fn position_has_an_equivalent_shakmaty_representation(pos: Position) {
-        assert_eq!(Position::from(sm::Chess::from(pos.clone())), pos);
     }
 }

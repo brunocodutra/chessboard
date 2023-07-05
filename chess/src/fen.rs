@@ -65,7 +65,7 @@ impl FromStr for Fen {
 impl From<Position> for Fen {
     #[inline]
     fn from(pos: Position) -> Self {
-        sm::Setup::from(pos).into()
+        pos.fen()
     }
 }
 
