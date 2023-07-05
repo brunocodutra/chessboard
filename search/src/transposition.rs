@@ -332,7 +332,7 @@ mod tests {
         #[by_ref]
         #[filter(#tt.capacity() > 1)]
         tt: TranspositionTable,
-        #[filter(#pos.moves(MoveKind::ANY).len() > 0)] pos: Position,
+        #[filter(#pos.clone().moves(MoveKind::ANY).len() > 0)] pos: Position,
         #[filter(#d > Depth::new(0))] d: Depth,
         s: Score,
         selector: Selector,
@@ -342,11 +342,11 @@ mod tests {
 
         let (n, _) = selector.select(next.moves(MoveKind::ANY));
 
-        let t = Transposition::lower(d, s, m);
+        let t = Transposition::lower(d, s, *m);
         tt.unset(pos.zobrist());
         tt.set(pos.zobrist(), t);
 
-        let u = Transposition::lower(d, -s, n);
+        let u = Transposition::lower(d, -s, *n);
         tt.unset(next.zobrist());
         tt.set(next.zobrist(), u);
 

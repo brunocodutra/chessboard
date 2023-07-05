@@ -1,4 +1,4 @@
-use crate::{Color, Fen, Move, Outcome, Piece, Role, Square};
+use crate::{Color, Fen, Move, MoveContext, Outcome, Piece, Role, Square};
 use bitflags::bitflags;
 use derive_more::{DebugCustom, Display, Error};
 use proptest::{prelude::*, sample::Selector};
@@ -244,25 +244,23 @@ impl Position {
     pub fn moves(
         &self,
         kind: MoveKind,
-    ) -> impl DoubleEndedIterator<Item = (Move, Self)> + ExactSizeIterator {
+    ) -> impl DoubleEndedIterator<Item = (MoveContext, Self)> + ExactSizeIterator + '_ {
         let mut legals = sm::Position::legal_moves(&self.0);
         legals.retain(|vm| kind.intersects(vm.into()));
-
-        let p = self.0.clone();
         legals.into_iter().map(move |vm| {
-            let mut p = p.clone();
-            sm::Position::play_unchecked(&mut p, &vm);
-            (sm::uci::Uci::from_standard(&vm).into(), p.into())
+            let mut pos = self.clone();
+            sm::Position::play_unchecked(&mut pos.0, &vm);
+            (vm.into(), pos)
         })
     }
 
     /// Play a [`Move`] if legal in this position.
     #[inline]
-    pub fn play(&mut self, m: Move) -> Result<(), IllegalMove> {
+    pub fn play(&mut self, m: Move) -> Result<MoveContext, IllegalMove> {
         match sm::uci::Uci::to_move(&m.into(), &self.0) {
             Ok(vm) if sm::Position::is_legal(&self.0, &vm) => {
                 sm::Position::play_unchecked(&mut self.0, &vm);
-                Ok(())
+                Ok(vm.into())
             }
 
             _ => Err(IllegalMove(m)),
@@ -291,7 +289,7 @@ impl Position {
     ///
     /// This may lead to invalid positions.
     #[inline]
-    pub fn exchange(&mut self, s: Square) -> Result<(), ImpossibleExchange> {
+    pub fn exchange(&mut self, s: Square) -> Result<MoveContext, ImpossibleExchange> {
         let to = s.into();
         let board = sm::Position::board(&self.0);
         let capture = Some(board.role_at(to).ok_or(ImpossibleExchange(s))?);
@@ -308,18 +306,16 @@ impl Position {
             _ => None,
         };
 
-        sm::Position::play_unchecked(
-            &mut self.0,
-            &sm::Move::Normal {
-                role,
-                from,
-                capture,
-                to,
-                promotion,
-            },
-        );
+        let vm = sm::Move::Normal {
+            role,
+            from,
+            capture,
+            to,
+            promotion,
+        };
 
-        Ok(())
+        sm::Position::play_unchecked(&mut self.0, &vm);
+        Ok(vm.into())
     }
 }
 
@@ -515,7 +511,7 @@ mod tests {
         for (m, p) in pos.moves(MoveKind::ANY) {
             let mut pos = pos.clone();
             assert_eq!(pos[m.whence()].map(|p| p.color()), Some(pos.turn()));
-            assert_eq!(pos.play(m).err(), None);
+            assert_eq!(pos.play(*m).err(), None);
             assert_eq!(pos, p);
         }
     }
@@ -556,11 +552,11 @@ mod tests {
 
     #[proptest]
     fn legal_move_updates_position(
-        #[filter(#pos.moves(MoveKind::ANY).len() > 0)] mut pos: Position,
+        #[filter(#pos.clone().moves(MoveKind::ANY).len() > 0)] mut pos: Position,
         selector: Selector,
     ) {
         let (m, next) = selector.select(pos.moves(MoveKind::ANY));
-        assert_eq!(pos.play(m), Ok(()));
+        assert_eq!(pos.play(*m).map(MoveContext::from), Ok(m));
         assert_eq!(pos, next);
     }
 
