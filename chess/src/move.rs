@@ -1,5 +1,5 @@
-use crate::{Promotion, Square};
-use derive_more::{DebugCustom, Display, Error};
+use crate::{Promotion, Role, Square};
+use derive_more::{DebugCustom, Deref, Display, Error};
 use shakmaty as sm;
 use std::str::FromStr;
 use test_strategy::Arbitrary;
@@ -7,11 +7,31 @@ use util::{Binary, Bits};
 use vampirc_uci::UciMove;
 
 /// A chess move.
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash, Arbitrary, Deref)]
+pub struct MoveContext(#[deref] pub Move, pub Role, pub Option<Role>);
+
+impl MoveContext {
+    /// The [`Role`] of the piece moved.
+    #[inline]
+    pub fn role(&self) -> Role {
+        self.1
+    }
+
+    /// The [`Role`] of the piece captured.
+    #[inline]
+    pub fn capture(&self) -> Option<Role> {
+        self.2
+    }
+}
+
+/// A chess move in [pure coordinate notation].
+///
+/// [pure coordinate notation]: https://www.chessprogramming.org/Algebraic_Chess_Notation#Pure_coordinate_notation
 #[derive(DebugCustom, Display, Copy, Clone, Eq, PartialEq, Hash, Arbitrary)]
 #[filter(#self.0 != #self.1)]
 #[debug(fmt = "Move({self})")]
 #[display(fmt = "{_0}{_1}{_2}")]
-pub struct Move(Square, Square, Promotion);
+pub struct Move(pub Square, pub Square, pub Promotion);
 
 impl Move {
     /// The source [`Square`].
@@ -89,6 +109,40 @@ impl Binary for Move {
             Square::decode(bits.pop())?,
             Promotion::decode(bits.pop())?,
         ))
+    }
+}
+
+#[doc(hidden)]
+impl From<sm::Move> for MoveContext {
+    #[inline]
+    fn from(m: sm::Move) -> Self {
+        match m {
+            sm::Move::Normal {
+                role,
+                from,
+                capture,
+                to,
+                promotion,
+            } => MoveContext(
+                Move(from.into(), to.into(), promotion.into()),
+                role.into(),
+                capture.map(Role::from),
+            ),
+
+            sm::Move::EnPassant { from, to } => MoveContext(
+                Move(from.into(), to.into(), Promotion::None),
+                Role::Pawn,
+                Some(Role::Pawn),
+            ),
+
+            m @ sm::Move::Castle { .. } => MoveContext(
+                m.to_uci(sm::CastlingMode::Standard).into(),
+                Role::King,
+                None,
+            ),
+
+            v => panic!("unexpected {v:?}"),
+        }
     }
 }
 

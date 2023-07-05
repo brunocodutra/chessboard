@@ -138,20 +138,9 @@ impl Searcher {
         }
 
         match pos.exchange(square) {
+            Ok(_) => -self.see(pos, square, -beta..-alpha),
             Err(_) => alpha,
-            Ok(()) => -self.see(pos, square, -beta..-alpha),
         }
-    }
-
-    fn moves(
-        &self,
-        pos: &Position,
-        kind: MoveKind,
-    ) -> impl DoubleEndedIterator<Item = (Move, Position, Value)> + ExactSizeIterator + '_ {
-        pos.moves(kind).map(|(m, next)| {
-            let value = -self.see(next.clone(), m.whither(), Value::lower()..Value::upper());
-            (m, next, value)
-        })
     }
 
     /// An implementation of [null move pruning].
@@ -264,9 +253,13 @@ impl Searcher {
             }
         }
 
-        let mut moves: Vec<_> = self.moves(pos, kind).collect();
+        let mut moves = Vec::from_iter(pos.moves(kind).map(|(m, next)| {
+            let value = -self.see(next.clone(), m.whither(), Value::lower()..Value::upper());
+            (m, next, value)
+        }));
+
         moves.sort_unstable_by_key(|&(m, _, value)| {
-            if Some(m) == transposition.map(|t| t.best()) {
+            if Some(*m) == transposition.map(|t| t.best()) {
                 Score::upper()
             } else {
                 value.cast()
@@ -279,7 +272,7 @@ impl Searcher {
                 let score = -self.pvs(next, -beta..-alpha, depth, ply + 1, timer)?;
 
                 if *score >= beta {
-                    self.record(zobrist, bounds, depth, ply, *score, m);
+                    self.record(zobrist, bounds, depth, ply, *score, *m);
                     return Ok(score);
                 }
 
@@ -327,7 +320,7 @@ impl Searcher {
             .try_reduce(|| None, |a, b| Ok(max_by_key(a, b, |x| x.map(|(s, _)| s))))?
             .expect("expected at least one legal move");
 
-        self.record(zobrist, bounds, depth, ply, *score, best);
+        self.record(zobrist, bounds, depth, ply, *score, *best);
 
         Ok(score)
     }
