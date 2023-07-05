@@ -775,6 +775,7 @@ version = "0.1.0"
 dependencies = [
  "arrayvec",
  "chess",
+ "derive_more",
  "num-traits",
  "proptest",
  "test-strategy",

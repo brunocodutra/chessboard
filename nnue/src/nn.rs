@@ -1,23 +1,14 @@
-use crate::{Affine, CReLU, Chain, Damp, Feature, FeatureTransformer, Layer, Psqt};
-use arrayvec::ArrayVec;
-use chess::{Color, Position};
-use std::iter::repeat;
+use crate::{Affine, CReLU, Chain, Damp, FeatureTransformer, Psqt};
 use std::mem::{size_of, transmute, transmute_copy, MaybeUninit};
 
 /// A trained [`Nnue`].
 pub const NNUE: Nnue = Nnue::new();
 
-const PHASES: usize = 8;
-const FEATURES: usize = 64 * 64 * 11;
-const L1: usize = 1024;
-const L2: usize = 16;
-const L3: usize = 32;
-
 type NN = Chain<
-    Chain<CReLU, Affine<L1, L2>>,
+    Chain<CReLU, Affine<{ Nnue::L1 }, { Nnue::L2 }>>,
     Chain<
-        Chain<Chain<Damp<64>, CReLU>, Affine<L2, L3>>,
-        Chain<Chain<Damp<64>, CReLU>, Affine<L3, 1>>,
+        Chain<Chain<Damp<64>, CReLU>, Affine<{ Nnue::L2 }, { Nnue::L3 }>>,
+        Chain<Chain<Damp<64>, CReLU>, Affine<{ Nnue::L3 }, 1>>,
     >,
 >;
 
@@ -26,9 +17,9 @@ type NN = Chain<
 /// [NNUE]: https://www.chessprogramming.org/NNUE
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
 pub struct Nnue {
-    transformer: FeatureTransformer<FEATURES, { L1 / 2 }>,
-    psqt: Psqt<FEATURES, PHASES>,
-    nns: [NN; PHASES],
+    pub(crate) transformer: FeatureTransformer<{ Self::L0 }, { Self::L1 / 2 }>,
+    pub(crate) psqt: Psqt<{ Self::L0 }, { Self::PHASES }>,
+    pub(crate) nns: [NN; Self::PHASES],
 }
 
 const fn as_array<T, const N: usize>(slice: &[T], offset: usize) -> &[T; N] {
@@ -37,6 +28,12 @@ const fn as_array<T, const N: usize>(slice: &[T], offset: usize) -> &[T; N] {
 }
 
 impl Nnue {
+    pub(crate) const PHASES: usize = 8;
+    pub(crate) const L0: usize = 64 * 64 * 11;
+    pub(crate) const L1: usize = 1024;
+    pub(crate) const L2: usize = 16;
+    pub(crate) const L3: usize = 32;
+
     #[cfg(target_endian = "little")]
     const fn new() -> Self {
         let mut cursor = 0;
@@ -53,30 +50,30 @@ impl Nnue {
         }
 
         let transformer = unsafe {
-            const B: usize = size_of::<i16>() * L1 / 2;
+            const B: usize = size_of::<i16>() * Nnue::L1 / 2;
             let bias = transmute_copy(as_array::<_, B>(bytes, cursor));
             cursor += B;
 
-            const W: usize = size_of::<i16>() * FEATURES * L1 / 2;
+            const W: usize = size_of::<i16>() * Nnue::L0 * Nnue::L1 / 2;
             let weight = transmute_copy(as_array::<_, W>(bytes, cursor));
             cursor += W;
 
-            FeatureTransformer::<FEATURES, { L1 / 2 }>(weight, bias)
+            FeatureTransformer::<{ Nnue::L0 }, { Nnue::L1 / 2 }>(weight, bias)
         };
 
         let psqt = unsafe {
-            const W: usize = size_of::<i32>() * FEATURES * PHASES;
+            const W: usize = size_of::<i32>() * Nnue::L0 * Nnue::PHASES;
             let weight = transmute_copy(as_array::<_, W>(bytes, cursor));
             cursor += W;
 
-            Psqt::<FEATURES, PHASES>(weight)
+            Psqt::<{ Nnue::L0 }, { Nnue::PHASES }>(weight)
         };
 
         let mut phase = 0;
-        let mut nns = [MaybeUninit::<NN>::uninit(); PHASES];
+        let mut nns = [MaybeUninit::<NN>::uninit(); Nnue::PHASES];
 
         loop {
-            if phase >= PHASES {
+            if phase >= Nnue::PHASES {
                 assert!(cursor == bytes.len());
                 break Nnue {
                     transformer,
@@ -86,27 +83,27 @@ impl Nnue {
             }
 
             let l12 = unsafe {
-                const B: usize = size_of::<i32>() * L2;
+                const B: usize = size_of::<i32>() * Nnue::L2;
                 let bias = transmute_copy(as_array::<_, B>(bytes, cursor));
                 cursor += B;
 
-                const W: usize = size_of::<i8>() * L1 * L2;
+                const W: usize = size_of::<i8>() * Nnue::L1 * Nnue::L2;
                 let weight = transmute_copy(as_array::<_, W>(bytes, cursor));
                 cursor += W;
 
-                Affine::<L1, L2>(weight, bias)
+                Affine::<{ Nnue::L1 }, { Nnue::L2 }>(weight, bias)
             };
 
             let l23 = unsafe {
-                const B: usize = size_of::<i32>() * L3;
+                const B: usize = size_of::<i32>() * Nnue::L3;
                 let bias = transmute_copy(as_array::<_, B>(bytes, cursor));
                 cursor += B;
 
-                const W: usize = size_of::<i8>() * L2 * L3;
+                const W: usize = size_of::<i8>() * Nnue::L2 * Nnue::L3;
                 let weight = transmute_copy(as_array::<_, W>(bytes, cursor));
                 cursor += W;
 
-                Affine::<L2, L3>(weight, bias)
+                Affine::<{ Nnue::L2 }, { Nnue::L3 }>(weight, bias)
             };
 
             let l3o = unsafe {
@@ -114,11 +111,11 @@ impl Nnue {
                 let bias = transmute_copy(as_array::<_, B>(bytes, cursor));
                 cursor += B;
 
-                const W: usize = size_of::<i8>() * L3;
+                const W: usize = size_of::<i8>() * Nnue::L3;
                 let weight = transmute_copy(as_array::<_, W>(bytes, cursor));
                 cursor += W;
 
-                Affine::<L3, 1>(weight, bias)
+                Affine::<{ Nnue::L3 }, 1>(weight, bias)
             };
 
             nns[phase].write(Chain(
@@ -131,27 +128,5 @@ impl Nnue {
 
             phase += 1;
         }
-    }
-
-    #[inline]
-    pub fn perspective(pos: &Position, side: Color) -> ArrayVec<usize, 32> {
-        pos.iter()
-            .zip(repeat(pos.king(side)))
-            .map(|((p, s), ks)| Feature(ks, p, s))
-            .map(|f| f.index(side))
-            .collect()
-    }
-
-    #[inline]
-    pub fn material(&self, phase: usize, us: &[usize], them: &[usize]) -> i32 {
-        (self.psqt.forward(us)[phase] - self.psqt.forward(them)[phase]) / 32
-    }
-
-    #[inline]
-    pub fn positional(&self, phase: usize, us: &[usize], them: &[usize]) -> i32 {
-        let us = self.transformer.forward(us);
-        let them = self.transformer.forward(them);
-        let l1: [i16; L1] = unsafe { transmute_copy(&[us, them]) };
-        self.nns[phase].forward(l1)[0] / 16
     }
 }

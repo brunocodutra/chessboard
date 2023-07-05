@@ -5,7 +5,7 @@ use test_strategy::Arbitrary;
 ///
 /// [piece-square table]: https://www.chessprogramming.org/Piece-Square_Tables
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash, Arbitrary)]
-pub struct Psqt<const I: usize, const O: usize>(pub [[i32; O]; I]);
+pub struct Psqt<const I: usize, const O: usize>(pub(crate) [[i32; O]; I]);
 
 impl<const I: usize, const O: usize> Transformer for Psqt<I, O> {
     type Accumulator = [i32; O];
