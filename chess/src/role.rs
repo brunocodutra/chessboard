@@ -1,7 +1,7 @@
 use shakmaty as sm;
 use test_strategy::Arbitrary;
 
-/// Denotes the type of a chess [`Piece`][`super::Piece`].
+/// Denotes the type of a chess [`Piece`][`crate::Piece`].
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Arbitrary)]
 pub enum Role {
     Pawn,
