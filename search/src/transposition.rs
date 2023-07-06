@@ -135,7 +135,7 @@ impl Binary for SignedTransposition {
     }
 }
 
-/// An iterator over a sequence of [`Transposition`]s in a transposition [`Table`].
+/// An iterator over a sequence of [`Transposition`]s in a [`TranspositionTable`].
 #[derive(Debug, Clone)]
 pub struct TranspositionIter<'a> {
     tt: &'a TranspositionTable,
@@ -185,7 +185,7 @@ pub struct TranspositionTable {
 }
 
 impl TranspositionTable {
-    /// Constructs a transposition [`Table`] of at most `size` many bytes.
+    /// Constructs a transposition table of at most `size` many bytes.
     ///
     /// The `size` specifies an upper bound, as long as the table is not empty.
     pub fn new(size: usize) -> Self {
@@ -197,13 +197,13 @@ impl TranspositionTable {
         }
     }
 
-    /// The actual size of this [`Table`] in bytes.
+    /// The actual size of this table in bytes.
     #[inline]
     pub fn size(&self) -> usize {
         self.capacity() * size_of::<<Option<SignedTransposition> as Binary>::Bits>()
     }
 
-    /// The actual size of this [`Table`] in number of entries.
+    /// The actual size of this table in number of entries.
     #[inline]
     pub fn capacity(&self) -> usize {
         self.cache.len()

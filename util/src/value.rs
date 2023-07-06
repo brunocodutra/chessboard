@@ -9,7 +9,7 @@ impl Bounds for ValueBounds {
     const UPPER: Self::Integer = ScoreBounds::UPPER - PlyBounds::UPPER as i16 - 1;
 }
 
-/// A [`Position`]'s static evaluation.
+/// A position's static evaluation.
 pub type Value = Saturating<ValueBounds>;
 
 impl fmt::Display for Value {
