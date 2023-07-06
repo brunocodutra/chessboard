@@ -1,4 +1,4 @@
-use super::Line;
+use crate::Line;
 use derive_more::{Constructor, Deref};
 use test_strategy::Arbitrary;
 use util::{Bounds, Depth, PlyBounds, Score};

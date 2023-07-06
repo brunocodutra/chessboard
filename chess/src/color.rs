@@ -3,7 +3,7 @@ use shakmaty as sm;
 use std::ops::Not;
 use test_strategy::Arbitrary;
 
-/// Denotes the color of a chess [`Piece`][`super::Piece`].
+/// Denotes the color of a chess [`Piece`][`crate::Piece`].
 #[derive(Debug, Display, Copy, Clone, Eq, PartialEq, Hash, Arbitrary)]
 pub enum Color {
     #[display(fmt = "white")]

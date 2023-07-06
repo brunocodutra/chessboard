@@ -1,4 +1,4 @@
-use super::{Bounds, PlyBounds, Saturating, Score, ScoreBounds};
+use crate::{Bounds, PlyBounds, Saturating, Score, ScoreBounds};
 use std::fmt;
 
 pub struct ValueBounds;
