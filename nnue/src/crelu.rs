@@ -6,24 +6,31 @@ use test_strategy::Arbitrary;
 ///
 /// [ReLU]: https://en.wikipedia.org/wiki/Rectifier_(neural_networks)
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash, Arbitrary)]
-pub struct CReLU;
+pub struct CReLU<L>(pub(crate) L);
 
-impl<T: PrimInt + AsPrimitive<i8> + From<i8>, const N: usize> Layer<[T; N]> for CReLU {
+impl<L, I, T, const N: usize> Layer<I> for CReLU<L>
+where
+    L: Layer<I, Output = [T; N]>,
+    T: PrimInt + AsPrimitive<i8> + From<i8>,
+{
     type Output = [i8; N];
 
     #[inline]
-    fn forward(&self, input: [T; N]) -> Self::Output {
-        input.map(|v| v.clamp(0.into(), i8::MAX.into()).as_())
+    fn forward(&self, input: I) -> Self::Output {
+        self.0
+            .forward(input)
+            .map(|v| v.clamp(T::zero(), i8::MAX.into()).as_())
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::Passthrough;
     use test_strategy::proptest;
 
     #[proptest]
-    fn clipped_relu_saturates_between_0_and_max(l: CReLU, i: [i32; 3]) {
+    fn clipped_relu_saturates_between_0_and_max(l: CReLU<Passthrough>, i: [i32; 3]) {
         assert_eq!(l.forward(i), i.map(|v| v.clamp(0, i8::MAX as _) as _));
     }
 }

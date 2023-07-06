@@ -3,22 +3,22 @@
 use num_traits::PrimInt;
 
 mod affine;
-mod chain;
 mod crelu;
 mod damp;
 mod evaluator;
 mod feature;
 mod nn;
+mod passthrough;
 mod psqt;
 mod transformer;
 
 pub use affine::*;
-pub use chain::*;
 pub use crelu::*;
 pub use damp::*;
 pub use evaluator::*;
 pub use feature::*;
 pub use nn::*;
+pub use passthrough::*;
 pub use psqt::*;
 pub use transformer::*;
 
