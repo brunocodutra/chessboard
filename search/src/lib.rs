@@ -127,14 +127,7 @@ impl Searcher {
     /// An implementation of [null move pruning].
     ///
     /// [null move pruning]: https://www.chessprogramming.org/Null_Move_Pruning
-    fn nmp(
-        &self,
-        pos: &Position,
-        guess: Score,
-        beta: Score,
-        depth: Depth,
-        ply: Ply,
-    ) -> Option<Depth> {
+    fn nmp(&self, pos: &Position, guess: Score, beta: Score, depth: Depth) -> Option<Depth> {
         let turn = pos.turn();
         let r = match pos.by_color(turn).len() - pos.by_piece(Piece(turn, Role::Pawn)).len() {
             ..=1 => return None,
@@ -144,20 +137,21 @@ impl Searcher {
         };
 
         if guess > beta {
-            Some(depth - r - (depth - ply) / 4)
+            Some(depth - r)
         } else {
             None
         }
     }
 
     /// An implementation of late move pruning.
-    fn lmp(&self, next: &Position, value: Value, alpha: Value, depth: Depth) -> Option<Depth> {
-        let r = match (alpha - value).get() {
-            ..=36 => return None,
-            37..=108 => 1,
-            109..=324 => 2,
-            325..=972 => 3,
-            _ => 4,
+    fn lmp(&self, next: &Position, guess: Score, alpha: Score, depth: Depth) -> Option<Depth> {
+        let r = match (alpha - guess).get() {
+            ..=90 => return None,
+            91..=270 => 1,
+            271..=810 => 2,
+            811..=2430 => 3,
+            2431..=7290 => 4,
+            _ => 5,
         };
 
         if !next.is_check() {
@@ -223,7 +217,7 @@ impl Searcher {
         };
 
         if !in_check {
-            if let Some(d) = self.nmp(pos, score, beta, depth, ply) {
+            if let Some(d) = self.nmp(pos, score, beta, depth) {
                 let mut next = pos.clone();
                 next.pass().expect("expected possible pass");
                 if d <= ply || *-self.nw(&next, -beta + 1, d, ply + 1, timer)? >= beta {
@@ -237,14 +231,14 @@ impl Searcher {
         let mut moves = Vec::from_iter(pos.moves(kind).map(|(m, next)| {
             let bounds = Value::lower()..Value::upper();
             let value = -next.clone().see(m.whither(), bounds);
-            (m, next, value)
+            (m, next, value.cast())
         }));
 
-        moves.sort_unstable_by_key(|&(m, _, value)| {
+        moves.sort_unstable_by_key(|&(m, _, guess)| {
             if Some(*m) == transposition.map(|t| t.best()) {
                 Score::upper()
             } else {
-                value.cast()
+                guess
             }
         });
 
@@ -267,13 +261,13 @@ impl Searcher {
         let (score, best) = moves
             .into_par_iter()
             .rev()
-            .map(|(m, ref next, value)| {
+            .map(|(m, ref next, guess)| {
                 let mut alpha = Score::new(cutoff.load(Ordering::Relaxed));
 
                 if alpha >= beta {
                     return Ok(None);
                 } else if !in_check {
-                    if let Some(d) = self.lmp(next, value, alpha.cast(), depth) {
+                    if let Some(d) = self.lmp(next, guess, alpha.cast(), depth) {
                         if d <= ply || *-self.nw(next, -alpha, d, ply + 1, timer)? < alpha {
                             #[cfg(not(test))]
                             // The late move pruning heuristic is not exact.
@@ -332,27 +326,19 @@ impl Searcher {
             let mut pv = Pv::new(Depth::new(0), Score::new(0), Line::empty());
 
             'id: for d in 0..=limits.depth().get() {
-                let mut w: i16 = match d {
-                    0 => i16::MAX,
-                    1 => 512,
-                    2 => 256,
-                    3 => 128,
-                    4 => 64,
-                    _ => 32,
-                };
-
-                let depth = Depth::new(d);
+                let mut w: i16 = 32;
                 let mut lower = (pv.score() - w / 2).min(Score::upper() - w);
                 let mut upper = (pv.score() + w / 2).max(Score::lower() + w);
 
                 pv = 'aw: loop {
-                    // Ignore time limits until some pv is found.
                     let timer = if pv.is_empty() {
+                        // Ignore time limits until some pv is found.
                         Timer::start(Duration::MAX)
                     } else {
                         timer
                     };
 
+                    let depth = Depth::new(d);
                     let score = match self.pvs(&pos, lower..upper, depth, Ply::new(0), timer) {
                         Err(_) => break 'id,
                         Ok(s) => *s,
