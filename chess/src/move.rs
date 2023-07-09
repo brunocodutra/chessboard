@@ -54,8 +54,8 @@ impl From<&mut sm::Move> for MoveKind {
 }
 
 /// A chess move.
-#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash, Arbitrary, Deref)]
-pub struct MoveContext(#[deref] pub Move, pub Role, pub Option<(Role, Square)>);
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash, Deref)]
+pub struct MoveContext(#[deref] Move, Role, Option<(Role, Square)>, MoveKind);
 
 impl MoveContext {
     /// The [`Role`] of the piece moved.
@@ -68,6 +68,76 @@ impl MoveContext {
     #[inline]
     pub fn capture(&self) -> Option<(Role, Square)> {
         self.2
+    }
+}
+
+#[doc(hidden)]
+impl From<sm::Move> for MoveContext {
+    #[inline]
+    fn from(m: sm::Move) -> Self {
+        match m {
+            ref m @ sm::Move::Normal {
+                role,
+                from,
+                capture,
+                to,
+                promotion,
+            } => MoveContext(
+                Move(from.into(), to.into(), promotion.into()),
+                role.into(),
+                capture.map(|r| (r.into(), to.into())),
+                m.into(),
+            ),
+
+            ref m @ sm::Move::EnPassant { from, to } => MoveContext(
+                Move(from.into(), to.into(), Promotion::None),
+                Role::Pawn,
+                Some((
+                    Role::Pawn,
+                    Square::new(to.file().into(), from.rank().into()),
+                )),
+                m.into(),
+            ),
+
+            ref m @ sm::Move::Castle { .. } => MoveContext(
+                m.to_uci(sm::CastlingMode::Standard).into(),
+                Role::King,
+                None,
+                m.into(),
+            ),
+
+            v => panic!("unexpected {v:?}"),
+        }
+    }
+}
+
+#[doc(hidden)]
+impl From<MoveContext> for sm::Move {
+    #[inline]
+    fn from(MoveContext(m, role, capture, kind): MoveContext) -> Self {
+        if kind.intersects(MoveKind::CASTLE) {
+            sm::Move::Castle {
+                king: m.whence().into(),
+                rook: if m.whence() < m.whither() {
+                    sm::Square::from_coords(sm::File::H, m.whither().rank().into())
+                } else {
+                    sm::Square::from_coords(sm::File::A, m.whither().rank().into())
+                },
+            }
+        } else if kind.intersects(MoveKind::EN_PASSANT) {
+            sm::Move::EnPassant {
+                from: m.whence().into(),
+                to: m.whither().into(),
+            }
+        } else {
+            sm::Move::Normal {
+                role: role.into(),
+                from: m.whence().into(),
+                capture: capture.map(|(r, _)| r.into()),
+                to: m.whither().into(),
+                promotion: m.promotion().into(),
+            }
+        }
     }
 }
 
@@ -160,43 +230,6 @@ impl Binary for Move {
 }
 
 #[doc(hidden)]
-impl From<sm::Move> for MoveContext {
-    #[inline]
-    fn from(m: sm::Move) -> Self {
-        match m {
-            sm::Move::Normal {
-                role,
-                from,
-                capture,
-                to,
-                promotion,
-            } => MoveContext(
-                Move(from.into(), to.into(), promotion.into()),
-                role.into(),
-                capture.map(|r| (r.into(), to.into())),
-            ),
-
-            sm::Move::EnPassant { from, to } => MoveContext(
-                Move(from.into(), to.into(), Promotion::None),
-                Role::Pawn,
-                Some((
-                    Role::Pawn,
-                    Square::new(to.file().into(), from.rank().into()),
-                )),
-            ),
-
-            m @ sm::Move::Castle { .. } => MoveContext(
-                m.to_uci(sm::CastlingMode::Standard).into(),
-                Role::King,
-                None,
-            ),
-
-            v => panic!("unexpected {v:?}"),
-        }
-    }
-}
-
-#[doc(hidden)]
 impl From<UciMove> for Move {
     #[inline]
     fn from(m: UciMove) -> Self {
@@ -247,6 +280,8 @@ impl From<Move> for sm::uci::Uci {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::Position;
+    use proptest::sample::Selector;
     use std::mem::size_of;
     use test_strategy::proptest;
 
@@ -284,5 +319,14 @@ mod tests {
     #[proptest]
     fn move_has_an_equivalent_shakmaty_representation(m: Move) {
         assert_eq!(Move::from(sm::uci::Uci::from(m)), m);
+    }
+
+    #[proptest]
+    fn move_context_has_an_equivalent_shakmaty_representation(
+        #[filter(#pos.clone().moves(MoveKind::ANY).len() > 0)] pos: Position,
+        selector: Selector,
+    ) {
+        let (m, _) = selector.select(pos.moves(MoveKind::ANY));
+        assert_eq!(MoveContext::from(<sm::Move as From<_>>::from(m)), m);
     }
 }
