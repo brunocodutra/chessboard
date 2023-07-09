@@ -6,6 +6,9 @@ use std::{convert::TryFrom, num::NonZeroU32, ops::Index};
 use test_strategy::Arbitrary;
 use util::Bits;
 
+/// A type representing a [`Position`]'s [zobrist hash].
+///
+/// [zobrist hash]: https://www.chessprogramming.org/Zobrist_Hashing
 pub type Zobrist = Bits<u64, 64>;
 
 /// Represents an illegal [`Move`] in a given [`Position`].
@@ -202,14 +205,10 @@ impl Position {
     pub fn moves(
         &self,
         kind: MoveKind,
-    ) -> impl DoubleEndedIterator<Item = (MoveContext, Self)> + ExactSizeIterator + '_ {
+    ) -> impl DoubleEndedIterator<Item = MoveContext> + ExactSizeIterator {
         let mut legals = sm::Position::legal_moves(&self.0);
         legals.retain(|vm| kind.intersects(vm.into()));
-        legals.into_iter().map(move |vm| {
-            let mut pos = self.clone();
-            sm::Position::play_unchecked(&mut pos.0, &vm);
-            (vm.into(), pos)
-        })
+        legals.into_iter().map(|vm| vm.into())
     }
 
     /// Play a [`Move`] if legal in this position.
@@ -468,24 +467,27 @@ mod tests {
 
     #[proptest]
     fn moves_returns_all_legal_moves_from_this_position(pos: Position) {
-        for (m, p) in pos.moves(MoveKind::ANY) {
+        for m in pos.moves(MoveKind::ANY) {
             let mut pos = pos.clone();
             assert_eq!(pos[m.whence()].map(|p| p.color()), Some(pos.turn()));
-            assert_eq!(pos.play(*m).err(), None);
-            assert_eq!(pos, p);
+            assert_eq!(pos.play(*m), Ok(m));
         }
     }
 
     #[proptest]
     fn captures_reduce_material(pos: Position) {
-        for (_, p) in pos.moves(MoveKind::CAPTURE) {
+        for m in pos.moves(MoveKind::CAPTURE) {
+            let mut p = pos.clone();
+            p.play(*m)?;
             assert!(p.by_color(p.turn()).len() < pos.by_color(p.turn()).len());
         }
     }
 
     #[proptest]
     fn promotions_exchange_pawns(pos: Position) {
-        for (_, p) in pos.moves(MoveKind::PROMOTION) {
+        for m in pos.moves(MoveKind::PROMOTION) {
+            let mut p = pos.clone();
+            p.play(*m)?;
             let pawn = Piece(pos.turn(), Role::Pawn);
             assert!(p.by_piece(pawn).len() < pos.by_piece(pawn).len());
             assert_eq!(p.by_color(pos.turn()).len(), pos.by_color(pos.turn()).len());
@@ -494,7 +496,7 @@ mod tests {
 
     #[proptest]
     fn castles_move_the_king_by_two_files(pos: Position) {
-        for (m, _) in pos.moves(MoveKind::CASTLE) {
+        for m in pos.moves(MoveKind::CASTLE) {
             assert_eq!(pos[m.whence()], Some(Piece(pos.turn(), Role::King)));
             assert_eq!(m.whence().rank(), m.whither().rank());
             assert_eq!((m.whence().file() - m.whither().file()).abs(), 2);
@@ -512,12 +514,13 @@ mod tests {
 
     #[proptest]
     fn legal_move_updates_position(
-        #[filter(#pos.clone().moves(MoveKind::ANY).len() > 0)] mut pos: Position,
+        #[filter(#pos.moves(MoveKind::ANY).len() > 0)] mut pos: Position,
         selector: Selector,
     ) {
-        let (m, next) = selector.select(pos.moves(MoveKind::ANY));
-        assert_eq!(pos.play(*m).map(MoveContext::from), Ok(m));
-        assert_eq!(pos, next);
+        let m = selector.select(pos.moves(MoveKind::ANY));
+        let prev = pos.clone();
+        assert_eq!(pos.play(*m), Ok(m));
+        assert_ne!(pos, prev);
     }
 
     #[proptest]
