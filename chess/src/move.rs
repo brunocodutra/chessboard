@@ -323,10 +323,10 @@ mod tests {
 
     #[proptest]
     fn move_context_has_an_equivalent_shakmaty_representation(
-        #[filter(#pos.clone().moves(MoveKind::ANY).len() > 0)] pos: Position,
+        #[filter(#pos.moves(MoveKind::ANY).len() > 0)] pos: Position,
         selector: Selector,
     ) {
-        let (m, _) = selector.select(pos.moves(MoveKind::ANY));
+        let m = selector.select(pos.moves(MoveKind::ANY));
         assert_eq!(MoveContext::from(<sm::Move as From<_>>::from(m)), m);
     }
 }

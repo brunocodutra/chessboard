@@ -1,6 +1,6 @@
 use crate::{Feature, Layer, Nnue, Transformer, NNUE};
 use arrayvec::ArrayVec;
-use chess::{Color, Move, MoveContext, MoveKind, Piece, Position, Role, Square};
+use chess::{Color, Move, MoveContext, Piece, Position, Role, Square};
 use chess::{IllegalMove, ImpossibleExchange, ImpossiblePass};
 use derive_more::Deref;
 use std::mem::transmute_copy;
@@ -91,25 +91,6 @@ impl<'a> Evaluator<'a> {
         }
     }
 
-    /// An iterator over the legal [`Move`]s that can be played in this position.
-    #[inline]
-    pub fn moves(
-        &self,
-        kind: MoveKind,
-    ) -> impl DoubleEndedIterator<Item = (MoveContext, Evaluator<'a>)> + ExactSizeIterator + '_
-    {
-        self.pos.moves(kind).map(move |(m, pos)| {
-            let mut accumulator = Evaluator {
-                pos: Cow::Owned(pos),
-                hidden: self.hidden,
-                psqt: self.psqt,
-            };
-
-            accumulator.update(m);
-            (m, accumulator)
-        })
-    }
-
     /// Play a [null-move] if legal in this position.
     ///
     /// [null-move]: https://www.chessprogramming.org/Null_Move
@@ -186,6 +167,7 @@ impl<'a> Evaluator<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use chess::MoveKind;
     use proptest::{prop_assume, sample::Selector};
     use test_strategy::proptest;
 
@@ -210,25 +192,13 @@ mod tests {
     }
 
     #[proptest]
-    fn moves_updates_accumulator(pos: Position) {
-        let e = Evaluator::borrow(&pos);
-
-        assert_eq!(
-            e.moves(MoveKind::ANY).collect::<Vec<_>>(),
-            pos.moves(MoveKind::ANY)
-                .map(|(m, p)| (m, Evaluator::own(p)))
-                .collect::<Vec<_>>()
-        );
-    }
-
-    #[proptest]
     fn play_updates_accumulator(
-        #[filter(#pos.clone().moves(MoveKind::ANY).len() > 0)] mut pos: Position,
+        #[filter(#pos.moves(MoveKind::ANY).len() > 0)] mut pos: Position,
         selector: Selector,
     ) {
-        let (m, _) = selector.select(pos.moves(MoveKind::ANY));
+        let m = *selector.select(pos.moves(MoveKind::ANY));
         let mut e = Evaluator::own(pos.clone());
-        assert_eq!(e.play(*m), pos.play(*m));
+        assert_eq!(e.play(m), pos.play(m));
         assert_eq!(e, Evaluator::own(pos));
     }
 
@@ -241,10 +211,10 @@ mod tests {
 
     #[proptest]
     fn exchange_updates_accumulator(
-        #[filter(#pos.clone().moves(MoveKind::CAPTURE).len() > 0)] mut pos: Position,
+        #[filter(#pos.moves(MoveKind::CAPTURE).len() > 0)] mut pos: Position,
         selector: Selector,
     ) {
-        let (m, _) = selector.select(pos.moves(MoveKind::CAPTURE));
+        let m = selector.select(pos.moves(MoveKind::CAPTURE));
         let mut e = Evaluator::own(pos.clone());
 
         // Skip en passant captures.

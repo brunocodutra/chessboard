@@ -1,5 +1,6 @@
 #![allow(clippy::arc_with_non_send_sync)]
 
+use arrayvec::ArrayVec;
 use chess::{Move, MoveKind, Piece, Position, Role, Zobrist};
 use derive_more::{Deref, Neg};
 use nnue::Evaluator;
@@ -228,14 +229,15 @@ impl Searcher {
             }
         }
 
-        let mut moves = Vec::from_iter(pos.moves(kind).map(|(m, next)| {
-            let bounds = Value::lower()..Value::upper();
-            let value = -next.clone().see(m.whither(), bounds);
-            (m, next, value.cast())
+        let mut moves = ArrayVec::<_, 256>::from_iter(pos.moves(kind).map(|m| {
+            let mut next = pos.clone();
+            next.play(*m).expect("expected legal move");
+            let value = -next.see(m.whither(), Value::lower()..Value::upper());
+            (*m, value.cast())
         }));
 
-        moves.sort_unstable_by_key(|&(m, _, guess)| {
-            if Some(*m) == transposition.map(|t| t.best()) {
+        moves.sort_unstable_by_key(|&(m, guess)| {
+            if Some(m) == transposition.map(|t| t.best()) {
                 Score::upper()
             } else {
                 guess
@@ -244,11 +246,13 @@ impl Searcher {
 
         let (score, best) = match moves.pop() {
             None => return Ok(ScoreWithTempo::new(score, depth, ply)),
-            Some((m, ref next, _)) => {
-                let score = -self.pvs(next, -beta..-alpha, depth, ply + 1, timer)?;
+            Some((m, _)) => {
+                let mut next = pos.clone();
+                next.play(m).expect("expected legal move");
+                let score = -self.pvs(&next, -beta..-alpha, depth, ply + 1, timer)?;
 
                 if *score >= beta {
-                    self.record(zobrist, bounds, depth, ply, *score, *m);
+                    self.record(zobrist, bounds, depth, ply, *score, m);
                     return Ok(score);
                 }
 
@@ -261,14 +265,19 @@ impl Searcher {
         let (score, best) = moves
             .into_par_iter()
             .rev()
-            .map(|(m, ref next, guess)| {
+            .map(|&(m, guess)| {
                 let mut alpha = Score::new(cutoff.load(Ordering::Relaxed));
 
                 if alpha >= beta {
                     return Ok(None);
-                } else if !in_check {
-                    if let Some(d) = self.lmp(next, guess, alpha.cast(), depth) {
-                        if d <= ply || *-self.nw(next, -alpha, d, ply + 1, timer)? < alpha {
+                }
+
+                let mut next = pos.clone();
+                next.play(m).expect("expected legal move");
+
+                if !in_check {
+                    if let Some(d) = self.lmp(&next, guess, alpha.cast(), depth) {
+                        if d <= ply || *-self.nw(&next, -alpha, d, ply + 1, timer)? < alpha {
                             #[cfg(not(test))]
                             // The late move pruning heuristic is not exact.
                             return Ok(None);
@@ -277,14 +286,14 @@ impl Searcher {
                 }
 
                 loop {
-                    match -self.nw(next, -alpha, depth, ply + 1, timer)? {
+                    match -self.nw(&next, -alpha, depth, ply + 1, timer)? {
                         s if *s < alpha => return Ok(Some((s, m))),
                         s => match Score::new(cutoff.fetch_max(s.get(), Ordering::Relaxed)) {
                             _ if *s >= beta => return Ok(Some((s, m))),
                             a if a >= beta => return Ok(None),
                             a if *s < a => alpha = a,
                             a => {
-                                let s = -self.pvs(next, -beta..-a, depth, ply + 1, timer)?;
+                                let s = -self.pvs(&next, -beta..-a, depth, ply + 1, timer)?;
                                 cutoff.fetch_max(s.get(), Ordering::Relaxed);
                                 return Ok(Some((s, m)));
                             }
@@ -296,7 +305,7 @@ impl Searcher {
             .try_reduce(|| None, |a, b| Ok(max_by_key(a, b, |x| x.map(|(s, _)| s))))?
             .expect("expected at least one legal move");
 
-        self.record(zobrist, bounds, depth, ply, *score, *best);
+        self.record(zobrist, bounds, depth, ply, *score, best);
 
         Ok(score)
     }
@@ -387,7 +396,11 @@ mod tests {
         };
 
         pos.moves(kind)
-            .map(|(_, pos)| -negamax(&pos, depth, ply + 1))
+            .map(|m| {
+                let mut next = pos.clone();
+                next.play(*m).unwrap();
+                -negamax(&next, depth, ply + 1)
+            })
             .max()
             .unwrap_or(score)
     }
