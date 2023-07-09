@@ -1,52 +1,10 @@
-use crate::{Color, Fen, Move, MoveContext, Outcome, Piece, Role, Square};
-use bitflags::bitflags;
+use crate::{Color, Fen, Move, MoveContext, MoveKind, Outcome, Piece, Role, Square};
 use derive_more::{DebugCustom, Display, Error};
 use proptest::{prelude::*, sample::Selector};
 use shakmaty as sm;
 use std::{convert::TryFrom, num::NonZeroU32, ops::Index};
 use test_strategy::Arbitrary;
 use util::Bits;
-
-bitflags! {
-    /// Characteristics of a [`Move`] in the context of a [`Position`].
-    #[derive(Default)]
-    pub struct MoveKind: u8 {
-        const ANY =         0b00000001;
-        const CASTLE =      0b00000010;
-        const PROMOTION =   0b00000100;
-        const CAPTURE =     0b00001000;
-    }
-}
-
-#[doc(hidden)]
-impl From<&sm::Move> for MoveKind {
-    #[inline]
-    fn from(m: &sm::Move) -> Self {
-        let mut kind = Self::ANY;
-
-        if m.is_castle() {
-            kind |= MoveKind::CASTLE
-        }
-
-        if m.is_promotion() {
-            kind |= MoveKind::PROMOTION
-        }
-
-        if m.is_capture() {
-            kind |= MoveKind::CAPTURE;
-        }
-
-        kind
-    }
-}
-
-#[doc(hidden)]
-impl From<&mut sm::Move> for MoveKind {
-    #[inline]
-    fn from(m: &mut sm::Move) -> Self {
-        (&*m).into()
-    }
-}
 
 pub type Zobrist = Bits<u64, 64>;
 
