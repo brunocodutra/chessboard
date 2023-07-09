@@ -15,6 +15,7 @@ bitflags! {
         const CASTLE =      0b00000010;
         const PROMOTION =   0b00000100;
         const CAPTURE =     0b00001000;
+        const EN_PASSANT =  0b00010000;
     }
 }
 
@@ -34,6 +35,10 @@ impl From<&sm::Move> for MoveKind {
 
         if m.is_capture() {
             kind |= MoveKind::CAPTURE;
+        }
+
+        if m.is_en_passant() {
+            kind |= MoveKind::EN_PASSANT;
         }
 
         kind
