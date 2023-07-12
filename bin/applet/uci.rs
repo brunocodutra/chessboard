@@ -1,7 +1,7 @@
 use crate::{ai::Ai, engine::Engine, io::Io};
 use anyhow::{Context, Error as Anyhow};
 use clap::Parser;
-use lib::chess::{Color, Fen, Position};
+use lib::chess::{Color, Fen, Move, Position};
 use lib::search::{Depth, Limits, Options};
 use rayon::max_num_threads;
 use std::{num::NonZeroUsize, time::Duration};
@@ -26,6 +26,7 @@ struct Server {
     engine: Engine,
     options: Options,
     position: Position,
+    moves: Vec<Move>,
 }
 
 impl Server {
@@ -35,33 +36,30 @@ impl Server {
             engine: Engine::default(),
             options: Options::default(),
             position: Position::default(),
+            moves: Vec::default(),
         }
     }
 
     fn new_game(&mut self) {
-        self.engine = Engine::new(self.options)
+        self.engine = Engine::new(self.options);
+        self.position = Position::default();
+        self.moves.clear();
     }
 
     fn set_hash(&mut self, value: &str) -> Result<(), Anyhow> {
-        self.options = Options {
-            hash: value
-                .parse::<usize>()
-                .context("invalid hash size")?
-                .checked_shl(20)
-                .unwrap_or(usize::MAX),
-            ..self.options
-        };
+        self.options.hash = value
+            .parse::<usize>()
+            .context("invalid hash size")?
+            .checked_shl(20)
+            .unwrap_or(usize::MAX);
 
         Ok(())
     }
 
     fn set_threads(&mut self, value: &str) -> Result<(), Anyhow> {
-        self.options = Options {
-            threads: value
-                .parse::<NonZeroUsize>()
-                .context("invalid thread count")?,
-            ..self.options
-        };
+        self.options.threads = value
+            .parse::<NonZeroUsize>()
+            .context("invalid thread count")?;
 
         Ok(())
     }
@@ -116,24 +114,37 @@ impl Server {
                 UciMessage::IsReady => self.io.send(&UciMessage::ReadyOk.to_string()).await?,
                 UciMessage::Quit => break Ok(()),
 
-                UciMessage::Position { fen, moves, .. } => {
-                    match fen {
-                        None => self.position = Position::default(),
-                        Some(s) => match Ok::<_, Anyhow>(s).and_then(|s| {
-                            let fen: Fen = s.as_str().parse().context("invalid fen")?;
-                            fen.try_into().context("illegal fen")
-                        }) {
-                            Err(e) => warn!("ignored {:?}", e),
-                            Ok(pos) => self.position = pos,
-                        },
-                    }
+                UciMessage::Position {
+                    startpos: true,
+                    fen: None,
+                    moves,
+                } => {
+                    let moves = Vec::from_iter(moves.into_iter().map(Move::from));
+                    match moves.as_slice() {
+                        [history @ .., m] if history == self.moves => {
+                            self.position.play(*m)?;
+                            self.moves.push(*m);
+                        }
 
-                    for m in moves {
-                        if let Err(e) = self.position.play(m.into()) {
-                            error!("{}", e);
-                            break;
+                        _ => {
+                            self.position = Position::default();
+                            self.moves.clear();
+                            for m in moves {
+                                self.position.play(m)?;
+                                self.moves.push(m);
+                            }
                         }
                     }
+                }
+
+                UciMessage::Position {
+                    startpos: false,
+                    fen: Some(fen),
+                    moves,
+                } if moves.is_empty() => {
+                    let fen: Fen = fen.as_str().parse().context("invalid fen")?;
+                    self.position = fen.try_into().context("illegal fen")?;
+                    self.moves.clear();
                 }
 
                 UciMessage::Go {
@@ -226,8 +237,12 @@ impl Server {
 
     async fn go(&mut self, limits: Limits) -> Result<(), Anyhow> {
         let best = self.engine.play(&self.position, limits).await;
+        self.position.play(best)?;
+        self.moves.push(best);
+
         let msg = UciMessage::best_move(best.into());
         self.io.send(&msg.to_string()).await?;
+
         Ok(())
     }
 }
