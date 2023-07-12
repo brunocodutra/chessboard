@@ -21,9 +21,9 @@ impl Default for Applet {
 impl Applet {
     pub async fn execute(self) -> Result<(), Anyhow> {
         match self {
-            Applet::Analyze(a) => Ok(a.execute().await?),
-            Applet::Eval(a) => Ok(a.execute().await?),
-            Applet::Uci(a) => Ok(a.execute().await?),
+            Applet::Analyze(a) => a.execute().await,
+            Applet::Eval(a) => a.execute().await,
+            Applet::Uci(a) => a.execute().await,
         }
     }
 }
