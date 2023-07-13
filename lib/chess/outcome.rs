@@ -11,11 +11,14 @@ pub enum Outcome {
     #[display(fmt = "stalemate")]
     Stalemate,
 
-    #[display(fmt = "draw by insufficient material")]
-    DrawByInsufficientMaterial,
+    #[display(fmt = "draw by threefold repetition")]
+    DrawByThreefoldRepetition,
 
     #[display(fmt = "draw by the 50-move rule")]
     DrawBy50MoveRule,
+
+    #[display(fmt = "draw by insufficient material")]
+    DrawByInsufficientMaterial,
 }
 
 impl Outcome {
