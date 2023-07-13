@@ -161,7 +161,7 @@ mod tests {
     use test_strategy::proptest;
 
     #[proptest]
-    fn material_evaluation_is_symmetric(#[filter(!#pos.is_check())] pos: Position) {
+    fn material_evaluation_is_symmetric(#[filter(#pos.clone().pass().is_ok())] pos: Position) {
         let mut mirror = pos.clone();
         assert_eq!(mirror.pass(), Ok(()));
         assert_eq!(
@@ -182,7 +182,7 @@ mod tests {
 
     #[proptest]
     fn play_updates_accumulator(
-        #[filter(#pos.moves(MoveKind::ANY).len() > 0)] mut pos: Position,
+        #[filter(#pos.outcome().is_none())] mut pos: Position,
         selector: Selector,
     ) {
         let m = *selector.select(pos.moves(MoveKind::ANY));
@@ -192,7 +192,7 @@ mod tests {
     }
 
     #[proptest]
-    fn pass_updates_accumulator(#[filter(!#pos.is_check())] mut pos: Position) {
+    fn pass_updates_accumulator(#[filter(#pos.clone().pass().is_ok())] mut pos: Position) {
         let mut e = Evaluator::own(pos.clone());
         assert_eq!(e.pass(), pos.pass());
         assert_eq!(e, Evaluator::own(pos));

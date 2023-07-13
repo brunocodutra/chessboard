@@ -1,11 +1,14 @@
 use crate::chess::{Bitboard, Color, Outcome, Piece, Promotion, Role, Square};
 use crate::chess::{Move, MoveContext, MoveKind};
 use crate::util::Bits;
+use arrayvec::ArrayVec;
 use derive_more::{DebugCustom, Display, Error, From};
-use proptest::{prelude::*, sample::Selector};
+use proptest::sample::{Selector, SelectorStrategy};
+use proptest::{prelude::*, strategy::Map};
 use shakmaty as sm;
-use std::str::FromStr;
-use std::{num::NonZeroU32, ops::Index};
+use std::hash::{Hash, Hasher};
+use std::ops::{Index, Range};
+use std::{num::NonZeroU32, str::FromStr};
 use test_strategy::Arbitrary;
 
 /// A type representing a [`Position`]'s [zobrist hash].
@@ -33,25 +36,59 @@ pub struct ImpossibleExchange(#[error(not(source))] pub Square);
 /// The current position on the chess board.
 ///
 /// This type guarantees that it only holds valid positions.
-#[derive(DebugCustom, Display, Default, Clone, Eq, PartialEq, Hash, Arbitrary)]
+#[derive(DebugCustom, Display, Default, Clone, Eq)]
 #[debug(fmt = "Position({self})")]
 #[display(
     fmt = "{}",
     "sm::fen::Fen::from_position(self.0.clone(), sm::EnPassantMode::Legal)"
 )]
-pub struct Position(
-    #[strategy((0..256, any::<Selector>()).prop_map(|(moves, selector)| {
-        let mut chess = sm::Chess::default();
-        for _ in 0..moves {
-            match selector.try_select(sm::Position::legal_moves(&chess)) {
-                Some(m) => sm::Position::play_unchecked(&mut chess, &m),
-                _ => break,
+pub struct Position(sm::Chess, [ArrayVec<Bits<u16, 16>, 51>; 2]);
+
+impl Hash for Position {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        state.write_u64(self.zobrist().get())
+    }
+}
+
+impl PartialEq for Position {
+    fn eq(&self, other: &Self) -> bool {
+        self.0 == other.0
+    }
+}
+
+impl Arbitrary for Position {
+    type Parameters = ();
+    type Strategy = Map<(Range<usize>, SelectorStrategy), fn((usize, Selector)) -> Position>;
+
+    fn arbitrary_with(_: Self::Parameters) -> Self::Strategy {
+        (0..256, any::<Selector>()).prop_map(|(moves, selector)| {
+            use sm::{zobrist::*, *};
+            let mut chess = Chess::default();
+            let mut history = [ArrayVec::<_, 51>::new(), ArrayVec::<_, 51>::new()];
+
+            for _ in 0..moves {
+                match selector.try_select(chess.legal_moves()) {
+                    None => break,
+                    Some(m) => {
+                        if m.is_zeroing() {
+                            history = Default::default();
+                        } else {
+                            let history = &mut history[chess.turn() as usize];
+                            let zobrist: Zobrist64 = chess.zobrist_hash(EnPassantMode::Legal);
+                            if history.try_push(Zobrist::new(zobrist.0).pop()).is_err() {
+                                break;
+                            }
+                        };
+
+                        chess.play_unchecked(&m);
+                    }
+                }
             }
-        }
-        chess
-    }))]
-    sm::Chess,
-);
+
+            Position(chess, history)
+        })
+    }
+}
 
 impl Position {
     /// The side to move.
@@ -75,7 +112,7 @@ impl Position {
 
     /// The en passant square.
     pub fn en_passant_square(&self) -> Option<Square> {
-        sm::Position::ep_square(&self.0, sm::EnPassantMode::Always).map(Square::from)
+        sm::Position::ep_square(&self.0, sm::EnPassantMode::Legal).map(Square::from)
     }
 
     /// This position's [zobrist hash].
@@ -83,7 +120,7 @@ impl Position {
     /// [zobrist hash]: https://www.chessprogramming.org/Zobrist_Hashing
     pub fn zobrist(&self) -> Zobrist {
         let z: sm::zobrist::Zobrist64 =
-            sm::zobrist::ZobristHash::zobrist_hash(&self.0, sm::EnPassantMode::Always);
+            sm::zobrist::ZobristHash::zobrist_hash(&self.0, sm::EnPassantMode::Legal);
         Bits::new(z.0)
     }
 
@@ -157,6 +194,13 @@ impl Position {
             .into()
     }
 
+    /// How many other times this position has repeated.
+    pub fn repetitions(&self) -> usize {
+        let zobrist = self.zobrist().pop();
+        let history = &self.1[self.turn() as usize];
+        history.iter().filter(|z| **z == zobrist).count()
+    }
+
     /// Whether this position is a [check].
     ///
     /// [check]: https://www.chessprogramming.org/Check
@@ -176,6 +220,13 @@ impl Position {
     /// [stalemate]: https://www.chessprogramming.org/Stalemate
     pub fn is_stalemate(&self) -> bool {
         sm::Position::is_stalemate(&self.0)
+    }
+
+    /// Whether the game is a draw by [Threefold repetition].
+    ///
+    /// [Threefold repetition]: https://en.wikipedia.org/wiki/Threefold_repetition
+    pub fn is_draw_by_threefold_repetition(&self) -> bool {
+        self.repetitions() > 1
     }
 
     /// Whether the game is a draw by the [50-move rule].
@@ -198,6 +249,8 @@ impl Position {
             Some(Outcome::Checkmate(!self.turn()))
         } else if self.is_stalemate() {
             Some(Outcome::Stalemate)
+        } else if self.is_draw_by_threefold_repetition() {
+            Some(Outcome::DrawByThreefoldRepetition)
         } else if self.is_draw_by_50_move_rule() {
             Some(Outcome::DrawBy50MoveRule)
         } else if self.is_material_insufficient() {
@@ -221,6 +274,16 @@ impl Position {
     pub fn play(&mut self, m: Move) -> Result<MoveContext, IllegalMove> {
         match sm::uci::Uci::to_move(&m.into(), &self.0) {
             Ok(vm) if sm::Position::is_legal(&self.0, &vm) => {
+                if vm.is_zeroing() {
+                    self.1 = Default::default();
+                } else {
+                    let zobrist = self.zobrist().pop();
+                    let history = &mut self.1[self.turn() as usize];
+                    if history.try_push(zobrist).is_err() {
+                        return Err(IllegalMove(m));
+                    }
+                }
+
                 sm::Position::play_unchecked(&mut self.0, &vm);
                 Ok(vm.into())
             }
@@ -236,12 +299,19 @@ impl Position {
         if self.is_check() {
             Err(ImpossiblePass)
         } else {
+            let zobrist = self.zobrist().pop();
+            let history = &mut self.1[self.turn() as usize];
+            if history.try_push(zobrist).is_err() {
+                return Err(ImpossiblePass);
+            }
+
             let null = sm::Move::Put {
                 role: sm::Role::King,
                 to: self.king(self.turn()).into(),
             };
 
             sm::Position::play_unchecked(&mut self.0, &null);
+
             Ok(())
         }
     }
@@ -271,6 +341,7 @@ impl Position {
         };
 
         if sm::Position::is_legal(&self.0, &vm) {
+            self.1 = Default::default();
             sm::Position::play_unchecked(&mut self.0, &vm);
             Ok(vm.into())
         } else {
@@ -396,14 +467,7 @@ impl FromStr for Position {
             .position(sm::CastlingMode::Standard)
             .map_err(IllegalPosition::from)?;
 
-        Ok(Position(chess))
-    }
-}
-
-#[doc(hidden)]
-impl From<sm::Chess> for Position {
-    fn from(chess: sm::Chess) -> Self {
-        Position(chess)
+        Ok(Position(chess, Default::default()))
     }
 }
 
@@ -416,25 +480,25 @@ mod tests {
 
     #[proptest]
     fn turn_returns_the_current_side_to_play(pos: Position) {
-        let setup = sm::Position::into_setup(pos.0.clone(), sm::EnPassantMode::Always);
+        let setup = sm::Position::into_setup(pos.0.clone(), sm::EnPassantMode::Legal);
         assert_eq!(pos.turn(), setup.turn.into());
     }
 
     #[proptest]
     fn halfmoves_returns_the_number_of_halfmoves_since_last_irreversible_move(pos: Position) {
-        let setup = sm::Position::into_setup(pos.0.clone(), sm::EnPassantMode::Always);
+        let setup = sm::Position::into_setup(pos.0.clone(), sm::EnPassantMode::Legal);
         assert_eq!(pos.halfmoves(), setup.halfmoves);
     }
 
     #[proptest]
     fn fullmoves_returns_the_current_move_number(pos: Position) {
-        let setup = sm::Position::into_setup(pos.0.clone(), sm::EnPassantMode::Always);
+        let setup = sm::Position::into_setup(pos.0.clone(), sm::EnPassantMode::Legal);
         assert_eq!(pos.fullmoves(), setup.fullmoves);
     }
 
     #[proptest]
     fn en_passant_square_returns_the_en_passant_square(pos: Position) {
-        let setup = sm::Position::into_setup(pos.0.clone(), sm::EnPassantMode::Always);
+        let setup = sm::Position::into_setup(pos.0.clone(), sm::EnPassantMode::Legal);
         assert_eq!(pos.en_passant_square(), setup.ep_square.map(Square::from));
     }
 
@@ -565,7 +629,9 @@ mod tests {
     }
 
     #[proptest]
-    fn moves_returns_all_legal_moves_from_this_position(pos: Position) {
+    fn moves_returns_all_legal_moves_from_this_position(
+        #[filter(#pos.outcome().is_none())] pos: Position,
+    ) {
         for m in pos.moves(MoveKind::ANY) {
             let mut pos = pos.clone();
             assert_eq!(pos[m.whence()].map(|p| p.color()), Some(pos.turn()));
@@ -613,7 +679,7 @@ mod tests {
 
     #[proptest]
     fn legal_move_updates_position(
-        #[filter(#pos.moves(MoveKind::ANY).len() > 0)] mut pos: Position,
+        #[filter(#pos.outcome().is_none())] mut pos: Position,
         selector: Selector,
     ) {
         let m = selector.select(pos.moves(MoveKind::ANY));
@@ -633,19 +699,40 @@ mod tests {
     }
 
     #[proptest]
-    fn pass_updates_position(#[filter(!#pos.is_check())] mut pos: Position) {
+    fn pass_updates_position(#[filter(#pos.clone().pass().is_ok())] mut pos: Position) {
         let before = pos.clone();
         assert_eq!(pos.pass(), Ok(()));
         assert_ne!(pos, before);
     }
 
     #[proptest]
-    fn impossible_pass_fails_without_changing_position(
+    fn impossible_pass_preserves_position(
         #[filter(#pos.clone().pass().is_err())] mut pos: Position,
     ) {
         let before = pos.clone();
         assert_eq!(pos.pass(), Err(ImpossiblePass));
         assert_eq!(pos, before);
+    }
+
+    #[proptest]
+    fn threefold_repetition_implies_draw(
+        #[filter(#pos.outcome().is_none())] mut pos: Position,
+        selector: Selector,
+    ) {
+        let rep = pos.clone();
+        let m = selector.select(pos.moves(MoveKind::ANY));
+        let n = Move(m.whither(), m.whence(), Promotion::None);
+
+        for _ in 0..2 {
+            prop_assume!(pos.play(*m).is_ok());
+            prop_assume!(pos.pass().is_ok());
+            prop_assume!(pos.play(n).is_ok());
+            prop_assume!(pos.pass().is_ok());
+            prop_assume!(pos == rep);
+        }
+
+        assert!(pos.is_draw_by_threefold_repetition());
+        assert_eq!(pos.outcome(), Some(Outcome::DrawByThreefoldRepetition));
     }
 
     #[proptest]

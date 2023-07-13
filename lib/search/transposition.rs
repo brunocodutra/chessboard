@@ -310,7 +310,7 @@ mod tests {
         #[by_ref]
         #[filter(#tt.capacity() > 1)]
         tt: TranspositionTable,
-        #[filter(#pos.moves(MoveKind::ANY).len() > 0)] pos: Position,
+        #[filter(#pos.outcome().is_none())] pos: Position,
         #[filter(#d > Depth::new(0))] d: Depth,
         s: Score,
         selector: Selector,

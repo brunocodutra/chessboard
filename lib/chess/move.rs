@@ -306,7 +306,7 @@ mod tests {
 
     #[proptest]
     fn move_context_has_an_equivalent_shakmaty_representation(
-        #[filter(#pos.moves(MoveKind::ANY).len() > 0)] pos: Position,
+        #[filter(#pos.outcome().is_none())] pos: Position,
         selector: Selector,
     ) {
         let m = selector.select(pos.moves(MoveKind::ANY));
