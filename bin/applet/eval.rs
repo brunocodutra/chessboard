@@ -1,7 +1,7 @@
 use anyhow::Error as Anyhow;
-use chess::{Color, Fen, Position};
 use clap::Parser;
-use nnue::Evaluator;
+use lib::chess::{Color, Fen, Position};
+use lib::nnue::Evaluator;
 use tracing::{info, instrument};
 
 /// Statically evaluates a position.
