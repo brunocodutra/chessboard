@@ -73,7 +73,7 @@ impl Binary for Square {
 impl From<Square> for UciSquare {
     fn from(s: Square) -> Self {
         UciSquare {
-            file: s.file().into(),
+            file: (s.file().index() + b'a').into(),
             rank: s.rank().index() + 1,
         }
     }
@@ -83,8 +83,8 @@ impl From<Square> for UciSquare {
 impl From<UciSquare> for Square {
     fn from(s: UciSquare) -> Self {
         Square::new(
-            s.file.try_into().unwrap(),
-            char::from(b'0' + s.rank).try_into().unwrap(),
+            File::from_index((u32::from(s.file) - u32::from('a')) as _),
+            Rank::from_index(s.rank - 1),
         )
     }
 }
