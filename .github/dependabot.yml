@@ -5,23 +5,3 @@ updates:
     schedule:
       interval: "weekly"
       day: "saturday"
-  - package-ecosystem: "cargo"
-    directory: "/chess/"
-    schedule:
-      interval: "weekly"
-      day: "saturday"
-  - package-ecosystem: "cargo"
-    directory: "/nnue/"
-    schedule:
-      interval: "weekly"
-      day: "saturday"
-  - package-ecosystem: "cargo"
-    directory: "/search/"
-    schedule:
-      interval: "weekly"
-      day: "saturday"
-  - package-ecosystem: "cargo"
-    directory: "/util/"
-    schedule:
-      interval: "weekly"
-      day: "saturday"

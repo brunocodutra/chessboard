@@ -1,6 +1,6 @@
-use chess::{Move, Position};
 use futures_util::{future::BoxFuture, stream::BoxStream};
-use search::{Limits, Pv};
+use lib::chess::{Move, Position};
+use lib::search::{Limits, Pv};
 
 /// Trait for types that know how to analyze chess [`Position`]s.
 pub trait Ai {

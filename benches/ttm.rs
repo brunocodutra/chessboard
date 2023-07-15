@@ -1,10 +1,9 @@
-use chess::Fen;
 use criterion::{criterion_group, criterion_main, BatchSize, Criterion};
+use lib::search::{Depth, DepthBounds, Limits, Options, Searcher};
+use lib::{chess::Fen, util::Bounds};
 use num_cpus::get_physical;
-use search::{Limits, Options, Searcher};
 use std::num::NonZeroUsize;
 use std::time::{Duration, Instant};
-use util::{Bounds, Depth, DepthBounds};
 
 fn ttm(c: &mut Criterion, name: &str, edps: &[(&str, &str)]) {
     let mut positions = edps.iter().cycle().map(|(p, m)| {

@@ -230,39 +230,31 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "baf1de4339761588bc0619e3cbc0120ee582ebb74b53b4efbf79117bd2da40fd"
 
 [[package]]
-name = "chess"
-version = "0.1.0"
-dependencies = [
- "bitflags 2.3.3",
- "derive_more",
- "proptest",
- "shakmaty",
- "test-strategy",
- "util",
- "vampirc-uci",
-]
-
-[[package]]
 name = "chessboard"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "arrayvec",
  "async-stream",
- "chess",
+ "atomic",
+ "bitflags 2.3.3",
  "clap",
  "criterion",
+ "derive_more",
  "futures-util",
+ "humantime-serde",
  "mockall",
- "nnue",
+ "num-traits",
  "num_cpus",
  "proptest",
  "rayon",
- "search",
+ "ron",
+ "serde",
+ "shakmaty",
  "test-strategy",
  "tokio",
  "tracing",
  "tracing-subscriber",
- "util",
  "vampirc-uci",
 ]
 
@@ -770,19 +762,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "nnue"
-version = "0.1.0"
-dependencies = [
- "arrayvec",
- "chess",
- "derive_more",
- "num-traits",
- "proptest",
- "test-strategy",
- "util",
-]
-
-[[package]]
 name = "normalize-line-endings"
 version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1109,24 +1088,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d29ab0c6d3fc0ee92fe66e2d99f700eab17a8d57d1c1d3b748380fb20baa78cd"
 
 [[package]]
-name = "search"
-version = "0.1.0"
-dependencies = [
- "arrayvec",
- "chess",
- "derive_more",
- "humantime-serde",
- "nnue",
- "proptest",
- "rayon",
- "ron",
- "serde",
- "test-strategy",
- "tokio",
- "util",
-]
-
-[[package]]
 name = "serde"
 version = "1.0.171"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1406,20 +1367,6 @@ name = "utf8parse"
 version = "0.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "711b9620af191e0cdc7468a8d14e709c3dcdb115b36f838e601583af800a370a"
-
-[[package]]
-name = "util"
-version = "0.1.0"
-dependencies = [
- "atomic",
- "derive_more",
- "num-traits",
- "proptest",
- "rayon",
- "ron",
- "serde",
- "test-strategy",
-]
 
 [[package]]
 name = "vampirc-uci"
