@@ -1,8 +1,7 @@
-use derive_more::{DebugCustom, Display, Error};
+use derive_more::{DebugCustom, Display};
 use proptest::sample::select;
 use shakmaty as sm;
-use std::convert::{TryFrom, TryInto};
-use std::ops::Sub;
+use std::{convert::TryInto, ops::Sub};
 use test_strategy::Arbitrary;
 
 /// Denotes a column on the chess board.
@@ -41,25 +40,6 @@ impl Sub for File {
 
     fn sub(self, rhs: Self) -> Self::Output {
         self.index() as i8 - rhs.index() as i8
-    }
-}
-
-/// The reason why converting [`File`] from index failed.
-#[derive(Debug, Display, Clone, Eq, PartialEq, Error)]
-#[display(fmt = "expected lower case letter in the range `('a'..='h')`")]
-pub struct InvalidFile;
-
-impl TryFrom<char> for File {
-    type Error = InvalidFile;
-
-    fn try_from(c: char) -> Result<Self, Self::Error> {
-        sm::File::from_char(c).map(File).ok_or(InvalidFile)
-    }
-}
-
-impl From<File> for char {
-    fn from(f: File) -> char {
-        f.0.char()
     }
 }
 
@@ -107,18 +87,6 @@ mod tests {
     #[proptest]
     fn iter_returns_iterator_of_exact_size() {
         assert_eq!(File::iter().len(), 8);
-    }
-
-    #[proptest]
-    fn file_can_be_converted_to_char(f: File) {
-        assert_eq!(char::from(f).try_into(), Ok(f));
-    }
-
-    #[proptest]
-    fn converting_file_from_letter_out_of_range_fails(
-        #[filter(!('a'..='h').contains(&#c))] c: char,
-    ) {
-        assert_eq!(File::try_from(c), Err(InvalidFile));
     }
 
     #[proptest]

@@ -1,8 +1,7 @@
-use derive_more::{DebugCustom, Display, Error};
+use derive_more::{DebugCustom, Display};
 use proptest::sample::select;
 use shakmaty as sm;
-use std::convert::{TryFrom, TryInto};
-use std::ops::Sub;
+use std::{convert::TryInto, ops::Sub};
 use test_strategy::Arbitrary;
 
 /// Denotes a row on the chess board.
@@ -41,25 +40,6 @@ impl Sub for Rank {
 
     fn sub(self, rhs: Self) -> Self::Output {
         self.index() as i8 - rhs.index() as i8
-    }
-}
-
-/// The reason why converting [`Rank`] from index failed.
-#[derive(Debug, Display, Clone, Eq, PartialEq, Error)]
-#[display(fmt = "expected digit in the range `('1'..='8')`")]
-pub struct InvalidRank;
-
-impl TryFrom<char> for Rank {
-    type Error = InvalidRank;
-
-    fn try_from(c: char) -> Result<Self, Self::Error> {
-        sm::Rank::from_char(c).map(Rank).ok_or(InvalidRank)
-    }
-}
-
-impl From<Rank> for char {
-    fn from(r: Rank) -> Self {
-        r.0.char()
     }
 }
 
@@ -107,18 +87,6 @@ mod tests {
     #[proptest]
     fn iter_returns_iterator_of_exact_size() {
         assert_eq!(Rank::iter().len(), 8);
-    }
-
-    #[proptest]
-    fn rank_can_be_converted_to_char(r: Rank) {
-        assert_eq!(char::from(r).try_into(), Ok(r));
-    }
-
-    #[proptest]
-    fn converting_rank_from_digit_out_of_range_fails(
-        #[filter(!('1'..='8').contains(&#c))] c: char,
-    ) {
-        assert_eq!(Rank::try_from(c), Err(InvalidRank));
     }
 
     #[proptest]
