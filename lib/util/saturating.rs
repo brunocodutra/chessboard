@@ -1,29 +1,27 @@
 use crate::util::Bounds;
 use derive_more::{DebugCustom, Display, Error};
-use num_traits::{cast, clamp, PrimInt, ToPrimitive};
+use num_traits::{cast, clamp, AsPrimitive, PrimInt};
 use proptest::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::hash::{Hash, Hasher};
 use std::ops::{Add, Div, Mul, Neg, RangeInclusive, Sub};
-use std::{cmp::Ordering, marker::PhantomData};
+use std::{cmp::Ordering, fmt::Debug, marker::PhantomData};
 use test_strategy::Arbitrary;
 
 /// A saturating bounded integer.
 #[derive(DebugCustom, Arbitrary, Serialize, Deserialize)]
-#[arbitrary(bound(RangeInclusive<T::Integer>: Strategy<Value = T::Integer>))]
-#[debug(fmt = "Saturating({_0:?})")]
-#[serde(into = "i64", try_from = "i64")]
+#[arbitrary(bound(T::Integer: 'static + Debug, RangeInclusive<T::Integer>: Strategy<Value = T::Integer>))]
+#[debug(fmt = "Saturating({:?})", "i32::from(*self)")]
+#[serde(into = "i32", try_from = "i32")]
 pub struct Saturating<T: Bounds>(#[strategy(T::LOWER..=T::UPPER)] T::Integer);
 
 impl<T: Bounds> Saturating<T> {
     /// Returns the lower bound.
-
     pub const fn lower() -> Self {
         Saturating(T::LOWER)
     }
 
     /// Returns the upper bound.
-
     pub const fn upper() -> Self {
         Saturating(T::UPPER)
     }
@@ -33,20 +31,17 @@ impl<T: Bounds> Saturating<T> {
     /// # Panics
     ///
     /// Panics if `i` is outside of the bounds.
-
     pub fn new(i: T::Integer) -> Self {
         assert!((T::LOWER..=T::UPPER).contains(&i));
         Saturating(i)
     }
 
     /// Returns the raw integer.
-
     pub fn get(&self) -> T::Integer {
         self.0
     }
 
     /// Constructs `Self` from a raw integer through saturation.
-
     pub fn saturate<U: PrimInt>(i: U) -> Self {
         let min = cast(T::LOWER).unwrap_or_else(U::min_value);
         let max = cast(T::UPPER).unwrap_or_else(U::max_value);
@@ -54,7 +49,6 @@ impl<T: Bounds> Saturating<T> {
     }
 
     /// Lossy conversion between saturating integers.
-
     pub fn cast<U: Bounds>(&self) -> Saturating<U> {
         Saturating::saturate(self.get())
     }
@@ -70,11 +64,11 @@ impl<T: Bounds> Clone for Saturating<T> {
 
 impl<T: Bounds> Hash for Saturating<T> {
     fn hash<H: Hasher>(&self, state: &mut H) {
-        state.write_i64(self.get().to_i64().unwrap());
+        state.write_i32(self.get().as_());
     }
 }
 
-impl<T: Bounds> From<Saturating<T>> for i64 {
+impl<T: Bounds> From<Saturating<T>> for i32 {
     fn from(s: Saturating<T>) -> Self {
         s.get().into()
     }
@@ -84,17 +78,17 @@ impl<T: Bounds> From<Saturating<T>> for i64 {
 #[derive(Debug, Display, Clone, Eq, PartialEq, Error)]
 #[display(
     fmt = "expected integer in the range `({}..={})`",
-    "T::LOWER",
-    "T::UPPER"
+    "T::LOWER.into()",
+    "T::UPPER.into()"
 )]
 pub struct OutOfRange<T>(PhantomData<T>)
 where
     T: Bounds;
 
-impl<T: Bounds> TryFrom<i64> for Saturating<T> {
+impl<T: Bounds> TryFrom<i32> for Saturating<T> {
     type Error = OutOfRange<T>;
 
-    fn try_from(i: i64) -> Result<Self, Self::Error> {
+    fn try_from(i: i32) -> Result<Self, Self::Error> {
         if (T::LOWER.into()..=T::UPPER.into()).contains(&i) {
             Ok(Saturating::saturate(i))
         } else {
@@ -111,9 +105,9 @@ impl<T: Bounds, U: Bounds> PartialEq<Saturating<U>> for Saturating<T> {
     }
 }
 
-impl<T: Bounds, U: PrimInt + Into<i64>> PartialEq<U> for Saturating<T> {
+impl<T: Bounds, U: PrimInt + Into<i32> + AsPrimitive<i32>> PartialEq<U> for Saturating<T> {
     fn eq(&self, other: &U) -> bool {
-        i64::eq(&self.get().to_i64().unwrap(), &other.to_i64().unwrap())
+        i32::eq(&self.get().as_(), &other.as_())
     }
 }
 
@@ -129,9 +123,9 @@ impl<T: Bounds, U: Bounds> PartialOrd<Saturating<U>> for Saturating<T> {
     }
 }
 
-impl<T: Bounds, U: PrimInt + Into<i64>> PartialOrd<U> for Saturating<T> {
+impl<T: Bounds, U: PrimInt + Into<i32> + AsPrimitive<i32>> PartialOrd<U> for Saturating<T> {
     fn partial_cmp(&self, other: &U) -> Option<Ordering> {
-        i64::partial_cmp(&self.get().to_i64().unwrap(), &other.to_i64().unwrap())
+        i32::partial_cmp(&self.get().as_(), &other.as_())
     }
 }
 
@@ -139,7 +133,7 @@ impl<T: Bounds> Neg for Saturating<T> {
     type Output = Self;
 
     fn neg(self) -> Self::Output {
-        Saturating::saturate(i64::saturating_neg(self.get().to_i64().unwrap()))
+        Saturating::saturate(i32::saturating_neg(self.get().as_()))
     }
 }
 
@@ -151,14 +145,11 @@ impl<T: Bounds, U: Bounds> Add<Saturating<U>> for Saturating<T> {
     }
 }
 
-impl<T: Bounds, U: PrimInt + Into<i64>> Add<U> for Saturating<T> {
+impl<T: Bounds, U: PrimInt + Into<i32> + AsPrimitive<i32>> Add<U> for Saturating<T> {
     type Output = Self;
 
     fn add(self, rhs: U) -> Self::Output {
-        Saturating::saturate(i64::saturating_add(
-            self.get().to_i64().unwrap(),
-            rhs.to_i64().unwrap(),
-        ))
+        Saturating::saturate(i32::saturating_add(self.get().as_(), rhs.as_()))
     }
 }
 
@@ -170,14 +161,11 @@ impl<T: Bounds, U: Bounds> Sub<Saturating<U>> for Saturating<T> {
     }
 }
 
-impl<T: Bounds, U: PrimInt + Into<i64>> Sub<U> for Saturating<T> {
+impl<T: Bounds, U: PrimInt + Into<i32> + AsPrimitive<i32>> Sub<U> for Saturating<T> {
     type Output = Self;
 
     fn sub(self, rhs: U) -> Self::Output {
-        Saturating::saturate(i64::saturating_sub(
-            self.get().to_i64().unwrap(),
-            rhs.to_i64().unwrap(),
-        ))
+        Saturating::saturate(i32::saturating_sub(self.get().as_(), rhs.as_()))
     }
 }
 
@@ -189,14 +177,11 @@ impl<T: Bounds, U: Bounds> Mul<Saturating<U>> for Saturating<T> {
     }
 }
 
-impl<T: Bounds, U: PrimInt + Into<i64>> Mul<U> for Saturating<T> {
+impl<T: Bounds, U: PrimInt + Into<i32> + AsPrimitive<i32>> Mul<U> for Saturating<T> {
     type Output = Self;
 
     fn mul(self, rhs: U) -> Self::Output {
-        Saturating::saturate(i64::saturating_mul(
-            self.get().to_i64().unwrap(),
-            rhs.to_i64().unwrap(),
-        ))
+        Saturating::saturate(i32::saturating_mul(self.get().as_(), rhs.as_()))
     }
 }
 
@@ -208,14 +193,11 @@ impl<T: Bounds, U: Bounds> Div<Saturating<U>> for Saturating<T> {
     }
 }
 
-impl<T: Bounds, U: PrimInt + Into<i64>> Div<U> for Saturating<T> {
+impl<T: Bounds, U: PrimInt + Into<i32> + AsPrimitive<i32>> Div<U> for Saturating<T> {
     type Output = Self;
 
     fn div(self, rhs: U) -> Self::Output {
-        Saturating::saturate(i64::saturating_div(
-            self.get().to_i64().unwrap(),
-            rhs.to_i64().unwrap(),
-        ))
+        Saturating::saturate(i32::saturating_div(self.get().as_(), rhs.as_()))
     }
 }
 

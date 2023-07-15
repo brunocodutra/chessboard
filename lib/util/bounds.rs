@@ -1,10 +1,9 @@
-use num_traits::PrimInt;
-use std::fmt::{Debug, Display};
+use num_traits::{AsPrimitive, PrimInt};
 
 /// Trait for integer bounds.
 pub trait Bounds {
     /// The equivalent primitive integer
-    type Integer: 'static + PrimInt + Debug + Display + Into<i64>;
+    type Integer: PrimInt + Into<i32> + AsPrimitive<i32>;
 
     /// The lower bound.
     const LOWER: Self::Integer;

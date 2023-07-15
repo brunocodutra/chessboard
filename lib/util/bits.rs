@@ -27,20 +27,17 @@ impl<T: 'static + Binary + PrimInt + Unsigned, const W: u32> Bits<T, W> {
     /// # Panics
     ///
     /// Panics if `b` is too wide.
-
     pub fn new(b: T) -> Self {
         assert!(b <= ones(W));
         Bits(b)
     }
 
     /// Get raw collection of bits.
-
     pub fn get(&self) -> T {
         self.0
     }
 
     /// Returns a slice of bits.
-
     pub fn slice<R: RangeBounds<u32>>(&self, r: R) -> Self {
         let a = match r.start_bound() {
             Bound::Included(&i) => i,
@@ -60,7 +57,6 @@ impl<T: 'static + Binary + PrimInt + Unsigned, const W: u32> Bits<T, W> {
     /// Shifts bits into the collection.
     ///
     /// Overflow is ignored.
-
     pub fn push<U: 'static + Binary + PrimInt + Unsigned + AsPrimitive<T>, const N: u32>(
         &mut self,
         bits: Bits<U, N>,
@@ -75,7 +71,6 @@ impl<T: 'static + Binary + PrimInt + Unsigned, const W: u32> Bits<T, W> {
     /// Shifts bits out of the collection.
     ///
     /// Underflow is ignored.
-
     pub fn pop<U: 'static + Binary + PrimInt + Unsigned, const N: u32>(&mut self) -> Bits<U, N>
     where
         T: AsPrimitive<U>,
