@@ -1,4 +1,5 @@
-use crate::chess::{Bitboard, Color, Move, MoveContext, MoveKind, Outcome, Piece, Role, Square};
+use crate::chess::{Bitboard, Color, Outcome, Piece, Promotion, Role, Square};
+use crate::chess::{Move, MoveContext, MoveKind};
 use crate::util::Bits;
 use derive_more::{DebugCustom, Display, Error, From};
 use proptest::{prelude::*, sample::Selector};
@@ -143,6 +144,19 @@ impl Position {
             .map(Piece::from)
     }
 
+    /// Into where the piece in this [`Square`] can attack.
+    pub fn attacks(&self, s: Square) -> Bitboard {
+        sm::Position::board(&self.0).attacks_from(s.into()).into()
+    }
+
+    /// From where pieces of this [`Color`] can attack into this [`Square`].
+    pub fn attackers(&self, s: Square, c: Color) -> Bitboard {
+        let board = sm::Position::board(&self.0);
+        board
+            .attacks_to(s.into(), c.into(), board.occupied())
+            .into()
+    }
+
     /// Whether this position is a [check].
     ///
     /// [check]: https://www.chessprogramming.org/Check
@@ -227,28 +241,26 @@ impl Position {
 
     /// Exchange a piece on [`Square`] by the attacker of least value.
     pub fn exchange(&mut self, whither: Square) -> Result<MoveContext, ImpossibleExchange> {
-        let to = whither.into();
-        let board = sm::Position::board(&self.0);
-        let capture = board.role_at(to).ok_or(ImpossibleExchange(whither))?;
+        let capture = self.role_on(whither).ok_or(ImpossibleExchange(whither))?;
 
-        let (from, role) = board
-            .attacks_to(to, sm::Position::turn(&self.0), board.occupied())
+        let (whence, role) = self
+            .attackers(whither, self.turn())
             .into_iter()
-            .filter_map(|s| Some((s, board.role_at(s)?)))
+            .filter_map(|s| Some((s, self.role_on(s)?)))
             .min_by_key(|(_, r)| *r)
             .ok_or(ImpossibleExchange(whither))?;
 
-        let promotion = match (role, to.rank()) {
-            (sm::Role::Pawn, sm::Rank::First | sm::Rank::Eighth) => Some(sm::Role::Queen),
-            _ => None,
+        let promotion = match (role, whither.rank().index()) {
+            (Role::Pawn, 0 | 7) => Promotion::Queen,
+            _ => Promotion::None,
         };
 
         let vm = sm::Move::Normal {
-            role,
-            from,
-            capture: Some(capture),
-            to,
-            promotion,
+            role: role.into(),
+            from: whence.into(),
+            capture: Some(capture.into()),
+            to: whither.into(),
+            promotion: promotion.into(),
         };
 
         if sm::Position::is_legal(&self.0, &vm) {
@@ -465,6 +477,59 @@ mod tests {
             pos.piece_on(s),
             Option::zip(pos.color_on(s), pos.role_on(s)).map(|(c, r)| Piece(c, r))
         );
+    }
+
+    #[proptest]
+    fn attacks_returns_squares_attacked_by_this_piece(pos: Position, s: Square) {
+        for whither in pos.attacks(s) {
+            assert!(pos.attackers(whither, pos[s].unwrap().color()).contains(s))
+        }
+    }
+
+    #[proptest]
+    fn attacks_returns_empty_iterator_if_square_is_not_occupied(
+        pos: Position,
+        #[filter(#pos[#s].is_none())] s: Square,
+    ) {
+        assert_eq!(pos.attacks(s).len(), 0);
+    }
+
+    #[proptest]
+    fn attackers_returns_squares_from_where_pieces_of_a_color_can_attack(
+        pos: Position,
+        s: Square,
+        c: Color,
+    ) {
+        for whence in pos.attackers(s, c) {
+            assert!(pos.attacks(whence).contains(s))
+        }
+    }
+
+    #[proptest]
+    fn exchange_finds_attacker_of_least_value(pos: Position, s: Square) {
+        match pos.clone().exchange(s) {
+            Ok(m) => {
+                let attackers = pos.attackers(s, pos.turn());
+                assert!(attackers.contains(m.whence()));
+
+                assert_eq!(
+                    attackers.into_iter().filter_map(|a| pos.role_on(a)).min(),
+                    Some(m.role()),
+                );
+            }
+
+            Err(_) => {
+                if pos[s].is_some() {
+                    for a in pos.attackers(s, pos.turn()) {
+                        let m = Move(a, s, Promotion::None);
+                        assert_eq!(pos.clone().play(m), Err(IllegalMove(m)));
+
+                        let m = Move(a, s, Promotion::Queen);
+                        assert_eq!(pos.clone().play(m), Err(IllegalMove(m)));
+                    }
+                }
+            }
+        }
     }
 
     #[proptest]
