@@ -178,6 +178,13 @@ impl Position {
         sm::Position::is_stalemate(&self.0)
     }
 
+    /// Whether the game is a draw by the [50-move rule].
+    ///
+    /// [50-move rule]: https://en.wikipedia.org/wiki/Fifty-move_rule
+    pub fn is_draw_by_50_move_rule(&self) -> bool {
+        self.halfmoves() >= 100
+    }
+
     /// Whether this position has [insufficient material].
     ///
     /// [insufficient material]: https://www.chessprogramming.org/Material#InsufficientMaterial
@@ -191,7 +198,7 @@ impl Position {
             Some(Outcome::Checkmate(!self.turn()))
         } else if self.is_stalemate() {
             Some(Outcome::Stalemate)
-        } else if self.halfmoves() >= 100 {
+        } else if self.is_draw_by_50_move_rule() {
             Some(Outcome::DrawBy50MoveRule)
         } else if self.is_material_insufficient() {
             Some(Outcome::DrawByInsufficientMaterial)
