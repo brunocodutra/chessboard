@@ -122,6 +122,27 @@ impl Position {
             .expect("expected king on the board")
     }
 
+    /// The [`Role`] of the piece on the given [`Square`], if any.
+    pub fn role_on(&self, s: Square) -> Option<Role> {
+        sm::Position::board(&self.0)
+            .role_at(s.into())
+            .map(Role::from)
+    }
+
+    /// The [`Color`] of the piece on the given [`Square`], if any.
+    pub fn color_on(&self, s: Square) -> Option<Color> {
+        sm::Position::board(&self.0)
+            .color_at(s.into())
+            .map(Color::from)
+    }
+
+    /// The [`Piece`] on the given [`Square`], if any.
+    pub fn piece_on(&self, s: Square) -> Option<Piece> {
+        sm::Position::board(&self.0)
+            .piece_at(s.into())
+            .map(Piece::from)
+    }
+
     /// Whether this position is a [check].
     ///
     /// [check]: https://www.chessprogramming.org/Check
@@ -244,12 +265,8 @@ impl Index<Square> for Position {
     type Output = Option<Piece>;
 
     fn index(&self, s: Square) -> &Self::Output {
-        use Color::*;
-        use Role::*;
-        match sm::Position::board(&self.0)
-            .piece_at(s.into())
-            .map(Into::into)
-        {
+        use {Color::*, Role::*};
+        match self.piece_on(s) {
             Some(Piece(White, Pawn)) => &Some(Piece(White, Pawn)),
             Some(Piece(White, Knight)) => &Some(Piece(White, Knight)),
             Some(Piece(White, Bishop)) => &Some(Piece(White, Bishop)),
@@ -443,6 +460,14 @@ mod tests {
     }
 
     #[proptest]
+    fn piece_on_returns_piece_on_the_given_square(pos: Position, s: Square) {
+        assert_eq!(
+            pos.piece_on(s),
+            Option::zip(pos.color_on(s), pos.role_on(s)).map(|(c, r)| Piece(c, r))
+        );
+    }
+
+    #[proptest]
     fn checkmate_implies_outcome(pos: Position) {
         assert!(!pos.is_checkmate() || pos.outcome() == Some(Outcome::Checkmate(!pos.turn())));
     }
@@ -553,12 +578,7 @@ mod tests {
 
     #[proptest]
     fn position_can_be_indexed_by_square(pos: Position, s: Square) {
-        assert_eq!(
-            pos[s],
-            sm::Position::board(&pos.0)
-                .piece_at(s.into())
-                .map(Into::into)
-        );
+        assert_eq!(pos[s], pos.piece_on(s));
     }
 
     #[proptest]
