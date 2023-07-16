@@ -1,9 +1,10 @@
-use crate::chess::{Color, Fen, Move, MoveContext, MoveKind, Outcome, Piece, Role, Square};
+use crate::chess::{Color, Move, MoveContext, MoveKind, Outcome, Piece, Role, Square};
 use crate::util::Bits;
-use derive_more::{DebugCustom, Display, Error};
+use derive_more::{DebugCustom, Display, Error, From};
 use proptest::{prelude::*, sample::Selector};
 use shakmaty as sm;
-use std::{convert::TryFrom, num::NonZeroU32, ops::Index};
+use std::str::FromStr;
+use std::{num::NonZeroU32, ops::Index};
 use test_strategy::Arbitrary;
 
 /// A type representing a [`Position`]'s [zobrist hash].
@@ -33,7 +34,10 @@ pub struct ImpossibleExchange(#[error(not(source))] pub Square);
 /// This type guarantees that it only holds valid positions.
 #[derive(DebugCustom, Display, Default, Clone, Eq, PartialEq, Hash, Arbitrary)]
 #[debug(fmt = "Position({self})")]
-#[display(fmt = "{}", "Fen::from(self.clone())")]
+#[display(
+    fmt = "{}",
+    "sm::fen::Fen::from_position(self.0.clone(), sm::EnPassantMode::Legal)"
+)]
 pub struct Position(
     #[strategy((0..256, any::<Selector>()).prop_map(|(moves, selector)| {
         let mut chess = sm::Chess::default();
@@ -80,11 +84,6 @@ impl Position {
         let z: sm::zobrist::Zobrist64 =
             sm::zobrist::ZobristHash::zobrist_hash(&self.0, sm::EnPassantMode::Always);
         Bits::new(z.0)
-    }
-
-    /// This position's [`Fen`] representation.
-    pub fn fen(&self) -> Fen {
-        sm::Position::into_setup(self.0.clone(), sm::EnPassantMode::Always).into()
     }
 
     /// An iterator over all pieces on the board.
@@ -285,6 +284,48 @@ impl Index<Square> for Position {
     }
 }
 
+/// The reason why parsing the FEN string failed.
+#[derive(Debug, Display, Clone, Eq, PartialEq, Error, From)]
+pub enum ParsePositionError {
+    InvalidFen(InvalidFen),
+    IllegalPosition(IllegalPosition),
+}
+
+/// The reason why the string is not valid FEN.
+#[derive(Debug, Display, Clone, Eq, PartialEq, Error)]
+pub enum InvalidFen {
+    #[display(fmt = "syntax error at the piece placement field")]
+    InvalidPlacement,
+    #[display(fmt = "syntax error at the side to move field")]
+    InvalidTurn,
+    #[display(fmt = "syntax error at the castling rights field")]
+    InvalidCastlingRights,
+    #[display(fmt = "syntax error at the en passant square field")]
+    InvalidEnPassantSquare,
+    #[display(fmt = "syntax error at the halfmove clock field")]
+    InvalidHalfmoveClock,
+    #[display(fmt = "syntax error at the fullmove counter field")]
+    InvalidFullmoves,
+    #[display(fmt = "unspecified syntax error")]
+    InvalidSyntax,
+}
+
+#[doc(hidden)]
+impl From<sm::fen::ParseFenError> for InvalidFen {
+    fn from(e: sm::fen::ParseFenError) -> Self {
+        use InvalidFen::*;
+        match e {
+            sm::fen::ParseFenError::InvalidBoard => InvalidPlacement,
+            sm::fen::ParseFenError::InvalidTurn => InvalidTurn,
+            sm::fen::ParseFenError::InvalidCastling => InvalidCastlingRights,
+            sm::fen::ParseFenError::InvalidEpSquare => InvalidEnPassantSquare,
+            sm::fen::ParseFenError::InvalidHalfmoveClock => InvalidHalfmoveClock,
+            sm::fen::ParseFenError::InvalidFullmoves => InvalidFullmoves,
+            _ => InvalidSyntax,
+        }
+    }
+}
+
 /// The reason why the position represented by the FEN string is illegal.
 #[derive(Debug, Display, Clone, Eq, PartialEq, Error)]
 pub enum IllegalPosition {
@@ -327,13 +368,16 @@ impl From<sm::PositionError<sm::Chess>> for IllegalPosition {
     }
 }
 
-impl TryFrom<Fen> for Position {
-    type Error = IllegalPosition;
+impl FromStr for Position {
+    type Err = ParsePositionError;
 
-    fn try_from(fen: Fen) -> Result<Self, Self::Error> {
-        Ok(Position(
-            sm::Setup::from(fen).position(sm::CastlingMode::Standard)?,
-        ))
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let fen: sm::fen::Fen = s.parse().map_err(InvalidFen::from)?;
+        let chess: sm::Chess = sm::Setup::from(fen)
+            .position(sm::CastlingMode::Standard)
+            .map_err(IllegalPosition::from)?;
+
+        Ok(Position(chess))
     }
 }
 
@@ -535,7 +579,19 @@ mod tests {
     }
 
     #[proptest]
-    fn all_positions_can_be_represented_using_fen_notation(pos: Position) {
-        assert_eq!(Position::try_from(Fen::from(pos.clone())), Ok(pos));
+    fn parsing_printed_position_is_an_identity(pos: Position) {
+        assert_eq!(pos.to_string().parse(), Ok(pos));
+    }
+
+    #[proptest]
+    fn parsing_invalid_fen_fails(
+        pos: Position,
+        #[strategy(..=#pos.to_string().len())] n: usize,
+        #[strategy("[^[:ascii:]]+")] r: String,
+    ) {
+        assert!([&pos.to_string()[..n], &r]
+            .concat()
+            .parse::<Position>()
+            .is_err());
     }
 }

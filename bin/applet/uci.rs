@@ -1,7 +1,7 @@
 use crate::{ai::Ai, engine::Engine, io::Io};
 use anyhow::{Context, Error as Anyhow};
 use clap::Parser;
-use lib::chess::{Color, Fen, Move, Position};
+use lib::chess::{Color, Move, Position};
 use lib::search::{Depth, Limits, Options};
 use rayon::max_num_threads;
 use std::{num::NonZeroUsize, time::Duration};
@@ -142,8 +142,7 @@ impl Server {
                     fen: Some(fen),
                     moves,
                 } if moves.is_empty() => {
-                    let fen: Fen = fen.as_str().parse().context("invalid fen")?;
-                    self.position = fen.try_into().context("illegal fen")?;
+                    self.position = fen.as_str().parse()?;
                     self.moves.clear();
                 }
 

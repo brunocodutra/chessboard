@@ -1,16 +1,18 @@
+use anyhow::Error as Anyhow;
 use criterion::{criterion_group, criterion_main, BatchSize, Criterion};
 use lib::search::{Depth, DepthBounds, Limits, Options, Searcher};
-use lib::{chess::Fen, util::Bounds};
+use lib::util::Bounds;
 use num_cpus::get_physical;
 use std::num::NonZeroUsize;
 use std::time::{Duration, Instant};
 
 fn ttm(c: &mut Criterion, name: &str, edps: &[(&str, &str)]) {
-    let mut positions = edps.iter().cycle().map(|(p, m)| {
-        let fen: Fen = p.parse().unwrap();
-        (fen.try_into().unwrap(), m.parse().unwrap())
-    });
+    let edps: Result<Vec<_>, Anyhow> = edps
+        .iter()
+        .map(|(p, m)| Ok((p.parse()?, m.parse()?)))
+        .collect();
 
+    let mut positions = edps.unwrap().into_iter().cycle();
     let options = match NonZeroUsize::new(get_physical()) {
         None => Options::default(),
         Some(threads) => Options {
