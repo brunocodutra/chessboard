@@ -1,5 +1,4 @@
 mod color;
-mod fen;
 mod file;
 mod r#move;
 mod outcome;
@@ -11,7 +10,6 @@ mod role;
 mod square;
 
 pub use color::*;
-pub use fen::*;
 pub use file::*;
 pub use outcome::*;
 pub use piece::*;

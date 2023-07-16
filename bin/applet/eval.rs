@@ -1,6 +1,6 @@
 use anyhow::Error as Anyhow;
 use clap::Parser;
-use lib::chess::{Color, Fen, Position};
+use lib::chess::{Color, Position};
 use lib::nnue::Evaluator;
 use tracing::{info, instrument};
 
@@ -9,14 +9,13 @@ use tracing::{info, instrument};
 #[clap(disable_help_flag = true, disable_version_flag = true)]
 pub struct Eval {
     /// The position to evaluate in FEN notation.
-    fen: Fen,
+    pos: Position,
 }
 
 impl Eval {
     #[instrument(level = "trace", skip(self), err)]
     pub async fn execute(self) -> Result<(), Anyhow> {
-        let pos: Position = self.fen.try_into()?;
-        let pos = Evaluator::own(pos);
+        let pos = Evaluator::own(self.pos);
 
         let (material, positional, value) = match pos.turn() {
             Color::White => (pos.material(), pos.positional(), pos.value()),

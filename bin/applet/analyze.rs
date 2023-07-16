@@ -2,7 +2,7 @@ use crate::{ai::Ai, engine::Engine};
 use anyhow::Error as Anyhow;
 use clap::Parser;
 use futures_util::StreamExt;
-use lib::chess::{Color, Fen};
+use lib::chess::{Color, Position};
 use lib::search::{Limits, Options};
 use tracing::{info, instrument};
 
@@ -19,20 +19,19 @@ pub struct Analyze {
     limits: Limits,
 
     /// The position to analyze in FEN notation.
-    fen: Fen,
+    pos: Position,
 }
 
 impl Analyze {
     #[instrument(level = "trace", skip(self), err)]
     pub async fn execute(self) -> Result<(), Anyhow> {
-        let pos = self.fen.try_into()?;
         let mut engine = Engine::new(self.options);
-        let mut analysis = engine.analyze(&pos, self.limits);
+        let mut analysis = engine.analyze(&self.pos, self.limits);
 
         while let Some(pv) = analysis.next().await {
             info!(
                 depth = %pv.depth(),
-                score = %match pos.turn() {
+                score = %match self.pos.turn() {
                     Color::White => pv.score(),
                     Color::Black => -pv.score(),
                 },

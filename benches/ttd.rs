@@ -1,15 +1,11 @@
 use criterion::{criterion_group, criterion_main, BatchSize, Criterion};
-use lib::chess::Fen;
 use lib::search::{Depth, Options, Searcher};
 use num_cpus::get_physical;
 use std::num::NonZeroUsize;
 
 fn ttd(c: &mut Criterion, fens: &[&str]) {
-    let mut positions = fens.iter().cycle().map(|s| {
-        let fen: Fen = s.parse().unwrap();
-        fen.try_into().unwrap()
-    });
-
+    let fens: Result<Vec<_>, _> = fens.iter().map(|p| p.parse()).collect();
+    let mut positions = fens.unwrap().into_iter().cycle();
     let options = match NonZeroUsize::new(get_physical()) {
         None => Options::default(),
         Some(threads) => Options {
