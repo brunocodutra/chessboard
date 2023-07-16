@@ -1,4 +1,4 @@
-use crate::chess::{Color, Move, MoveContext, MoveKind, Outcome, Piece, Role, Square};
+use crate::chess::{Bitboard, Color, Move, MoveContext, MoveKind, Outcome, Piece, Role, Square};
 use crate::util::Bits;
 use derive_more::{DebugCustom, Display, Error, From};
 use proptest::{prelude::*, sample::Selector};
@@ -95,46 +95,29 @@ impl Position {
     }
 
     /// [`Square`]s occupied.
-    pub fn occupied(&self) -> impl DoubleEndedIterator<Item = Square> + ExactSizeIterator {
-        sm::Position::board(&self.0)
-            .occupied()
-            .into_iter()
-            .map(Square::from)
+    pub fn occupied(&self) -> Bitboard {
+        sm::Position::board(&self.0).occupied().into()
     }
 
     /// [`Square`]s occupied by a [`Color`].
-    pub fn by_color(
-        &self,
-        c: Color,
-    ) -> impl DoubleEndedIterator<Item = Square> + ExactSizeIterator {
-        sm::Position::board(&self.0)
-            .by_color(c.into())
-            .into_iter()
-            .map(Square::from)
+    pub fn by_color(&self, c: Color) -> Bitboard {
+        sm::Position::board(&self.0).by_color(c.into()).into()
     }
 
     /// [`Square`]s occupied by a [`Role`].
-    pub fn by_role(&self, r: Role) -> impl DoubleEndedIterator<Item = Square> + ExactSizeIterator {
-        sm::Position::board(&self.0)
-            .by_role(r.into())
-            .into_iter()
-            .map(Square::from)
+    pub fn by_role(&self, r: Role) -> Bitboard {
+        sm::Position::board(&self.0).by_role(r.into()).into()
     }
 
     /// [`Square`]s occupied by a [`Piece`].
-    pub fn by_piece(
-        &self,
-        p: Piece,
-    ) -> impl DoubleEndedIterator<Item = Square> + ExactSizeIterator {
-        sm::Position::board(&self.0)
-            .by_piece(p.into())
-            .into_iter()
-            .map(Square::from)
+    pub fn by_piece(&self, p: Piece) -> Bitboard {
+        sm::Position::board(&self.0).by_piece(p.into()).into()
     }
 
     /// [`Square`] occupied by a the king of the given color.
     pub fn king(&self, side: Color) -> Square {
         self.by_piece(Piece(side, Role::King))
+            .into_iter()
             .next()
             .expect("expected king on the board")
     }
