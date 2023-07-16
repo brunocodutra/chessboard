@@ -1,3 +1,4 @@
+mod bitboard;
 mod color;
 mod file;
 mod r#move;
@@ -9,6 +10,7 @@ mod rank;
 mod role;
 mod square;
 
+pub use bitboard::*;
 pub use color::*;
 pub use file::*;
 pub use outcome::*;
