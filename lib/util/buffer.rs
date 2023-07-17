@@ -11,7 +11,6 @@ use proptest::{collection::vec, prelude::*};
 #[cfg_attr(test, arbitrary(bound(T: 'static + Debug + Arbitrary)))]
 #[debug(bound = "T: Debug")]
 #[debug(fmt = "Buffer({_0:?})")]
-#[repr(C, align(64))]
 pub struct Buffer<T, const N: usize>(
     #[cfg_attr(test, strategy(vec(any::<T>(), 0..=N).prop_map(ArrayVec::from_iter)))]
     #[deref(forward)]

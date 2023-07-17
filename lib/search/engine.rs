@@ -194,28 +194,27 @@ impl Engine {
             }
         }
 
-        let mut moves = Buffer::<_, 255>::from_iter(pos.moves().filter_map(|m| {
+        let mut moves = Buffer::<_, 256>::from_iter(pos.moves().filter_map(|m| {
             if ply >= depth && !in_check && m.is_quiet() {
                 return None;
             }
 
-            let mut next = pos.clone();
-            next.play(m).assume();
-            let guess = -next.see(m.whither()).cast();
-
             let rank = if Some(m) == tpos.map(|t| t.best()) {
                 i16::MAX
             } else {
-                guess.get()
+                let mut next = pos.material();
+                next.play(m).assume();
+                -next.see(m.whither()).get()
             };
 
-            Some((m, guess, rank))
+            Some((m, rank))
         }));
 
-        moves.sort_unstable_by_key(|(_, _, rank)| *rank);
+        moves.sort_unstable_by_key(|(_, rank)| *rank);
+
         let best = match moves.pop() {
             None => return Ok(Pv::new(score, [])),
-            Some((m, _, _)) => {
+            Some((m, _)) => {
                 let mut next = pos.clone();
                 next.play(m).assume();
                 let mut pv = -self.ns(&next, -beta..-alpha, depth, ply + 1, timer)?;
@@ -235,7 +234,7 @@ impl Engine {
             .into_par_iter()
             .with_max_len(1)
             .rev()
-            .map(|&(m, guess, rank)| {
+            .map(|&(m, rank)| {
                 let alpha = Score::new(cutoff.load(Ordering::Relaxed));
 
                 if alpha >= beta {
@@ -246,6 +245,7 @@ impl Engine {
                 next.play(m).assume();
 
                 if !in_check {
+                    let guess = -next.clone().see(m.whither()).cast();
                     if let Some(d) = self.lmp(&next, guess, alpha, depth) {
                         if d <= ply || -self.nw(&next, -alpha, d, ply + 1, timer)? <= alpha {
                             #[cfg(not(test))]
