@@ -24,7 +24,7 @@ pub struct Transposition {
 
 impl PartialOrd for Transposition {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        (self.depth, self.kind).partial_cmp(&(other.depth, other.kind))
+        Some(self.cmp(other))
     }
 }
 
