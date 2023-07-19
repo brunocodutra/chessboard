@@ -62,8 +62,8 @@ impl Transposition {
     /// Bounds for the exact score.
     pub fn bounds(&self) -> RangeInclusive<Score> {
         match self.kind {
-            Kind::Lower => self.score..=Score::upper(),
-            Kind::Upper => Score::lower()..=self.score,
+            Kind::Lower => self.score..=Score::UPPER,
+            Kind::Upper => Score::LOWER..=self.score,
             Kind::Exact => self.score..=self.score,
         }
     }
@@ -84,7 +84,7 @@ impl Transposition {
     }
 }
 
-type Signature = Bits<u32, 27>;
+type Signature = Bits<u32, 28>;
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash, Arbitrary)]
 struct SignedTransposition(Transposition, Signature);

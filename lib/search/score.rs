@@ -9,7 +9,7 @@ pub struct ScoreBounds;
 impl Bounds for ScoreBounds {
     type Integer = i16;
     const LOWER: Self::Integer = -Self::UPPER;
-    const UPPER: Self::Integer = 16383;
+    const UPPER: Self::Integer = 8191;
 }
 
 /// The minimax score.
@@ -20,10 +20,10 @@ impl Score {
     ///
     /// Negative number of plies means the opponent is mating.
     pub fn mate(&self) -> Option<Ply> {
-        if *self <= Score::lower() - Ply::lower() {
-            Some((Score::lower() - *self).cast())
-        } else if *self >= Score::upper() - Ply::upper() {
-            Some((Score::upper() - *self).cast())
+        if *self <= Score::LOWER - Ply::LOWER {
+            Some((Score::LOWER - *self).cast())
+        } else if *self >= Score::UPPER - Ply::UPPER {
+            Some((Score::UPPER - *self).cast())
         } else {
             None
         }
@@ -31,10 +31,10 @@ impl Score {
 
     /// Normalizes mate scores relative to `ply`.
     pub fn normalize(&self, ply: Ply) -> Self {
-        if *self <= Score::lower() - Ply::lower() {
-            (*self + ply).min(Score::lower() - Ply::lower())
-        } else if *self >= Score::upper() - Ply::upper() {
-            (*self - ply).max(Score::upper() - Ply::upper())
+        if *self <= Score::LOWER - Ply::LOWER {
+            (*self + ply).min(Score::LOWER - Ply::LOWER)
+        } else if *self >= Score::UPPER - Ply::UPPER {
+            (*self - ply).max(Score::UPPER - Ply::UPPER)
         } else {
             *self
         }
@@ -47,7 +47,7 @@ impl Score {
 pub struct DecodeScoreError;
 
 impl Binary for Score {
-    type Bits = Bits<u16, 15>;
+    type Bits = Bits<u16, 14>;
     type Error = DecodeScoreError;
 
     fn encode(&self) -> Self::Bits {
@@ -56,7 +56,7 @@ impl Binary for Score {
 
     fn decode(bits: Self::Bits) -> Result<Self, Self::Error> {
         if bits != !Bits::default() {
-            Ok(Self::lower() + bits.get())
+            Ok(Self::LOWER + bits.get())
         } else {
             Err(DecodeScoreError)
         }
@@ -76,12 +76,10 @@ impl fmt::Display for Score {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::search::Value;
     use test_strategy::proptest;
 
     #[proptest]
-    fn normalize_ignores_non_mate_scores(v: Value, p: Ply) {
-        let s: Score = v.cast();
+    fn normalize_ignores_non_mate_scores(#[filter(#s.mate().is_none())] s: Score, p: Ply) {
         assert_eq!(s.normalize(p), s);
     }
 
@@ -93,9 +91,9 @@ mod tests {
     #[proptest]
     fn mate_returns_plies_to_mate(p: Ply) {
         if p > 0 {
-            assert_eq!(Score::upper().normalize(p).mate(), Some(p));
+            assert_eq!(Score::UPPER.normalize(p).mate(), Some(p));
         } else {
-            assert_eq!(Score::lower().normalize(-p).mate(), Some(p));
+            assert_eq!(Score::LOWER.normalize(-p).mate(), Some(p));
         }
     }
 

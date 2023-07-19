@@ -16,15 +16,11 @@ use test_strategy::Arbitrary;
 pub struct Saturating<T: Bounds>(#[strategy(T::LOWER..=T::UPPER)] T::Integer);
 
 impl<T: Bounds> Saturating<T> {
-    /// Returns the lower bound.
-    pub const fn lower() -> Self {
-        Saturating(T::LOWER)
-    }
+    /// The lower bound.
+    pub const LOWER: Self = Saturating(T::LOWER);
 
-    /// Returns the upper bound.
-    pub const fn upper() -> Self {
-        Saturating(T::UPPER)
-    }
+    /// The upper bound.
+    pub const UPPER: Self = Saturating(T::UPPER);
 
     /// Constructs `Self` from the raw integer.
     ///
@@ -37,7 +33,7 @@ impl<T: Bounds> Saturating<T> {
     }
 
     /// Returns the raw integer.
-    pub fn get(&self) -> T::Integer {
+    pub const fn get(&self) -> T::Integer {
         self.0
     }
 
@@ -252,7 +248,7 @@ mod tests {
     fn saturate_caps_if_greater_than_max(#[strategy(AsymmetricBounds::UPPER + 1..)] i: i8) {
         assert_eq!(
             Saturating::<AsymmetricBounds>::saturate(i),
-            Saturating::<AsymmetricBounds>::upper()
+            Saturating::<AsymmetricBounds>::UPPER
         );
     }
 
@@ -260,7 +256,7 @@ mod tests {
     fn saturate_caps_if_smaller_than_min(#[strategy(..AsymmetricBounds::LOWER)] i: i8) {
         assert_eq!(
             Saturating::<AsymmetricBounds>::saturate(i),
-            Saturating::<AsymmetricBounds>::lower()
+            Saturating::<AsymmetricBounds>::LOWER
         );
     }
 

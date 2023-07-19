@@ -23,7 +23,7 @@ impl ScoreWithTempo {
     }
 
     fn lower(depth: Depth, ply: Ply) -> Self {
-        ScoreWithTempo::new(Score::lower().normalize(ply), depth, ply)
+        ScoreWithTempo::new(Score::LOWER.normalize(ply), depth, ply)
     }
 }
 
@@ -46,7 +46,7 @@ impl Default for Searcher {
 
 impl Searcher {
     #[cfg(not(test))]
-    const MAX_PLY: Ply = Ply::upper();
+    const MAX_PLY: i8 = Ply::UPPER.get() / 2;
 
     #[cfg(test)]
     const MAX_PLY: i8 = 3;
@@ -78,12 +78,12 @@ impl Searcher {
         let transposition = self.tt.get(zobrist);
         let (lower, upper) = match transposition {
             Some(t) if t.depth() >= depth - ply => t.bounds().into_inner(),
-            _ => (Score::lower(), Score::upper()),
+            _ => (Score::LOWER, Score::UPPER),
         };
 
         // One can't mate in 0 plies!
-        let min = lower.min(Score::upper() - 1).normalize(ply);
-        let max = upper.min(Score::upper() - 1).normalize(ply);
+        let min = lower.min(Score::UPPER - 1).normalize(ply);
+        let max = upper.min(Score::UPPER - 1).normalize(ply);
         let (alpha, beta) = (bounds.start, bounds.end);
         (transposition, alpha.clamp(min, max), beta.clamp(min, max))
     }
@@ -217,13 +217,13 @@ impl Searcher {
         let mut moves = ArrayVec::<_, 256>::from_iter(pos.moves(kind).map(|m| {
             let mut next = pos.clone();
             next.play(*m).expect("expected legal move");
-            let value = -next.see(m.whither(), Value::lower()..Value::upper());
+            let value = -next.see(m.whither(), Value::LOWER..Value::UPPER);
             (*m, value.cast())
         }));
 
         moves.sort_unstable_by_key(|&(m, guess)| {
             if Some(m) == transposition.map(|t| t.best()) {
-                Score::upper()
+                Score::UPPER
             } else {
                 guess
             }
@@ -321,8 +321,8 @@ impl Searcher {
 
             'id: for d in 0..=limits.depth().get() {
                 let mut w: i16 = 32;
-                let mut lower = (pv.score() - w / 2).min(Score::upper() - w);
-                let mut upper = (pv.score() + w / 2).max(Score::lower() + w);
+                let mut lower = (pv.score() - w / 2).min(Score::UPPER - w);
+                let mut upper = (pv.score() + w / 2).max(Score::LOWER + w);
 
                 pv = 'aw: loop {
                     let timer = if pv.is_empty() {
@@ -341,8 +341,8 @@ impl Searcher {
                     w = w.saturating_mul(2);
 
                     match score {
-                        s if (-lower..Score::upper()).contains(&-s) => lower = s - w / 2,
-                        s if (upper..Score::upper()).contains(&s) => upper = s + w / 2,
+                        s if (-lower..Score::UPPER).contains(&-s) => lower = s - w / 2,
+                        s if (upper..Score::UPPER).contains(&s) => upper = s + w / 2,
                         _ => break 'aw Pv::new(depth, score, self.tt.line(&pos).collect()),
                     }
 
@@ -368,7 +368,7 @@ mod tests {
     fn negamax(pos: &Evaluator, depth: Depth, ply: Ply) -> Score {
         let score = match pos.outcome() {
             Some(o) if o.is_draw() => return Score::new(0),
-            Some(_) => return Score::lower().normalize(ply),
+            Some(_) => return Score::LOWER.normalize(ply),
             None => pos.value().cast(),
         };
 
@@ -401,7 +401,7 @@ mod tests {
     #[should_panic]
     fn nw_panics_if_beta_is_too_small(s: Searcher, pos: Position, d: Depth, p: Ply) {
         let pos = Evaluator::borrow(&pos);
-        s.nw(&pos, Score::lower(), d, p, Timer::start(Duration::MAX))?;
+        s.nw(&pos, Score::LOWER, d, p, Timer::start(Duration::MAX))?;
     }
 
     #[proptest]
@@ -440,7 +440,7 @@ mod tests {
     ) {
         let pos = Evaluator::borrow(&pos);
         let timer = Timer::start(Duration::MAX);
-        let bounds = Score::lower()..Score::upper();
+        let bounds = Score::LOWER..Score::UPPER;
 
         assert_eq!(
             s.pvs(&pos, bounds, d, p, timer).as_deref(),
@@ -463,8 +463,8 @@ mod tests {
         let timer = Timer::start(Duration::MAX);
 
         assert_eq!(
-            x.pvs(&pos, Score::lower()..Score::upper(), d, p, timer),
-            y.pvs(&pos, Score::lower()..Score::upper(), d, p, timer)
+            x.pvs(&pos, Score::LOWER..Score::UPPER, d, p, timer),
+            y.pvs(&pos, Score::LOWER..Score::UPPER, d, p, timer)
         );
     }
 
