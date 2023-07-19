@@ -50,11 +50,11 @@ impl FromStr for Limits {
 }
 
 impl Limits {
-    /// Maximum depth or [`Depth::upper()`].
+    /// Maximum depth or [`Depth::UPPER`].
     pub fn depth(&self) -> Depth {
         match self {
             Limits::Depth(d) => *d,
-            _ => Depth::upper(),
+            _ => Depth::UPPER,
         }
     }
 
@@ -102,9 +102,9 @@ mod tests {
 
     #[proptest]
     fn depth_returns_max_by_default(t: Duration, i: Duration) {
-        assert_eq!(Limits::None.depth(), Depth::upper());
-        assert_eq!(Limits::Time(t).depth(), Depth::upper());
-        assert_eq!(Limits::Clock(t, i).depth(), Depth::upper());
+        assert_eq!(Limits::None.depth(), Depth::UPPER);
+        assert_eq!(Limits::Time(t).depth(), Depth::UPPER);
+        assert_eq!(Limits::Clock(t, i).depth(), Depth::UPPER);
     }
 
     #[proptest]
