@@ -364,7 +364,7 @@ mod tests {
     use proptest::{prop_assume, sample::Selector};
     use std::time::Duration;
     use test_strategy::proptest;
-    use tokio::{runtime, time::timeout};
+    use tokio::time::timeout;
 
     fn negamax(pos: &Evaluator, depth: Depth, ply: Ply) -> Score {
         let score = match pos.outcome() {
@@ -552,16 +552,11 @@ mod tests {
         );
     }
 
-    #[proptest]
-    fn search_can_be_limited_by_time(mut s: Searcher, pos: Position, us: u8) {
-        let rt = runtime::Builder::new_multi_thread().enable_time().build()?;
-
-        let result = rt.block_on(async {
-            let l = Limits::Time(Duration::from_micros(us.into()));
-            timeout(Duration::from_millis(1), async { s.search::<1>(&pos, l) }).await
-        });
-
-        assert_eq!(result.err(), None);
+    #[proptest(async = "tokio")]
+    async fn search_can_be_limited_by_time(mut s: Searcher, pos: Position, us: u8) {
+        let l = Limits::Time(Duration::from_micros(us.into()));
+        let r = timeout(Duration::from_millis(1), async { s.search::<1>(&pos, l) }).await;
+        assert_eq!(r.err(), None);
     }
 
     #[proptest]

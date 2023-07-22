@@ -98,40 +98,33 @@ mod tests {
     use proptest::sample::size_range;
     use std::time::Duration;
     use test_strategy::proptest;
-    use tokio::runtime;
 
-    #[proptest]
-    fn play_finds_best_move(l: Limits, pos: Position, #[filter(!#pv.is_empty())] pv: Pv) {
-        let rt = runtime::Builder::new_multi_thread().build()?;
-
+    #[proptest(async = "tokio")]
+    async fn play_finds_best_move(l: Limits, pos: Position, #[filter(!#pv.is_empty())] pv: Pv) {
         let mut strategy = Strategy::new();
         strategy.expect_search().return_const(pv.clone());
 
         let mut engine = Engine { strategy };
-        assert_eq!(Some(rt.block_on(engine.play(&pos, l))), pv.first().copied());
+        assert_eq!(Some(engine.play(&pos, l).await), pv.first().copied());
     }
 
-    #[proptest]
+    #[proptest(async = "tokio")]
     #[should_panic]
-    fn play_panics_if_there_are_no_legal_moves(l: Limits, pos: Position, d: Depth, s: Score) {
-        let rt = runtime::Builder::new_multi_thread().build()?;
-
+    async fn play_panics_if_there_are_no_legal_moves(l: Limits, pos: Position, d: Depth, s: Score) {
         let mut strategy = Strategy::new();
         strategy
             .expect_search()
             .return_const(Pv::new(d, s, Line::default()));
 
         let mut engine = Engine { strategy };
-        rt.block_on(engine.play(&pos, l));
+        engine.play(&pos, l).await;
     }
 
-    #[proptest]
-    fn analyze_returns_sequence_of_principal_variations(
+    #[proptest(async = "tokio")]
+    async fn analyze_returns_sequence_of_principal_variations(
         pos: Position,
         #[any(size_range(0..=3).lift())] pvs: Vec<Pv>,
     ) {
-        let rt = runtime::Builder::new_multi_thread().build()?;
-
         let mut strategy = Strategy::new();
 
         for (d, pv) in pvs.iter().enumerate() {
@@ -143,17 +136,11 @@ mod tests {
 
         let mut engine = Engine { strategy };
         let l = Limits::Depth(Depth::saturate(pvs.len()));
-
-        assert_eq!(
-            rt.block_on(engine.analyze(&pos, l).collect::<Vec<_>>()),
-            pvs
-        );
+        assert_eq!(engine.analyze(&pos, l).collect::<Vec<_>>().await, pvs);
     }
 
-    #[proptest]
-    fn analyze_can_be_limited_by_time(pos: Position) {
-        let rt = runtime::Builder::new_multi_thread().build()?;
-
+    #[proptest(async = "tokio")]
+    async fn analyze_can_be_limited_by_time(pos: Position) {
         let mut engine = Engine {
             strategy: Strategy::new(),
         };
@@ -161,7 +148,7 @@ mod tests {
         let l = Limits::Time(Duration::ZERO);
 
         assert_eq!(
-            rt.block_on(engine.analyze(&pos, l).collect::<Vec<_>>()),
+            engine.analyze(&pos, l).collect::<Vec<_>>().await,
             Vec::new()
         );
     }

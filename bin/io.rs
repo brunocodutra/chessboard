@@ -47,37 +47,32 @@ mod tests {
     use std::str;
     use test_strategy::proptest;
     use tokio::io::{duplex, AsyncReadExt, BufReader};
-    use tokio::runtime;
 
-    #[proptest]
-    fn recv_waits_for_line_break(#[strategy("[^\r\n]")] s: String) {
-        let rt = runtime::Builder::new_multi_thread().build()?;
-
+    #[proptest(async = "tokio")]
+    async fn recv_waits_for_line_break(#[strategy("[^\r\n]")] s: String) {
         let (stdin, _) = duplex(1);
         let (mut tx, stdout) = duplex(s.len() + 1);
 
-        rt.block_on(tx.write_all(s.as_bytes()))?;
-        rt.block_on(tx.write_u8(b'\n'))?;
+        tx.write_all(s.as_bytes()).await?;
+        tx.write_u8(b'\n').await?;
 
         let mut pipe = Io::new(stdin, BufReader::new(stdout));
-        assert_eq!(rt.block_on(pipe.recv())?, s);
+        assert_eq!(pipe.recv().await?, s);
     }
 
-    #[proptest]
-    fn send_appends_line_break(s: String) {
-        let rt = runtime::Builder::new_multi_thread().build()?;
-
+    #[proptest(async = "tokio")]
+    async fn send_appends_line_break(s: String) {
         let (stdin, mut rx) = duplex(s.len() + 1);
         let (_, stdout) = duplex(1);
 
         let expected = format!("{s}\n");
 
         let mut pipe = Io::new(stdin, BufReader::new(stdout));
-        rt.block_on(pipe.send(&s))?;
-        rt.block_on(pipe.flush())?;
+        pipe.send(&s).await?;
+        pipe.flush().await?;
 
         let mut buf = vec![0u8; expected.len()];
-        rt.block_on(rx.read_exact(&mut buf))?;
+        rx.read_exact(&mut buf).await?;
 
         assert_eq!(str::from_utf8(&buf)?, expected);
     }
