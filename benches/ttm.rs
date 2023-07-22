@@ -6,7 +6,7 @@ use num_cpus::get_physical;
 use std::num::NonZeroUsize;
 use std::time::{Duration, Instant};
 
-fn ttm(c: &mut Criterion, name: &str, edps: &[(&str, &str)]) {
+fn ttm(c: &mut Criterion, edps: &[(&str, &str)]) {
     let edps: Result<Vec<_>, Anyhow> = edps
         .iter()
         .map(|(p, m)| Ok((p.parse()?, m.parse()?)))
@@ -21,28 +21,34 @@ fn ttm(c: &mut Criterion, name: &str, edps: &[(&str, &str)]) {
         },
     };
 
-    c.benchmark_group("benches")
-        .bench_function(format!("ttm/{name}"), |b| {
-            b.iter_batched_ref(
-                || (Searcher::with_options(options), positions.next().unwrap()),
-                |(s, (pos, m))| {
-                    let timer = Instant::now();
-                    for d in 1..=DepthBounds::UPPER {
-                        let pv = s.search::<1>(pos, Limits::Depth(Depth::new(d)));
-                        if pv.first() == Some(m) || timer.elapsed() >= Duration::from_millis(80) {
-                            break;
-                        }
+    c.benchmark_group("benches").bench_function("ttm", |b| {
+        b.iter_batched_ref(
+            || (Searcher::with_options(options), positions.next().unwrap()),
+            |(s, (pos, m))| {
+                let timer = Instant::now();
+                for d in 1..=DepthBounds::UPPER {
+                    let pv = s.search::<1>(pos, Limits::Depth(Depth::new(d)));
+                    if pv.first() == Some(m) || timer.elapsed() >= Duration::from_millis(80) {
+                        break;
                     }
-                },
-                BatchSize::SmallInput,
-            );
-        });
+                }
+            },
+            BatchSize::SmallInput,
+        );
+    });
 }
 
-fn bkt(c: &mut Criterion) {
-    #[rustfmt::skip]
-    // https://www.chessprogramming.org/Bratko-Kopec_Test
-    ttm(c, "bkt", &[
+#[rustfmt::skip]
+fn bench(c: &mut Criterion) {
+    ttm(c, &[
+        // https://www.chessprogramming.org/Null_Move_Test-Positions
+        ("8/8/p1p5/1p5p/1P5p/8/PPP2K1p/4R1rk w - -", "e1f1"),
+        ("1q1k4/2Rr4/8/2Q3K1/8/8/8/8 w - -", "g5h6"),
+        ("7k/5K2/5P1p/3p4/6P1/3p4/8/8 w - -", "f7e7"),
+        ("8/6B1/p5p1/Pp4kp/1P5r/5P1Q/4q1PK/8 w - -", "g7f6"),
+        ("8/8/1p1r1k2/p1pPN1p1/P3KnP1/1P6/8/3R4 b - -", "d6d8"),
+
+        // https://www.chessprogramming.org/Bratko-Kopec_Test
         ("1k1r4/pp1b1R2/3q2pp/4p3/2B5/4Q3/PPP2B2/2K5 b - -", "d6d1"),
         ("3r1k2/4npp1/1ppr3p/p6P/P2PPPP1/1NR5/5K2/2R5 w - -", "d4d5"),
         ("2q1rr1k/3bbnnp/p2p1pp1/2pPp3/PpP1P1P1/1P2BNNP/2BQ1PRK/7R b - -", "e7d8"),
@@ -67,25 +73,8 @@ fn bkt(c: &mut Criterion) {
         ("2r2rk1/1bqnbpp1/1p1ppn1p/pP6/N1P1P3/P2B1N1P/1B2QPP1/R2R2K1 b - -", "b7e4"),
         ("r1bqk2r/pp2bppp/2p5/3pP3/P2Q1P2/2N1B3/1PP3PP/R4RK1 b kq -", "f7f6"),
         ("r2qnrnk/p2b2b1/1p1p2pp/2pPpp2/1PP1P3/PRNBB3/3QNPPP/5RK1 w - -", "f2f4"),
-    ]);
-}
 
-fn zugzwang(c: &mut Criterion) {
-    #[rustfmt::skip]
-    // https://www.chessprogramming.org/Null_Move_Test-Positions
-    ttm(c, "zugzwang", &[
-        ("8/8/p1p5/1p5p/1P5p/8/PPP2K1p/4R1rk w - -", "e1f1"),
-        ("1q1k4/2Rr4/8/2Q3K1/8/8/8/8 w - -", "g5h6"),
-        ("7k/5K2/5P1p/3p4/6P1/3p4/8/8 w - -", "f7e7"),
-        ("8/6B1/p5p1/Pp4kp/1P5r/5P1Q/4q1PK/8 w - -", "g7f6"),
-        ("8/8/1p1r1k2/p1pPN1p1/P3KnP1/1P6/8/3R4 b - -", "d6d8"),
-    ]);
-}
-
-fn sts(c: &mut Criterion) {
-    #[rustfmt::skip]
-    // https://www.chessprogramming.org/Strategic_Test_Suite
-    ttm(c, "sts", &[
+        // https://www.chessprogramming.org/Strategic_Test_Suite
         ("1kr5/3n4/q3p2p/p2n2p1/PppB1P2/5BP1/1P2Q2P/3R2K1 w - -", "f4f5"),
         ("1n5k/3q3p/pp1p2pB/5r2/1PP1Qp2/P6P/6P1/2R3K1 w - -", "c4c5"),
         ("1n6/4bk1r/1p2rp2/pP2pN1p/K1P1N2P/8/P5R1/3R4 w - -", "g2g3"),
@@ -1274,5 +1263,5 @@ fn sts(c: &mut Criterion) {
     ]);
 }
 
-criterion_group!(benches, bkt, zugzwang, sts);
+criterion_group!(benches, bench);
 criterion_main!(benches);
