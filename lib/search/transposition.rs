@@ -124,40 +124,10 @@ impl Binary for SignedTransposition {
     }
 }
 
-/// An iterator over a sequence of [`Transposition`]s in a [`TranspositionTable`].
-#[derive(Debug, Clone)]
-pub struct TranspositionIter<'a> {
-    tt: &'a TranspositionTable,
-    pos: Position,
-    depth: u8,
-}
-
-impl<'a> TranspositionIter<'a> {
-    pub fn new(tt: &'a TranspositionTable, pos: Position) -> Self {
-        TranspositionIter {
-            tt,
-            pos,
-            depth: u8::MAX,
-        }
-    }
-}
-
-impl<'a> Iterator for TranspositionIter<'a> {
-    type Item = Transposition;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        let key = self.pos.zobrist();
-        let t = self.tt.get(key).filter(|t| t.depth() <= self.depth)?;
-        self.depth = t.depth().get().checked_sub(1)?;
-        self.pos.play(t.best()).ok()?;
-        Some(t)
-    }
-}
-
 /// A cache for [`Transposition`]s.
 #[derive(Debug, Arbitrary)]
 pub struct TranspositionTable {
-    #[strategy((1usize..=32, hash_map(any::<Position>(), any::<Transposition>(), 0..=32)).prop_map(|(cap, ts)| {
+    #[strategy((..=32usize, hash_map(any::<Position>(), any::<Transposition>(), ..=32)).prop_map(|(cap, ts)| {
         let cache = Cache::new(cap.next_power_of_two());
 
         for (pos, t) in ts {
@@ -176,12 +146,11 @@ impl TranspositionTable {
     /// Constructs a transposition table of at most `size` many bytes.
     ///
     /// The `size` specifies an upper bound, as long as the table is not empty.
-    pub fn new(size: usize) -> Self {
+    pub fn new(cap: usize) -> Self {
         let entry_size = size_of::<<Option<SignedTransposition> as Binary>::Bits>();
-        let cache_size = (size / entry_size + 1).next_power_of_two() / 2;
 
         TranspositionTable {
-            cache: Cache::new(cache_size.max(1)),
+            cache: Cache::new(((cap + entry_size) / entry_size).next_power_of_two() / 2),
         }
     }
 
@@ -210,6 +179,10 @@ impl TranspositionTable {
 
     /// Loads the [`Transposition`] from the slot associated with `key`.
     pub fn get(&self, key: Zobrist) -> Option<Transposition> {
+        if self.capacity() == 0 {
+            return None;
+        }
+
         let sig = self.signature_of(key);
         let bits = self.cache.load(self.index_of(key));
         match Binary::decode(bits).expect("expected valid encoding") {
@@ -222,37 +195,22 @@ impl TranspositionTable {
     ///
     /// In the slot if not empty, the [`Transposition`] with greater depth is chosen.
     pub fn set(&self, key: Zobrist, transposition: Transposition) {
-        let sig = self.signature_of(key);
-        let bits = Some(SignedTransposition(transposition, sig)).encode();
-        self.cache.update(self.index_of(key), |r| {
-            match Binary::decode(r).expect("expected valid encoding") {
-                Some(SignedTransposition(t, _)) if t > transposition => None,
-                _ => Some(bits),
-            }
-        })
-    }
-
-    /// Clears the [`Transposition`] from the slot associated with `key`.
-    pub fn unset(&self, key: Zobrist) {
-        self.cache.store(self.index_of(key), Bits::default())
-    }
-
-    /// An iterator for a sequence of [`Transposition`]s from a starting [`Position`].
-    pub fn iter(&self, pos: &Position) -> impl Iterator<Item = Transposition> + '_ {
-        TranspositionIter::new(self, pos.clone())
-    }
-
-    /// An iterator for a sequence of moves from a starting [`Position`].
-    pub fn line(&self, pos: &Position) -> impl Iterator<Item = Move> + '_ {
-        self.iter(pos).map(|t| t.best())
+        if self.capacity() > 0 {
+            let sig = self.signature_of(key);
+            let bits = Some(SignedTransposition(transposition, sig)).encode();
+            self.cache.update(self.index_of(key), |r| {
+                match Binary::decode(r).expect("expected valid encoding") {
+                    Some(SignedTransposition(t, _)) if t > transposition => None,
+                    _ => Some(bits),
+                }
+            })
+        }
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::chess::MoveKind;
-    use proptest::sample::Selector;
     use test_strategy::proptest;
 
     #[proptest]
@@ -287,15 +245,15 @@ mod tests {
     #[proptest]
     fn transposition_with_larger_depth_is_larger(
         t: Transposition,
-        #[filter(#t.depth != #u.depth)] u: Transposition,
+        #[filter(#t.depth() != #u.depth())] u: Transposition,
     ) {
-        assert_eq!(t < u, t.depth < u.depth);
+        assert_eq!(t < u, t.depth() < u.depth());
     }
 
     #[proptest]
-    fn transposition_with_same_depth_is_compared_by_kind(
+    fn transpositions_with_same_depth_are_compared_by_kind(
         t: Transposition,
-        #[filter(#t.depth == #u.depth)] u: Transposition,
+        #[filter(#t.depth() == #u.depth())] u: Transposition,
     ) {
         assert_eq!(t < u, t.kind < u.kind);
     }
@@ -306,76 +264,12 @@ mod tests {
     }
 
     #[proptest]
-    fn iterates_over_moves_searched_with_strictly_decreasing_depth(
-        #[by_ref]
-        #[filter(#tt.capacity() > 1)]
-        tt: TranspositionTable,
-        #[filter(#pos.outcome().is_none())] pos: Position,
-        #[filter(#d > Depth::new(0))] d: Depth,
-        s: Score,
-        selector: Selector,
-    ) {
-        let m = *selector.select(pos.moves(MoveKind::ANY));
-        let mut next = pos.clone();
-        next.play(m)?;
-        prop_assume!(next.moves(MoveKind::ANY).len() > 0);
-
-        let n = *selector.select(next.moves(MoveKind::ANY));
-
-        let t = Transposition::lower(d, s, m);
-        tt.unset(pos.zobrist());
-        tt.set(pos.zobrist(), t);
-
-        let u = Transposition::lower(d, -s, n);
-        tt.unset(next.zobrist());
-        tt.set(next.zobrist(), u);
-
-        prop_assume!(tt.get(pos.zobrist()) == Some(t));
-        prop_assume!(tt.get(next.zobrist()) == Some(u));
-
-        let mut it = TranspositionIter::new(&tt, pos);
-        assert_eq!(it.next(), Some(t));
-        assert_eq!(it.next(), None);
-    }
-
-    #[proptest]
-    fn iterates_over_legal_moves_only(
-        #[by_ref] tt: TranspositionTable,
-        pos: Position,
-        #[filter(#pos.clone().play(#t.best()).is_err())] t: Transposition,
-    ) {
-        tt.unset(pos.zobrist());
-        tt.set(pos.zobrist(), t);
-        assert_eq!(TranspositionIter::new(&tt, pos).next(), None);
-    }
-
-    #[proptest]
-    fn is_fused(tt: TranspositionTable, pos: Position) {
-        let mut it = TranspositionIter::new(&tt, pos);
-
-        while it.next().is_some() {}
-
-        assert_eq!(it.next(), None);
-        assert_eq!(it.next(), None);
-    }
-
-    #[proptest]
-    fn size_returns_table_capacity_in_bytes(tt: TranspositionTable) {
-        assert_eq!(
-            tt.size(),
-            tt.cache.len() * size_of::<<Option<SignedTransposition> as Binary>::Bits>()
-        );
-    }
-
-    #[proptest]
-    fn input_size_is_an_upper_limit(
-        #[strategy(size_of::<<Option<SignedTransposition> as Binary>::Bits>()..=1024)] s: usize,
-    ) {
+    fn table_input_size_is_an_upper_limit(#[strategy(..=1024usize)] s: usize) {
         assert!(TranspositionTable::new(s).size() <= s);
     }
 
     #[proptest]
-    fn size_is_exact_if_input_is_power_of_two(
+    fn table_size_is_exact_if_input_is_power_of_two(
         #[strategy(size_of::<<Option<SignedTransposition> as Binary>::Bits>()..=1024)] s: usize,
     ) {
         assert_eq!(
@@ -385,8 +279,16 @@ mod tests {
     }
 
     #[proptest]
-    fn capacity_returns_cache_len(tt: TranspositionTable) {
-        assert_eq!(tt.capacity(), tt.cache.len());
+    fn table_capacity_equals_the_size_in_bytes(tt: TranspositionTable) {
+        assert_eq!(
+            tt.size(),
+            tt.cache.len() * size_of::<<Option<SignedTransposition> as Binary>::Bits>()
+        );
+    }
+
+    #[proptest]
+    fn get_does_nothing_if_capacity_is_zero(k: Zobrist) {
+        assert_eq!(TranspositionTable::new(0).get(k), None);
     }
 
     #[proptest]
@@ -415,6 +317,11 @@ mod tests {
         let st = Some(SignedTransposition(t, tt.signature_of(k)));
         tt.cache.store(tt.index_of(k), st.encode());
         assert_eq!(tt.get(k), Some(t));
+    }
+
+    #[proptest]
+    fn set_does_nothing_if_capacity_is_zero(k: Zobrist, t: Transposition) {
+        TranspositionTable::new(0).set(k, t);
     }
 
     #[proptest]
@@ -457,12 +364,6 @@ mod tests {
         tt.cache.store(tt.index_of(k), Bits::default());
         tt.set(k, t);
         assert_eq!(tt.get(k), Some(t));
-    }
-
-    #[proptest]
-    fn unset_erases_transposition(tt: TranspositionTable, k: Zobrist) {
-        tt.unset(k);
-        assert_eq!(tt.get(k), None);
     }
 
     #[proptest]

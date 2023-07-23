@@ -12,13 +12,6 @@ pub enum Role {
     King,
 }
 
-impl Role {
-    /// Returns an iterator over [`Role`]s.
-    pub fn iter() -> impl DoubleEndedIterator<Item = Self> + ExactSizeIterator {
-        sm::Role::ALL.into_iter().map(Role::from)
-    }
-}
-
 #[doc(hidden)]
 impl From<Role> for sm::Role {
     fn from(r: Role) -> Self {

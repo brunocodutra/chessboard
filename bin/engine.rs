@@ -17,7 +17,7 @@ trait Searcher {
 impl MockSearcher {
     fn search<const N: usize>(&mut self, pos: &Position, limits: Limits) -> Pv<N> {
         let pv = Searcher::search(self, pos, limits);
-        Pv::new(pv.depth(), pv.score(), pv.iter().copied().collect())
+        Pv::new(pv.score(), pv.depth(), pv.ply(), pv)
     }
 
     fn with_options(_: Options) -> Self {
@@ -72,7 +72,7 @@ impl Ai for Engine {
     {
         Box::pin(stream! {
             let timer = Instant::now();
-            for d in 1..=limits.depth().get() {
+            for d in 0..=limits.depth().get() {
                 let elapsed = timer.elapsed();
                 if elapsed < limits.time() / 2 {
                     let depth = Depth::new(d);
@@ -93,7 +93,7 @@ impl Ai for Engine {
 mod tests {
     use super::*;
     use futures_util::StreamExt;
-    use lib::search::{Line, Score};
+    use lib::search::{Ply, Score};
     use mockall::predicate::eq;
     use proptest::sample::size_range;
     use std::time::Duration;
@@ -110,11 +110,15 @@ mod tests {
 
     #[proptest(async = "tokio")]
     #[should_panic]
-    async fn play_panics_if_there_are_no_legal_moves(l: Limits, pos: Position, d: Depth, s: Score) {
+    async fn play_panics_if_there_are_no_legal_moves(
+        l: Limits,
+        pos: Position,
+        s: Score,
+        d: Depth,
+        p: Ply,
+    ) {
         let mut strategy = Strategy::new();
-        strategy
-            .expect_search()
-            .return_const(Pv::new(d, s, Line::default()));
+        strategy.expect_search().return_const(Pv::new(s, d, p, []));
 
         let mut engine = Engine { strategy };
         engine.play(&pos, l).await;
@@ -123,19 +127,19 @@ mod tests {
     #[proptest(async = "tokio")]
     async fn analyze_returns_sequence_of_principal_variations(
         pos: Position,
-        #[any(size_range(0..=3).lift())] pvs: Vec<Pv>,
+        #[any(size_range(1..=3).lift())] pvs: Vec<Pv>,
     ) {
         let mut strategy = Strategy::new();
 
         for (d, pv) in pvs.iter().enumerate() {
             strategy
                 .expect_search()
-                .with(eq(pos.clone()), eq(Limits::Depth(Depth::saturate(d + 1))))
+                .with(eq(pos.clone()), eq(Limits::Depth(Depth::saturate(d))))
                 .return_const(pv.clone());
         }
 
         let mut engine = Engine { strategy };
-        let l = Limits::Depth(Depth::saturate(pvs.len()));
+        let l = Limits::Depth(Depth::saturate(pvs.len() - 1));
         assert_eq!(engine.analyze(&pos, l).collect::<Vec<_>>().await, pvs);
     }
 
@@ -149,7 +153,7 @@ mod tests {
 
         assert_eq!(
             engine.analyze(&pos, l).collect::<Vec<_>>().await,
-            Vec::new()
+            Vec::<Pv>::new()
         );
     }
 }

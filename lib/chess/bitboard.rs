@@ -107,8 +107,23 @@ mod tests {
     use test_strategy::proptest;
 
     #[proptest]
+    fn empty_constructs_board_with_no_squares() {
+        assert_eq!(Bitboard::empty().into_iter().count(), 0);
+    }
+
+    #[proptest]
+    fn full_constructs_board_with_all_squares() {
+        assert_eq!(Bitboard::full().into_iter().count(), 64);
+    }
+
+    #[proptest]
     fn len_returns_number_of_squares_on_the_board(bb: Bitboard) {
         assert_eq!(bb.len(), bb.into_iter().count());
+    }
+
+    #[proptest]
+    fn is_empty_returns_whether_there_are_squares_on_the_board(bb: Bitboard) {
+        assert_eq!(bb.is_empty(), bb.into_iter().count() == 0);
     }
 
     #[proptest]
