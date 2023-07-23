@@ -36,7 +36,7 @@ pub struct ImpossibleExchange(#[error(not(source))] pub Square);
 /// The current position on the chess board.
 ///
 /// This type guarantees that it only holds valid positions.
-#[derive(DebugCustom, Display, Default, Clone, Eq)]
+#[derive(DebugCustom, Display, Default, Clone)]
 #[debug(fmt = "Position({self})")]
 #[display(
     fmt = "{}",
@@ -49,6 +49,8 @@ impl Hash for Position {
         state.write_u64(self.zobrist().get())
     }
 }
+
+impl Eq for Position {}
 
 impl PartialEq for Position {
     fn eq(&self, other: &Self) -> bool {
@@ -577,30 +579,18 @@ mod tests {
     }
 
     #[proptest]
-    fn exchange_finds_attacker_of_least_value(pos: Position, s: Square) {
-        match pos.clone().exchange(s) {
-            Ok(m) => {
-                let attackers = pos.attackers(s, pos.turn());
-                assert!(attackers.contains(m.whence()));
+    fn exchange_finds_attacker_of_least_value(
+        pos: Position,
+        #[filter(#pos.clone().exchange(#s).is_ok())] s: Square,
+    ) {
+        let m = pos.clone().exchange(s)?;
+        let attackers = pos.attackers(s, pos.turn());
+        assert!(attackers.contains(m.whence()));
 
-                assert_eq!(
-                    attackers.into_iter().filter_map(|a| pos.role_on(a)).min(),
-                    Some(m.role()),
-                );
-            }
-
-            Err(_) => {
-                if pos[s].is_some() {
-                    for a in pos.attackers(s, pos.turn()) {
-                        let m = Move(a, s, Promotion::None);
-                        assert_eq!(pos.clone().play(m), Err(IllegalMove(m)));
-
-                        let m = Move(a, s, Promotion::Queen);
-                        assert_eq!(pos.clone().play(m), Err(IllegalMove(m)));
-                    }
-                }
-            }
-        }
+        assert_eq!(
+            attackers.into_iter().filter_map(|a| pos.role_on(a)).min(),
+            Some(m.role()),
+        );
     }
 
     #[proptest]

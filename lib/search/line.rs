@@ -21,11 +21,6 @@ pub struct Line<const N: usize>(
 );
 
 impl<const N: usize> Line<N> {
-    /// Returns an empty sequence.
-    pub fn empty() -> Self {
-        Self::default()
-    }
-
     /// The number of moves in this sequence.
     pub fn len(&self) -> usize {
         self.0.len()
@@ -42,12 +37,24 @@ impl<const N: usize> Line<N> {
     }
 }
 
+/// Extends a [`Line`] with an iterator of [`Move`]s.
+///
+/// The sequence might be truncated if the number of moves exceeds the internal capacity.
+impl<const N: usize> Extend<Move> for Line<N> {
+    fn extend<T: IntoIterator<Item = Move>>(&mut self, moves: T) {
+        let limit = N - self.len();
+        self.0.extend(moves.into_iter().take(limit));
+    }
+}
+
 /// Create a [`Line`] from an iterator of [`Move`]s.
 ///
 /// The sequence might be truncated if the number of moves exceeds the internal capacity.
 impl<const N: usize> FromIterator<Move> for Line<N> {
     fn from_iter<I: IntoIterator<Item = Move>>(moves: I) -> Self {
-        Line(moves.into_iter().take(N).collect())
+        let mut line = Line::default();
+        line.extend(moves);
+        line
     }
 }
 

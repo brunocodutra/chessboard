@@ -1,4 +1,3 @@
-#![allow(clippy::arc_with_non_send_sync)]
 #![feature(const_maybe_uninit_write, const_mut_refs, const_transmute_copy)]
 
 /// Chess domain types.

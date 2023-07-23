@@ -12,11 +12,11 @@ pub struct Options {
     /// The size of the transposition table in bytes.
     ///
     /// This is an upper limit, the actual memory allocation may be smaller.
-    #[strategy(0usize..=1024)]
+    #[strategy(..=1024usize)]
     pub hash: usize,
 
     /// The number of threads to use while searching.
-    #[strategy((1usize..=4).prop_filter_map("zero", |t| NonZeroUsize::new(t)))]
+    #[strategy((1..=4usize).prop_filter_map("zero", |t| NonZeroUsize::new(t)))]
     pub threads: NonZeroUsize,
 }
 
