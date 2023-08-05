@@ -1,3 +1,4 @@
+use bytemuck::NoUninit;
 use derive_more::{DebugCustom, Display};
 use num_traits::{AsPrimitive, PrimInt, Unsigned};
 use proptest::prelude::*;
@@ -86,6 +87,8 @@ impl<T: 'static + Binary + PrimInt + Unsigned, const W: u32> Bits<T, W> {
         bits
     }
 }
+
+unsafe impl<T: 'static + Binary + PrimInt + Unsigned, const W: u32> NoUninit for Bits<T, W> {}
 
 impl<T: 'static + Binary + PrimInt + Unsigned, const W: u32> Default for Bits<T, W> {
     fn default() -> Self {
