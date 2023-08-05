@@ -1,16 +1,17 @@
 use atomic::{Atomic, Ordering};
+use bytemuck::NoUninit;
 use proptest::{collection::*, prelude::*};
 use test_strategy::Arbitrary;
 
 #[derive(Debug, Arbitrary)]
 #[arbitrary(args = SizeRange, bound(T))]
 /// A fixed-size concurrent in-memory cache.
-pub struct Cache<T: Copy> {
+pub struct Cache<T: NoUninit> {
     #[strategy(vec(any::<T>().prop_map(|v| Atomic::new(v)), (*args).clone()))]
     memory: Vec<Atomic<T>>,
 }
 
-impl<T: Copy + Default> Cache<T> {
+impl<T: NoUninit + Default> Cache<T> {
     /// Constructs a [`Cache`] with `size` many slots filled with `T::default()`.
     pub fn new(size: usize) -> Self {
         debug_assert!(Atomic::<T>::is_lock_free());
