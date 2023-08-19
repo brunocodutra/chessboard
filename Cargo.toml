@@ -45,7 +45,7 @@ ron = { version = "0.8.0", default-features = false }
 serde = { version = "1.0.183", default-features = false, features = ["derive", "std"] }
 shakmaty = { version = "0.26.0", default-features = false, features = ["std"] }
 test-strategy = { version = "0.3.1", default-features = false }
-tokio = { version = "1.30.0", default-features = false, features = [
+tokio = { version = "1.32.0", default-features = false, features = [
     "io-std",
     "io-util",
     "macros",
