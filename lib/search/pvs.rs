@@ -240,8 +240,7 @@ impl Searcher {
             .into_par_iter()
             .rev()
             .map(|&(m, guess)| {
-                use Ordering::Relaxed;
-                let mut alpha = Score::new(cutoff.load(Relaxed));
+                let alpha = Score::new(cutoff.load(Ordering::Relaxed));
 
                 if alpha >= beta {
                     return Ok(None);
@@ -260,21 +259,13 @@ impl Searcher {
                     }
                 }
 
-                loop {
-                    match -self.nw(&next, -alpha, depth, ply + 1, timer)? {
-                        pv if pv < alpha => return Ok(Some(pv.shift(m))),
-                        pv => match Score::new(cutoff.fetch_max(pv.score().get(), Relaxed)) {
-                            _ if pv >= beta => return Ok(Some(pv.shift(m))),
-                            a if a >= beta => return Ok(None),
-                            a if pv < a => alpha = a,
-                            a => {
-                                let pv = -self.pvs(&next, -beta..-a, depth, ply + 1, timer)?;
-                                cutoff.fetch_max(pv.score().get(), Relaxed);
-                                return Ok(Some(pv.shift(m)));
-                            }
-                        },
-                    }
-                }
+                let pv = match -self.nw(&next, -alpha, depth, ply + 1, timer)? {
+                    pv if pv < alpha => return Ok(Some(pv.shift(m))),
+                    _ => -self.pvs(&next, -beta..-alpha, depth, ply + 1, timer)?,
+                };
+
+                cutoff.fetch_max(pv.score().get(), Ordering::Relaxed);
+                Ok(Some(pv.shift(m)))
             })
             .chain([Ok(Some(pv))])
             .try_reduce(|| None, |a, b| Ok(max(a, b)))?
