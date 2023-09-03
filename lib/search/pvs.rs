@@ -129,7 +129,7 @@ impl Searcher {
         }
     }
 
-    /// A [zero-window] wrapper for [`Self::pvs`].
+    /// A [zero-window] search wrapper for [`Self::pvs`].
     ///
     /// [zero-window]: https://www.chessprogramming.org/Null_Window
     fn nw<const N: usize>(
@@ -220,17 +220,14 @@ impl Searcher {
             Some((m, _)) => {
                 let mut next = pos.clone();
                 next.play(m).expect("expected legal move");
-
-                let pv = -self
-                    .pvs(&next, -beta..-alpha, depth, ply + 1, timer)?
-                    .shift(m);
+                let pv = -self.pvs(&next, -beta..-alpha, depth, ply + 1, timer)?;
 
                 if pv >= beta {
                     self.record(zobrist, bounds, depth, ply, pv.score(), m);
-                    return Ok(pv);
+                    return Ok(pv.shift(m));
                 }
 
-                pv
+                pv.shift(m)
             }
         };
 
@@ -276,6 +273,48 @@ impl Searcher {
         Ok(pv)
     }
 
+    /// An implementation of [aspiration windows] with [iterative deepening].
+    ///
+    /// [aspiration windows]: https://www.chessprogramming.org/Aspiration_Windows
+    /// [iterative deepening]: https://www.chessprogramming.org/Iterative_Deepening
+    fn aw<const N: usize>(&self, pos: &Position, depth: Depth, timer: Timer) -> Pv<N> {
+        let mut best = Pv::drawn(Depth::new(0), Ply::new(0));
+
+        'id: for d in 0..=depth.get() {
+            let mut w: i16 = 32;
+            let mut lower = (best.score() - w / 2).min(Score::UPPER - w);
+            let mut upper = (best.score() + w / 2).max(Score::LOWER + w);
+
+            best = 'aw: loop {
+                let timer = if best.is_empty() {
+                    // Ignore time limits until some pv is found.
+                    Timer::start(Duration::MAX)
+                } else {
+                    timer
+                };
+
+                let depth = Depth::new(d);
+                let pos = Evaluator::borrow(pos);
+                let pv = match self.pvs(&pos, lower..upper, depth, Ply::new(0), timer) {
+                    Err(_) => break 'id,
+                    Ok(pv) => pv,
+                };
+
+                w = w.saturating_mul(2);
+
+                match pv.score() {
+                    s if (-lower..Score::UPPER).contains(&-s) => lower = s - w / 2,
+                    s if (upper..Score::UPPER).contains(&s) => upper = s + w / 2,
+                    _ => break 'aw pv,
+                }
+
+                best = best.max(pv);
+            };
+        }
+
+        best
+    }
+
     fn time_to_search(&self, pos: &Position, limits: Limits) -> Duration {
         let (clock, inc) = match limits {
             Limits::Clock(c, i) => (c, i),
@@ -290,45 +329,9 @@ impl Searcher {
 
     /// Searches for the [principal variation][`Pv`].
     pub fn search<const N: usize>(&mut self, pos: &Position, limits: Limits) -> Pv<N> {
-        let pos = Evaluator::borrow(pos);
-        let timer = Timer::start(self.time_to_search(&pos, limits));
-
-        self.executor.install(|| {
-            let mut best = Pv::drawn(Depth::new(0), Ply::new(0));
-
-            'id: for d in 0..=limits.depth().get() {
-                let mut w: i16 = 32;
-                let mut lower = (best.score() - w / 2).min(Score::UPPER - w);
-                let mut upper = (best.score() + w / 2).max(Score::LOWER + w);
-
-                best = 'aw: loop {
-                    let timer = if best.is_empty() {
-                        // Ignore time limits until some pv is found.
-                        Timer::start(Duration::MAX)
-                    } else {
-                        timer
-                    };
-
-                    let depth = Depth::new(d);
-                    let pv = match self.pvs(&pos, lower..upper, depth, Ply::new(0), timer) {
-                        Err(_) => break 'id,
-                        Ok(pv) => pv,
-                    };
-
-                    w = w.saturating_mul(2);
-
-                    match pv.score() {
-                        s if (-lower..Score::UPPER).contains(&-s) => lower = s - w / 2,
-                        s if (upper..Score::UPPER).contains(&s) => upper = s + w / 2,
-                        _ => break 'aw pv,
-                    }
-
-                    best = best.max(pv);
-                };
-            }
-
-            best
-        })
+        let depth = limits.depth();
+        let timer = Timer::start(self.time_to_search(pos, limits));
+        self.executor.install(|| self.aw(pos, depth, timer))
     }
 }
 
