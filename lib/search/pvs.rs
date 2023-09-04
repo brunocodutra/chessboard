@@ -321,10 +321,10 @@ impl Searcher {
             _ => return limits.time(),
         };
 
-        let cap = clock.mul_f64(0.8);
+        let cap = clock.mul_f32(0.8);
         let excess = clock.saturating_sub(inc);
-        let moves_left = 45 - (pos.fullmoves().get() - 1).min(20);
-        inc.saturating_add(excess / moves_left).min(cap)
+        let scale = 400 / pos.fullmoves().get().min(40);
+        inc.saturating_add(excess / scale).min(cap)
     }
 
     /// Searches for the [principal variation][`Pv`].
