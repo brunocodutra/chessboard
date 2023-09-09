@@ -1,4 +1,4 @@
-use crate::search::{Depth, DepthBounds, Line, Score};
+use crate::search::{DepthBounds, Line, Score};
 use crate::{chess::Move, util::Bounds};
 use derive_more::{Deref, IntoIterator};
 use std::{cmp::Ordering, iter::once, mem, ops::Neg};
@@ -10,7 +10,6 @@ use test_strategy::Arbitrary;
 #[derive(Debug, Clone, Eq, PartialEq, Arbitrary, Deref, IntoIterator)]
 pub struct Pv<const N: usize = { DepthBounds::UPPER as _ }> {
     score: Score,
-    depth: Depth,
     #[deref]
     #[into_iterator(owned, ref, ref_mut)]
     line: Line<N>,
@@ -18,10 +17,9 @@ pub struct Pv<const N: usize = { DepthBounds::UPPER as _ }> {
 
 impl<const N: usize> Pv<N> {
     /// Constructs a pv.
-    pub fn new<I: IntoIterator<Item = Move>>(score: Score, depth: Depth, line: I) -> Self {
+    pub fn new<I: IntoIterator<Item = Move>>(score: Score, line: I) -> Self {
         Pv {
             score,
-            depth,
             line: Line::from_iter(line),
         }
     }
@@ -29,11 +27,6 @@ impl<const N: usize> Pv<N> {
     /// The score from the point of view of the side to move.
     pub fn score(&self) -> Score {
         self.score
-    }
-
-    /// The depth searched.
-    pub fn depth(&self) -> Depth {
-        self.depth
     }
 
     /// The strongest [`Line`].
@@ -83,7 +76,7 @@ impl<const N: usize> Neg for Pv<N> {
     type Output = Self;
 
     fn neg(self) -> Self::Output {
-        Pv::new(-self.score, self.depth, self.line)
+        Pv::new(-self.score, self.line)
     }
 }
 
@@ -98,11 +91,6 @@ mod tests {
     }
 
     #[proptest]
-    fn depth_returns_depth(pv: Pv<3>) {
-        assert_eq!(pv.depth(), pv.depth);
-    }
-
-    #[proptest]
     fn line_returns_line(pv: Pv<3>) {
         assert_eq!(pv.line(), &pv.line);
     }
@@ -110,11 +98,6 @@ mod tests {
     #[proptest]
     fn negation_changes_score(pv: Pv<3>) {
         assert_eq!(pv.clone().neg().score(), -pv.score());
-    }
-
-    #[proptest]
-    fn negation_preserves_depth(pv: Pv<3>) {
-        assert_eq!(pv.clone().neg().depth(), pv.depth());
     }
 
     #[proptest]

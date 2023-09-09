@@ -3,7 +3,7 @@ use async_trait::async_trait;
 use lib::chess::{Move, Position};
 use lib::search::{Limits, Options, Pv};
 use tokio::task::block_in_place;
-use tracing::{field::display, instrument, Span};
+use tracing::instrument;
 
 #[cfg(test)]
 #[mockall::automock]
@@ -15,7 +15,7 @@ trait Searcher {
 impl MockSearcher {
     fn search<const N: usize>(&mut self, pos: &Position, limits: Limits) -> Pv<N> {
         let pv = Searcher::search(self, pos, limits);
-        Pv::new(pv.score(), pv.depth(), pv)
+        Pv::new(pv.score(), pv)
     }
 
     fn with_options(_: Options) -> Self {
@@ -46,14 +46,9 @@ impl Engine {
 
 #[async_trait]
 impl Ai for Engine {
-    #[instrument(level = "debug", skip(self, pos), ret(Display), fields(%pos, depth, score))]
+    #[instrument(level = "debug", skip(self, pos), ret(Display), fields(%pos))]
     async fn play(&mut self, pos: &Position, limits: Limits) -> Move {
         let pv: Pv<1> = block_in_place(|| self.strategy.search(pos, limits));
-
-        Span::current()
-            .record("depth", display(pv.depth()))
-            .record("score", display(pv.score()));
-
         *pv.first().expect("expected some legal move")
     }
 }
@@ -61,7 +56,7 @@ impl Ai for Engine {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use lib::search::{Depth, Score};
+    use lib::search::Score;
     use test_strategy::proptest;
 
     #[proptest(async = "tokio")]
@@ -75,9 +70,9 @@ mod tests {
 
     #[proptest(async = "tokio")]
     #[should_panic]
-    async fn play_panics_if_there_are_no_legal_moves(l: Limits, pos: Position, s: Score, d: Depth) {
+    async fn play_panics_if_there_are_no_legal_moves(l: Limits, pos: Position, s: Score) {
         let mut strategy = Strategy::new();
-        strategy.expect_search().return_const(Pv::new(s, d, []));
+        strategy.expect_search().return_const(Pv::new(s, []));
 
         let mut engine = Engine { strategy };
         engine.play(&pos, l).await;
