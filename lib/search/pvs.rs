@@ -284,7 +284,7 @@ impl Searcher {
             best = 'aw: loop {
                 let timer = if best.is_empty() {
                     // Ignore time limits until some pv is found.
-                    Timer::start(Duration::MAX)
+                    Timer::disarmed()
                 } else {
                     timer
                 };
@@ -375,7 +375,7 @@ mod tests {
     #[should_panic]
     fn nw_panics_if_beta_is_too_small(s: Searcher, pos: Position, d: Depth, p: Ply) {
         let pos = Evaluator::borrow(&pos);
-        s.nw::<1>(&pos, Score::LOWER, d, p, Timer::start(Duration::MAX))?;
+        s.nw::<1>(&pos, Score::LOWER, d, p, Timer::disarmed())?;
     }
 
     #[proptest]
@@ -388,7 +388,7 @@ mod tests {
         p: Ply,
     ) {
         let pos = Evaluator::borrow(&pos);
-        s.pvs::<1>(&pos, b.end..b.start, d, p, Timer::start(Duration::MAX))?;
+        s.pvs::<1>(&pos, b.end..b.start, d, p, Timer::disarmed())?;
     }
 
     #[proptest]
@@ -413,11 +413,8 @@ mod tests {
         d: Depth,
         p: Ply,
     ) {
-        let pos = Evaluator::borrow(&pos);
-        let timer = Timer::start(Duration::MAX);
-
         assert_eq!(
-            s.pvs(&pos, b, d, p, timer),
+            s.pvs(&Evaluator::borrow(&pos), b, d, p, Timer::disarmed()),
             Ok(Pv::<1>::new(Score::new(0), d, []))
         );
     }
@@ -430,11 +427,8 @@ mod tests {
         d: Depth,
         p: Ply,
     ) {
-        let pos = Evaluator::borrow(&pos);
-        let timer = Timer::start(Duration::MAX);
-
         assert_eq!(
-            s.pvs(&pos, b, d, p, timer),
+            s.pvs(&Evaluator::borrow(&pos), b, d, p, Timer::disarmed()),
             Ok(Pv::<1>::new(Score::LOWER.normalize(p), d, []))
         );
     }
@@ -454,9 +448,10 @@ mod tests {
         let m = *selector.select(pos.moves(MoveKind::ANY));
         s.tt.set(pos.zobrist(), Transposition::exact(d, sc, m));
 
-        let pos = Evaluator::borrow(&pos);
-        let timer = Timer::start(Duration::MAX);
-        assert_eq!(s.pvs(&pos, b, d, p, timer), Ok(Pv::<1>::new(sc, d, [m])));
+        assert_eq!(
+            s.pvs(&Evaluator::borrow(&pos), b, d, p, Timer::disarmed()),
+            Ok(Pv::<1>::new(sc, d, [m]))
+        );
     }
 
     #[proptest]
@@ -467,7 +462,7 @@ mod tests {
         #[filter(#p >= 0)] p: Ply,
     ) {
         let pos = Evaluator::borrow(&pos);
-        let timer = Timer::start(Duration::MAX);
+        let timer = Timer::disarmed();
         let bounds = Score::LOWER..Score::UPPER;
 
         assert_eq!(s.pvs::<1>(&pos, bounds, d, p, timer)?.depth(), d);
@@ -476,7 +471,7 @@ mod tests {
     #[proptest]
     fn pvs_finds_best_score(s: Searcher, pos: Position, d: Depth, #[filter(#p >= 0)] p: Ply) {
         let pos = Evaluator::borrow(&pos);
-        let timer = Timer::start(Duration::MAX);
+        let timer = Timer::disarmed();
         let bounds = Score::LOWER..Score::UPPER;
 
         assert_eq!(s.pvs::<1>(&pos, bounds, d, p, timer)?, negamax(&pos, d, p));
@@ -495,7 +490,7 @@ mod tests {
 
         let pos = Evaluator::borrow(&pos);
         let bounds = Score::LOWER..Score::UPPER;
-        let timer = Timer::start(Duration::MAX);
+        let timer = Timer::disarmed();
 
         assert_eq!(
             x.pvs::<1>(&pos, bounds.clone(), d, p, timer)?.score(),
@@ -506,7 +501,7 @@ mod tests {
     #[proptest]
     fn search_finds_the_principal_variation(mut s: Searcher, pos: Position, d: Depth) {
         let pos = Evaluator::borrow(&pos);
-        let timer = Timer::start(Duration::MAX);
+        let timer = Timer::disarmed();
         let bounds = Score::LOWER..Score::UPPER;
 
         assert_eq!(

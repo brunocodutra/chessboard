@@ -6,18 +6,25 @@ use test_strategy::Arbitrary;
 #[display(fmt = "time is up!")]
 pub struct Timeout;
 
-#[derive(Debug, Default, Copy, Clone, Eq, PartialEq, Hash, Arbitrary)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash, Arbitrary)]
 pub struct Timer {
     deadline: Option<Instant>,
 }
 
 impl Timer {
+    /// Constructs a timer that never elapses.
+    pub fn disarmed() -> Self {
+        Timer { deadline: None }
+    }
+
+    /// Constructs a timer that elapses after the given duration.
     pub fn start(duration: Duration) -> Self {
         Timer {
             deadline: Instant::now().checked_add(duration),
         }
     }
 
+    /// Checks whether the timer has elapsed.
     pub fn elapsed(&self) -> Result<(), Timeout> {
         if self.deadline.map(|t| t.elapsed()) > Some(Duration::ZERO) {
             Err(Timeout)
