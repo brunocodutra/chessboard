@@ -1,5 +1,5 @@
 use crate::ai::Ai;
-use futures_util::future::BoxFuture;
+use async_trait::async_trait;
 use lib::chess::{Move, Position};
 use lib::search::{Limits, Options, Pv};
 use tokio::task::block_in_place;
@@ -44,22 +44,17 @@ impl Engine {
     }
 }
 
+#[async_trait]
 impl Ai for Engine {
     #[instrument(level = "debug", skip(self, pos), ret(Display), fields(%pos, depth, score))]
-    fn play<'a, 'b, 'c>(&'a mut self, pos: &'b Position, limits: Limits) -> BoxFuture<'c, Move>
-    where
-        'a: 'c,
-        'b: 'c,
-    {
-        Box::pin(async move {
-            let pv: Pv<1> = block_in_place(|| self.strategy.search(pos, limits));
+    async fn play(&mut self, pos: &Position, limits: Limits) -> Move {
+        let pv: Pv<1> = block_in_place(|| self.strategy.search(pos, limits));
 
-            Span::current()
-                .record("depth", display(pv.depth()))
-                .record("score", display(pv.score()));
+        Span::current()
+            .record("depth", display(pv.depth()))
+            .record("score", display(pv.score()));
 
-            *pv.first().expect("expected some legal move")
-        })
+        *pv.first().expect("expected some legal move")
     }
 }
 
