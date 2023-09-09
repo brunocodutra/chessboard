@@ -1,18 +1,16 @@
 use crate::util::Bounds;
-use derive_more::{DebugCustom, Display, Error};
+use derive_more::DebugCustom;
 use num_traits::{cast, clamp, AsPrimitive, PrimInt};
 use proptest::prelude::*;
-use serde::{Deserialize, Serialize};
 use std::hash::{Hash, Hasher};
 use std::ops::{Add, Div, Mul, Neg, RangeInclusive, Sub};
-use std::{cmp::Ordering, fmt::Debug, marker::PhantomData};
+use std::{cmp::Ordering, fmt::Debug};
 use test_strategy::Arbitrary;
 
 /// A saturating bounded integer.
-#[derive(DebugCustom, Arbitrary, Serialize, Deserialize)]
+#[derive(DebugCustom, Arbitrary)]
 #[arbitrary(bound(T::Integer: 'static + Debug, RangeInclusive<T::Integer>: Strategy<Value = T::Integer>))]
 #[debug(fmt = "Saturating({:?})", "i32::from(*self)")]
-#[serde(into = "i32", try_from = "i32")]
 pub struct Saturating<T: Bounds>(#[strategy(T::LOWER..=T::UPPER)] T::Integer);
 
 impl<T: Bounds> Saturating<T> {
@@ -67,29 +65,6 @@ impl<T: Bounds> Hash for Saturating<T> {
 impl<T: Bounds> From<Saturating<T>> for i32 {
     fn from(s: Saturating<T>) -> Self {
         s.get().into()
-    }
-}
-
-/// The reason why converting [`Saturating`] from an integer failed.
-#[derive(Debug, Display, Clone, Eq, PartialEq, Error)]
-#[display(
-    fmt = "expected integer in the range `({}..={})`",
-    "T::LOWER.into()",
-    "T::UPPER.into()"
-)]
-pub struct OutOfRange<T>(PhantomData<T>)
-where
-    T: Bounds;
-
-impl<T: Bounds> TryFrom<i32> for Saturating<T> {
-    type Error = OutOfRange<T>;
-
-    fn try_from(i: i32) -> Result<Self, Self::Error> {
-        if (T::LOWER.into()..=T::UPPER.into()).contains(&i) {
-            Ok(Saturating::saturate(i))
-        } else {
-            Err(OutOfRange(PhantomData))
-        }
     }
 }
 
@@ -298,25 +273,5 @@ mod tests {
 
         assert_eq!(a / b, r);
         assert_eq!(a / b.get(), r);
-    }
-
-    #[proptest]
-    fn serialization_is_transparent(s: Saturating<AsymmetricBounds>) {
-        assert_eq!(ron::ser::to_string(&s), ron::ser::to_string(&s.get()));
-    }
-
-    #[proptest]
-    fn deserializing_succeeds_if_within_bounds(s: Saturating<AsymmetricBounds>) {
-        assert_eq!(ron::de::from_str(&s.get().to_string()), Ok(s));
-    }
-
-    #[proptest]
-    fn deserializing_fails_if_greater_than_max(#[strategy(AsymmetricBounds::UPPER + 1..)] i: i8) {
-        assert!(ron::de::from_str::<Saturating<AsymmetricBounds>>(&i.to_string()).is_err());
-    }
-
-    #[proptest]
-    fn deserializing_fails_if_smaller_than_max(#[strategy(..AsymmetricBounds::LOWER)] i: i8) {
-        assert!(ron::de::from_str::<Saturating<AsymmetricBounds>>(&i.to_string()).is_err());
     }
 }

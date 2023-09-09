@@ -1,13 +1,12 @@
 use anyhow::Error as Anyhow;
 use clap::Subcommand;
 
-mod analyze;
 mod eval;
 mod uci;
 
 #[derive(Subcommand)]
+#[allow(clippy::large_enum_variant)]
 pub enum Applet {
-    Analyze(analyze::Analyze),
     Eval(eval::Eval),
     Uci(uci::Uci),
 }
@@ -21,7 +20,6 @@ impl Default for Applet {
 impl Applet {
     pub async fn execute(self) -> Result<(), Anyhow> {
         match self {
-            Applet::Analyze(a) => a.execute().await,
             Applet::Eval(a) => a.execute().await,
             Applet::Uci(a) => a.execute().await,
         }
