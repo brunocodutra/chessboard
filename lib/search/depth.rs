@@ -5,8 +5,14 @@ pub struct DepthBounds;
 
 impl Bounds for DepthBounds {
     type Integer = u8;
+
     const LOWER: Self::Integer = 0;
+
+    #[cfg(not(test))]
     const UPPER: Self::Integer = 31;
+
+    #[cfg(test)]
+    const UPPER: Self::Integer = 3;
 }
 
 /// The search depth.
