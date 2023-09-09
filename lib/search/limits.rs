@@ -1,52 +1,24 @@
 use crate::search::Depth;
-use derive_more::{Display, Error, From};
-use serde::{Deserialize, Serialize};
-use std::{str::FromStr, time::Duration};
+use derive_more::From;
+use std::time::Duration;
 use test_strategy::Arbitrary;
 
 /// Configuration for search limits.
-#[derive(
-    Debug, Display, Default, Copy, Clone, Eq, PartialEq, Arbitrary, From, Deserialize, Serialize,
-)]
-#[serde(deny_unknown_fields, rename_all = "lowercase")]
+#[derive(Debug, Default, Copy, Clone, Eq, PartialEq, Arbitrary, From)]
 pub enum Limits {
     /// Unlimited search.
     #[default]
-    #[display(fmt = "{}", "ron::ser::to_string(self).unwrap()")]
     None,
 
     /// The maximum number of plies to search.
-    #[display(fmt = "{}", "ron::ser::to_string(self).unwrap()")]
     Depth(Depth),
 
     /// The maximum amount of time to spend searching.
-    #[display(fmt = "{}", "ron::ser::to_string(self).unwrap()")]
-    Time(#[serde(with = "humantime_serde")] Duration),
+    Time(Duration),
 
     /// The time remaining on the clock.
     #[from(ignore)]
-    #[display(fmt = "{}", "ron::ser::to_string(self).unwrap()")]
-    Clock(
-        #[serde(with = "humantime_serde")] Duration,
-        #[serde(with = "humantime_serde", default = "no_increment")] Duration,
-    ),
-}
-
-fn no_increment() -> Duration {
-    Duration::ZERO
-}
-
-/// The reason why parsing [`Limits`] failed.
-#[derive(Debug, Display, Eq, PartialEq, Error, From)]
-#[display(fmt = "failed to parse minimax configuration")]
-pub struct ParseLimitsError(ron::de::SpannedError);
-
-impl FromStr for Limits {
-    type Err = ParseLimitsError;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        Ok(ron::de::from_str(s)?)
-    }
+    Clock(Duration, Duration),
 }
 
 impl Limits {
@@ -89,11 +61,6 @@ mod tests {
     use super::*;
     use std::time::Duration;
     use test_strategy::proptest;
-
-    #[proptest]
-    fn parsing_printed_search_limits_is_an_identity(l: Limits) {
-        assert_eq!(l.to_string().parse(), Ok(l));
-    }
 
     #[proptest]
     fn depth_returns_value_if_set(d: Depth) {

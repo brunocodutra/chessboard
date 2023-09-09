@@ -1,13 +1,9 @@
-use derive_more::{Display, Error, From};
 use proptest::prelude::*;
-use serde::{Deserialize, Serialize};
-use std::{num::NonZeroUsize, str::FromStr};
+use std::num::NonZeroUsize;
 use test_strategy::Arbitrary;
 
 /// Configuration for adversarial search algorithms.
-#[derive(Debug, Display, Copy, Clone, Eq, PartialEq, Arbitrary, Deserialize, Serialize)]
-#[display(fmt = "{}", "ron::ser::to_string(self).unwrap()")]
-#[serde(deny_unknown_fields, rename = "options", default)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Arbitrary)]
 pub struct Options {
     /// The size of the transposition table in bytes.
     ///
@@ -26,34 +22,5 @@ impl Default for Options {
             hash: 32 << 20,
             threads: NonZeroUsize::new(1).unwrap(),
         }
-    }
-}
-
-/// The reason why parsing [`Options`] failed.
-#[derive(Debug, Display, Eq, PartialEq, Error, From)]
-#[display(fmt = "failed to parse minimax configuration")]
-pub struct ParseOptionsError(ron::de::SpannedError);
-
-impl FromStr for Options {
-    type Err = ParseOptionsError;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        Ok(ron::de::from_str(s)?)
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use test_strategy::proptest;
-
-    #[proptest]
-    fn options_deserializes_missing_fields_to_default() {
-        assert_eq!("options()".parse(), Ok(Options::default()));
-    }
-
-    #[proptest]
-    fn parsing_printed_options_is_an_identity(o: Options) {
-        assert_eq!(o.to_string().parse(), Ok(o));
     }
 }
