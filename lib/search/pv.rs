@@ -1,4 +1,4 @@
-use crate::search::{Depth, DepthBounds, Line, Ply, Score};
+use crate::search::{Depth, DepthBounds, Line, Score};
 use crate::{chess::Move, util::Bounds};
 use derive_more::{Deref, IntoIterator};
 use std::{cmp::Ordering, iter::once, mem, ops::Neg};
@@ -11,8 +11,6 @@ use test_strategy::Arbitrary;
 pub struct Pv<const N: usize = { DepthBounds::UPPER as _ }> {
     score: Score,
     depth: Depth,
-    #[filter(#ply >= 0)]
-    ply: Ply,
     #[deref]
     #[into_iterator(owned, ref, ref_mut)]
     line: Line<N>,
@@ -20,31 +18,12 @@ pub struct Pv<const N: usize = { DepthBounds::UPPER as _ }> {
 
 impl<const N: usize> Pv<N> {
     /// Constructs a pv.
-    pub fn new<I>(score: Score, depth: Depth, ply: Ply, line: I) -> Self
-    where
-        I: IntoIterator<Item = Move>,
-    {
+    pub fn new<I: IntoIterator<Item = Move>>(score: Score, depth: Depth, line: I) -> Self {
         Pv {
             score,
             depth,
-            ply,
-            line: line.into_iter().collect(),
+            line: Line::from_iter(line),
         }
-    }
-
-    /// Constructs a pv leaf.
-    pub fn leaf(score: Score, depth: Depth, ply: Ply) -> Self {
-        Self::new(score, depth, ply, [])
-    }
-
-    /// Constructs a drawn pv leaf.
-    pub fn drawn(depth: Depth, ply: Ply) -> Self {
-        Self::leaf(Score::new(0), depth, ply)
-    }
-
-    /// Constructs a lost pv leaf.
-    pub fn lost(depth: Depth, ply: Ply) -> Self {
-        Self::leaf(Score::LOWER.normalize(ply), depth, ply)
     }
 
     /// The score from the point of view of the side to move.
@@ -55,24 +34,6 @@ impl<const N: usize> Pv<N> {
     /// The depth searched.
     pub fn depth(&self) -> Depth {
         self.depth
-    }
-
-    /// The ply reached.
-    pub fn ply(&self) -> Ply {
-        if self.ply < 0 {
-            -self.ply
-        } else {
-            self.ply
-        }
-    }
-
-    /// The tempo bonus from the point of view of the side to move.
-    pub fn tempo(&self) -> Ply {
-        if self.ply < 0 {
-            -(self.ply + self.depth)
-        } else {
-            -(self.ply - self.depth)
-        }
     }
 
     /// The strongest [`Line`].
@@ -90,7 +51,7 @@ impl<const N: usize> Pv<N> {
 
 impl<const N: usize> Ord for Pv<N> {
     fn cmp(&self, other: &Self) -> Ordering {
-        (self.score(), self.tempo()).cmp(&(other.score(), other.tempo()))
+        self.score.cmp(&other.score)
     }
 }
 
@@ -122,7 +83,7 @@ impl<const N: usize> Neg for Pv<N> {
     type Output = Self;
 
     fn neg(self) -> Self::Output {
-        Pv::new(-self.score, self.depth, -self.ply, self.line)
+        Pv::new(-self.score, self.depth, self.line)
     }
 }
 
@@ -142,11 +103,6 @@ mod tests {
     }
 
     #[proptest]
-    fn ply_returns_ply(pv: Pv<3>) {
-        assert_eq!(pv.ply().get(), pv.ply.get().abs());
-    }
-
-    #[proptest]
     fn line_returns_line(pv: Pv<3>) {
         assert_eq!(pv.line(), &pv.line);
     }
@@ -157,18 +113,8 @@ mod tests {
     }
 
     #[proptest]
-    fn negation_changes_tempo(#[filter(#pv.ply() > 0)] pv: Pv<3>) {
-        assert_eq!(pv.clone().neg().tempo(), -pv.tempo());
-    }
-
-    #[proptest]
     fn negation_preserves_depth(pv: Pv<3>) {
         assert_eq!(pv.clone().neg().depth(), pv.depth());
-    }
-
-    #[proptest]
-    fn negation_preserves_ply(pv: Pv<3>) {
-        assert_eq!(pv.clone().neg().ply(), pv.ply());
     }
 
     #[proptest]
@@ -189,20 +135,5 @@ mod tests {
     #[proptest]
     fn pv_with_larger_score_is_larger(p: Pv<3>, #[filter(#p.score() != #q.score())] q: Pv<3>) {
         assert_eq!(p < q, p.score() < q.score());
-    }
-
-    #[proptest]
-    fn pvs_with_same_score_are_compared_by_tempo(
-        s: Score,
-        dp: Depth,
-        dq: Depth,
-        pp: Ply,
-        pq: Ply,
-        lp: Line<3>,
-        lq: Line<3>,
-    ) {
-        let p = Pv::<3>::new(s, dp, pp, lp);
-        let q = Pv::<3>::new(s, dq, pq, lq);
-        assert_eq!(p < q, p.tempo() < q.tempo());
     }
 }

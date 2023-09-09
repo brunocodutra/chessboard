@@ -17,7 +17,7 @@ trait Searcher {
 impl MockSearcher {
     fn search<const N: usize>(&mut self, pos: &Position, limits: Limits) -> Pv<N> {
         let pv = Searcher::search(self, pos, limits);
-        Pv::new(pv.score(), pv.depth(), pv.ply(), pv)
+        Pv::new(pv.score(), pv.depth(), pv)
     }
 
     fn with_options(_: Options) -> Self {
@@ -93,7 +93,7 @@ impl Ai for Engine {
 mod tests {
     use super::*;
     use futures_util::StreamExt;
-    use lib::search::{Ply, Score};
+    use lib::search::Score;
     use mockall::predicate::eq;
     use proptest::sample::size_range;
     use std::time::Duration;
@@ -110,15 +110,9 @@ mod tests {
 
     #[proptest(async = "tokio")]
     #[should_panic]
-    async fn play_panics_if_there_are_no_legal_moves(
-        l: Limits,
-        pos: Position,
-        s: Score,
-        d: Depth,
-        p: Ply,
-    ) {
+    async fn play_panics_if_there_are_no_legal_moves(l: Limits, pos: Position, s: Score, d: Depth) {
         let mut strategy = Strategy::new();
-        strategy.expect_search().return_const(Pv::new(s, d, p, []));
+        strategy.expect_search().return_const(Pv::new(s, d, []));
 
         let mut engine = Engine { strategy };
         engine.play(&pos, l).await;

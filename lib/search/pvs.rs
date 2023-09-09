@@ -27,12 +27,6 @@ impl Default for Searcher {
 }
 
 impl Searcher {
-    #[cfg(not(test))]
-    const MAX_PLY: i8 = Ply::UPPER.get() / 2;
-
-    #[cfg(test)]
-    const MAX_PLY: i8 = 3;
-
     /// Constructs [`Searcher`] with the default [`Options`].
     pub fn new() -> Self {
         Self::with_options(Options::default())
@@ -160,8 +154,8 @@ impl Searcher {
         timer.elapsed()?;
         let in_check = pos.is_check();
         let zobrist = match pos.outcome() {
-            Some(o) if o.is_draw() => return Ok(Pv::drawn(depth, ply)),
-            Some(_) => return Ok(Pv::lost(depth, ply)),
+            Some(o) if o.is_draw() => return Ok(Pv::new(Score::new(0), depth, [])),
+            Some(_) => return Ok(Pv::new(Score::LOWER.normalize(ply), depth, [])),
             None => pos.zobrist(),
         };
 
@@ -169,8 +163,8 @@ impl Searcher {
 
         if alpha >= beta {
             return match tpos {
-                Some(t) => Ok(Pv::new(t.score().normalize(ply), depth, ply, [t.best()])),
-                None => Ok(Pv::leaf(alpha, depth, ply)),
+                Some(t) => Ok(Pv::new(t.score().normalize(ply), depth, [t.best()])),
+                None => Ok(Pv::new(alpha, depth, [])),
             };
         }
 
@@ -180,8 +174,8 @@ impl Searcher {
             None => pos.value().cast(),
         };
 
-        if ply >= Searcher::MAX_PLY {
-            return Ok(Pv::leaf(score, depth, ply));
+        if ply >= Ply::UPPER {
+            return Ok(Pv::new(score, depth, []));
         } else if !in_check {
             if let Some(d) = self.nmp(pos, score, beta, depth) {
                 let mut next = pos.clone();
@@ -189,7 +183,7 @@ impl Searcher {
                 if d <= ply || -self.nw::<1>(&next, -beta + 1, d, ply + 1, timer)? >= beta {
                     #[cfg(not(test))]
                     // The null move pruning heuristic is not exact.
-                    return Ok(Pv::leaf(score, depth, ply));
+                    return Ok(Pv::new(score, depth, []));
                 }
             }
         }
@@ -215,8 +209,8 @@ impl Searcher {
             }
         });
 
-        let pv = match moves.pop() {
-            None => return Ok(Pv::leaf(score, depth, ply)),
+        let best = match moves.pop() {
+            None => return Ok(Pv::new(score, depth, [])),
             Some((m, _)) => {
                 let mut next = pos.clone();
                 next.play(m).expect("expected legal move");
@@ -231,12 +225,14 @@ impl Searcher {
             }
         };
 
-        let cutoff = AtomicI16::new(pv.score().max(alpha).get());
+        let cutoff = AtomicI16::new(best.score().max(alpha).get());
 
-        let pv = moves
+        let (best, _) = moves
             .into_par_iter()
+            .copied()
+            .enumerate()
             .rev()
-            .map(|&(m, guess)| {
+            .map(|(n, (m, guess))| {
                 let alpha = Score::new(cutoff.load(Ordering::Relaxed));
 
                 if alpha >= beta {
@@ -257,20 +253,20 @@ impl Searcher {
                 }
 
                 let pv = match -self.nw(&next, -alpha, depth, ply + 1, timer)? {
-                    pv if pv < alpha => return Ok(Some(pv.shift(m))),
+                    pv if pv < alpha => return Ok(Some((pv.shift(m), n))),
                     _ => -self.pvs(&next, -beta..-alpha, depth, ply + 1, timer)?,
                 };
 
                 cutoff.fetch_max(pv.score().get(), Ordering::Relaxed);
-                Ok(Some(pv.shift(m)))
+                Ok(Some((pv.shift(m), n)))
             })
-            .chain([Ok(Some(pv))])
+            .chain([Ok(Some((best, usize::MAX)))])
             .try_reduce(|| None, |a, b| Ok(max(a, b)))?
             .expect("expected at least one principal variation");
 
-        self.record(zobrist, bounds, depth, ply, pv.score(), pv[0]);
+        self.record(zobrist, bounds, depth, ply, best.score(), best[0]);
 
-        Ok(pv)
+        Ok(best)
     }
 
     /// An implementation of [aspiration windows] with [iterative deepening].
@@ -278,7 +274,7 @@ impl Searcher {
     /// [aspiration windows]: https://www.chessprogramming.org/Aspiration_Windows
     /// [iterative deepening]: https://www.chessprogramming.org/Iterative_Deepening
     fn aw<const N: usize>(&self, pos: &Position, depth: Depth, timer: Timer) -> Pv<N> {
-        let mut best = Pv::drawn(Depth::new(0), Ply::new(0));
+        let mut best = Pv::new(Score::new(0), Depth::new(0), []);
 
         'id: for d in 0..=depth.get() {
             let mut w: i16 = 32;
@@ -352,7 +348,7 @@ mod tests {
 
         let kind = if ply < depth {
             MoveKind::ANY
-        } else if ply < Searcher::MAX_PLY {
+        } else if ply < Ply::UPPER {
             MoveKind::CAPTURE | MoveKind::PROMOTION
         } else {
             return score;
@@ -419,7 +415,11 @@ mod tests {
     ) {
         let pos = Evaluator::borrow(&pos);
         let timer = Timer::start(Duration::MAX);
-        assert_eq!(s.pvs(&pos, b, d, p, timer), Ok(Pv::<1>::drawn(d, p)));
+
+        assert_eq!(
+            s.pvs(&pos, b, d, p, timer),
+            Ok(Pv::<1>::new(Score::new(0), d, []))
+        );
     }
 
     #[proptest]
@@ -432,7 +432,11 @@ mod tests {
     ) {
         let pos = Evaluator::borrow(&pos);
         let timer = Timer::start(Duration::MAX);
-        assert_eq!(s.pvs(&pos, b, d, p, timer), Ok(Pv::<1>::lost(d, p)));
+
+        assert_eq!(
+            s.pvs(&pos, b, d, p, timer),
+            Ok(Pv::<1>::new(Score::LOWER.normalize(p), d, []))
+        );
     }
 
     #[proptest]
@@ -452,14 +456,14 @@ mod tests {
 
         let pos = Evaluator::borrow(&pos);
         let timer = Timer::start(Duration::MAX);
-        assert_eq!(s.pvs(&pos, b, d, p, timer), Ok(Pv::<1>::new(sc, d, p, [m])));
+        assert_eq!(s.pvs(&pos, b, d, p, timer), Ok(Pv::<1>::new(sc, d, [m])));
     }
 
     #[proptest]
     fn pvs_returns_pv_of_the_given_depth(
         s: Searcher,
         pos: Position,
-        #[filter((1..=3).contains(&#d.get()))] d: Depth,
+        d: Depth,
         #[filter(#p >= 0)] p: Ply,
     ) {
         let pos = Evaluator::borrow(&pos);
@@ -470,26 +474,7 @@ mod tests {
     }
 
     #[proptest]
-    fn pvs_returns_pv_of_greater_ply(
-        s: Searcher,
-        pos: Position,
-        #[filter((1..=3).contains(&#d.get()))] d: Depth,
-        #[filter(#p >= 0)] p: Ply,
-    ) {
-        let pos = Evaluator::borrow(&pos);
-        let timer = Timer::start(Duration::MAX);
-        let bounds = Score::LOWER..Score::UPPER;
-
-        assert!(s.pvs::<1>(&pos, bounds, d, p, timer)?.ply() >= p);
-    }
-
-    #[proptest]
-    fn pvs_finds_best_score(
-        s: Searcher,
-        pos: Position,
-        #[filter((1..=3).contains(&#d.get()))] d: Depth,
-        #[filter(#p >= 0)] p: Ply,
-    ) {
+    fn pvs_finds_best_score(s: Searcher, pos: Position, d: Depth, #[filter(#p >= 0)] p: Ply) {
         let pos = Evaluator::borrow(&pos);
         let timer = Timer::start(Duration::MAX);
         let bounds = Score::LOWER..Score::UPPER;
@@ -498,31 +483,28 @@ mod tests {
     }
 
     #[proptest]
-    fn pvs_does_not_depend_on_table_size(
+    fn pvs_does_not_depend_on_configuration(
         x: Options,
         y: Options,
         pos: Position,
-        #[filter((1..=3).contains(&#d.get()))] d: Depth,
+        d: Depth,
         #[filter(#p >= 0)] p: Ply,
     ) {
         let x = Searcher::with_options(x);
         let y = Searcher::with_options(y);
 
         let pos = Evaluator::borrow(&pos);
+        let bounds = Score::LOWER..Score::UPPER;
         let timer = Timer::start(Duration::MAX);
 
         assert_eq!(
-            x.pvs::<1>(&pos, Score::LOWER..Score::UPPER, d, p, timer),
-            y.pvs::<1>(&pos, Score::LOWER..Score::UPPER, d, p, timer)
+            x.pvs::<1>(&pos, bounds.clone(), d, p, timer)?.score(),
+            y.pvs::<1>(&pos, bounds, d, p, timer)?.score()
         );
     }
 
     #[proptest]
-    fn search_finds_the_principal_variation(
-        mut s: Searcher,
-        pos: Position,
-        #[filter((1..=3).contains(&#d.get()))] d: Depth,
-    ) {
+    fn search_finds_the_principal_variation(mut s: Searcher, pos: Position, d: Depth) {
         let pos = Evaluator::borrow(&pos);
         let timer = Timer::start(Duration::MAX);
         let bounds = Score::LOWER..Score::UPPER;
@@ -534,11 +516,7 @@ mod tests {
     }
 
     #[proptest]
-    fn search_is_stable(
-        mut s: Searcher,
-        pos: Position,
-        #[filter((1..=3).contains(&#d.get()))] d: Depth,
-    ) {
+    fn search_is_stable(mut s: Searcher, pos: Position, d: Depth) {
         assert_eq!(
             s.search::<3>(&pos, Limits::Depth(d)).score(),
             s.search::<3>(&pos, Limits::Depth(d)).score()
