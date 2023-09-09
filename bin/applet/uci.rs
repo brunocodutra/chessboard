@@ -118,24 +118,24 @@ impl Server {
                     startpos: true,
                     fen: None,
                     moves,
-                } => {
-                    let moves = Vec::from_iter(moves.into_iter().map(Move::from));
-                    match moves.as_slice() {
-                        [history @ .., m] if history == self.moves => {
-                            self.position.play(*m)?;
-                            self.moves.push(*m);
-                        }
+                } => match Vec::from_iter(moves.into_iter().map(Move::from)).as_slice() {
+                    [history @ .., m, n] if history == self.moves => {
+                        self.position.play(*m)?;
+                        self.moves.push(*m);
 
-                        _ => {
-                            self.position = Position::default();
-                            self.moves.clear();
-                            for m in moves {
-                                self.position.play(m)?;
-                                self.moves.push(m);
-                            }
+                        self.position.play(*n)?;
+                        self.moves.push(*n);
+                    }
+
+                    ms => {
+                        self.position = Position::default();
+                        self.moves.clear();
+                        for &m in ms {
+                            self.position.play(m)?;
+                            self.moves.push(m);
                         }
                     }
-                }
+                },
 
                 UciMessage::Position {
                     startpos: false,
@@ -236,12 +236,8 @@ impl Server {
 
     async fn go(&mut self, limits: Limits) -> Result<(), Anyhow> {
         let best = self.engine.play(&self.position, limits).await;
-        self.position.play(best)?;
-        self.moves.push(best);
-
         let msg = UciMessage::best_move(best.into());
         self.io.send(&msg.to_string()).await?;
-
         Ok(())
     }
 }
