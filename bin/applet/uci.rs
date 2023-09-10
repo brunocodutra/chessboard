@@ -71,8 +71,8 @@ impl Server {
                     let name = UciMessage::id_name(env!("CARGO_PKG_NAME"));
                     let authors = UciMessage::id_author(env!("CARGO_PKG_AUTHORS"));
 
-                    self.io.send(&name.to_string()).await?;
-                    self.io.send(&authors.to_string()).await?;
+                    self.io.send(name).await?;
+                    self.io.send(authors).await?;
 
                     let hash = UciMessage::Option(UciOptionConfig::Spin {
                         name: "Hash".to_string(),
@@ -81,7 +81,7 @@ impl Server {
                         max: Some(u16::MAX.into()),
                     });
 
-                    self.io.send(&hash.to_string()).await?;
+                    self.io.send(hash).await?;
 
                     let thread = UciMessage::Option(UciOptionConfig::Spin {
                         name: "Threads".to_string(),
@@ -90,8 +90,8 @@ impl Server {
                         max: Some(max_num_threads().try_into().unwrap()),
                     });
 
-                    self.io.send(&thread.to_string()).await?;
-                    self.io.send(&UciMessage::UciOk.to_string()).await?;
+                    self.io.send(thread).await?;
+                    self.io.send(UciMessage::UciOk).await?;
                 }
 
                 UciMessage::SetOption {
@@ -111,7 +111,7 @@ impl Server {
                 },
 
                 UciMessage::UciNewGame => self.new_game(),
-                UciMessage::IsReady => self.io.send(&UciMessage::ReadyOk.to_string()).await?,
+                UciMessage::IsReady => self.io.send(UciMessage::ReadyOk).await?,
                 UciMessage::Quit => break Ok(()),
 
                 UciMessage::Position {
@@ -236,8 +236,7 @@ impl Server {
 
     async fn go(&mut self, limits: Limits) -> Result<(), Anyhow> {
         let best = self.engine.play(&self.position, limits).await;
-        let msg = UciMessage::best_move(best.into());
-        self.io.send(&msg.to_string()).await?;
+        self.io.send(UciMessage::best_move(best.into())).await?;
         Ok(())
     }
 }

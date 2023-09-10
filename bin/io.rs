@@ -1,3 +1,4 @@
+use std::fmt::Display;
 use tokio::io::{self, AsyncBufReadExt, AsyncRead, AsyncWrite, AsyncWriteExt, BufReader, Lines};
 use tracing::instrument;
 
@@ -26,9 +27,9 @@ impl<W: AsyncWrite + Send + Unpin, R: AsyncRead + Send + Unpin> Io<W, R> {
     }
 
     /// Send a message.
-    #[instrument(level = "trace", skip(self), err)]
-    pub async fn send(&mut self, msg: &str) -> io::Result<()> {
-        self.writer.write_all(msg.as_bytes()).await?;
+    #[instrument(level = "trace", skip(self, msg), err, fields(%msg))]
+    pub async fn send<T: Display>(&mut self, msg: T) -> io::Result<()> {
+        self.writer.write_all(msg.to_string().as_bytes()).await?;
         self.writer.write_u8(b'\n').await?;
         Ok(())
     }
