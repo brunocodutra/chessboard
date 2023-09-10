@@ -1,11 +1,12 @@
-use crate::{ai::Ai, engine::Engine, io::Io};
+use crate::io::Io;
 use anyhow::{Context, Error as Anyhow};
 use clap::Parser;
 use lib::chess::{Color, Move, Position};
-use lib::search::{Depth, Limits, Options};
+use lib::search::{Depth, Engine, Limits, Options, Pv};
 use rayon::max_num_threads;
 use std::{num::NonZeroUsize, time::Duration};
 use tokio::io::{stdin, stdout, Stdin, Stdout};
+use tokio::task::block_in_place;
 use tracing::{debug, error, instrument, warn};
 use vampirc_uci::{self as uci, UciMessage, UciOptionConfig, UciSearchControl, UciTimeControl};
 
@@ -41,7 +42,7 @@ impl Server {
     }
 
     fn new_game(&mut self) {
-        self.engine = Engine::new(self.options);
+        self.engine = Engine::with_options(self.options);
         self.position = Position::default();
         self.moves.clear();
     }
@@ -64,6 +65,7 @@ impl Server {
         Ok(())
     }
 
+    #[instrument(level = "trace", skip(self), err)]
     async fn run(&mut self) -> Result<(), Anyhow> {
         loop {
             match uci::parse_one(self.io.recv().await?.trim()) {
@@ -234,8 +236,10 @@ impl Server {
         }
     }
 
+    #[instrument(level = "trace", skip(self), err)]
     async fn go(&mut self, limits: Limits) -> Result<(), Anyhow> {
-        let best = self.engine.play(&self.position, limits).await;
+        let pv: Pv<1> = block_in_place(|| self.engine.search(&self.position, limits));
+        let best = *pv.first().expect("expected some legal move");
         self.io.send(UciMessage::best_move(best.into())).await?;
         Ok(())
     }

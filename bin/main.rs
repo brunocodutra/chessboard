@@ -1,10 +1,8 @@
 use anyhow::Error as Anyhow;
 use clap::Parser;
 
-mod ai;
 mod applet;
 mod cli;
-mod engine;
 mod io;
 
 #[tokio::main]

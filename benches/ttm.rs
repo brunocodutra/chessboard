@@ -1,6 +1,6 @@
 use anyhow::Error as Anyhow;
 use criterion::{criterion_group, criterion_main, BatchSize, Criterion};
-use lib::search::{Depth, DepthBounds, Limits, Options, Searcher};
+use lib::search::{Depth, DepthBounds, Engine, Limits, Options};
 use lib::util::Bounds;
 use num_cpus::get_physical;
 use std::num::NonZeroUsize;
@@ -23,7 +23,7 @@ fn ttm(c: &mut Criterion, edps: &[(&str, &str)]) {
 
     c.benchmark_group("benches").bench_function("ttm", |b| {
         b.iter_batched_ref(
-            || (Searcher::with_options(options), positions.next().unwrap()),
+            || (Engine::with_options(options), positions.next().unwrap()),
             |(s, (pos, m))| {
                 let timer = Instant::now();
                 for d in 0..=DepthBounds::UPPER {
