@@ -6,7 +6,6 @@ use lib::search::{Depth, Engine, Limits, Options, Pv};
 use rayon::max_num_threads;
 use std::{num::NonZeroUsize, time::Duration};
 use tokio::io::{stdin, stdout, Stdin, Stdout};
-use tokio::task::block_in_place;
 use tracing::{debug, error, instrument, warn};
 use vampirc_uci::{self as uci, UciMessage, UciOptionConfig, UciSearchControl, UciTimeControl};
 
@@ -238,7 +237,7 @@ impl Server {
 
     #[instrument(level = "trace", skip(self), err)]
     async fn go(&mut self, limits: Limits) -> Result<(), Anyhow> {
-        let pv: Pv<1> = block_in_place(|| self.engine.search(&self.position, limits));
+        let pv: Pv<1> = self.engine.search(&self.position, limits);
         let best = *pv.first().expect("expected some legal move");
         self.io.send(UciMessage::best_move(best.into())).await?;
         Ok(())
