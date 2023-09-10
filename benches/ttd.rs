@@ -1,5 +1,5 @@
 use criterion::{criterion_group, criterion_main, BatchSize, Criterion};
-use lib::search::{Depth, Options, Searcher};
+use lib::search::{Depth, Engine, Options};
 use num_cpus::get_physical;
 use std::num::NonZeroUsize;
 
@@ -16,7 +16,7 @@ fn ttd(c: &mut Criterion, fens: &[&str]) {
 
     c.benchmark_group("benches").bench_function("ttd", |b| {
         b.iter_batched_ref(
-            || (Searcher::with_options(options), positions.next().unwrap()),
+            || (Engine::with_options(options), positions.next().unwrap()),
             |(s, pos)| s.search::<1>(pos, Depth::new(8).into()),
             BatchSize::SmallInput,
         );

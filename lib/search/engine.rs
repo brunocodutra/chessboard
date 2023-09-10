@@ -9,32 +9,30 @@ use std::sync::atomic::{AtomicI16, Ordering};
 use std::{cmp::max, ops::Range, time::Duration};
 use test_strategy::Arbitrary;
 
-/// An implementation of [minimax].
-///
-/// [minimax]: https://www.chessprogramming.org/Searcher
+/// A chess engine.
 #[derive(Debug, Arbitrary)]
-pub struct Searcher {
+pub struct Engine {
     #[map(|o: Options| ThreadPoolBuilder::new().num_threads(o.threads.get()).build().unwrap())]
     executor: ThreadPool,
     #[map(|o: Options| TranspositionTable::new(o.hash))]
     tt: TranspositionTable,
 }
 
-impl Default for Searcher {
+impl Default for Engine {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl Searcher {
-    /// Constructs [`Searcher`] with the default [`Options`].
+impl Engine {
+    /// Initializes the engine with the default [`Options`].
     pub fn new() -> Self {
         Self::with_options(Options::default())
     }
 
-    /// Constructs [`Searcher`] with the given [`Options`].
+    /// Initializes the engine with the given [`Options`].
     pub fn with_options(options: Options) -> Self {
-        Searcher {
+        Engine {
             executor: ThreadPoolBuilder::new()
                 .num_threads(options.threads.get())
                 .build()
@@ -366,34 +364,34 @@ mod tests {
 
     #[proptest]
     fn has_is_an_upper_limit_for_table_size(o: Options) {
-        let s = Searcher::with_options(o);
-        prop_assume!(s.tt.capacity() > 1);
-        assert!(s.tt.size() <= o.hash);
+        let e = Engine::with_options(o);
+        prop_assume!(e.tt.capacity() > 1);
+        assert!(e.tt.size() <= o.hash);
     }
 
     #[proptest]
     #[should_panic]
-    fn nw_panics_if_beta_is_too_small(s: Searcher, pos: Position, d: Depth, p: Ply) {
+    fn nw_panics_if_beta_is_too_small(e: Engine, pos: Position, d: Depth, p: Ply) {
         let pos = Evaluator::borrow(&pos);
-        s.nw::<1>(&pos, Score::LOWER, d, p, Timer::disarmed())?;
+        e.nw::<1>(&pos, Score::LOWER, d, p, Timer::disarmed())?;
     }
 
     #[proptest]
     #[should_panic]
     fn pvs_panics_if_alpha_is_not_greater_than_beta(
-        s: Searcher,
+        e: Engine,
         pos: Position,
         b: Range<Score>,
         d: Depth,
         p: Ply,
     ) {
         let pos = Evaluator::borrow(&pos);
-        s.pvs::<1>(&pos, b.end..b.start, d, p, Timer::disarmed())?;
+        e.pvs::<1>(&pos, b.end..b.start, d, p, Timer::disarmed())?;
     }
 
     #[proptest]
     fn pvs_aborts_if_time_is_up(
-        s: Searcher,
+        e: Engine,
         pos: Position,
         #[filter(!#b.is_empty())] b: Range<Score>,
         d: Depth,
@@ -402,33 +400,33 @@ mod tests {
         let pos = Evaluator::borrow(&pos);
         let timer = Timer::start(Duration::ZERO);
         std::thread::sleep(Duration::from_millis(1));
-        assert_eq!(s.pvs::<1>(&pos, b, d, p, timer), Err(Timeout));
+        assert_eq!(e.pvs::<1>(&pos, b, d, p, timer), Err(Timeout));
     }
 
     #[proptest]
     fn pvs_returns_drawn_score_if_game_ends_in_a_draw(
-        s: Searcher,
+        e: Engine,
         #[filter(#pos.outcome().is_some_and(|o| o.is_draw()))] pos: Position,
         #[filter(!#b.is_empty())] b: Range<Score>,
         d: Depth,
         p: Ply,
     ) {
         assert_eq!(
-            s.pvs(&Evaluator::borrow(&pos), b, d, p, Timer::disarmed()),
+            e.pvs(&Evaluator::borrow(&pos), b, d, p, Timer::disarmed()),
             Ok(Pv::<1>::new(Score::new(0), []))
         );
     }
 
     #[proptest]
     fn pvs_returns_lost_score_if_game_ends_in_checkmate(
-        s: Searcher,
+        e: Engine,
         #[filter(#pos.outcome().is_some_and(|o| o.is_decisive()))] pos: Position,
         #[filter(!#b.is_empty())] b: Range<Score>,
         d: Depth,
         p: Ply,
     ) {
         assert_eq!(
-            s.pvs(&Evaluator::borrow(&pos), b, d, p, Timer::disarmed()),
+            e.pvs(&Evaluator::borrow(&pos), b, d, p, Timer::disarmed()),
             Ok(Pv::<1>::new(Score::LOWER.normalize(p), []))
         );
     }
@@ -436,8 +434,8 @@ mod tests {
     #[proptest]
     fn pvs_returns_transposition_if_exact(
         #[by_ref]
-        #[filter(#s.tt.capacity() > 0)]
-        s: Searcher,
+        #[filter(#e.tt.capacity() > 0)]
+        e: Engine,
         #[filter(#pos.outcome().is_none())] pos: Position,
         #[filter(!#b.is_empty())] b: Range<Score>,
         d: Depth,
@@ -446,21 +444,21 @@ mod tests {
         selector: Selector,
     ) {
         let m = *selector.select(pos.moves(MoveKind::ANY));
-        s.tt.set(pos.zobrist(), Transposition::exact(d, sc, m));
+        e.tt.set(pos.zobrist(), Transposition::exact(d, sc, m));
 
         assert_eq!(
-            s.pvs(&Evaluator::borrow(&pos), b, d, p, Timer::disarmed()),
+            e.pvs(&Evaluator::borrow(&pos), b, d, p, Timer::disarmed()),
             Ok(Pv::<1>::new(sc, [m]))
         );
     }
 
     #[proptest]
-    fn pvs_finds_best_score(s: Searcher, pos: Position, d: Depth, #[filter(#p >= 0)] p: Ply) {
+    fn pvs_finds_best_score(e: Engine, pos: Position, d: Depth, #[filter(#p >= 0)] p: Ply) {
         let pos = Evaluator::borrow(&pos);
         let timer = Timer::disarmed();
         let bounds = Score::LOWER..Score::UPPER;
 
-        assert_eq!(s.pvs::<1>(&pos, bounds, d, p, timer)?, negamax(&pos, d, p));
+        assert_eq!(e.pvs::<1>(&pos, bounds, d, p, timer)?, negamax(&pos, d, p));
     }
 
     #[proptest]
@@ -471,8 +469,8 @@ mod tests {
         d: Depth,
         #[filter(#p >= 0)] p: Ply,
     ) {
-        let x = Searcher::with_options(x);
-        let y = Searcher::with_options(y);
+        let x = Engine::with_options(x);
+        let y = Engine::with_options(y);
 
         let pos = Evaluator::borrow(&pos);
         let bounds = Score::LOWER..Score::UPPER;
@@ -485,37 +483,37 @@ mod tests {
     }
 
     #[proptest]
-    fn search_finds_the_principal_variation(mut s: Searcher, pos: Position, d: Depth) {
+    fn search_finds_the_principal_variation(mut e: Engine, pos: Position, d: Depth) {
         let pos = Evaluator::borrow(&pos);
         let timer = Timer::disarmed();
         let bounds = Score::LOWER..Score::UPPER;
 
         assert_eq!(
-            s.search::<3>(&pos, Limits::Depth(d)).score(),
-            s.pvs::<3>(&pos, bounds, d, Ply::new(0), timer)?.score()
+            e.search::<3>(&pos, Limits::Depth(d)).score(),
+            e.pvs::<3>(&pos, bounds, d, Ply::new(0), timer)?.score()
         );
     }
 
     #[proptest]
-    fn search_is_stable(mut s: Searcher, pos: Position, d: Depth) {
+    fn search_is_stable(mut e: Engine, pos: Position, d: Depth) {
         assert_eq!(
-            s.search::<3>(&pos, Limits::Depth(d)).score(),
-            s.search::<3>(&pos, Limits::Depth(d)).score()
+            e.search::<3>(&pos, Limits::Depth(d)).score(),
+            e.search::<3>(&pos, Limits::Depth(d)).score()
         );
     }
 
     #[proptest(async = "tokio")]
-    async fn search_can_be_limited_by_time(mut s: Searcher, pos: Position, us: u8) {
+    async fn search_can_be_limited_by_time(mut e: Engine, pos: Position, us: u8) {
         let l = Limits::Time(Duration::from_micros(us.into()));
-        let r = timeout(Duration::from_millis(1), async { s.search::<1>(&pos, l) }).await;
+        let r = timeout(Duration::from_millis(1), async { e.search::<1>(&pos, l) }).await;
         assert_eq!(r.err(), None);
     }
 
     #[proptest]
     fn search_extends_time_to_find_some_pv(
-        mut s: Searcher,
+        mut e: Engine,
         #[filter(#pos.outcome().is_none())] pos: Position,
     ) {
-        assert!(!s.search::<1>(&pos, Limits::Time(Duration::ZERO)).is_empty());
+        assert!(!e.search::<1>(&pos, Limits::Time(Duration::ZERO)).is_empty());
     }
 }
