@@ -1,26 +1,17 @@
 use crate::chess::{File, Rank, Square};
 use derive_more::{BitAnd, BitAndAssign, BitOr, BitOrAssign, DebugCustom, Not};
-use proptest::prelude::*;
 use shakmaty as sm;
-use test_strategy::Arbitrary;
+
+#[cfg(test)]
+use proptest::prelude::*;
 
 /// A set of squares on a chess board.
 #[derive(
-    DebugCustom,
-    Copy,
-    Clone,
-    Eq,
-    PartialEq,
-    Hash,
-    Arbitrary,
-    Not,
-    BitAnd,
-    BitAndAssign,
-    BitOr,
-    BitOrAssign,
+    DebugCustom, Copy, Clone, Eq, PartialEq, Hash, Not, BitAnd, BitAndAssign, BitOr, BitOrAssign,
 )]
+#[cfg_attr(test, derive(test_strategy::Arbitrary))]
 #[debug(fmt = "{_0:?}")]
-pub struct Bitboard(#[strategy(any::<u64>().prop_map(sm::Bitboard))] sm::Bitboard);
+pub struct Bitboard(#[cfg_attr(test, strategy(any::<u64>().prop_map(sm::Bitboard)))] sm::Bitboard);
 
 impl Bitboard {
     /// An empty board.

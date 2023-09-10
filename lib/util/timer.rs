@@ -1,12 +1,12 @@
 use derive_more::{Display, Error};
 use std::time::{Duration, Instant};
-use test_strategy::Arbitrary;
 
 #[derive(Debug, Display, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Error)]
 #[display(fmt = "time is up!")]
 pub struct Timeout;
 
-#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash, Arbitrary)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
+#[cfg_attr(test, derive(test_strategy::Arbitrary))]
 pub struct Timer {
     deadline: Option<Instant>,
 }

@@ -4,7 +4,6 @@ use bitflags::bitflags;
 use derive_more::{DebugCustom, Deref, Display, Error};
 use shakmaty as sm;
 use std::str::FromStr;
-use test_strategy::Arbitrary;
 use vampirc_uci::UciMove;
 
 bitflags! {
@@ -138,8 +137,9 @@ impl From<MoveContext> for sm::Move {
 /// A chess move in [pure coordinate notation].
 ///
 /// [pure coordinate notation]: https://www.chessprogramming.org/Algebraic_Chess_Notation#Pure_coordinate_notation
-#[derive(DebugCustom, Display, Copy, Clone, Eq, PartialEq, Hash, Arbitrary)]
-#[filter(#self.0 != #self.1)]
+#[derive(DebugCustom, Display, Copy, Clone, Eq, PartialEq, Hash)]
+#[cfg_attr(test, derive(test_strategy::Arbitrary))]
+#[cfg_attr(test, filter(#self.0 != #self.1))]
 #[debug(fmt = "Move({self})")]
 #[display(fmt = "{_0}{_1}{_2}")]
 pub struct Move(pub Square, pub Square, pub Promotion);
@@ -179,7 +179,8 @@ impl FromStr for Move {
 }
 
 /// The reason why decoding [`Move`] from binary failed.
-#[derive(Debug, Display, Clone, Eq, PartialEq, Arbitrary, Error)]
+#[derive(Debug, Display, Clone, Eq, PartialEq, Error)]
+#[cfg_attr(test, derive(test_strategy::Arbitrary))]
 #[display(fmt = "not a valid move")]
 pub struct DecodeMoveError;
 

@@ -2,11 +2,11 @@ use crate::chess::Role;
 use crate::util::{Binary, Bits};
 use derive_more::{Display, Error};
 use shakmaty as sm;
-use test_strategy::Arbitrary;
 use vampirc_uci::UciPiece;
 
 /// A promotion specifier.
-#[derive(Debug, Display, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Arbitrary)]
+#[derive(Debug, Display, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
+#[cfg_attr(test, derive(test_strategy::Arbitrary))]
 pub enum Promotion {
     #[display(fmt = "")]
     None,
@@ -21,7 +21,8 @@ pub enum Promotion {
 }
 
 /// The reason why decoding [`Promotion`] from binary failed.
-#[derive(Debug, Display, Clone, Eq, PartialEq, Arbitrary, Error)]
+#[derive(Debug, Display, Clone, Eq, PartialEq, Error)]
+#[cfg_attr(test, derive(test_strategy::Arbitrary))]
 #[display(fmt = "not a valid promotion")]
 pub struct DecodePromotionError;
 

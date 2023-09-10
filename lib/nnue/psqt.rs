@@ -1,10 +1,10 @@
 use crate::nnue::Transformer;
-use test_strategy::Arbitrary;
 
 /// A [piece-square table].
 ///
 /// [piece-square table]: https://www.chessprogramming.org/Piece-Square_Tables
-#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash, Arbitrary)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
+#[cfg_attr(test, derive(test_strategy::Arbitrary))]
 pub struct Psqt<const I: usize, const O: usize>(pub(super) [[i32; O]; I]);
 
 impl<const I: usize, const O: usize> Transformer for Psqt<I, O> {

@@ -1,12 +1,17 @@
-use crate::chess::{Move, Position, Zobrist};
+use crate::chess::{Move, Zobrist};
 use crate::search::{Depth, Score};
 use crate::util::{Binary, Bits, Cache};
 use derive_more::{Display, Error};
-use proptest::{collection::*, prelude::*};
 use std::{cmp::Ordering, mem::size_of, ops::RangeInclusive};
-use test_strategy::Arbitrary;
 
-#[derive(Debug, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Arbitrary)]
+#[cfg(test)]
+use crate::chess::Position;
+
+#[cfg(test)]
+use proptest::{collection::*, prelude::*};
+
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
+#[cfg_attr(test, derive(test_strategy::Arbitrary))]
 enum Kind {
     Lower,
     Upper,
@@ -14,7 +19,8 @@ enum Kind {
 }
 
 /// A partial search result.
-#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash, Arbitrary)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
+#[cfg_attr(test, derive(test_strategy::Arbitrary))]
 pub struct Transposition {
     kind: Kind,
     depth: Depth,
@@ -86,11 +92,13 @@ impl Transposition {
 
 type Signature = Bits<u32, 28>;
 
-#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash, Arbitrary)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
+#[cfg_attr(test, derive(test_strategy::Arbitrary))]
 struct SignedTransposition(Transposition, Signature);
 
 /// The reason why decoding [`Transposition`] from binary failed.
-#[derive(Debug, Display, Clone, Eq, PartialEq, Arbitrary, Error)]
+#[derive(Debug, Display, Clone, Eq, PartialEq, Error)]
+#[cfg_attr(test, derive(test_strategy::Arbitrary))]
 #[display(fmt = "not a valid transposition")]
 pub struct DecodeTranspositionError;
 
@@ -125,20 +133,23 @@ impl Binary for SignedTransposition {
 }
 
 /// A cache for [`Transposition`]s.
-#[derive(Debug, Arbitrary)]
+#[derive(Debug)]
+#[cfg_attr(test, derive(test_strategy::Arbitrary))]
 pub struct TranspositionTable {
-    #[strategy((..=32usize, hash_map(any::<Position>(), any::<Transposition>(), ..=32)).prop_map(|(cap, ts)| {
-        let cache = Cache::new(cap.next_power_of_two());
+    #[cfg_attr(test,
+        strategy((..=32usize, hash_map(any::<Position>(), any::<Transposition>(), ..=32)).prop_map(|(cap, ts)| {
+            let cache = Cache::new(cap.next_power_of_two());
 
-        for (pos, t) in ts {
-            let key = pos.zobrist();
-            let idx = key.slice(..cache.len().trailing_zeros()).get() as _;
-            let sig = key.slice(cache.len().trailing_zeros()..).pop();
-            cache.store(idx, Some(SignedTransposition(t, sig)).encode());
-        }
+            for (pos, t) in ts {
+                let key = pos.zobrist();
+                let idx = key.slice(..cache.len().trailing_zeros()).get() as _;
+                let sig = key.slice(cache.len().trailing_zeros()..).pop();
+                cache.store(idx, Some(SignedTransposition(t, sig)).encode());
+            }
 
-        cache
-    }))]
+            cache
+        }))
+    )]
     cache: Cache<<Option<SignedTransposition> as Binary>::Bits>,
 }
 

@@ -36,10 +36,8 @@ derive_more = { version = "0.99.16", default-features = false, features = [
     "not",
 ] }
 num-traits = { version = "0.2.16", default-features = false, features = ["std"] }
-proptest = { version = "1.2.0", default-features = false, features = ["std"] }
 rayon = { version = "1.7.0", default-features = false }
 shakmaty = { version = "0.26.0", default-features = false, features = ["std"] }
-test-strategy = { version = "0.3.1", default-features = false }
 tokio = { version = "1.32.0", default-features = false, features = [
     "io-std",
     "io-util",
@@ -55,10 +53,12 @@ tracing-subscriber = { version = "0.3.16", default-features = false, features = 
     "std",
 ] }
 vampirc-uci = { version = "0.11.0", default-features = false }
-num_cpus = { version = "1.16.0", default-features = false }
 
 [dev-dependencies]
 criterion = { version = "0.5.1", default-features = false, features = ["rayon"] }
+num_cpus = { version = "1.16.0", default-features = false }
+proptest = { version = "1.2.0", default-features = false, features = ["std"] }
+test-strategy = { version = "0.3.1", default-features = false }
 
 [profile.release]
 codegen-units = 1

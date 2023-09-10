@@ -1,9 +1,9 @@
 use crate::nnue::Layer;
 use num_traits::PrimInt;
-use test_strategy::Arbitrary;
 
 /// A passthrough [`Layer`].
-#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash, Arbitrary)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
+#[cfg_attr(test, derive(test_strategy::Arbitrary))]
 pub struct Passthrough;
 
 impl<I: PrimInt, const N: usize> Layer<[I; N]> for Passthrough {

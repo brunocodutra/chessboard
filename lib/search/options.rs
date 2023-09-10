@@ -1,18 +1,20 @@
-use proptest::prelude::*;
 use std::num::NonZeroUsize;
-use test_strategy::Arbitrary;
+
+#[cfg(test)]
+use proptest::prelude::*;
 
 /// Configuration for adversarial search algorithms.
-#[derive(Debug, Copy, Clone, Eq, PartialEq, Arbitrary)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq)]
+#[cfg_attr(test, derive(test_strategy::Arbitrary))]
 pub struct Options {
     /// The size of the transposition table in bytes.
     ///
     /// This is an upper limit, the actual memory allocation may be smaller.
-    #[strategy(..=1024usize)]
+    #[cfg_attr(test, strategy(..=1024usize))]
     pub hash: usize,
 
     /// The number of threads to use while searching.
-    #[strategy((1..=4usize).prop_filter_map("zero", |t| NonZeroUsize::new(t)))]
+    #[cfg_attr(test, strategy((1..=4usize).prop_filter_map("zero", |t| NonZeroUsize::new(t))))]
     pub threads: NonZeroUsize,
 }
 

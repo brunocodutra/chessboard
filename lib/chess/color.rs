@@ -1,10 +1,10 @@
 use derive_more::Display;
 use shakmaty as sm;
 use std::ops::Not;
-use test_strategy::Arbitrary;
 
 /// Denotes the color of a chess [`Piece`][`crate::Piece`].
-#[derive(Debug, Display, Copy, Clone, Eq, PartialEq, Hash, Arbitrary)]
+#[derive(Debug, Display, Copy, Clone, Eq, PartialEq, Hash)]
+#[cfg_attr(test, derive(test_strategy::Arbitrary))]
 pub enum Color {
     #[display(fmt = "white")]
     White,

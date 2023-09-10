@@ -1,10 +1,10 @@
 use crate::search::Depth;
 use derive_more::From;
 use std::time::Duration;
-use test_strategy::Arbitrary;
 
 /// Configuration for search limits.
-#[derive(Debug, Default, Copy, Clone, Eq, PartialEq, Arbitrary, From)]
+#[derive(Debug, Default, Copy, Clone, Eq, PartialEq, From)]
+#[cfg_attr(test, derive(test_strategy::Arbitrary))]
 pub enum Limits {
     /// Unlimited search.
     #[default]

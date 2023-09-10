@@ -2,12 +2,12 @@ use crate::search::{DepthBounds, Line, Score};
 use crate::{chess::Move, util::Bounds};
 use derive_more::{Deref, IntoIterator};
 use std::{cmp::Ordering, iter::once, mem, ops::Neg};
-use test_strategy::Arbitrary;
 
 /// The [principal variation].
 ///
 /// [principal variation]: https://www.chessprogramming.org/Principal_Variation
-#[derive(Debug, Clone, Eq, PartialEq, Arbitrary, Deref, IntoIterator)]
+#[derive(Debug, Clone, Eq, PartialEq, Deref, IntoIterator)]
+#[cfg_attr(test, derive(test_strategy::Arbitrary))]
 pub struct Pv<const N: usize = { DepthBounds::UPPER as _ }> {
     score: Score,
     #[deref]

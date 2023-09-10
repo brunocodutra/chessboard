@@ -1,20 +1,20 @@
 use crate::chess::Move;
 use arrayvec::ArrayVec;
 use derive_more::{DebugCustom, Deref, Display, IntoIterator};
+
+#[cfg(test)]
 use proptest::{collection::vec, prelude::*};
-use test_strategy::Arbitrary;
 
 /// A sequence of moves.
-#[derive(
-    DebugCustom, Display, Default, Clone, Eq, PartialEq, Hash, Arbitrary, Deref, IntoIterator,
-)]
+#[derive(DebugCustom, Display, Default, Clone, Eq, PartialEq, Hash, Deref, IntoIterator)]
+#[cfg_attr(test, derive(test_strategy::Arbitrary))]
 #[debug(fmt = "Line({self})")]
 #[display(
     fmt = "{}",
     "self.iter().map(Move::to_string).collect::<ArrayVec<_, N>>().join(\" \")"
 )]
 pub struct Line<const N: usize>(
-    #[strategy(vec(any::<Move>(), 0..=N).prop_map(ArrayVec::from_iter))]
+    #[cfg_attr(test, strategy(vec(any::<Move>(), 0..=N).prop_map(ArrayVec::from_iter)))]
     #[deref(forward)]
     #[into_iterator(owned, ref, ref_mut)]
     ArrayVec<Move, N>,

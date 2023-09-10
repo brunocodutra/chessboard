@@ -1,8 +1,8 @@
 use crate::chess::{Color, Piece, Square};
-use test_strategy::Arbitrary;
 
 /// The HalfKAv2 feature.
-#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash, Arbitrary)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
+#[cfg_attr(test, derive(test_strategy::Arbitrary))]
 pub struct Feature(pub Square, pub Piece, pub Square);
 
 impl Feature {
