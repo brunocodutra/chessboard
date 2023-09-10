@@ -7,14 +7,14 @@ use arrayvec::ArrayVec;
 use rayon::{prelude::*, ThreadPool, ThreadPoolBuilder};
 use std::sync::atomic::{AtomicI16, Ordering};
 use std::{cmp::max, ops::Range, time::Duration};
-use test_strategy::Arbitrary;
 
 /// A chess engine.
-#[derive(Debug, Arbitrary)]
+#[derive(Debug)]
+#[cfg_attr(test, derive(test_strategy::Arbitrary))]
 pub struct Engine {
-    #[map(|o: Options| ThreadPoolBuilder::new().num_threads(o.threads.get()).build().unwrap())]
+    #[cfg_attr(test, map(|o: Options| ThreadPoolBuilder::new().num_threads(o.threads.get()).build().unwrap()))]
     executor: ThreadPool,
-    #[map(|o: Options| TranspositionTable::new(o.hash))]
+    #[cfg_attr(test, map(|o: Options| TranspositionTable::new(o.hash)))]
     tt: TranspositionTable,
 }
 

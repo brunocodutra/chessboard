@@ -1,17 +1,19 @@
 use crate::chess::{File, Rank};
 use crate::util::{Binary, Bits};
 use derive_more::{DebugCustom, Display};
-use proptest::sample::select;
 use shakmaty as sm;
 use std::convert::{Infallible, TryInto};
-use test_strategy::Arbitrary;
 use vampirc_uci::UciSquare;
 
+#[cfg(test)]
+use proptest::sample::select;
+
 /// Denotes a square on the chess board.
-#[derive(DebugCustom, Display, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Arbitrary)]
+#[derive(DebugCustom, Display, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
+#[cfg_attr(test, derive(test_strategy::Arbitrary))]
 #[debug(fmt = "{self}")]
 #[display(fmt = "{}{}", "self.file()", "self.rank()")]
-pub struct Square(#[strategy(select(sm::Square::ALL.as_ref()))] sm::Square);
+pub struct Square(#[cfg_attr(test, strategy(select(sm::Square::ALL.as_ref())))] sm::Square);
 
 impl Square {
     /// Constructs [`Square`] from a pair of [`File`] and [`Rank`].

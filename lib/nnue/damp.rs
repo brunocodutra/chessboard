@@ -1,9 +1,9 @@
 use crate::nnue::Layer;
 use num_traits::PrimInt;
-use test_strategy::Arbitrary;
 
 /// Damps neuron activation.
-#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash, Arbitrary)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
+#[cfg_attr(test, derive(test_strategy::Arbitrary))]
 pub struct Damp<L, const SCALE: i8>(pub(super) L);
 
 impl<L, I, T, const N: usize, const SCALE: i8> Layer<I> for Damp<L, SCALE>

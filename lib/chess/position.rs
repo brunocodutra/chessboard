@@ -3,13 +3,15 @@ use crate::chess::{Move, MoveContext, MoveKind};
 use crate::util::Bits;
 use arrayvec::ArrayVec;
 use derive_more::{DebugCustom, Display, Error, From};
-use proptest::sample::{Selector, SelectorStrategy};
-use proptest::{prelude::*, strategy::Map};
 use shakmaty as sm;
 use std::hash::{Hash, Hasher};
-use std::ops::{Index, Range};
-use std::{num::NonZeroU32, str::FromStr};
-use test_strategy::Arbitrary;
+use std::{num::NonZeroU32, ops::Index, str::FromStr};
+
+#[cfg(test)]
+use std::ops::Range;
+
+#[cfg(test)]
+use proptest::{prelude::*, sample::*, strategy::Map};
 
 /// A type representing a [`Position`]'s [zobrist hash].
 ///
@@ -17,19 +19,22 @@ use test_strategy::Arbitrary;
 pub type Zobrist = Bits<u64, 64>;
 
 /// Represents an illegal [`Move`] in a given [`Position`].
-#[derive(Debug, Display, Clone, Eq, PartialEq, Arbitrary, Error)]
+#[derive(Debug, Display, Clone, Eq, PartialEq, Error)]
+#[cfg_attr(test, derive(test_strategy::Arbitrary))]
 #[display(fmt = "move `{_0}` is illegal in this position")]
 pub struct IllegalMove(#[error(not(source))] pub Move);
 
 /// Represents an impossible [null-move] in a given [`Position`].
 ///
 /// [null-move]: https://www.chessprogramming.org/Null_Move
-#[derive(Debug, Display, Clone, Eq, PartialEq, Arbitrary, Error)]
+#[derive(Debug, Display, Clone, Eq, PartialEq, Error)]
+#[cfg_attr(test, derive(test_strategy::Arbitrary))]
 #[display(fmt = "passing the turn leads to illegal position")]
 pub struct ImpossiblePass;
 
 /// Represents an impossible exchange on a given [`Square`] in a given [`Position`].
-#[derive(Debug, Display, Clone, Eq, PartialEq, Arbitrary, Error)]
+#[derive(Debug, Display, Clone, Eq, PartialEq, Error)]
+#[cfg_attr(test, derive(test_strategy::Arbitrary))]
 #[display(fmt = "no possible exchange on square `{_0}`")]
 pub struct ImpossibleExchange(#[error(not(source))] pub Square);
 
@@ -58,6 +63,7 @@ impl PartialEq for Position {
     }
 }
 
+#[cfg(test)]
 impl Arbitrary for Position {
     type Parameters = ();
     type Strategy = Map<(Range<usize>, SelectorStrategy), fn((usize, Selector)) -> Position>;

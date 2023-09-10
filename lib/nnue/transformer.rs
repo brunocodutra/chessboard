@@ -1,10 +1,10 @@
 use crate::nnue::Transformer;
-use test_strategy::Arbitrary;
 
 /// An [affine] feature transformer.
 ///
 /// [affine]: https://en.wikipedia.org/wiki/Affine_transformation
-#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash, Arbitrary)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
+#[cfg_attr(test, derive(test_strategy::Arbitrary))]
 pub struct FeatureTransformer<const I: usize, const O: usize>(
     pub(super) [[i16; O]; I],
     pub(super) [i16; O],

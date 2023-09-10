@@ -1,8 +1,8 @@
 use shakmaty as sm;
-use test_strategy::Arbitrary;
 
 /// Denotes the type of a chess [`Piece`][`crate::Piece`].
-#[derive(Debug, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Arbitrary)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
+#[cfg_attr(test, derive(test_strategy::Arbitrary))]
 pub enum Role {
     Pawn,
     Knight,

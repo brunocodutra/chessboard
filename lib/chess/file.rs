@@ -1,13 +1,15 @@
 use derive_more::{DebugCustom, Display};
-use proptest::sample::select;
 use shakmaty as sm;
 use std::{convert::TryInto, ops::Sub};
-use test_strategy::Arbitrary;
+
+#[cfg(test)]
+use proptest::sample::select;
 
 /// Denotes a column on the chess board.
-#[derive(DebugCustom, Display, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Arbitrary)]
+#[derive(DebugCustom, Display, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
+#[cfg_attr(test, derive(test_strategy::Arbitrary))]
 #[debug(fmt = "{self}")]
-pub struct File(#[strategy(select(sm::File::ALL.as_ref()))] sm::File);
+pub struct File(#[cfg_attr(test, strategy(select(sm::File::ALL.as_ref())))] sm::File);
 
 impl File {
     /// Constructs [`File`] from index.

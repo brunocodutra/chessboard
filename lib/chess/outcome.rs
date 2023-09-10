@@ -1,9 +1,9 @@
 use crate::chess::Color;
 use derive_more::Display;
-use test_strategy::Arbitrary;
 
 /// One of the possible outcomes of a chess game.
-#[derive(Debug, Display, Copy, Clone, Eq, PartialEq, Hash, Arbitrary)]
+#[derive(Debug, Display, Copy, Clone, Eq, PartialEq, Hash)]
+#[cfg_attr(test, derive(test_strategy::Arbitrary))]
 pub enum Outcome {
     #[display(fmt = "checkmate by the {_0} player")]
     Checkmate(Color),

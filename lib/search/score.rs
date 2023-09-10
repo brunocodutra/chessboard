@@ -2,7 +2,6 @@ use crate::search::Ply;
 use crate::util::{Binary, Bits, Bounds, Saturating};
 use derive_more::{Display, Error};
 use std::fmt;
-use test_strategy::Arbitrary;
 
 pub struct ScoreBounds;
 
@@ -42,7 +41,8 @@ impl Score {
 }
 
 /// The reason why decoding [`Score`] from binary failed.
-#[derive(Debug, Display, Clone, Eq, PartialEq, Arbitrary, Error)]
+#[derive(Debug, Display, Clone, Eq, PartialEq, Error)]
+#[cfg_attr(test, derive(test_strategy::Arbitrary))]
 #[display(fmt = "not a valid score")]
 pub struct DecodeScoreError;
 

@@ -1,10 +1,14 @@
 use bytemuck::NoUninit;
 use derive_more::{DebugCustom, Display};
 use num_traits::{AsPrimitive, PrimInt, Unsigned};
+use std::fmt::Binary;
+use std::ops::{Bound, Not, RangeBounds};
+
+#[cfg(test)]
+use std::{fmt::Debug, ops::RangeInclusive};
+
+#[cfg(test)]
 use proptest::prelude::*;
-use std::fmt::{Binary, Debug};
-use std::ops::{Bound, Not, RangeBounds, RangeInclusive};
-use test_strategy::Arbitrary;
 
 fn ones<T: PrimInt + Unsigned>(n: u32) -> T {
     match n {
@@ -14,13 +18,16 @@ fn ones<T: PrimInt + Unsigned>(n: u32) -> T {
 }
 
 /// A fixed width collection of bits.
-#[derive(DebugCustom, Display, Copy, Clone, Eq, PartialEq, Hash, Arbitrary)]
-#[arbitrary(bound(T: 'static + Debug + Binary, RangeInclusive<T>: Strategy<Value = T>))]
+#[derive(DebugCustom, Display, Copy, Clone, Eq, PartialEq, Hash)]
+#[cfg_attr(test, derive(test_strategy::Arbitrary))]
+#[cfg_attr(test, arbitrary(bound(T: 'static + Debug + Binary, RangeInclusive<T>: Strategy<Value = T>)))]
 #[debug(bound = "T: Binary")]
 #[debug(fmt = "Bits({self})")]
 #[display(bound = "T: Binary")]
 #[display(fmt = "{_0:b}")]
-pub struct Bits<T: PrimInt + Unsigned, const W: u32>(#[strategy(T::zero()..=ones(W))] T);
+pub struct Bits<T: PrimInt + Unsigned, const W: u32>(
+    #[cfg_attr(test, strategy(T::zero()..=ones(W)))] T,
+);
 
 impl<T: 'static + Binary + PrimInt + Unsigned, const W: u32> Bits<T, W> {
     /// Constructs [`Bits`] from raw collection of bits.

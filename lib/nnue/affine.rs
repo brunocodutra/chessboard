@@ -1,10 +1,10 @@
 use crate::nnue::Layer;
-use test_strategy::Arbitrary;
 
 /// An [affine] transformer.
 ///
 /// [affine]: https://en.wikipedia.org/wiki/Affine_transformation
-#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash, Arbitrary)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
+#[cfg_attr(test, derive(test_strategy::Arbitrary))]
 pub struct Affine<L, const I: usize, const O: usize>(
     pub(super) L,
     pub(super) [[i8; I]; O],

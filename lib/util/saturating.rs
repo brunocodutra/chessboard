@@ -1,17 +1,22 @@
 use crate::util::Bounds;
 use derive_more::DebugCustom;
 use num_traits::{cast, clamp, AsPrimitive, PrimInt};
-use proptest::prelude::*;
+use std::cmp::Ordering;
 use std::hash::{Hash, Hasher};
-use std::ops::{Add, Div, Mul, Neg, RangeInclusive, Sub};
-use std::{cmp::Ordering, fmt::Debug};
-use test_strategy::Arbitrary;
+use std::ops::{Add, Div, Mul, Neg, Sub};
+
+#[cfg(test)]
+use std::{fmt::Debug, ops::RangeInclusive};
+
+#[cfg(test)]
+use proptest::prelude::*;
 
 /// A saturating bounded integer.
-#[derive(DebugCustom, Arbitrary)]
-#[arbitrary(bound(T::Integer: 'static + Debug, RangeInclusive<T::Integer>: Strategy<Value = T::Integer>))]
+#[derive(DebugCustom)]
+#[cfg_attr(test, derive(test_strategy::Arbitrary))]
+#[cfg_attr(test, arbitrary(bound(T::Integer: 'static + Debug, RangeInclusive<T::Integer>: Strategy<Value = T::Integer>)))]
 #[debug(fmt = "Saturating({:?})", "i32::from(*self)")]
-pub struct Saturating<T: Bounds>(#[strategy(T::LOWER..=T::UPPER)] T::Integer);
+pub struct Saturating<T: Bounds>(#[cfg_attr(test, strategy(T::LOWER..=T::UPPER))] T::Integer);
 
 impl<T: Bounds> Saturating<T> {
     /// The lower bound.

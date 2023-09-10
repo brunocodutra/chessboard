@@ -1,11 +1,11 @@
 use crate::nnue::Layer;
 use num_traits::{AsPrimitive, PrimInt};
-use test_strategy::Arbitrary;
 
 /// A clipped [rectifier][ReLU].
 ///
 /// [ReLU]: https://en.wikipedia.org/wiki/Rectifier_(neural_networks)
-#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash, Arbitrary)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
+#[cfg_attr(test, derive(test_strategy::Arbitrary))]
 pub struct CReLU<L>(pub(super) L);
 
 impl<L, I, T, const N: usize> Layer<I> for CReLU<L>
