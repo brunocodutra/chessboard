@@ -168,8 +168,8 @@ impl Engine {
 
         let score = match tpos {
             Some(t) => t.score().normalize(ply),
-            None if ply < depth => self.nw::<1>(pos, beta, ply.cast(), ply, timer)?.score(),
-            None => pos.value().cast(),
+            None if ply >= depth => pos.value().cast(),
+            None => self.nw::<1>(pos, beta, ply.cast(), ply, timer)?.score(),
         };
 
         if ply >= Ply::UPPER {
@@ -186,10 +186,10 @@ impl Engine {
             }
         }
 
-        let kind = if ply < depth {
-            MoveKind::ANY
-        } else {
+        let kind = if ply >= depth && !in_check {
             MoveKind::CAPTURE | MoveKind::PROMOTION
+        } else {
+            MoveKind::ANY
         };
 
         let mut moves = ArrayVec::<_, 256>::from_iter(pos.moves(kind).map(|m| {
@@ -344,12 +344,12 @@ mod tests {
             None => pos.value().cast(),
         };
 
-        let kind = if ply < depth {
-            MoveKind::ANY
-        } else if ply < Ply::UPPER {
+        let kind = if ply >= Ply::UPPER {
+            return score;
+        } else if ply >= depth && !pos.is_check() {
             MoveKind::CAPTURE | MoveKind::PROMOTION
         } else {
-            return score;
+            MoveKind::ANY
         };
 
         pos.moves(kind)
