@@ -123,18 +123,23 @@ impl Engine {
     /// An implementation of [late move pruning].
     ///
     /// [late move pruning]: https://www.chessprogramming.org/Late_Move_Reductions
-    fn lmp(&self, next: &Position, guess: Score, alpha: Score, depth: Depth) -> Option<Depth> {
+    fn lmp(
+        &self,
+        next: &Position,
+        guess: Score,
+        alpha: Score,
+        depth: Depth,
+        ply: Ply,
+    ) -> Option<Depth> {
         let r = match (alpha - guess).get() {
-            ..=90 => return None,
-            91..=270 => 1,
-            271..=810 => 2,
-            811..=2430 => 3,
-            2431..=7290 => 4,
-            _ => 5,
+            ..=60 => return None,
+            61..=180 => 1,
+            181..=500 => 2,
+            _ => 3,
         };
 
         if !next.is_check() {
-            Some(depth - r)
+            Some(depth - r - (depth - ply) / 4)
         } else {
             None
         }
@@ -286,7 +291,7 @@ impl Engine {
 
                 if !in_check && gain < 60 {
                     let guess = -next.clone().see(m.whither()).cast();
-                    if let Some(d) = self.lmp(&next, guess, alpha, depth) {
+                    if let Some(d) = self.lmp(&next, guess, alpha, depth, ply) {
                         if d <= ply || -self.nw(&next, -alpha, d, ply + 1, ctrl)? <= alpha {
                             #[cfg(not(test))]
                             // The late move pruning heuristic is not exact.
