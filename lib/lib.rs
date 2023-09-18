@@ -1,4 +1,4 @@
-#![feature(const_maybe_uninit_write, const_mut_refs, const_transmute_copy)]
+#![feature(const_maybe_uninit_write, const_mut_refs)]
 
 /// Chess domain types.
 pub mod chess;
