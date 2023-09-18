@@ -174,8 +174,8 @@ impl Engine {
         };
 
         let score = match tpos {
+            _ if ply >= depth => pos.value().cast(),
             Some(t) => t.score().normalize(ply),
-            None if ply >= depth => pos.value().cast(),
             None => self.nw::<1>(pos, beta, ply.cast(), ply, timer)?.score(),
         };
 
