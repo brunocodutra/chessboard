@@ -91,9 +91,9 @@ impl Engine {
         let turn = pos.turn();
         let r = match pos.by_color(turn).len() - pos.by_piece(Piece(turn, Role::Pawn)).len() {
             ..=1 => return None,
-            2 => 0,
-            3 => 1,
-            _ => 2,
+            2 => 2,
+            3 => 3,
+            _ => 4,
         };
 
         if guess > beta {
@@ -103,7 +103,9 @@ impl Engine {
         }
     }
 
-    /// An implementation of late move pruning.
+    /// An implementation of [late move pruning].
+    ///
+    /// [late move pruning]: https://www.chessprogramming.org/Late_Move_Reductions
     fn lmp(&self, next: &Position, guess: Score, alpha: Score, depth: Depth) -> Option<Depth> {
         let r = match (alpha - guess).get() {
             ..=90 => return None,
