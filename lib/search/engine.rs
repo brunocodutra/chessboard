@@ -121,7 +121,7 @@ impl Engine {
         }
     }
 
-    /// A [zero-window] search wrapper for [`Self::pvs`].
+    /// A [zero-window] search wrapper for [`Self::ns`].
     ///
     /// [zero-window]: https://www.chessprogramming.org/Null_Window
     fn nw<const N: usize>(
@@ -132,14 +132,14 @@ impl Engine {
         ply: Ply,
         timer: Timer,
     ) -> Result<Pv<N>, Timeout> {
-        self.pvs(pos, beta - 1..beta, depth, ply, timer)
+        self.ns(pos, beta - 1..beta, depth, ply, timer)
     }
 
-    /// An implementation of the [PVS] variation of [alpha-beta pruning] algorithm.
+    /// An implementation of the [negascout] variation of [alpha-beta pruning] algorithm.
     ///
-    /// [PVS]: https://www.chessprogramming.org/Principal_Variation_Search
+    /// [negascout]: https://www.chessprogramming.org/NegaScout
     /// [alpha-beta pruning]: https://www.chessprogramming.org/Alpha-Beta
-    fn pvs<const N: usize>(
+    fn ns<const N: usize>(
         &self,
         pos: &Evaluator,
         bounds: Range<Score>,
@@ -219,7 +219,7 @@ impl Engine {
             Some((m, _)) => {
                 let mut next = pos.clone();
                 next.play(m).expect("expected legal move");
-                let pv = -self.pvs(&next, -beta..-alpha, depth, ply + 1, timer)?;
+                let pv = -self.ns(&next, -beta..-alpha, depth, ply + 1, timer)?;
 
                 if pv >= beta {
                     self.record(zobrist, bounds, depth, ply, pv.score(), m);
@@ -234,6 +234,7 @@ impl Engine {
 
         let (best, _) = moves
             .into_par_iter()
+            .with_max_len(1)
             .copied()
             .enumerate()
             .rev()
@@ -248,7 +249,7 @@ impl Engine {
                 next.play(m).expect("expected legal move");
 
                 if !in_check {
-                    if let Some(d) = self.lmp(&next, guess, alpha.cast(), depth) {
+                    if let Some(d) = self.lmp(&next, guess, alpha, depth) {
                         if d <= ply || -self.nw::<1>(&next, -alpha, d, ply + 1, timer)? < alpha {
                             #[cfg(not(test))]
                             // The late move pruning heuristic is not exact.
@@ -258,8 +259,14 @@ impl Engine {
                 }
 
                 let pv = match -self.nw(&next, -alpha, depth, ply + 1, timer)? {
-                    pv if pv < alpha => return Ok(Some((pv.shift(m), n))),
-                    _ => -self.pvs(&next, -beta..-alpha, depth, ply + 1, timer)?,
+                    pv if pv < alpha || pv >= beta => pv,
+                    pv => match Score::new(cutoff.fetch_max(pv.score().get(), Ordering::Relaxed)) {
+                        a if a >= beta => return Ok(None),
+                        a => {
+                            let alpha = pv.score().max(a);
+                            pv.max(-self.ns(&next, -beta..-alpha, depth, ply + 1, timer)?)
+                        }
+                    },
                 };
 
                 cutoff.fetch_max(pv.score().get(), Ordering::Relaxed);
@@ -296,7 +303,7 @@ impl Engine {
 
                 let depth = Depth::new(d);
                 let pos = Evaluator::borrow(pos);
-                let pv = match self.pvs(&pos, lower..upper, depth, Ply::new(0), timer) {
+                let pv = match self.ns(&pos, lower..upper, depth, Ply::new(0), timer) {
                     Err(_) => break 'id,
                     Ok(pv) => pv,
                 };
@@ -385,7 +392,7 @@ mod tests {
 
     #[proptest]
     #[should_panic]
-    fn pvs_panics_if_alpha_is_not_greater_than_beta(
+    fn ns_panics_if_alpha_is_not_greater_than_beta(
         e: Engine,
         pos: Position,
         b: Range<Score>,
@@ -393,11 +400,11 @@ mod tests {
         p: Ply,
     ) {
         let pos = Evaluator::borrow(&pos);
-        e.pvs::<1>(&pos, b.end..b.start, d, p, Timer::disarmed())?;
+        e.ns::<1>(&pos, b.end..b.start, d, p, Timer::disarmed())?;
     }
 
     #[proptest]
-    fn pvs_aborts_if_time_is_up(
+    fn ns_aborts_if_time_is_up(
         e: Engine,
         pos: Position,
         #[filter(!#b.is_empty())] b: Range<Score>,
@@ -407,11 +414,11 @@ mod tests {
         let pos = Evaluator::borrow(&pos);
         let timer = Timer::start(Duration::ZERO);
         std::thread::sleep(Duration::from_millis(1));
-        assert_eq!(e.pvs::<1>(&pos, b, d, p, timer), Err(Timeout));
+        assert_eq!(e.ns::<1>(&pos, b, d, p, timer), Err(Timeout));
     }
 
     #[proptest]
-    fn pvs_returns_drawn_score_if_game_ends_in_a_draw(
+    fn ns_returns_drawn_score_if_game_ends_in_a_draw(
         e: Engine,
         #[filter(#pos.outcome().is_some_and(|o| o.is_draw()))] pos: Position,
         #[filter(!#b.is_empty())] b: Range<Score>,
@@ -419,13 +426,13 @@ mod tests {
         p: Ply,
     ) {
         assert_eq!(
-            e.pvs(&Evaluator::borrow(&pos), b, d, p, Timer::disarmed()),
+            e.ns(&Evaluator::borrow(&pos), b, d, p, Timer::disarmed()),
             Ok(Pv::<1>::new(Score::new(0), []))
         );
     }
 
     #[proptest]
-    fn pvs_returns_lost_score_if_game_ends_in_checkmate(
+    fn ns_returns_lost_score_if_game_ends_in_checkmate(
         e: Engine,
         #[filter(#pos.outcome().is_some_and(|o| o.is_decisive()))] pos: Position,
         #[filter(!#b.is_empty())] b: Range<Score>,
@@ -433,13 +440,13 @@ mod tests {
         p: Ply,
     ) {
         assert_eq!(
-            e.pvs(&Evaluator::borrow(&pos), b, d, p, Timer::disarmed()),
+            e.ns(&Evaluator::borrow(&pos), b, d, p, Timer::disarmed()),
             Ok(Pv::<1>::new(Score::LOWER.normalize(p), []))
         );
     }
 
     #[proptest]
-    fn pvs_returns_transposition_if_exact(
+    fn ns_returns_transposition_if_exact(
         #[by_ref]
         #[filter(#e.tt.capacity() > 0)]
         e: Engine,
@@ -454,22 +461,22 @@ mod tests {
         e.tt.set(pos.zobrist(), Transposition::exact(d, sc, m));
 
         assert_eq!(
-            e.pvs(&Evaluator::borrow(&pos), b, d, p, Timer::disarmed()),
+            e.ns(&Evaluator::borrow(&pos), b, d, p, Timer::disarmed()),
             Ok(Pv::<1>::new(sc, [m]))
         );
     }
 
     #[proptest]
-    fn pvs_finds_best_score(e: Engine, pos: Position, d: Depth, #[filter(#p >= 0)] p: Ply) {
+    fn ns_finds_best_score(e: Engine, pos: Position, d: Depth, #[filter(#p >= 0)] p: Ply) {
         let pos = Evaluator::borrow(&pos);
         let timer = Timer::disarmed();
         let bounds = Score::LOWER..Score::UPPER;
 
-        assert_eq!(e.pvs::<1>(&pos, bounds, d, p, timer)?, negamax(&pos, d, p));
+        assert_eq!(e.ns::<1>(&pos, bounds, d, p, timer)?, negamax(&pos, d, p));
     }
 
     #[proptest]
-    fn pvs_does_not_depend_on_configuration(
+    fn ns_does_not_depend_on_configuration(
         x: Options,
         y: Options,
         pos: Position,
@@ -484,8 +491,8 @@ mod tests {
         let timer = Timer::disarmed();
 
         assert_eq!(
-            x.pvs::<1>(&pos, bounds.clone(), d, p, timer)?.score(),
-            y.pvs::<1>(&pos, bounds, d, p, timer)?.score()
+            x.ns::<1>(&pos, bounds.clone(), d, p, timer)?.score(),
+            y.ns::<1>(&pos, bounds, d, p, timer)?.score()
         );
     }
 
@@ -497,7 +504,7 @@ mod tests {
 
         assert_eq!(
             e.search::<3>(&pos, Limits::Depth(d)).score(),
-            e.pvs::<3>(&pos, bounds, d, Ply::new(0), timer)?.score()
+            e.ns::<3>(&pos, bounds, d, Ply::new(0), timer)?.score()
         );
     }
 
