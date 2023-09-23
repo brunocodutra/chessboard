@@ -6,7 +6,6 @@ use lib::search::{Depth, Engine, Limits, Options, Pv};
 use rayon::max_num_threads;
 use std::io::{stdin, stdout, Stdin, Stdout};
 use std::{num::NonZeroUsize, time::Duration};
-use tracing::{debug, error, instrument, warn};
 use vampirc_uci::{self as uci, UciMessage, UciOptionConfig, UciSearchControl, UciTimeControl};
 
 /// A basic *not fully compliant* UCI server.
@@ -15,7 +14,6 @@ use vampirc_uci::{self as uci, UciMessage, UciOptionConfig, UciSearchControl, Uc
 pub struct Uci {}
 
 impl Uci {
-    #[instrument(level = "trace", skip(self), err)]
     pub fn execute(self) -> Result<(), Anyhow> {
         Server::new().run()
     }
@@ -64,7 +62,6 @@ impl Server {
         Ok(())
     }
 
-    #[instrument(level = "trace", skip(self), err)]
     fn run(&mut self) -> Result<(), Anyhow> {
         loop {
             match uci::parse_one(self.io.recv()?.trim()) {
@@ -100,7 +97,7 @@ impl Server {
                     value: Some(value),
                 } if name.to_lowercase() == "hash" => match self.set_hash(&value) {
                     Ok(_) => self.new_game(),
-                    Err(e) => warn!("{:?}", e),
+                    Err(e) => eprintln!("{:?}", e),
                 },
 
                 UciMessage::SetOption {
@@ -108,7 +105,7 @@ impl Server {
                     value: Some(value),
                 } if name.to_lowercase() == "threads" => match self.set_threads(&value) {
                     Ok(_) => self.new_game(),
-                    Err(e) => warn!("{:?}", e),
+                    Err(e) => eprintln!("{:?}", e),
                 },
 
                 UciMessage::UciNewGame => self.new_game(),
@@ -217,16 +214,16 @@ impl Server {
 
                 UciMessage::Unknown(m, cause) => {
                     let error = cause.map(Anyhow::new).unwrap_or_else(|| Anyhow::msg(m));
-                    error!("{:?}", error.context("failed to parse UCI message"));
+                    eprintln!("{:?}", error.context("failed to parse UCI message"));
                 }
 
                 msg => match msg.direction() {
                     uci::CommunicationDirection::GuiToEngine => {
-                        warn!("ignored engine bound message '{}'", msg)
+                        eprintln!("ignored engine bound message '{}'", msg);
                     }
 
                     uci::CommunicationDirection::EngineToGui => {
-                        debug!("ignored unexpected gui bound message '{}'", msg)
+                        eprintln!("ignored unexpected gui bound message '{}'", msg);
                     }
                 },
             }
@@ -235,7 +232,6 @@ impl Server {
         }
     }
 
-    #[instrument(level = "trace", skip(self), err)]
     fn go(&mut self, limits: Limits) -> Result<(), Anyhow> {
         let pv: Pv<1> = self.engine.search(&self.position, limits);
         let best = *pv.first().expect("expected some legal move");
