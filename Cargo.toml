@@ -38,12 +38,6 @@ derive_more = { version = "0.99.16", default-features = false, features = [
 num-traits = { version = "0.2.16", default-features = false, features = ["std"] }
 rayon = { version = "1.8.0", default-features = false }
 shakmaty = { version = "0.26.0", default-features = false, features = ["std"] }
-tokio = { version = "1.32.0", default-features = false, features = [
-    "io-std",
-    "io-util",
-    "macros",
-    "rt",
-] }
 tracing = { version = "0.1.37", default-features = false, features = ["attributes", "std"] }
 tracing-subscriber = { version = "0.3.16", default-features = false, features = [
     "ansi",
@@ -58,7 +52,6 @@ criterion = { version = "0.5.1", default-features = false, features = ["rayon"] 
 num_cpus = { version = "1.16.0", default-features = false }
 proptest = { version = "1.2.0", default-features = false, features = ["std"] }
 test-strategy = { version = "0.3.1", default-features = false }
-tokio = { version = "1.32.0", default-features = false, features = ["rt-multi-thread", "time"] }
 
 [profile.release]
 codegen-units = 1
