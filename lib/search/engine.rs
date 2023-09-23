@@ -41,27 +41,6 @@ impl Engine {
         }
     }
 
-    /// Probes for a `[Transposition`].
-    fn probe(
-        &self,
-        zobrist: Zobrist,
-        bounds: Range<Score>,
-        depth: Depth,
-        ply: Ply,
-    ) -> (Option<Transposition>, Score, Score) {
-        let tpos = self.tt.get(zobrist);
-        let (lower, upper) = match tpos {
-            Some(t) if t.depth() >= depth - ply => t.bounds().into_inner(),
-            _ => (Score::LOWER, Score::UPPER),
-        };
-
-        // One can't mate in 0 plies!
-        let min = lower.min(Score::UPPER - 1).normalize(ply);
-        let max = upper.min(Score::UPPER - 1).normalize(ply);
-        let (alpha, beta) = (bounds.start, bounds.end);
-        (tpos, alpha.clamp(min, max), beta.clamp(min, max))
-    }
-
     /// Records a `[Transposition`].
     fn record(
         &self,
@@ -82,6 +61,17 @@ impl Engine {
                 Transposition::exact(depth - ply, score.normalize(-ply), best)
             },
         );
+    }
+
+    /// An implementation of [mate distance pruning].
+    ///
+    /// [mate distance pruning]: https://www.chessprogramming.org/Mate_Distance_Pruning
+    fn mdp(&self, ply: Ply, bounds: &Range<Score>) -> (Score, Score) {
+        let lower = Score::LOWER.normalize(ply);
+        let upper = (Score::UPPER - 1).normalize(ply); // One can't mate in 0 plies!
+        let alpha = bounds.start.clamp(lower, upper);
+        let beta = bounds.end.clamp(lower, upper);
+        (alpha, beta)
     }
 
     /// An implementation of [null move pruning].
@@ -159,13 +149,24 @@ impl Engine {
             None => pos.zobrist(),
         };
 
-        let (tpos, alpha, beta) = self.probe(zobrist, bounds.clone(), depth, ply);
+        let (alpha, beta) = self.mdp(ply, &bounds);
+        let is_pv = alpha + 1 < beta;
 
         if alpha >= beta {
-            return match tpos {
-                Some(t) => Ok(Pv::new(t.score().normalize(ply), [t.best()])),
-                None => Ok(Pv::new(alpha, [])),
-            };
+            return Ok(Pv::new(alpha, []));
+        }
+
+        let tpos = self.tt.get(zobrist);
+
+        if !is_pv {
+            if let Some(t) = tpos {
+                if t.depth() >= depth - ply {
+                    let (lower, upper) = t.bounds().into_inner();
+                    if lower == upper || upper <= alpha || lower >= beta {
+                        return Ok(Pv::new(t.score().normalize(ply), [t.best()]));
+                    }
+                }
+            }
         }
 
         let depth = match tpos {
@@ -252,7 +253,7 @@ impl Engine {
 
                 if !in_check {
                     if let Some(d) = self.lmp(&next, guess, alpha, depth) {
-                        if d <= ply || -self.nw::<1>(&next, -alpha, d, ply + 1, timer)? < alpha {
+                        if d <= ply || -self.nw::<1>(&next, -alpha, d, ply + 1, timer)? <= alpha {
                             #[cfg(not(test))]
                             // The late move pruning heuristic is not exact.
                             return Ok(None);
@@ -261,7 +262,7 @@ impl Engine {
                 }
 
                 let pv = match -self.nw(&next, -alpha, depth, ply + 1, timer)? {
-                    pv if pv < alpha || pv >= beta => pv,
+                    pv if pv <= alpha || pv >= beta => pv,
                     pv => match Score::new(cutoff.fetch_max(pv.score().get(), Ordering::Relaxed)) {
                         a if a >= beta => return Ok(None),
                         a => {
@@ -392,6 +393,69 @@ mod tests {
     }
 
     #[proptest]
+    fn nw_returns_transposition_if_beta_too_low(
+        #[by_ref]
+        #[filter(#e.tt.capacity() > 0)]
+        e: Engine,
+        #[filter(#pos.outcome().is_none())] pos: Position,
+        #[filter(#b >= Value::LOWER)] b: Score,
+        d: Depth,
+        #[filter(#p >= 0)] p: Ply,
+        #[filter(#s.mate().is_none() && #s >= #b)] s: Score,
+        selector: Selector,
+    ) {
+        let m = *selector.select(pos.moves(MoveKind::ANY));
+        e.tt.set(pos.zobrist(), Transposition::lower(d, s, m));
+
+        assert_eq!(
+            e.nw(&Evaluator::borrow(&pos), b, d, p, Timer::disarmed()),
+            Ok(Pv::<1>::new(s, [m]))
+        );
+    }
+
+    #[proptest]
+    fn nw_returns_transposition_if_beta_too_high(
+        #[by_ref]
+        #[filter(#e.tt.capacity() > 0)]
+        e: Engine,
+        #[filter(#pos.outcome().is_none())] pos: Position,
+        #[filter(#b >= Value::LOWER)] b: Score,
+        d: Depth,
+        #[filter(#p >= 0)] p: Ply,
+        #[filter(#s.mate().is_none() && #s <= #b)] s: Score,
+        selector: Selector,
+    ) {
+        let m = *selector.select(pos.moves(MoveKind::ANY));
+        e.tt.set(pos.zobrist(), Transposition::upper(d, s, m));
+
+        assert_eq!(
+            e.nw(&Evaluator::borrow(&pos), b, d, p, Timer::disarmed()),
+            Ok(Pv::<1>::new(s, [m]))
+        );
+    }
+
+    #[proptest]
+    fn nw_returns_transposition_if_exact(
+        #[by_ref]
+        #[filter(#e.tt.capacity() > 0)]
+        e: Engine,
+        #[filter(#pos.outcome().is_none())] pos: Position,
+        #[filter(#b >= Value::LOWER)] b: Score,
+        d: Depth,
+        #[filter(#p >= 0)] p: Ply,
+        #[filter(#sc.mate().is_none())] sc: Score,
+        selector: Selector,
+    ) {
+        let m = *selector.select(pos.moves(MoveKind::ANY));
+        e.tt.set(pos.zobrist(), Transposition::exact(d, sc, m));
+
+        assert_eq!(
+            e.nw(&Evaluator::borrow(&pos), b, d, p, Timer::disarmed()),
+            Ok(Pv::<1>::new(sc, [m]))
+        );
+    }
+
+    #[proptest]
     #[should_panic]
     fn ns_panics_if_alpha_is_not_greater_than_beta(
         e: Engine,
@@ -443,27 +507,6 @@ mod tests {
         assert_eq!(
             e.ns(&Evaluator::borrow(&pos), b, d, p, Timer::disarmed()),
             Ok(Pv::<1>::new(Score::LOWER.normalize(p), []))
-        );
-    }
-
-    #[proptest]
-    fn ns_returns_transposition_if_exact(
-        #[by_ref]
-        #[filter(#e.tt.capacity() > 0)]
-        e: Engine,
-        #[filter(#pos.outcome().is_none())] pos: Position,
-        #[filter(!#b.is_empty())] b: Range<Score>,
-        d: Depth,
-        #[filter(#p >= 0)] p: Ply,
-        #[filter(#sc.mate().is_none())] sc: Score,
-        selector: Selector,
-    ) {
-        let m = *selector.select(pos.moves(MoveKind::ANY));
-        e.tt.set(pos.zobrist(), Transposition::exact(d, sc, m));
-
-        assert_eq!(
-            e.ns(&Evaluator::borrow(&pos), b, d, p, Timer::disarmed()),
-            Ok(Pv::<1>::new(sc, [m]))
         );
     }
 
