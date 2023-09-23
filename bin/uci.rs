@@ -57,7 +57,16 @@ impl Uci {
     fn go(&mut self, limits: Limits) -> Result<(), Anyhow> {
         let pv: Pv<1> = self.engine.search(&self.position, limits);
         let best = *pv.first().expect("expected some legal move");
+
+        let score = match pv.score().mate() {
+            Some(p) if p > 0 => UciInfoAttribute::from_mate((p + 1).get() / 2),
+            Some(p) => UciInfoAttribute::from_mate((p - 1).get() / 2),
+            None => UciInfoAttribute::from_centipawns(pv.score().get().into()),
+        };
+
+        self.io.send(UciMessage::Info(vec![score]))?;
         self.io.send(UciMessage::best_move(best.into()))?;
+
         Ok(())
     }
 
