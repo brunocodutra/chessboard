@@ -1,6 +1,5 @@
 use std::fmt::Display;
 use std::io::{self, BufRead, BufReader, ErrorKind, Lines, Read, Write};
-use tracing::instrument;
 
 /// A generic io interface.
 #[derive(Debug)]
@@ -20,19 +19,16 @@ impl<W: Write, R: Read> Io<W, R> {
 
 impl<W: Write + Send + Unpin, R: Read + Send + Unpin> Io<W, R> {
     /// Receive a message.
-    #[instrument(level = "trace", skip(self), ret, err)]
     pub fn recv(&mut self) -> io::Result<String> {
         self.reader.next().ok_or(ErrorKind::UnexpectedEof)?
     }
 
     /// Send a message.
-    #[instrument(level = "trace", skip(self, msg), err, fields(%msg))]
     pub fn send<T: Display>(&mut self, msg: T) -> io::Result<()> {
         writeln!(&mut self.writer, "{}", msg)
     }
 
     /// Flush the internal buffers.
-    #[instrument(level = "trace", skip(self), err)]
     pub fn flush(&mut self) -> io::Result<()> {
         self.writer.flush()
     }

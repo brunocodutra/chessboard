@@ -38,13 +38,6 @@ derive_more = { version = "0.99.16", default-features = false, features = [
 num-traits = { version = "0.2.16", default-features = false, features = ["std"] }
 rayon = { version = "1.8.0", default-features = false }
 shakmaty = { version = "0.26.0", default-features = false, features = ["std"] }
-tracing = { version = "0.1.37", default-features = false, features = ["attributes", "std"] }
-tracing-subscriber = { version = "0.3.16", default-features = false, features = [
-    "ansi",
-    "fmt",
-    "registry",
-    "std",
-] }
 vampirc-uci = { version = "0.11.0", default-features = false }
 
 [dev-dependencies]

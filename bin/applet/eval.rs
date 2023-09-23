@@ -2,7 +2,6 @@ use anyhow::Error as Anyhow;
 use clap::Parser;
 use lib::chess::{Color, Position};
 use lib::nnue::Evaluator;
-use tracing::{info, instrument};
 
 /// Statically evaluates a position.
 #[derive(Debug, Parser)]
@@ -13,7 +12,6 @@ pub struct Eval {
 }
 
 impl Eval {
-    #[instrument(level = "trace", skip(self), err)]
     pub fn execute(self) -> Result<(), Anyhow> {
         let pos = Evaluator::own(self.pos);
 
@@ -22,7 +20,10 @@ impl Eval {
             Color::Black => (-pos.material(), -pos.positional(), -pos.value()),
         };
 
-        info!(%material, %positional, %value);
+        println!(
+            "material: {}, positional: {}, value: {}",
+            material, positional, value
+        );
 
         Ok(())
     }
