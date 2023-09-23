@@ -18,10 +18,10 @@ impl Default for Applet {
 }
 
 impl Applet {
-    pub async fn execute(self) -> Result<(), Anyhow> {
+    pub fn execute(self) -> Result<(), Anyhow> {
         match self {
-            Applet::Eval(a) => a.execute().await,
-            Applet::Uci(a) => a.execute().await,
+            Applet::Eval(a) => a.execute(),
+            Applet::Uci(a) => a.execute(),
         }
     }
 }

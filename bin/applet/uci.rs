@@ -4,8 +4,8 @@ use clap::Parser;
 use lib::chess::{Color, Move, Position};
 use lib::search::{Depth, Engine, Limits, Options, Pv};
 use rayon::max_num_threads;
+use std::io::{stdin, stdout, Stdin, Stdout};
 use std::{num::NonZeroUsize, time::Duration};
-use tokio::io::{stdin, stdout, Stdin, Stdout};
 use tracing::{debug, error, instrument, warn};
 use vampirc_uci::{self as uci, UciMessage, UciOptionConfig, UciSearchControl, UciTimeControl};
 
@@ -16,8 +16,8 @@ pub struct Uci {}
 
 impl Uci {
     #[instrument(level = "trace", skip(self), err)]
-    pub async fn execute(self) -> Result<(), Anyhow> {
-        Server::new().run().await
+    pub fn execute(self) -> Result<(), Anyhow> {
+        Server::new().run()
     }
 }
 
@@ -65,15 +65,15 @@ impl Server {
     }
 
     #[instrument(level = "trace", skip(self), err)]
-    async fn run(&mut self) -> Result<(), Anyhow> {
+    fn run(&mut self) -> Result<(), Anyhow> {
         loop {
-            match uci::parse_one(self.io.recv().await?.trim()) {
+            match uci::parse_one(self.io.recv()?.trim()) {
                 UciMessage::Uci => {
                     let name = UciMessage::id_name(env!("CARGO_PKG_NAME"));
                     let authors = UciMessage::id_author(env!("CARGO_PKG_AUTHORS"));
 
-                    self.io.send(name).await?;
-                    self.io.send(authors).await?;
+                    self.io.send(name)?;
+                    self.io.send(authors)?;
 
                     let hash = UciMessage::Option(UciOptionConfig::Spin {
                         name: "Hash".to_string(),
@@ -82,7 +82,7 @@ impl Server {
                         max: Some(u16::MAX.into()),
                     });
 
-                    self.io.send(hash).await?;
+                    self.io.send(hash)?;
 
                     let thread = UciMessage::Option(UciOptionConfig::Spin {
                         name: "Threads".to_string(),
@@ -91,8 +91,8 @@ impl Server {
                         max: Some(max_num_threads().try_into().unwrap()),
                     });
 
-                    self.io.send(thread).await?;
-                    self.io.send(UciMessage::UciOk).await?;
+                    self.io.send(thread)?;
+                    self.io.send(UciMessage::UciOk)?;
                 }
 
                 UciMessage::SetOption {
@@ -112,7 +112,7 @@ impl Server {
                 },
 
                 UciMessage::UciNewGame => self.new_game(),
-                UciMessage::IsReady => self.io.send(UciMessage::ReadyOk).await?,
+                UciMessage::IsReady => self.io.send(UciMessage::ReadyOk)?,
                 UciMessage::Quit => break Ok(()),
 
                 UciMessage::Position {
@@ -155,7 +155,7 @@ impl Server {
                     time_control: Some(UciTimeControl::Infinite),
                     search_control: None,
                 } => {
-                    self.go(Limits::None).await?;
+                    self.go(Limits::None)?;
                 }
 
                 UciMessage::Go {
@@ -163,7 +163,7 @@ impl Server {
                     search_control: None,
                 } => {
                     let time = time.to_std().unwrap_or(Duration::MAX);
-                    self.go(Limits::Time(time)).await?;
+                    self.go(Limits::Time(time))?;
                 }
 
                 UciMessage::Go {
@@ -181,7 +181,7 @@ impl Server {
                         increment.to_std().unwrap_or(Duration::MAX),
                     );
 
-                    self.go(limits).await?;
+                    self.go(limits)?;
                 }
 
                 UciMessage::Go {
@@ -199,7 +199,7 @@ impl Server {
                         increment.to_std().unwrap_or(Duration::MAX),
                     );
 
-                    self.go(limits).await?;
+                    self.go(limits)?;
                 }
 
                 UciMessage::Go {
@@ -212,7 +212,7 @@ impl Server {
                             nodes: None,
                         }),
                 } if search_moves.is_empty() => {
-                    self.go(Depth::saturate(depth).into()).await?;
+                    self.go(Depth::saturate(depth).into())?;
                 }
 
                 UciMessage::Unknown(m, cause) => {
@@ -231,15 +231,15 @@ impl Server {
                 },
             }
 
-            self.io.flush().await?;
+            self.io.flush()?;
         }
     }
 
     #[instrument(level = "trace", skip(self), err)]
-    async fn go(&mut self, limits: Limits) -> Result<(), Anyhow> {
+    fn go(&mut self, limits: Limits) -> Result<(), Anyhow> {
         let pv: Pv<1> = self.engine.search(&self.position, limits);
         let best = *pv.first().expect("expected some legal move");
-        self.io.send(UciMessage::best_move(best.into())).await?;
+        self.io.send(UciMessage::best_move(best.into()))?;
         Ok(())
     }
 }

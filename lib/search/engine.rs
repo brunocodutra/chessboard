@@ -349,9 +349,8 @@ impl Engine {
 mod tests {
     use super::*;
     use proptest::{prop_assume, sample::Selector};
-    use std::time::Duration;
+    use std::time::{Duration, Instant};
     use test_strategy::proptest;
-    use tokio::time::timeout;
 
     fn negamax(pos: &Evaluator, depth: Depth, ply: Ply) -> Score {
         let score = match pos.outcome() {
@@ -518,11 +517,15 @@ mod tests {
         );
     }
 
-    #[proptest(async = "tokio")]
-    async fn search_can_be_limited_by_time(mut e: Engine, pos: Position, us: u8) {
-        let l = Limits::Time(Duration::from_micros(us.into()));
-        let r = timeout(Duration::from_millis(1), async { e.search::<1>(&pos, l) }).await;
-        assert_eq!(r.err(), None);
+    #[proptest]
+    fn search_can_be_limited_by_time(
+        mut e: Engine,
+        #[filter(#pos.outcome().is_none())] pos: Position,
+        #[strategy(..10u8)] ms: u8,
+    ) {
+        let t = Instant::now();
+        e.search::<1>(&pos, Limits::Time(Duration::from_millis(ms.into())));
+        assert!(t.elapsed() < Duration::from_secs(1));
     }
 
     #[proptest]

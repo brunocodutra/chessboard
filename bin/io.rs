@@ -1,15 +1,15 @@
 use std::fmt::Display;
-use tokio::io::{self, AsyncBufReadExt, AsyncRead, AsyncWrite, AsyncWriteExt, BufReader, Lines};
+use std::io::{self, BufRead, BufReader, ErrorKind, Lines, Read, Write};
 use tracing::instrument;
 
 /// A generic io interface.
 #[derive(Debug)]
-pub struct Io<W: AsyncWrite, R: AsyncRead> {
+pub struct Io<W: Write, R: Read> {
     writer: W,
     reader: Lines<BufReader<R>>,
 }
 
-impl<W: AsyncWrite, R: AsyncRead> Io<W, R> {
+impl<W: Write, R: Read> Io<W, R> {
     pub fn new(writer: W, reader: R) -> Self {
         Io {
             writer,
@@ -18,63 +18,47 @@ impl<W: AsyncWrite, R: AsyncRead> Io<W, R> {
     }
 }
 
-impl<W: AsyncWrite + Send + Unpin, R: AsyncRead + Send + Unpin> Io<W, R> {
+impl<W: Write + Send + Unpin, R: Read + Send + Unpin> Io<W, R> {
     /// Receive a message.
     #[instrument(level = "trace", skip(self), ret, err)]
-    pub async fn recv(&mut self) -> io::Result<String> {
-        use io::ErrorKind::UnexpectedEof;
-        Ok(self.reader.next_line().await?.ok_or(UnexpectedEof)?)
+    pub fn recv(&mut self) -> io::Result<String> {
+        self.reader.next().ok_or(ErrorKind::UnexpectedEof)?
     }
 
     /// Send a message.
     #[instrument(level = "trace", skip(self, msg), err, fields(%msg))]
-    pub async fn send<T: Display>(&mut self, msg: T) -> io::Result<()> {
-        self.writer.write_all(msg.to_string().as_bytes()).await?;
-        self.writer.write_u8(b'\n').await?;
-        Ok(())
+    pub fn send<T: Display>(&mut self, msg: T) -> io::Result<()> {
+        writeln!(&mut self.writer, "{}", msg)
     }
 
     /// Flush the internal buffers.
     #[instrument(level = "trace", skip(self), err)]
-    pub async fn flush(&mut self) -> io::Result<()> {
-        self.writer.flush().await?;
-        Ok(())
+    pub fn flush(&mut self) -> io::Result<()> {
+        self.writer.flush()
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::str;
+    use std::{collections::VecDeque, io::empty, str};
     use test_strategy::proptest;
-    use tokio::io::{duplex, AsyncReadExt, BufReader};
 
-    #[proptest(async = "tokio")]
-    async fn recv_waits_for_line_break(#[strategy("[^\r\n]")] s: String) {
-        let (stdin, _) = duplex(1);
-        let (mut tx, stdout) = duplex(s.len() + 1);
-
-        tx.write_all(s.as_bytes()).await?;
-        tx.write_u8(b'\n').await?;
-
-        let mut pipe = Io::new(stdin, BufReader::new(stdout));
-        assert_eq!(pipe.recv().await?, s);
+    #[proptest]
+    fn recv_waits_for_line_break(#[strategy("[^\r\n]")] s: String) {
+        let mut buf = VecDeque::new();
+        writeln!(&mut buf, "{}", s)?;
+        let mut pipe = Io::new(empty(), &mut buf);
+        assert_eq!(pipe.recv()?, s);
     }
 
-    #[proptest(async = "tokio")]
-    async fn send_appends_line_break(s: String) {
-        let (stdin, mut rx) = duplex(s.len() + 1);
-        let (_, stdout) = duplex(1);
-
-        let expected = format!("{s}\n");
-
-        let mut pipe = Io::new(stdin, BufReader::new(stdout));
-        pipe.send(&s).await?;
-        pipe.flush().await?;
-
-        let mut buf = vec![0u8; expected.len()];
-        rx.read_exact(&mut buf).await?;
-
-        assert_eq!(str::from_utf8(&buf)?, expected);
+    #[proptest]
+    fn send_appends_line_break(s: String) {
+        let mut buf = Vec::new();
+        let mut pipe = Io::new(&mut buf, empty());
+        pipe.send(&s)?;
+        pipe.flush()?;
+        drop(pipe);
+        assert_eq!(str::from_utf8(&buf)?, format!("{s}\n"));
     }
 }

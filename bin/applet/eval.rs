@@ -14,7 +14,7 @@ pub struct Eval {
 
 impl Eval {
     #[instrument(level = "trace", skip(self), err)]
-    pub async fn execute(self) -> Result<(), Anyhow> {
+    pub fn execute(self) -> Result<(), Anyhow> {
         let pos = Evaluator::own(self.pos);
 
         let (material, positional, value) = match pos.turn() {
