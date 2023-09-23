@@ -3,7 +3,7 @@ name = "chessboard"
 version = "0.1.0"
 authors = ["Bruno Dutra <brunocodutra@gmail.com>"]
 edition = "2021"
-description = "A sandbox for experimenting with chess engines"
+description = "A chess engine"
 repository = "https://github.com/brunocodutra/chessboard.git"
 license = "GPL-3.0"
 readme = "README.md"
@@ -16,9 +16,7 @@ anyhow = { version = "1.0.75", default-features = false, features = ["std"] }
 bitflags = { version = "2.4.0", default-features = false }
 bytemuck = { version = "1.13.1", default-features = false }
 clap = { version = "4.4.4", default-features = false, features = [
-    "color",
     "derive",
-    "error-context",
     "help",
     "std",
     "suggestions",

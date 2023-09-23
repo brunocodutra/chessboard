@@ -1,25 +1,15 @@
 use crate::io::Io;
 use anyhow::{Context, Error as Anyhow};
-use clap::Parser;
 use lib::chess::{Color, Move, Position};
+use lib::nnue::Evaluator;
 use lib::search::{Depth, Engine, Limits, Options, Pv};
 use rayon::max_num_threads;
 use std::io::{stdin, stdout, Stdin, Stdout};
 use std::{num::NonZeroUsize, time::Duration};
-use vampirc_uci::{self as uci, UciMessage, UciOptionConfig, UciSearchControl, UciTimeControl};
+use vampirc_uci::{self as uci, *};
 
 /// A basic *not fully compliant* UCI server.
-#[derive(Debug, Default, Parser)]
-#[clap(disable_help_flag = true, disable_version_flag = true)]
-pub struct Uci {}
-
-impl Uci {
-    pub fn execute(self) -> Result<(), Anyhow> {
-        Server::new().run()
-    }
-}
-
-struct Server {
+pub struct Uci {
     io: Io<Stdout, Stdin>,
     engine: Engine,
     options: Options,
@@ -27,9 +17,9 @@ struct Server {
     moves: Vec<Move>,
 }
 
-impl Server {
-    fn new() -> Self {
-        Server {
+impl Default for Uci {
+    fn default() -> Self {
+        Uci {
             io: Io::new(stdout(), stdin()),
             engine: Engine::default(),
             options: Options::default(),
@@ -37,7 +27,9 @@ impl Server {
             moves: Vec::default(),
         }
     }
+}
 
+impl Uci {
     fn new_game(&mut self) {
         self.engine = Engine::with_options(self.options);
         self.position = Position::default();
@@ -62,8 +54,33 @@ impl Server {
         Ok(())
     }
 
-    fn run(&mut self) -> Result<(), Anyhow> {
+    fn go(&mut self, limits: Limits) -> Result<(), Anyhow> {
+        let pv: Pv<1> = self.engine.search(&self.position, limits);
+        let best = *pv.first().expect("expected some legal move");
+        self.io.send(UciMessage::best_move(best.into()))?;
+        Ok(())
+    }
+
+    fn eval(&mut self) -> Result<(), Anyhow> {
+        let pos = Evaluator::borrow(&self.position);
+        let (material, positional, value) = match pos.turn() {
+            Color::White => (pos.material(), pos.positional(), pos.value()),
+            Color::Black => (-pos.material(), -pos.positional(), -pos.value()),
+        };
+
+        self.io.send(UciMessage::Info(vec![
+            UciInfoAttribute::Any("material".to_string(), material.to_string()),
+            UciInfoAttribute::Any("positional".to_string(), positional.to_string()),
+            UciInfoAttribute::Any("value".to_string(), value.to_string()),
+        ]))?;
+
+        Ok(())
+    }
+
+    /// Runs the UCI server.
+    pub fn run(&mut self) -> Result<(), Anyhow> {
         loop {
+            self.io.flush()?;
             match uci::parse_one(self.io.recv()?.trim()) {
                 UciMessage::Uci => {
                     let name = UciMessage::id_name(env!("CARGO_PKG_NAME"));
@@ -208,9 +225,9 @@ impl Server {
                             mate: None,
                             nodes: None,
                         }),
-                } if search_moves.is_empty() => {
-                    self.go(Depth::saturate(depth).into())?;
-                }
+                } if search_moves.is_empty() => self.go(Depth::saturate(depth).into())?,
+
+                UciMessage::Unknown(m, _) if m.to_lowercase() == "eval" => self.eval()?,
 
                 UciMessage::Unknown(m, cause) => {
                     let error = cause.map(Anyhow::new).unwrap_or_else(|| Anyhow::msg(m));
@@ -227,15 +244,6 @@ impl Server {
                     }
                 },
             }
-
-            self.io.flush()?;
         }
-    }
-
-    fn go(&mut self, limits: Limits) -> Result<(), Anyhow> {
-        let pv: Pv<1> = self.engine.search(&self.position, limits);
-        let best = *pv.first().expect("expected some legal move");
-        self.io.send(UciMessage::best_move(best.into()))?;
-        Ok(())
     }
 }
