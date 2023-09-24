@@ -1,58 +1,13 @@
 use crate::chess::{Promotion, Role, Square};
 use crate::util::{Binary, Bits};
-use bitflags::bitflags;
 use derive_more::{DebugCustom, Deref, Display, Error};
 use shakmaty as sm;
 use std::str::FromStr;
 use vampirc_uci::UciMove;
 
-bitflags! {
-    /// Characteristics of a [`Move`] in the context of a [`Position`][`crate::Position`].
-    #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
-    pub struct MoveKind: u8 {
-        const ANY =         0b00000001;
-        const CASTLE =      0b00000010;
-        const PROMOTION =   0b00000100;
-        const CAPTURE =     0b00001000;
-        const EN_PASSANT =  0b00010000;
-    }
-}
-
-#[doc(hidden)]
-impl From<&sm::Move> for MoveKind {
-    fn from(m: &sm::Move) -> Self {
-        let mut kind = Self::ANY;
-
-        if m.is_castle() {
-            kind |= MoveKind::CASTLE
-        }
-
-        if m.is_promotion() {
-            kind |= MoveKind::PROMOTION
-        }
-
-        if m.is_capture() {
-            kind |= MoveKind::CAPTURE;
-        }
-
-        if m.is_en_passant() {
-            kind |= MoveKind::EN_PASSANT;
-        }
-
-        kind
-    }
-}
-
-#[doc(hidden)]
-impl From<&mut sm::Move> for MoveKind {
-    fn from(m: &mut sm::Move) -> Self {
-        (&*m).into()
-    }
-}
-
-/// A chess move.
+/// The context of a chess move.
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash, Deref)]
-pub struct MoveContext(#[deref] Move, Role, Option<(Role, Square)>, MoveKind);
+pub struct MoveContext(#[deref] pub Move, pub Role, pub Option<(Role, Square)>);
 
 impl MoveContext {
     /// The [`Role`] of the piece moved.
@@ -60,9 +15,33 @@ impl MoveContext {
         self.1
     }
 
+    /// Whether this is a promotion move.
+    pub fn is_promotion(&self) -> bool {
+        self.promotion() != Promotion::None
+    }
     /// The [`Role`] of the piece captured.
     pub fn capture(&self) -> Option<(Role, Square)> {
         self.2
+    }
+
+    /// Whether this is a castling move.
+    pub fn is_castling(&self) -> bool {
+        self.role() == Role::King && (self.whence().file() - self.whither().file()).abs() > 1
+    }
+
+    /// Whether this is a capture move.
+    pub fn is_capture(&self) -> bool {
+        self.capture().is_some()
+    }
+
+    /// Whether this is an en passant capture move.
+    pub fn is_en_passant(&self) -> bool {
+        self.capture().is_some_and(|(_, s)| self.whither() != s)
+    }
+
+    /// Whether this move is neither a capture nor a promotion.
+    pub fn is_quiet(&self) -> bool {
+        !(self.is_capture() || self.is_promotion())
     }
 }
 
@@ -70,7 +49,7 @@ impl MoveContext {
 impl From<sm::Move> for MoveContext {
     fn from(m: sm::Move) -> Self {
         match m {
-            ref m @ sm::Move::Normal {
+            sm::Move::Normal {
                 role,
                 from,
                 capture,
@@ -80,24 +59,21 @@ impl From<sm::Move> for MoveContext {
                 Move(from.into(), to.into(), promotion.into()),
                 role.into(),
                 capture.map(|r| (r.into(), to.into())),
-                m.into(),
             ),
 
-            ref m @ sm::Move::EnPassant { from, to } => MoveContext(
+            sm::Move::EnPassant { from, to } => MoveContext(
                 Move(from.into(), to.into(), Promotion::None),
                 Role::Pawn,
                 Some((
                     Role::Pawn,
                     Square::new(to.file().into(), from.rank().into()),
                 )),
-                m.into(),
             ),
 
             ref m @ sm::Move::Castle { .. } => MoveContext(
                 m.to_uci(sm::CastlingMode::Standard).into(),
                 Role::King,
                 None,
-                m.into(),
             ),
 
             v => panic!("unexpected {v:?}"),
@@ -107,8 +83,8 @@ impl From<sm::Move> for MoveContext {
 
 #[doc(hidden)]
 impl From<MoveContext> for sm::Move {
-    fn from(MoveContext(m, role, capture, kind): MoveContext) -> Self {
-        if kind.intersects(MoveKind::CASTLE) {
+    fn from(mc @ MoveContext(m, role, capture): MoveContext) -> Self {
+        if mc.is_castling() {
             sm::Move::Castle {
                 king: m.whence().into(),
                 rook: if m.whence() < m.whither() {
@@ -117,7 +93,7 @@ impl From<MoveContext> for sm::Move {
                     sm::Square::from_coords(sm::File::A, m.whither().rank().into())
                 },
             }
-        } else if kind.intersects(MoveKind::EN_PASSANT) {
+        } else if mc.is_en_passant() {
             sm::Move::EnPassant {
                 from: m.whence().into(),
                 to: m.whither().into(),
@@ -307,10 +283,49 @@ mod tests {
 
     #[proptest]
     fn move_context_has_an_equivalent_shakmaty_representation(
-        #[filter(#pos.outcome().is_none())] pos: Position,
-        selector: Selector,
+        #[filter(#_pos.outcome().is_none())] _pos: Position,
+        #[map(|s: Selector| s.select(#_pos.moves()))] mc: MoveContext,
     ) {
-        let m = selector.select(pos.moves(MoveKind::ANY));
-        assert_eq!(MoveContext::from(<sm::Move as From<_>>::from(m)), m);
+        assert_eq!(MoveContext::from(<sm::Move as From<_>>::from(mc)), mc);
+    }
+
+    #[proptest]
+    fn castling_moves_are_never_captures(
+        #[filter(#_pos.outcome().is_none())] _pos: Position,
+        #[map(|s: Selector| s.select(#_pos.moves()))] mc: MoveContext,
+    ) {
+        assert!(!mc.is_castling() || !mc.is_capture());
+    }
+
+    #[proptest]
+    fn castling_moves_are_never_promotions(
+        #[filter(#_pos.outcome().is_none())] _pos: Position,
+        #[map(|s: Selector| s.select(#_pos.moves()))] mc: MoveContext,
+    ) {
+        assert!(!mc.is_castling() || !mc.is_promotion());
+    }
+
+    #[proptest]
+    fn en_passant_moves_are_always_captures(
+        #[filter(#_pos.outcome().is_none())] _pos: Position,
+        #[map(|s: Selector| s.select(#_pos.moves()))] mc: MoveContext,
+    ) {
+        assert!(!mc.is_en_passant() || mc.is_capture());
+    }
+
+    #[proptest]
+    fn captures_are_never_quiet(
+        #[filter(#_pos.outcome().is_none())] _pos: Position,
+        #[map(|s: Selector| s.select(#_pos.moves()))] mc: MoveContext,
+    ) {
+        assert!(!mc.is_capture() || !mc.is_quiet());
+    }
+
+    #[proptest]
+    fn promotions_are_never_quiet(
+        #[filter(#_pos.outcome().is_none())] _pos: Position,
+        #[map(|s: Selector| s.select(#_pos.moves()))] mc: MoveContext,
+    ) {
+        assert!(!mc.is_promotion() || !mc.is_quiet());
     }
 }

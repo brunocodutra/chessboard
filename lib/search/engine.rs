@@ -1,4 +1,4 @@
-use crate::chess::{Move, MoveKind, Piece, Position, Role, Zobrist};
+use crate::chess::{Move, Piece, Position, Role, Zobrist};
 use crate::nnue::Evaluator;
 use crate::search::{Depth, Limits, Options, Ply, Pv, Score, Value};
 use crate::search::{Transposition, TranspositionTable};
@@ -196,17 +196,15 @@ impl Engine {
             }
         }
 
-        let kind = if ply >= depth && !in_check {
-            MoveKind::CAPTURE | MoveKind::PROMOTION
-        } else {
-            MoveKind::ANY
-        };
+        let mut moves = ArrayVec::<_, 256>::from_iter(pos.moves().filter_map(|m| {
+            if ply >= depth && !in_check && m.is_quiet() {
+                return None;
+            }
 
-        let mut moves = ArrayVec::<_, 256>::from_iter(pos.moves(kind).map(|m| {
             let mut next = pos.clone();
             next.play(*m).expect("expected legal move");
             let value = -next.see(m.whither(), Value::LOWER..Value::UPPER);
-            (*m, value.cast())
+            Some((*m, value.cast()))
         }));
 
         moves.sort_unstable_by_key(|&(m, guess)| {
@@ -361,15 +359,12 @@ mod tests {
             None => pos.value().cast(),
         };
 
-        let kind = if ply >= Ply::UPPER {
+        if ply >= Ply::UPPER {
             return score;
-        } else if ply >= depth && !pos.is_check() {
-            MoveKind::CAPTURE | MoveKind::PROMOTION
-        } else {
-            MoveKind::ANY
-        };
+        }
 
-        pos.moves(kind)
+        pos.moves()
+            .filter(|m| ply < depth || pos.is_check() || !m.is_quiet())
             .map(|m| {
                 let mut next = pos.clone();
                 next.play(*m).unwrap();
@@ -403,9 +398,8 @@ mod tests {
         d: Depth,
         #[filter(#p >= 0)] p: Ply,
         #[filter(#s.mate().is_none() && #s >= #b)] s: Score,
-        selector: Selector,
+        #[map(|s: Selector| *s.select(#pos.moves()))] m: Move,
     ) {
-        let m = *selector.select(pos.moves(MoveKind::ANY));
         e.tt.set(pos.zobrist(), Transposition::lower(d, s, m));
 
         assert_eq!(
@@ -424,9 +418,8 @@ mod tests {
         d: Depth,
         #[filter(#p >= 0)] p: Ply,
         #[filter(#s.mate().is_none() && #s < #b)] s: Score,
-        selector: Selector,
+        #[map(|s: Selector| *s.select(#pos.moves()))] m: Move,
     ) {
-        let m = *selector.select(pos.moves(MoveKind::ANY));
         e.tt.set(pos.zobrist(), Transposition::upper(d, s, m));
 
         assert_eq!(
@@ -445,9 +438,8 @@ mod tests {
         d: Depth,
         #[filter(#p >= 0)] p: Ply,
         #[filter(#sc.mate().is_none())] sc: Score,
-        selector: Selector,
+        #[map(|s: Selector| *s.select(#pos.moves()))] m: Move,
     ) {
-        let m = *selector.select(pos.moves(MoveKind::ANY));
         e.tt.set(pos.zobrist(), Transposition::exact(d, sc, m));
 
         assert_eq!(
