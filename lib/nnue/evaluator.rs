@@ -110,7 +110,7 @@ impl<'a> Evaluator<'a> {
         Ok(m)
     }
 
-    fn update(&mut self, m: MoveContext) {
+    fn update(&mut self, mc: MoveContext) {
         self.hidden.reverse();
         self.psqt.reverse();
 
@@ -118,7 +118,7 @@ impl<'a> Evaluator<'a> {
         let hidden = &mut self.hidden;
         let psqt = &mut self.psqt;
 
-        if m.role() == Role::King {
+        if mc.role() == Role::King {
             let us = Self::perspective(&self.pos, turn);
             let them = Self::perspective(&self.pos, !turn);
             NNUE.transformer.refresh(&us, &mut hidden[0]);
@@ -128,21 +128,21 @@ impl<'a> Evaluator<'a> {
         } else {
             let kings = [self.pos.king(turn), self.pos.king(!turn)];
 
-            let new = Piece(!turn, Option::from(m.promotion()).unwrap_or(m.role()));
-            let fts = kings.map(|ks| Feature(ks, new, m.whither()));
+            let new = Piece(!turn, Option::from(mc.promotion()).unwrap_or(mc.role()));
+            let fts = kings.map(|ks| Feature(ks, new, mc.whither()));
             NNUE.transformer.add(fts[0].index(turn), &mut hidden[0]);
             NNUE.transformer.add(fts[1].index(!turn), &mut hidden[1]);
             NNUE.psqt.add(fts[0].index(turn), &mut psqt[0]);
             NNUE.psqt.add(fts[1].index(!turn), &mut psqt[1]);
 
-            let old = Piece(!turn, m.role());
-            let fts = kings.map(|ks| Feature(ks, old, m.whence()));
+            let old = Piece(!turn, mc.role());
+            let fts = kings.map(|ks| Feature(ks, old, mc.whence()));
             NNUE.transformer.remove(fts[0].index(turn), &mut hidden[0]);
             NNUE.transformer.remove(fts[1].index(!turn), &mut hidden[1]);
             NNUE.psqt.remove(fts[0].index(turn), &mut psqt[0]);
             NNUE.psqt.remove(fts[1].index(!turn), &mut psqt[1]);
 
-            if let Some((role, square)) = m.capture() {
+            if let Some((role, square)) = mc.capture() {
                 let fts = kings.map(|ks| Feature(ks, Piece(turn, role), square));
                 NNUE.transformer.remove(fts[0].index(turn), &mut hidden[0]);
                 NNUE.transformer.remove(fts[1].index(!turn), &mut hidden[1]);
@@ -156,7 +156,6 @@ impl<'a> Evaluator<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::chess::MoveKind;
     use proptest::{prop_assume, sample::Selector};
     use test_strategy::proptest;
 
@@ -183,9 +182,8 @@ mod tests {
     #[proptest]
     fn play_updates_accumulator(
         #[filter(#pos.outcome().is_none())] mut pos: Position,
-        selector: Selector,
+        #[map(|s: Selector| *s.select(#pos.moves()))] m: Move,
     ) {
-        let m = *selector.select(pos.moves(MoveKind::ANY));
         let mut e = Evaluator::own(pos.clone());
         assert_eq!(e.play(m), pos.play(m));
         assert_eq!(e, Evaluator::own(pos));
@@ -200,10 +198,9 @@ mod tests {
 
     #[proptest]
     fn exchange_updates_accumulator(
-        #[filter(#pos.moves(MoveKind::CAPTURE).len() > 0)] mut pos: Position,
-        selector: Selector,
+        #[filter(#pos.moves().filter(MoveContext::is_capture).next().is_some())] mut pos: Position,
+        #[map(|s: Selector| *s.select(#pos.moves().filter(MoveContext::is_capture)))] m: Move,
     ) {
-        let m = selector.select(pos.moves(MoveKind::CAPTURE));
         let mut e = Evaluator::own(pos.clone());
 
         // Skip en passant captures.

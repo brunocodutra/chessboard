@@ -1,5 +1,5 @@
 use crate::chess::{Bitboard, Color, Outcome, Piece, Promotion, Role, Square};
-use crate::chess::{Move, MoveContext, MoveKind};
+use crate::chess::{Move, MoveContext};
 use crate::util::Bits;
 use arrayvec::ArrayVec;
 use derive_more::{DebugCustom, Display, Error, From};
@@ -269,13 +269,10 @@ impl Position {
     }
 
     /// An iterator over the legal [`Move`]s that can be played in this position.
-    pub fn moves(
-        &self,
-        kind: MoveKind,
-    ) -> impl DoubleEndedIterator<Item = MoveContext> + ExactSizeIterator {
-        let mut legals = sm::Position::legal_moves(&self.0);
-        legals.retain(|vm| kind.intersects(vm.into()));
-        legals.into_iter().map(|vm| vm.into())
+    pub fn moves(&self) -> impl DoubleEndedIterator<Item = MoveContext> + ExactSizeIterator {
+        sm::Position::legal_moves(&self.0)
+            .into_iter()
+            .map(MoveContext::from)
     }
 
     /// Play a [`Move`] if legal in this position.
@@ -340,18 +337,17 @@ impl Position {
             _ => Promotion::None,
         };
 
-        let vm = sm::Move::Normal {
-            role: role.into(),
-            from: whence.into(),
-            capture: Some(capture.into()),
-            to: whither.into(),
-            promotion: promotion.into(),
-        };
+        let mc = MoveContext(
+            Move(whence, whither, promotion),
+            role,
+            Some((capture, whither)),
+        );
 
+        let vm = mc.into();
         if sm::Position::is_legal(&self.0, &vm) {
             self.1 = Default::default();
             sm::Position::play_unchecked(&mut self.0, &vm);
-            Ok(vm.into())
+            Ok(mc)
         } else {
             Err(ImpossibleExchange(whither))
         }
@@ -483,7 +479,6 @@ impl FromStr for Position {
 mod tests {
     use super::*;
     use proptest::sample::Selector;
-    use std::collections::HashSet;
     use test_strategy::proptest;
 
     #[proptest]
@@ -628,7 +623,7 @@ mod tests {
     fn moves_returns_all_legal_moves_from_this_position(
         #[filter(#pos.outcome().is_none())] pos: Position,
     ) {
-        for m in pos.moves(MoveKind::ANY) {
+        for m in pos.moves() {
             let mut pos = pos.clone();
             assert_eq!(pos[m.whence()].map(|p| p.color()), Some(pos.turn()));
             assert_eq!(pos.play(*m), Ok(m));
@@ -637,7 +632,7 @@ mod tests {
 
     #[proptest]
     fn captures_reduce_material(pos: Position) {
-        for m in pos.moves(MoveKind::CAPTURE) {
+        for m in pos.moves().filter(MoveContext::is_capture) {
             let mut p = pos.clone();
             p.play(*m)?;
             assert!(p.by_color(p.turn()).len() < pos.by_color(p.turn()).len());
@@ -646,7 +641,7 @@ mod tests {
 
     #[proptest]
     fn promotions_exchange_pawns(pos: Position) {
-        for m in pos.moves(MoveKind::PROMOTION) {
+        for m in pos.moves().filter(MoveContext::is_promotion) {
             let mut p = pos.clone();
             p.play(*m)?;
             let pawn = Piece(pos.turn(), Role::Pawn);
@@ -657,7 +652,7 @@ mod tests {
 
     #[proptest]
     fn castles_move_the_king_by_two_files(pos: Position) {
-        for m in pos.moves(MoveKind::CASTLE) {
+        for m in pos.moves().filter(MoveContext::is_castling) {
             assert_eq!(pos[m.whence()], Some(Piece(pos.turn(), Role::King)));
             assert_eq!(m.whence().rank(), m.whither().rank());
             assert_eq!((m.whence().file() - m.whither().file()).abs(), 2);
@@ -665,22 +660,12 @@ mod tests {
     }
 
     #[proptest]
-    fn castles_are_neither_captures_nor_promotions(pos: Position) {
-        let castles: HashSet<_> = pos.moves(MoveKind::CASTLE).collect();
-        let captures_or_promotions: HashSet<_> =
-            pos.moves(MoveKind::CAPTURE | MoveKind::PROMOTION).collect();
-
-        assert_eq!(castles.intersection(&captures_or_promotions).count(), 0);
-    }
-
-    #[proptest]
     fn legal_move_updates_position(
         #[filter(#pos.outcome().is_none())] mut pos: Position,
-        selector: Selector,
+        #[map(|s: Selector| s.select(#pos.moves()))] mc: MoveContext,
     ) {
-        let m = selector.select(pos.moves(MoveKind::ANY));
         let prev = pos.clone();
-        assert_eq!(pos.play(*m), Ok(m));
+        assert_eq!(pos.play(*mc), Ok(mc));
         assert_ne!(pos, prev);
     }
 
@@ -713,14 +698,13 @@ mod tests {
     #[proptest]
     fn threefold_repetition_implies_draw(
         #[filter(#pos.outcome().is_none())] mut pos: Position,
-        selector: Selector,
+        #[map(|s: Selector| *s.select(#pos.moves()))] m: Move,
     ) {
         let rep = pos.clone();
-        let m = selector.select(pos.moves(MoveKind::ANY));
         let n = Move(m.whither(), m.whence(), Promotion::None);
 
         for _ in 0..2 {
-            prop_assume!(pos.play(*m).is_ok());
+            prop_assume!(pos.play(m).is_ok());
             prop_assume!(pos.pass().is_ok());
             prop_assume!(pos.play(n).is_ok());
             prop_assume!(pos.pass().is_ok());

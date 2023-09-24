@@ -141,7 +141,6 @@ dependencies = [
  "anyhow",
  "arrayvec",
  "atomic",
- "bitflags 2.4.0",
  "bytemuck",
  "clap",
  "criterion",
