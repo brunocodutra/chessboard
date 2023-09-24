@@ -196,28 +196,28 @@ impl Engine {
             }
         }
 
-        let mut moves = ArrayVec::<_, 256>::from_iter(pos.moves().filter_map(|m| {
-            if ply >= depth && !in_check && m.is_quiet() {
+        let mut moves = ArrayVec::<_, 256>::from_iter(pos.moves().filter_map(|mc| {
+            if ply >= depth && !in_check && mc.is_quiet() {
                 return None;
             }
 
             let mut next = pos.clone();
-            next.play(*m).expect("expected legal move");
-            let value = -next.see(m.whither(), Value::LOWER..Value::UPPER);
-            Some((*m, value.cast()))
+            next.play(*mc).expect("expected legal move");
+            let guess = -next.see(mc.whither(), Value::LOWER..Value::UPPER).cast();
+
+            let rank = if Some(*mc) == tpos.map(|t| t.best()) {
+                i16::MAX
+            } else {
+                guess.get()
+            };
+
+            Some((*mc, guess, rank))
         }));
 
-        moves.sort_unstable_by_key(|&(m, guess)| {
-            if Some(m) == tpos.map(|t| t.best()) {
-                Score::UPPER
-            } else {
-                guess
-            }
-        });
-
+        moves.sort_unstable_by_key(|(_, _, rank)| *rank);
         let best = match moves.pop() {
             None => return Ok(Pv::new(score, [])),
-            Some((m, _)) => {
+            Some((m, _, _)) => {
                 let mut next = pos.clone();
                 next.play(m).expect("expected legal move");
                 let mut pv = -self.ns(&next, -beta..-alpha, depth, ply + 1, timer)?;
@@ -236,10 +236,8 @@ impl Engine {
         let (best, _) = moves
             .into_par_iter()
             .with_max_len(1)
-            .copied()
-            .enumerate()
             .rev()
-            .map(|(n, (m, guess))| {
+            .map(|&(m, guess, rank)| {
                 let alpha = Score::new(cutoff.load(Ordering::Relaxed));
 
                 if alpha >= beta {
@@ -270,11 +268,14 @@ impl Engine {
                     },
                 };
 
+                if pv > alpha {
+                    cutoff.fetch_max(pv.score().get(), Ordering::Relaxed);
+                }
+
                 pv.shift(m);
-                cutoff.fetch_max(pv.score().get(), Ordering::Relaxed);
-                Ok(Some((pv, n)))
+                Ok(Some((pv, rank)))
             })
-            .chain([Ok(Some((best, usize::MAX)))])
+            .chain([Ok(Some((best, i16::MAX)))])
             .try_reduce(|| None, |a, b| Ok(max(a, b)))?
             .expect("expected at least one principal variation");
 
