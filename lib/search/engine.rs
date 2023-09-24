@@ -398,7 +398,7 @@ mod tests {
         #[filter(#e.tt.capacity() > 0)]
         e: Engine,
         #[filter(#pos.outcome().is_none())] pos: Position,
-        #[filter(#b >= Value::LOWER)] b: Score,
+        #[filter((Value::LOWER..Value::UPPER).contains(&#b))] b: Score,
         d: Depth,
         #[filter(#p >= 0)] p: Ply,
         #[filter(#s.mate().is_none() && #s >= #b)] s: Score,
@@ -419,10 +419,10 @@ mod tests {
         #[filter(#e.tt.capacity() > 0)]
         e: Engine,
         #[filter(#pos.outcome().is_none())] pos: Position,
-        #[filter(#b >= Value::LOWER)] b: Score,
+        #[filter((Value::LOWER..Value::UPPER).contains(&#b))] b: Score,
         d: Depth,
         #[filter(#p >= 0)] p: Ply,
-        #[filter(#s.mate().is_none() && #s <= #b)] s: Score,
+        #[filter(#s.mate().is_none() && #s < #b)] s: Score,
         selector: Selector,
     ) {
         let m = *selector.select(pos.moves(MoveKind::ANY));
@@ -440,7 +440,7 @@ mod tests {
         #[filter(#e.tt.capacity() > 0)]
         e: Engine,
         #[filter(#pos.outcome().is_none())] pos: Position,
-        #[filter(#b >= Value::LOWER)] b: Score,
+        #[filter((Value::LOWER..Value::UPPER).contains(&#b))] b: Score,
         d: Depth,
         #[filter(#p >= 0)] p: Ply,
         #[filter(#sc.mate().is_none())] sc: Score,
