@@ -1,18 +1,20 @@
-use crate::search::{DepthBounds, Line, Score};
-use crate::{chess::Move, util::Bounds};
-use derive_more::{Deref, IntoIterator};
-use std::{cmp::Ordering, iter::once, mem, ops::Neg};
+use crate::chess::Move;
+use crate::search::{DepthBounds, Score};
+use crate::util::{Bounds, Buffer};
+use derive_more::{Deref, DerefMut, IntoIterator};
+use std::{cmp::Ordering, ops::Neg};
 
 /// The [principal variation].
 ///
 /// [principal variation]: https://www.chessprogramming.org/Principal_Variation
-#[derive(Debug, Clone, Eq, PartialEq, Deref, IntoIterator)]
+#[derive(Debug, Clone, Eq, PartialEq, Hash, Deref, DerefMut, IntoIterator)]
 #[cfg_attr(test, derive(test_strategy::Arbitrary))]
 pub struct Pv<const N: usize = { DepthBounds::UPPER as _ }> {
     score: Score,
     #[deref]
+    #[deref_mut]
     #[into_iterator(owned, ref, ref_mut)]
-    line: Line<N>,
+    line: Buffer<Move, N>,
 }
 
 impl<const N: usize> Pv<N> {
@@ -20,7 +22,7 @@ impl<const N: usize> Pv<N> {
     pub fn new<I: IntoIterator<Item = Move>>(score: Score, line: I) -> Self {
         Pv {
             score,
-            line: Line::from_iter(line),
+            line: Buffer::from_iter(line),
         }
     }
 
@@ -30,15 +32,8 @@ impl<const N: usize> Pv<N> {
     }
 
     /// The strongest [`Line`].
-    pub fn line(&self) -> &Line<N> {
+    pub fn line(&self) -> &[Move] {
         &self.line
-    }
-
-    /// Continues the [`Line`] from the given [`Move`].
-    pub fn shift(mut self, m: Move) -> Pv<N> {
-        let tail = mem::take(&mut self.line);
-        self.line.extend(once(m).chain(tail));
-        self
     }
 }
 
@@ -92,7 +87,7 @@ mod tests {
 
     #[proptest]
     fn line_returns_line(pv: Pv<3>) {
-        assert_eq!(pv.line(), &pv.line);
+        assert_eq!(pv.line(), &*pv.line);
     }
 
     #[proptest]
@@ -103,16 +98,6 @@ mod tests {
     #[proptest]
     fn negation_preserves_line(pv: Pv<3>) {
         assert_eq!(pv.clone().neg().line(), pv.line());
-    }
-
-    #[proptest]
-    fn shift_prepends_move(#[filter(#pv.len() < 3)] pv: Pv<3>, m: Move) {
-        assert_eq!(pv.clone().shift(m)[..], [[m].as_slice(), &pv[..]].concat());
-    }
-
-    #[proptest]
-    fn shift_truncates_line_on_overflow(#[filter(#pv.len() == 3)] pv: Pv<3>, m: Move) {
-        assert_eq!(pv.clone().shift(m)[..], [[m].as_slice(), &pv[..2]].concat());
     }
 
     #[proptest]

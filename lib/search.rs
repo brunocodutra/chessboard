@@ -1,7 +1,6 @@
 mod depth;
 mod engine;
 mod limits;
-mod line;
 mod options;
 mod ply;
 mod pv;
@@ -12,7 +11,6 @@ mod value;
 pub use depth::*;
 pub use engine::*;
 pub use limits::*;
-pub use line::*;
 pub use options::*;
 pub use ply::*;
 pub use pv::*;

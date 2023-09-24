@@ -222,16 +222,16 @@ impl Engine {
             Some((m, _)) => {
                 let mut next = pos.clone();
                 next.play(m).expect("expected legal move");
-                let pv = -self.ns(&next, -beta..-alpha, depth, ply + 1, timer)?;
-
-                if pv >= beta {
-                    self.record(zobrist, bounds, depth, ply, pv.score(), m);
-                    return Ok(pv.shift(m));
-                }
-
-                pv.shift(m)
+                let mut pv = -self.ns(&next, -beta..-alpha, depth, ply + 1, timer)?;
+                pv.shift(m);
+                pv
             }
         };
+
+        if best >= beta {
+            self.record(zobrist, bounds, depth, ply, best.score(), best[0]);
+            return Ok(best);
+        }
 
         let cutoff = AtomicI16::new(best.score().max(alpha).get());
 
@@ -261,7 +261,7 @@ impl Engine {
                     }
                 }
 
-                let pv = match -self.nw(&next, -alpha, depth, ply + 1, timer)? {
+                let mut pv = match -self.nw(&next, -alpha, depth, ply + 1, timer)? {
                     pv if pv <= alpha || pv >= beta => pv,
                     pv => match Score::new(cutoff.fetch_max(pv.score().get(), Ordering::Relaxed)) {
                         a if a >= beta => return Ok(None),
@@ -272,8 +272,9 @@ impl Engine {
                     },
                 };
 
+                pv.shift(m);
                 cutoff.fetch_max(pv.score().get(), Ordering::Relaxed);
-                Ok(Some((pv.shift(m), n)))
+                Ok(Some((pv, n)))
             })
             .chain([Ok(Some((best, usize::MAX)))])
             .try_reduce(|| None, |a, b| Ok(max(a, b)))?
