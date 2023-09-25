@@ -16,6 +16,7 @@ use proptest::prelude::*;
 #[cfg_attr(test, derive(test_strategy::Arbitrary))]
 #[cfg_attr(test, arbitrary(bound(T::Integer: 'static + Debug, RangeInclusive<T::Integer>: Strategy<Value = T::Integer>)))]
 #[debug(fmt = "Saturating({:?})", "i32::from(*self)")]
+#[repr(transparent)]
 pub struct Saturating<T: Bounds>(#[cfg_attr(test, strategy(T::LOWER..=T::UPPER))] T::Integer);
 
 impl<T: Bounds> Saturating<T> {

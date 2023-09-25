@@ -25,6 +25,7 @@ fn ones<T: PrimInt + Unsigned>(n: u32) -> T {
 #[debug(fmt = "Bits({self})")]
 #[display(bound = "T: Binary")]
 #[display(fmt = "{_0:b}")]
+#[repr(transparent)]
 pub struct Bits<T: PrimInt + Unsigned, const W: u32>(
     #[cfg_attr(test, strategy(T::zero()..=ones(W)))] T,
 );
