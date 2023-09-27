@@ -2,10 +2,10 @@ use derive_more::{Deref, DerefMut, From};
 use std::ops::AddAssign;
 
 #[cfg(test)]
-use std::fmt::Debug;
+use proptest::prelude::*;
 
 #[cfg(test)]
-use proptest::prelude::*;
+use std::fmt::Debug;
 
 /// A 1D array.
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash, From, Deref, DerefMut)]

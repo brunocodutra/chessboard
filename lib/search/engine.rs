@@ -195,22 +195,22 @@ impl Engine {
             }
         }
 
-        let mut moves = Buffer::<_, 255>::from_iter(pos.moves().filter_map(|mc| {
-            if ply >= depth && !in_check && mc.is_quiet() {
+        let mut moves = Buffer::<_, 255>::from_iter(pos.moves().filter_map(|m| {
+            if ply >= depth && !in_check && m.is_quiet() {
                 return None;
             }
 
             let mut next = pos.clone();
-            next.play(*mc).expect("expected legal move");
-            let guess = -next.see(mc.whither(), Value::LOWER..Value::UPPER).cast();
+            next.play(m).expect("expected legal move");
+            let guess = -next.see(m.whither(), Value::LOWER..Value::UPPER).cast();
 
-            let rank = if Some(*mc) == tpos.map(|t| t.best()) {
+            let rank = if Some(m) == tpos.map(|t| t.best()) {
                 i16::MAX
             } else {
                 guess.get()
             };
 
-            Some((*mc, guess, rank))
+            Some((m, guess, rank))
         }));
 
         moves.sort_unstable_by_key(|(_, _, rank)| *rank);
@@ -367,7 +367,7 @@ mod tests {
             .filter(|m| ply < depth || pos.is_check() || !m.is_quiet())
             .map(|m| {
                 let mut next = pos.clone();
-                next.play(*m).unwrap();
+                next.play(m).unwrap();
                 -negamax(&next, depth, ply + 1)
             })
             .max()
@@ -398,7 +398,7 @@ mod tests {
         d: Depth,
         #[filter(#p >= 0)] p: Ply,
         #[filter(#s.mate().is_none() && #s >= #b)] s: Score,
-        #[map(|s: Selector| *s.select(#pos.moves()))] m: Move,
+        #[map(|s: Selector| s.select(#pos.moves()))] m: Move,
     ) {
         e.tt.set(pos.zobrist(), Transposition::lower(d, s, m));
 
@@ -418,7 +418,7 @@ mod tests {
         d: Depth,
         #[filter(#p >= 0)] p: Ply,
         #[filter(#s.mate().is_none() && #s < #b)] s: Score,
-        #[map(|s: Selector| *s.select(#pos.moves()))] m: Move,
+        #[map(|s: Selector| s.select(#pos.moves()))] m: Move,
     ) {
         e.tt.set(pos.zobrist(), Transposition::upper(d, s, m));
 
@@ -438,7 +438,7 @@ mod tests {
         d: Depth,
         #[filter(#p >= 0)] p: Ply,
         #[filter(#sc.mate().is_none())] sc: Score,
-        #[map(|s: Selector| *s.select(#pos.moves()))] m: Move,
+        #[map(|s: Selector| s.select(#pos.moves()))] m: Move,
     ) {
         e.tt.set(pos.zobrist(), Transposition::exact(d, sc, m));
 

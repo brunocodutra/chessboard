@@ -1,6 +1,6 @@
 use crate::io::Io;
 use anyhow::{Context, Error as Anyhow};
-use lib::chess::{Color, Move, Position};
+use lib::chess::{Color, Position};
 use lib::nnue::Evaluator;
 use lib::search::{Depth, Engine, Limits, Options};
 use rayon::max_num_threads;
@@ -14,7 +14,7 @@ pub struct Uci {
     engine: Engine,
     options: Options,
     position: Position,
-    moves: Vec<Move>,
+    moves: Vec<UciMove>,
 }
 
 impl Default for Uci {
@@ -51,6 +51,18 @@ impl Uci {
             .parse::<NonZeroUsize>()
             .context("invalid thread count")?;
 
+        Ok(())
+    }
+
+    fn play(&mut self, uci: &UciMove) -> Result<(), Anyhow> {
+        let m = self
+            .position
+            .moves()
+            .find(|m| UciMove::from(*m) == *uci)
+            .context("invalid move")?;
+
+        self.position.play(m)?;
+        self.moves.push(*uci);
         Ok(())
     }
 
@@ -144,21 +156,17 @@ impl Uci {
                     startpos: true,
                     fen: None,
                     moves,
-                } => match Vec::from_iter(moves.into_iter().map(Move::from)).as_slice() {
+                } => match moves.as_slice() {
                     [history @ .., m, n] if history == self.moves => {
-                        self.position.play(*m)?;
-                        self.moves.push(*m);
-
-                        self.position.play(*n)?;
-                        self.moves.push(*n);
+                        self.play(m)?;
+                        self.play(n)?;
                     }
 
                     ms => {
                         self.position = Position::default();
                         self.moves.clear();
-                        for &m in ms {
-                            self.position.play(m)?;
-                            self.moves.push(m);
+                        for m in ms {
+                            self.play(m)?;
                         }
                     }
                 },

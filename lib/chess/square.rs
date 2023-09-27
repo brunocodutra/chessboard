@@ -13,6 +13,7 @@ use proptest::sample::select;
 #[cfg_attr(test, derive(test_strategy::Arbitrary))]
 #[debug(fmt = "{self}")]
 #[display(fmt = "{}{}", "self.file()", "self.rank()")]
+#[repr(transparent)]
 pub struct Square(#[cfg_attr(test, strategy(select(sm::Square::ALL.as_ref())))] sm::Square);
 
 impl Square {
