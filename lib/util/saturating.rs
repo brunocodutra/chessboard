@@ -6,10 +6,10 @@ use std::hash::{Hash, Hasher};
 use std::ops::{Add, Div, Mul, Neg, Sub};
 
 #[cfg(test)]
-use std::{fmt::Debug, ops::RangeInclusive};
+use proptest::prelude::*;
 
 #[cfg(test)]
-use proptest::prelude::*;
+use std::{fmt::Debug, ops::RangeInclusive};
 
 /// A saturating bounded integer.
 #[derive(DebugCustom)]

@@ -9,6 +9,7 @@ use proptest::sample::select;
 #[derive(DebugCustom, Display, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
 #[cfg_attr(test, derive(test_strategy::Arbitrary))]
 #[debug(fmt = "{self}")]
+#[repr(transparent)]
 pub struct Rank(#[cfg_attr(test, strategy(select(sm::Rank::ALL.as_ref())))] sm::Rank);
 
 impl Rank {

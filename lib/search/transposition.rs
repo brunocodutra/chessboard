@@ -90,7 +90,7 @@ impl Transposition {
     }
 }
 
-type Signature = Bits<u32, 28>;
+type Signature = Bits<u32, 24>;
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
 #[cfg_attr(test, derive(test_strategy::Arbitrary))]

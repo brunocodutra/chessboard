@@ -1,4 +1,4 @@
-use crate::chess::{Color, Move, MoveContext, Piece, Position, Role, Square};
+use crate::chess::{Color, Move, Piece, Position, Role, Square};
 use crate::chess::{IllegalMove, ImpossibleExchange, ImpossiblePass};
 use crate::nnue::{Feature, Layer, Nnue, Vector, NNUE};
 use crate::{search::Value, util::Buffer};
@@ -93,7 +93,7 @@ impl<'a> Evaluator<'a> {
     }
 
     /// Play a [`Move`] if legal in this position.
-    pub fn play(&mut self, m: Move) -> Result<MoveContext, IllegalMove> {
+    pub fn play(&mut self, m: Move) -> Result<Move, IllegalMove> {
         let m = self.pos.to_mut().play(m)?;
         self.update(m);
         Ok(m)
@@ -102,13 +102,13 @@ impl<'a> Evaluator<'a> {
     /// Exchange a piece on [`Square`] by the attacker of least value.
     ///
     /// This may lead to invalid positions.
-    pub fn exchange(&mut self, whither: Square) -> Result<MoveContext, ImpossibleExchange> {
+    pub fn exchange(&mut self, whither: Square) -> Result<Move, ImpossibleExchange> {
         let m = self.pos.to_mut().exchange(whither)?;
         self.update(m);
         Ok(m)
     }
 
-    fn update(&mut self, mc: MoveContext) {
+    fn update(&mut self, m: Move) {
         self.hidden.reverse();
         self.psqt.reverse();
 
@@ -116,7 +116,7 @@ impl<'a> Evaluator<'a> {
         let hidden = &mut self.hidden;
         let psqt = &mut self.psqt;
 
-        if mc.role() == Role::King {
+        if m.role() == Role::King {
             let us = Self::perspective(&self.pos, turn);
             let them = Self::perspective(&self.pos, !turn);
             NNUE.transformer.refresh(&us, &mut hidden[0]);
@@ -126,21 +126,21 @@ impl<'a> Evaluator<'a> {
         } else {
             let kings = [self.pos.king(turn), self.pos.king(!turn)];
 
-            let new = Piece(!turn, Option::from(mc.promotion()).unwrap_or(mc.role()));
-            let fts = kings.map(|ks| Feature(ks, new, mc.whither()));
+            let new = Piece(!turn, m.promotion().unwrap_or(m.role()));
+            let fts = kings.map(|ks| Feature(ks, new, m.whither()));
             NNUE.transformer.add(fts[0].index(turn), &mut hidden[0]);
             NNUE.transformer.add(fts[1].index(!turn), &mut hidden[1]);
             NNUE.psqt.add(fts[0].index(turn), &mut psqt[0]);
             NNUE.psqt.add(fts[1].index(!turn), &mut psqt[1]);
 
-            let old = Piece(!turn, mc.role());
-            let fts = kings.map(|ks| Feature(ks, old, mc.whence()));
+            let old = Piece(!turn, m.role());
+            let fts = kings.map(|ks| Feature(ks, old, m.whence()));
             NNUE.transformer.remove(fts[0].index(turn), &mut hidden[0]);
             NNUE.transformer.remove(fts[1].index(!turn), &mut hidden[1]);
             NNUE.psqt.remove(fts[0].index(turn), &mut psqt[0]);
             NNUE.psqt.remove(fts[1].index(!turn), &mut psqt[1]);
 
-            if let Some((role, square)) = mc.capture() {
+            if let Some((role, square)) = m.capture() {
                 let fts = kings.map(|ks| Feature(ks, Piece(turn, role), square));
                 NNUE.transformer.remove(fts[0].index(turn), &mut hidden[0]);
                 NNUE.transformer.remove(fts[1].index(!turn), &mut hidden[1]);
@@ -180,7 +180,7 @@ mod tests {
     #[proptest]
     fn play_updates_accumulator(
         #[filter(#pos.outcome().is_none())] mut pos: Position,
-        #[map(|s: Selector| *s.select(#pos.moves()))] m: Move,
+        #[map(|s: Selector| s.select(#pos.moves()))] m: Move,
     ) {
         let mut e = Evaluator::own(pos.clone());
         assert_eq!(e.play(m), pos.play(m));
@@ -196,8 +196,8 @@ mod tests {
 
     #[proptest]
     fn exchange_updates_accumulator(
-        #[filter(#pos.moves().filter(MoveContext::is_capture).next().is_some())] mut pos: Position,
-        #[map(|s: Selector| *s.select(#pos.moves().filter(MoveContext::is_capture)))] m: Move,
+        #[filter(#pos.moves().filter(Move::is_capture).next().is_some())] mut pos: Position,
+        #[map(|s: Selector| s.select(#pos.moves().filter(Move::is_capture)))] m: Move,
     ) {
         let mut e = Evaluator::own(pos.clone());
 

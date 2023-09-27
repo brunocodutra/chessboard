@@ -1,5 +1,4 @@
-use crate::chess::{Bitboard, Color, Outcome, Piece, Promotion, Role, Square};
-use crate::chess::{Move, MoveContext};
+use crate::chess::{Bitboard, Color, Move, Outcome, Piece, Role, Square};
 use crate::util::{Bits, Buffer};
 use derive_more::{DebugCustom, Display, Error, From};
 use shakmaty as sm;
@@ -7,10 +6,7 @@ use std::hash::{Hash, Hasher};
 use std::{num::NonZeroU32, ops::Index, str::FromStr};
 
 #[cfg(test)]
-use std::ops::Range;
-
-#[cfg(test)]
-use proptest::{prelude::*, sample::*, strategy::Map};
+use proptest::{prelude::*, sample::*};
 
 /// A type representing a [`Position`]'s [zobrist hash].
 ///
@@ -20,8 +16,8 @@ pub type Zobrist = Bits<u64, 64>;
 /// Represents an illegal [`Move`] in a given [`Position`].
 #[derive(Debug, Display, Clone, Eq, PartialEq, Error)]
 #[cfg_attr(test, derive(test_strategy::Arbitrary))]
-#[display(fmt = "move `{_0}` is illegal in this position")]
-pub struct IllegalMove(#[error(not(source))] pub Move);
+#[display(fmt = "this move is illegal in this position")]
+pub struct IllegalMove;
 
 /// Represents an impossible [null-move] in a given [`Position`].
 ///
@@ -65,35 +61,38 @@ impl PartialEq for Position {
 #[cfg(test)]
 impl Arbitrary for Position {
     type Parameters = ();
-    type Strategy = Map<(Range<usize>, SelectorStrategy), fn((usize, Selector)) -> Position>;
+    type Strategy = BoxedStrategy<Self>;
 
     fn arbitrary_with(_: Self::Parameters) -> Self::Strategy {
-        (0..256, any::<Selector>()).prop_map(|(moves, selector)| {
-            use sm::{zobrist::*, *};
-            let mut chess = Chess::default();
-            let mut history = [Buffer::<_, 51>::new(), Buffer::<_, 51>::new()];
+        (0..256, any::<Selector>())
+            .prop_map(|(moves, selector)| {
+                use sm::{zobrist::*, *};
+                let mut chess = Chess::default();
+                let mut history = [Buffer::<_, 51>::new(), Buffer::<_, 51>::new()];
 
-            for _ in 0..moves {
-                match selector.try_select(chess.legal_moves()) {
-                    None => break,
-                    Some(m) => {
-                        if m.is_zeroing() {
-                            history = Default::default();
-                        } else {
-                            let history = &mut history[chess.turn() as usize];
-                            let zobrist: Zobrist64 = chess.zobrist_hash(EnPassantMode::Legal);
-                            if history.push(Zobrist::new(zobrist.0).pop()).is_some() {
-                                break;
-                            }
-                        };
+                for _ in 0..moves {
+                    match selector.try_select(chess.legal_moves()) {
+                        None => break,
+                        Some(m) => {
+                            if m.is_zeroing() {
+                                history = Default::default();
+                            } else {
+                                let history = &mut history[chess.turn() as usize];
+                                let zobrist: Zobrist64 = chess.zobrist_hash(EnPassantMode::Legal);
+                                if history.push(Zobrist::new(zobrist.0).pop()).is_some() {
+                                    break;
+                                }
+                            };
 
-                        chess.play_unchecked(&m);
+                            chess.play_unchecked(&m);
+                        }
                     }
                 }
-            }
 
-            Position(chess, history)
-        })
+                Position(chess, history)
+            })
+            .no_shrink()
+            .boxed()
     }
 }
 
@@ -268,32 +267,30 @@ impl Position {
     }
 
     /// An iterator over the legal [`Move`]s that can be played in this position.
-    pub fn moves(&self) -> impl DoubleEndedIterator<Item = MoveContext> + ExactSizeIterator {
+    pub fn moves(&self) -> impl DoubleEndedIterator<Item = Move> + ExactSizeIterator {
         sm::Position::legal_moves(&self.0)
             .into_iter()
-            .map(MoveContext::from)
+            .map(Move::from)
     }
 
     /// Play a [`Move`] if legal in this position.
-    pub fn play(&mut self, m: Move) -> Result<MoveContext, IllegalMove> {
-        match sm::uci::Uci::to_move(&m.into(), &self.0) {
-            Ok(vm) if sm::Position::is_legal(&self.0, &vm) => {
-                if vm.is_zeroing() {
-                    self.1 = Default::default();
-                } else {
-                    let zobrist = self.zobrist().pop();
-                    let history = &mut self.1[self.turn() as usize];
-                    if history.push(zobrist).is_some() {
-                        return Err(IllegalMove(m));
-                    }
-                }
-
-                sm::Position::play_unchecked(&mut self.0, &vm);
-                Ok(vm.into())
-            }
-
-            _ => Err(IllegalMove(m)),
+    pub fn play(&mut self, m: Move) -> Result<Move, IllegalMove> {
+        let vm = m.into();
+        if !sm::Position::is_legal(&self.0, &vm) {
+            return Err(IllegalMove);
         }
+
+        if vm.is_zeroing() {
+            self.1 = Default::default();
+        } else {
+            let zobrist = self.zobrist().pop();
+            let history = &mut self.1[self.turn() as usize];
+            history.push(zobrist).map_or(Ok(()), |_| Err(IllegalMove))?;
+        }
+
+        sm::Position::play_unchecked(&mut self.0, &vm);
+
+        Ok(m)
     }
 
     /// Play a [null-move] if legal in this position.
@@ -301,22 +298,22 @@ impl Position {
     /// [null-move]: https://www.chessprogramming.org/Null_Move
     pub fn pass(&mut self) -> Result<(), ImpossiblePass> {
         if self.is_check() {
-            Err(ImpossiblePass)
-        } else {
-            let null = sm::Move::Put {
-                role: sm::Role::King,
-                to: self.king(self.turn()).into(),
-            };
-
-            self.1 = Default::default();
-            sm::Position::play_unchecked(&mut self.0, &null);
-
-            Ok(())
+            return Err(ImpossiblePass);
         }
+
+        let null = sm::Move::Put {
+            role: sm::Role::King,
+            to: self.king(self.turn()).into(),
+        };
+
+        self.1 = Default::default();
+        sm::Position::play_unchecked(&mut self.0, &null);
+
+        Ok(())
     }
 
     /// Exchange a piece on [`Square`] by the attacker of least value.
-    pub fn exchange(&mut self, whither: Square) -> Result<MoveContext, ImpossibleExchange> {
+    pub fn exchange(&mut self, whither: Square) -> Result<Move, ImpossibleExchange> {
         let capture = self.role_on(whither).ok_or(ImpossibleExchange(whither))?;
 
         let (whence, role) = self
@@ -327,21 +324,22 @@ impl Position {
             .ok_or(ImpossibleExchange(whither))?;
 
         let promotion = match (role, whither.rank().index()) {
-            (Role::Pawn, 0 | 7) => Promotion::Queen,
-            _ => Promotion::None,
+            (Role::Pawn, 0 | 7) => Some(Role::Queen),
+            _ => None,
         };
 
-        let mc = MoveContext(
-            Move(whence, whither, promotion),
-            role,
-            Some((capture, whither)),
-        );
+        let vm = sm::Move::Normal {
+            role: role.into(),
+            from: whence.into(),
+            capture: Some(capture.into()),
+            to: whither.into(),
+            promotion: promotion.map(Role::into),
+        };
 
-        let vm = mc.into();
         if sm::Position::is_legal(&self.0, &vm) {
             self.1 = Default::default();
             sm::Position::play_unchecked(&mut self.0, &vm);
-            Ok(mc)
+            Ok(vm.into())
         } else {
             Err(ImpossibleExchange(whither))
         }
@@ -620,24 +618,24 @@ mod tests {
         for m in pos.moves() {
             let mut pos = pos.clone();
             assert_eq!(pos[m.whence()].map(|p| p.color()), Some(pos.turn()));
-            assert_eq!(pos.play(*m), Ok(m));
+            assert_eq!(pos.play(m), Ok(m));
         }
     }
 
     #[proptest]
     fn captures_reduce_material(pos: Position) {
-        for m in pos.moves().filter(MoveContext::is_capture) {
+        for m in pos.moves().filter(Move::is_capture) {
             let mut p = pos.clone();
-            p.play(*m)?;
+            p.play(m)?;
             assert!(p.by_color(p.turn()).len() < pos.by_color(p.turn()).len());
         }
     }
 
     #[proptest]
     fn promotions_exchange_pawns(pos: Position) {
-        for m in pos.moves().filter(MoveContext::is_promotion) {
+        for m in pos.moves().filter(Move::is_promotion) {
             let mut p = pos.clone();
-            p.play(*m)?;
+            p.play(m)?;
             let pawn = Piece(pos.turn(), Role::Pawn);
             assert!(p.by_piece(pawn).len() < pos.by_piece(pawn).len());
             assert_eq!(p.by_color(pos.turn()).len(), pos.by_color(pos.turn()).len());
@@ -646,7 +644,7 @@ mod tests {
 
     #[proptest]
     fn castles_move_the_king_by_two_files(pos: Position) {
-        for m in pos.moves().filter(MoveContext::is_castling) {
+        for m in pos.moves().filter(Move::is_castling) {
             assert_eq!(pos[m.whence()], Some(Piece(pos.turn(), Role::King)));
             assert_eq!(m.whence().rank(), m.whither().rank());
             assert_eq!((m.whence().file() - m.whither().file()).abs(), 2);
@@ -656,10 +654,10 @@ mod tests {
     #[proptest]
     fn legal_move_updates_position(
         #[filter(#pos.outcome().is_none())] mut pos: Position,
-        #[map(|s: Selector| s.select(#pos.moves()))] mc: MoveContext,
+        #[map(|s: Selector| s.select(#pos.moves()))] m: Move,
     ) {
         let prev = pos.clone();
-        assert_eq!(pos.play(*mc), Ok(mc));
+        assert_eq!(pos.play(m), Ok(m));
         assert_ne!(pos, prev);
     }
 
@@ -669,7 +667,7 @@ mod tests {
         #[filter(#pos.clone().play(#m).is_err())] m: Move,
     ) {
         let before = pos.clone();
-        assert_eq!(pos.play(m), Err(IllegalMove(m)));
+        assert_eq!(pos.play(m), Err(IllegalMove));
         assert_eq!(pos, before);
     }
 

@@ -5,10 +5,10 @@ use std::fmt::Binary;
 use std::ops::{Bound, Not, RangeBounds};
 
 #[cfg(test)]
-use std::{fmt::Debug, ops::RangeInclusive};
+use proptest::prelude::*;
 
 #[cfg(test)]
-use proptest::prelude::*;
+use std::{fmt::Debug, ops::RangeInclusive};
 
 fn ones<T: PrimInt + Unsigned>(n: u32) -> T {
     match n {
