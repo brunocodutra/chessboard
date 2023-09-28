@@ -5,8 +5,9 @@ mod crelu;
 mod damp;
 mod evaluator;
 mod feature;
+mod input;
 mod nn;
-mod passthrough;
+mod output;
 mod psqt;
 mod transformer;
 
@@ -15,8 +16,9 @@ pub use crelu::*;
 pub use damp::*;
 pub use evaluator::*;
 pub use feature::*;
+pub use input::*;
 pub use nn::*;
-pub use passthrough::*;
+pub use output::*;
 pub use psqt::*;
 pub use transformer::*;
 

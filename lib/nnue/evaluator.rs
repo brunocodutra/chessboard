@@ -57,7 +57,7 @@ impl<'a> Evaluator<'a> {
     pub fn positional(&self) -> Value {
         let phase = (self.occupied().len() - 1) / 4;
         let l1: [i16; Nnue::L1] = unsafe { transmute_copy(&self.hidden) };
-        Value::saturate(NNUE.nns[phase].forward(l1)[0] / 16)
+        Value::saturate(NNUE.nns[phase].forward(l1) / 16)
     }
 
     /// The [`Position`]'s evaluation.

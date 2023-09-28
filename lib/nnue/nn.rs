@@ -1,4 +1,4 @@
-use crate::nnue::{Affine, CReLU, Damp, FeatureTransformer, Passthrough, Psqt};
+use crate::nnue::{Affine, CReLU, Damp, FeatureTransformer, Input, Output, Psqt};
 use std::mem::{size_of, transmute, transmute_copy, MaybeUninit};
 
 /// A trained [`Nnue`].
@@ -6,7 +6,7 @@ pub const NNUE: Nnue = Nnue::new();
 
 type L12<I> = Affine<CReLU<I>, { Nnue::L1 }, { Nnue::L2 }>;
 type L23<I> = Affine<CReLU<Damp<I, 64>>, { Nnue::L2 }, { Nnue::L3 }>;
-type L3o<I> = Affine<CReLU<Damp<I, 64>>, { Nnue::L3 }, 1>;
+type L3o<I> = Output<CReLU<Damp<I, 64>>, { Nnue::L3 }>;
 
 /// An [Efficiently Updatable Neural Network][NNUE].
 ///
@@ -15,7 +15,7 @@ type L3o<I> = Affine<CReLU<Damp<I, 64>>, { Nnue::L3 }, 1>;
 pub struct Nnue {
     pub(super) transformer: FeatureTransformer<{ Self::L0 }, { Self::L1 / 2 }>,
     pub(super) psqt: Psqt<{ Self::L0 }, { Self::PHASES }>,
-    pub(super) nns: [L3o<L23<L12<Passthrough>>>; Self::PHASES],
+    pub(super) nns: [L3o<L23<L12<Input>>>; Self::PHASES],
 }
 
 const fn as_array<T, const N: usize>(slice: &[T], offset: usize) -> &[T; N] {
@@ -66,7 +66,7 @@ impl Nnue {
         };
 
         let mut phase = 0;
-        let mut nns = [MaybeUninit::<L3o<L23<L12<Passthrough>>>>::uninit(); Nnue::PHASES];
+        let mut nns = [MaybeUninit::<L3o<L23<L12<Input>>>>::uninit(); Nnue::PHASES];
 
         loop {
             if phase >= Nnue::PHASES {
@@ -87,7 +87,7 @@ impl Nnue {
                 let weight = transmute_copy(as_array::<_, W>(bytes, cursor));
                 cursor += W;
 
-                Affine(CReLU(Passthrough), weight, bias)
+                Affine(CReLU(Input), weight, bias)
             };
 
             let l23 = unsafe {
@@ -111,7 +111,7 @@ impl Nnue {
                 let weight = transmute_copy(as_array::<_, W>(bytes, cursor));
                 cursor += W;
 
-                Affine(CReLU(Damp(l23)), weight, bias)
+                Output(CReLU(Damp(l23)), weight, bias)
             };
 
             nns[phase].write(l3o);
