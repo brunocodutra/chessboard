@@ -14,7 +14,7 @@ pub struct Affine<L, const I: usize, const O: usize>(
 impl<L: Layer<[i32; O]>, const I: usize, const O: usize> Layer<[i8; I]> for Affine<L, I, O> {
     type Output = L::Output;
 
-    fn forward(&self, input: [i8; I]) -> Self::Output {
+    fn forward(&self, input: &[i8; I]) -> Self::Output {
         debug_assert_eq!(O % 8, 0);
 
         let mut output = self.1;
@@ -31,7 +31,7 @@ impl<L: Layer<[i32; O]>, const I: usize, const O: usize> Layer<[i8; I]> for Affi
             }
         }
 
-        self.2.forward(output)
+        self.2.forward(&output)
     }
 }
 
@@ -44,7 +44,7 @@ mod tests {
     #[proptest]
     fn affine_multiplies_by_weight_matrix(w: [[i8; 3]; 8], i: [i8; 3]) {
         assert_eq!(
-            Affine(w, [0; 8], Fallthrough).forward(i),
+            Affine(w, [0; 8], Fallthrough).forward(&i),
             [
                 i[0] as i32 * w[0][0] as i32
                     + i[1] as i32 * w[0][1] as i32
@@ -77,7 +77,7 @@ mod tests {
     #[proptest]
     fn affine_adds_bias_vector(b: [i32; 8], i: [i8; 2]) {
         assert_eq!(
-            Affine([[1, 1]; 8], b, Fallthrough).forward(i),
+            Affine([[1, 1]; 8], b, Fallthrough).forward(&i),
             [
                 i[0] as i32 + i[1] as i32 + b[0],
                 i[0] as i32 + i[1] as i32 + b[1],

@@ -9,7 +9,7 @@ pub struct Fallthrough;
 impl<I: PrimInt, const N: usize> Layer<[I; N]> for Fallthrough {
     type Output = [I; N];
 
-    fn forward(&self, input: [I; N]) -> Self::Output {
-        input
+    fn forward(&self, input: &[I; N]) -> Self::Output {
+        *input
     }
 }
