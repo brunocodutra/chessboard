@@ -23,12 +23,12 @@ pub use psqt::*;
 pub use transformer::*;
 
 /// Trait for types that can compose a neural network.
-trait Layer<Input> {
+trait Layer<Input: ?Sized> {
     /// The transformed neurons.
     type Output;
 
     /// Transforms input neurons.
-    fn forward(&self, input: Input) -> Self::Output;
+    fn forward(&self, input: &Input) -> Self::Output;
 }
 
 /// Trait for types that can incrementally transform features.
@@ -46,7 +46,7 @@ trait Transformer {
     fn remove(&self, feature: usize, accumulator: &mut Self::Accumulator);
 }
 
-impl<T: Transformer<Accumulator = [U; N]>, U: PrimInt, const N: usize> Layer<&[usize]> for T {
+impl<T: Transformer<Accumulator = [U; N]>, U: PrimInt, const N: usize> Layer<[usize]> for T {
     type Output = [U; N];
 
     fn forward(&self, input: &[usize]) -> Self::Output {

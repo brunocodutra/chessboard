@@ -4,7 +4,7 @@ use crate::nnue::{Feature, Layer, Nnue, Transformer, NNUE};
 use crate::search::Value;
 use arrayvec::ArrayVec;
 use derive_more::Deref;
-use std::{borrow::Cow, iter::repeat, mem::transmute_copy, ops::Range};
+use std::{borrow::Cow, iter::repeat, mem::transmute, ops::Range};
 
 /// An incrementally evaluated [`Position`].
 #[derive(Debug, Clone, Eq, PartialEq, Hash, Deref)]
@@ -55,7 +55,7 @@ impl<'a> Evaluator<'a> {
     /// The [`Position`]'s positional evaluation.
     pub fn positional(&self) -> Value {
         let phase = (self.occupied().len() - 1) / 4;
-        let l1: [i16; Nnue::L1] = unsafe { transmute_copy(&self.hidden) };
+        let l1: &[i16; Nnue::L1] = unsafe { transmute(&self.hidden) };
         Value::saturate(NNUE.nns[phase].forward(l1) / 16)
     }
 

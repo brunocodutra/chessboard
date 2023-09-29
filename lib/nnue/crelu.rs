@@ -15,9 +15,9 @@ where
 {
     type Output = L::Output;
 
-    fn forward(&self, input: [T; N]) -> Self::Output {
+    fn forward(&self, input: &[T; N]) -> Self::Output {
         self.0
-            .forward(input.map(|v| v.clamp(0i8.into(), i8::MAX.into()).as_()))
+            .forward(&input.map(|v| v.clamp(0i8.into(), i8::MAX.into()).as_()))
     }
 }
 
@@ -29,6 +29,6 @@ mod tests {
 
     #[proptest]
     fn clipped_relu_saturates_between_0_and_max(l: CReLU<Fallthrough>, i: [i32; 3]) {
-        assert_eq!(l.forward(i), i.map(|v| v.clamp(0, i8::MAX as _) as _));
+        assert_eq!(l.forward(&i), i.map(|v| v.clamp(0, i8::MAX as _) as _));
     }
 }
