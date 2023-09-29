@@ -15,8 +15,20 @@ impl<const I: usize, const O: usize> Transformer for FeatureTransformer<I, O> {
 
     fn refresh(&self, features: &[usize], accumulator: &mut [i16; O]) {
         *accumulator = self.1;
+
         debug_assert!(features.len() <= 32);
-        for f in features.iter().take(32) {
+        let mut chunks = features.chunks_exact(4);
+
+        for f in &mut chunks {
+            for (i, a) in accumulator.iter_mut().enumerate() {
+                *a += self.0[f[0]][i];
+                *a += self.0[f[1]][i];
+                *a += self.0[f[2]][i];
+                *a += self.0[f[3]][i];
+            }
+        }
+
+        for f in chunks.remainder() {
             self.add(*f, accumulator)
         }
     }
