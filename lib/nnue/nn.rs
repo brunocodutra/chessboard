@@ -1,12 +1,12 @@
-use crate::nnue::{Affine, CReLU, Damp, FeatureTransformer, Input, Output, Psqt};
+use crate::nnue::{Affine, CReLU, Damp, FeatureTransformer, Output, Psqt};
 use std::mem::{size_of, transmute, transmute_copy, MaybeUninit};
 
 /// A trained [`Nnue`].
 pub const NNUE: Nnue = Nnue::new();
 
-type L12<I> = Affine<CReLU<I>, { Nnue::L1 }, { Nnue::L2 }>;
-type L23<I> = Affine<CReLU<Damp<I, 64>>, { Nnue::L2 }, { Nnue::L3 }>;
-type L3o<I> = Output<CReLU<Damp<I, 64>>, { Nnue::L3 }>;
+type L12<N> = CReLU<Affine<Damp<N, 64>, { Nnue::L1 }, { Nnue::L2 }>>;
+type L23<N> = CReLU<Affine<Damp<N, 64>, { Nnue::L2 }, { Nnue::L3 }>>;
+type L3o = CReLU<Output<{ Nnue::L3 }>>;
 
 /// An [Efficiently Updatable Neural Network][NNUE].
 ///
@@ -15,7 +15,7 @@ type L3o<I> = Output<CReLU<Damp<I, 64>>, { Nnue::L3 }>;
 pub struct Nnue {
     pub(super) transformer: FeatureTransformer<{ Self::L0 }, { Self::L1 / 2 }>,
     pub(super) psqt: Psqt<{ Self::L0 }, { Self::PHASES }>,
-    pub(super) nns: [L3o<L23<L12<Input>>>; Self::PHASES],
+    pub(super) nns: [L12<L23<L3o>>; Self::PHASES],
 }
 
 const fn as_array<T, const N: usize>(slice: &[T], offset: usize) -> &[T; N] {
@@ -66,7 +66,7 @@ impl Nnue {
         };
 
         let mut phase = 0;
-        let mut nns = [MaybeUninit::<L3o<L23<L12<Input>>>>::uninit(); Nnue::PHASES];
+        let mut nns = [MaybeUninit::<L12<L23<L3o>>>::uninit(); Nnue::PHASES];
 
         loop {
             if phase >= Nnue::PHASES {
@@ -78,7 +78,7 @@ impl Nnue {
                 };
             }
 
-            let l12 = unsafe {
+            let (l12w, l12b) = unsafe {
                 const B: usize = size_of::<i32>() * Nnue::L2;
                 let bias = transmute_copy(as_array::<_, B>(bytes, cursor));
                 cursor += B;
@@ -87,10 +87,10 @@ impl Nnue {
                 let weight = transmute_copy(as_array::<_, W>(bytes, cursor));
                 cursor += W;
 
-                Affine(CReLU(Input), weight, bias)
+                (weight, bias)
             };
 
-            let l23 = unsafe {
+            let (l23w, l23b) = unsafe {
                 const B: usize = size_of::<i32>() * Nnue::L3;
                 let bias = transmute_copy(as_array::<_, B>(bytes, cursor));
                 cursor += B;
@@ -99,10 +99,10 @@ impl Nnue {
                 let weight = transmute_copy(as_array::<_, W>(bytes, cursor));
                 cursor += W;
 
-                Affine(CReLU(Damp(l12)), weight, bias)
+                (weight, bias)
             };
 
-            let l3o = unsafe {
+            let (l3ow, l3ob) = unsafe {
                 const B: usize = size_of::<i32>();
                 let bias = transmute_copy(as_array::<_, B>(bytes, cursor));
                 cursor += B;
@@ -111,10 +111,14 @@ impl Nnue {
                 let weight = transmute_copy(as_array::<_, W>(bytes, cursor));
                 cursor += W;
 
-                Output(CReLU(Damp(l23)), weight, bias)
+                (weight, bias)
             };
 
-            nns[phase].write(l3o);
+            let l3o = CReLU(Output(l3ow, l3ob));
+            let l23 = CReLU(Affine(l23w, l23b, Damp(l3o)));
+            let l12 = CReLU(Affine(l12w, l12b, Damp(l23)));
+
+            nns[phase].write(l12);
             phase += 1;
         }
     }
