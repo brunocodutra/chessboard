@@ -4,8 +4,7 @@ use crate::nnue::{Feature, Layer, Nnue, Transformer, NNUE};
 use crate::search::Value;
 use arrayvec::ArrayVec;
 use derive_more::Deref;
-use std::mem::transmute_copy;
-use std::{borrow::Cow, iter::repeat, ops::Range};
+use std::{borrow::Cow, iter::repeat, mem::transmute_copy, ops::Range};
 
 /// An incrementally evaluated [`Position`].
 #[derive(Debug, Clone, Eq, PartialEq, Hash, Deref)]
