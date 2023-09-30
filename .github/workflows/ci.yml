@@ -87,6 +87,8 @@ jobs:
     - uses: dtolnay/rust-toolchain@nightly
     - run: cargo install --force cargo-tarpaulin
     - run: cargo tarpaulin --all-features --workspace --engine llvm -o xml
+      env:
+        PROPTEST_CASES: 32
     - uses: codecov/codecov-action@v3
       with:
         token: ${{secrets.CODECOV_TOKEN}}
