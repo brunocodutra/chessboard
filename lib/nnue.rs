@@ -10,6 +10,7 @@ mod nn;
 mod output;
 mod psqt;
 mod transformer;
+mod vector;
 
 pub use affine::*;
 pub use crelu::*;
@@ -21,6 +22,7 @@ pub use nn::*;
 pub use output::*;
 pub use psqt::*;
 pub use transformer::*;
+pub use vector::*;
 
 /// Trait for types that can compose a neural network.
 trait Layer<Input: ?Sized> {
@@ -46,11 +48,11 @@ trait Transformer {
     fn remove(&self, feature: usize, accumulator: &mut Self::Accumulator);
 }
 
-impl<T: Transformer<Accumulator = [U; N]>, U: PrimInt, const N: usize> Layer<[usize]> for T {
-    type Output = [U; N];
+impl<T: Transformer<Accumulator = Vector<U, N>>, U: PrimInt, const N: usize> Layer<[usize]> for T {
+    type Output = Vector<U, N>;
 
     fn forward(&self, input: &[usize]) -> Self::Output {
-        let mut accumulator = [U::zero(); N];
+        let mut accumulator = Vector([U::zero(); N]);
         self.refresh(input, &mut accumulator);
         accumulator
     }

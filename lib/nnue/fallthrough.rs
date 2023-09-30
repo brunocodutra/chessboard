@@ -1,4 +1,4 @@
-use crate::nnue::Layer;
+use crate::nnue::{Layer, Vector};
 use num_traits::PrimInt;
 
 /// A fallthrough [`Layer`].
@@ -6,10 +6,10 @@ use num_traits::PrimInt;
 #[cfg_attr(test, derive(test_strategy::Arbitrary))]
 pub struct Fallthrough;
 
-impl<I: PrimInt, const N: usize> Layer<[I; N]> for Fallthrough {
-    type Output = [I; N];
+impl<I: PrimInt, const N: usize> Layer<Vector<I, N>> for Fallthrough {
+    type Output = Vector<I, N>;
 
-    fn forward(&self, input: &[I; N]) -> Self::Output {
+    fn forward(&self, input: &Vector<I, N>) -> Self::Output {
         *input
     }
 }

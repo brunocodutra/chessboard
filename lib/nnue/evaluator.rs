@@ -1,6 +1,6 @@
 use crate::chess::{Color, Move, MoveContext, Piece, Position, Role, Square};
 use crate::chess::{IllegalMove, ImpossibleExchange, ImpossiblePass};
-use crate::nnue::{Feature, Layer, Nnue, Transformer, NNUE};
+use crate::nnue::{Feature, Layer, Nnue, Transformer, Vector, NNUE};
 use crate::search::Value;
 use arrayvec::ArrayVec;
 use derive_more::Deref;
@@ -11,8 +11,8 @@ use std::{borrow::Cow, iter::repeat, mem::transmute, ops::Range};
 pub struct Evaluator<'a> {
     #[deref(forward)]
     pos: Cow<'a, Position>,
-    hidden: [[i16; Nnue::L1 / 2]; 2],
-    psqt: [[i32; Nnue::PHASES]; 2],
+    hidden: [Vector<i16, { Nnue::L1 / 2 }>; 2],
+    psqt: [Vector<i32, { Nnue::PHASES }>; 2],
 }
 
 impl<'a> Evaluator<'a> {
@@ -55,7 +55,7 @@ impl<'a> Evaluator<'a> {
     /// The [`Position`]'s positional evaluation.
     pub fn positional(&self) -> Value {
         let phase = (self.occupied().len() - 1) / 4;
-        let l1: &[i16; Nnue::L1] = unsafe { transmute(&self.hidden) };
+        let l1: &Vector<i16, { Nnue::L1 }> = unsafe { transmute(&self.hidden) };
         Value::saturate(NNUE.nns[phase].forward(l1) / 16)
     }
 

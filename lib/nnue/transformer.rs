@@ -1,4 +1,4 @@
-use crate::nnue::Transformer;
+use crate::nnue::{Axpy, Matrix, Transformer, Vector};
 
 /// An [affine] feature transformer.
 ///
@@ -6,40 +6,26 @@ use crate::nnue::Transformer;
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
 #[cfg_attr(test, derive(test_strategy::Arbitrary))]
 pub struct FeatureTransformer<const I: usize, const O: usize>(
-    pub(super) [[i16; O]; I],
-    pub(super) [i16; O],
+    pub(super) Matrix<i16, O, I>,
+    pub(super) Vector<i16, O>,
 );
 
 impl<const I: usize, const O: usize> Transformer for FeatureTransformer<I, O> {
-    type Accumulator = [i16; O];
+    type Accumulator = Vector<i16, O>;
 
-    fn refresh(&self, features: &[usize], accumulator: &mut [i16; O]) {
-        *accumulator = self.1;
-
+    fn refresh(&self, features: &[usize], accumulator: &mut Vector<i16, O>) {
         debug_assert!(features.len() <= 32);
-        let mut chunks = features.chunks_exact(4);
-
-        for f in &mut chunks {
-            for (i, a) in accumulator.iter_mut().enumerate() {
-                *a += self.0[f[0]][i];
-                *a += self.0[f[1]][i];
-                *a += self.0[f[2]][i];
-                *a += self.0[f[3]][i];
-            }
-        }
-
-        for f in chunks.remainder() {
-            self.add(*f, accumulator)
-        }
+        *accumulator = self.1;
+        accumulator.axpy(&self.0, features)
     }
 
-    fn add(&self, feature: usize, accumulator: &mut [i16; O]) {
+    fn add(&self, feature: usize, accumulator: &mut Vector<i16, O>) {
         for (i, a) in accumulator.iter_mut().enumerate() {
             *a += self.0[feature][i]
         }
     }
 
-    fn remove(&self, feature: usize, accumulator: &mut [i16; O]) {
+    fn remove(&self, feature: usize, accumulator: &mut Vector<i16, O>) {
         for (i, a) in accumulator.iter_mut().enumerate() {
             *a -= self.0[feature][i]
         }
@@ -59,16 +45,16 @@ mod tests {
         #[strategy([..3usize, ..3, ..3])] i: [usize; 3],
     ) {
         assert_eq!(
-            FeatureTransformer(w, [0; 2]).forward(&i),
-            [
+            FeatureTransformer(w.into(), Vector([0; 2])).forward(&i),
+            Vector([
                 w[i[0]][0] + w[i[1]][0] + w[i[2]][0],
                 w[i[0]][1] + w[i[1]][1] + w[i[2]][1],
-            ]
+            ])
         );
     }
 
     #[proptest]
-    fn transformer_adds_bias_vector(w: [[i16; 2]; 3], b: [i16; 2]) {
+    fn transformer_adds_bias_vector(w: Matrix<i16, 2, 3>, b: Vector<i16, 2>) {
         assert_eq!(FeatureTransformer(w, b).forward(&[]), b);
     }
 
@@ -79,7 +65,7 @@ mod tests {
         #[strategy([-9i16..=9, -9..=9])] b: [i16; 2],
         #[any(size_range(33..=99).lift())] i: Vec<usize>,
     ) {
-        FeatureTransformer(w, b).forward(&i);
+        FeatureTransformer(w.into(), b.into()).forward(&i);
     }
 
     #[proptest]
@@ -89,9 +75,9 @@ mod tests {
         #[strategy([-9i16..=9, -9..=9])] prev: [i16; 2],
         #[strategy(..3usize)] f: usize,
     ) {
-        let mut new = prev;
-        FeatureTransformer(w, b).add(f, &mut new);
-        assert_eq!(new, [prev[0] + w[f][0], prev[1] + w[f][1]]);
+        let mut new = Vector(prev);
+        FeatureTransformer(w.into(), b.into()).add(f, &mut new);
+        assert_eq!(new, Vector([prev[0] + w[f][0], prev[1] + w[f][1]]));
     }
 
     #[proptest]
@@ -101,8 +87,8 @@ mod tests {
         #[strategy([-9i16..=9, -9..=9])] prev: [i16; 2],
         #[strategy(..3usize)] f: usize,
     ) {
-        let mut new = prev;
-        FeatureTransformer(w, b).remove(f, &mut new);
-        assert_eq!(new, [prev[0] - w[f][0], prev[1] - w[f][1]]);
+        let mut new = Vector(prev);
+        FeatureTransformer(w.into(), b.into()).remove(f, &mut new);
+        assert_eq!(new, Vector([prev[0] - w[f][0], prev[1] - w[f][1]]));
     }
 }

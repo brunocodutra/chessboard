@@ -1,4 +1,4 @@
-use crate::nnue::{Affine, CReLU, Damp, FeatureTransformer, Output, Psqt};
+use crate::nnue::{Affine, CReLU, Damp, FeatureTransformer, Matrix, Output, Psqt, Vector};
 use std::mem::{size_of, transmute, transmute_copy, MaybeUninit};
 
 /// A trained [`Nnue`].
@@ -47,11 +47,11 @@ impl Nnue {
 
         let transformer = unsafe {
             const B: usize = size_of::<i16>() * Nnue::L1 / 2;
-            let bias = transmute_copy(as_array::<_, B>(bytes, cursor));
+            let bias = Vector(transmute_copy(as_array::<_, B>(bytes, cursor)));
             cursor += B;
 
             const W: usize = size_of::<i16>() * Nnue::L0 * Nnue::L1 / 2;
-            let weight = transmute_copy(as_array::<_, W>(bytes, cursor));
+            let weight = Matrix(transmute_copy(as_array::<_, W>(bytes, cursor)));
             cursor += W;
 
             FeatureTransformer(weight, bias)
@@ -59,7 +59,7 @@ impl Nnue {
 
         let psqt = unsafe {
             const W: usize = size_of::<i32>() * Nnue::L0 * Nnue::PHASES;
-            let weight = transmute_copy(as_array::<_, W>(bytes, cursor));
+            let weight = Matrix(transmute_copy(as_array::<_, W>(bytes, cursor)));
             cursor += W;
 
             Psqt(weight)
@@ -80,11 +80,11 @@ impl Nnue {
 
             let (l12w, l12b) = unsafe {
                 const B: usize = size_of::<i32>() * Nnue::L2;
-                let bias = transmute_copy(as_array::<_, B>(bytes, cursor));
+                let bias = Vector(transmute_copy(as_array::<_, B>(bytes, cursor)));
                 cursor += B;
 
                 const W: usize = size_of::<i8>() * Nnue::L1 * Nnue::L2;
-                let weight = transmute_copy(as_array::<_, W>(bytes, cursor));
+                let weight = Matrix(transmute_copy(as_array::<_, W>(bytes, cursor)));
                 cursor += W;
 
                 (weight, bias)
@@ -92,11 +92,11 @@ impl Nnue {
 
             let (l23w, l23b) = unsafe {
                 const B: usize = size_of::<i32>() * Nnue::L3;
-                let bias = transmute_copy(as_array::<_, B>(bytes, cursor));
+                let bias = Vector(transmute_copy(as_array::<_, B>(bytes, cursor)));
                 cursor += B;
 
                 const W: usize = size_of::<i8>() * Nnue::L2 * Nnue::L3;
-                let weight = transmute_copy(as_array::<_, W>(bytes, cursor));
+                let weight = Matrix(transmute_copy(as_array::<_, W>(bytes, cursor)));
                 cursor += W;
 
                 (weight, bias)
@@ -108,7 +108,7 @@ impl Nnue {
                 cursor += B;
 
                 const W: usize = size_of::<i8>() * Nnue::L3;
-                let weight = transmute_copy(as_array::<_, W>(bytes, cursor));
+                let weight = Vector(transmute_copy(as_array::<_, W>(bytes, cursor)));
                 cursor += W;
 
                 (weight, bias)
