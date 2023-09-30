@@ -2,7 +2,7 @@ use crate::nnue::{Affine, CReLU, Damp, FeatureTransformer, Matrix, Output, Psqt,
 use std::mem::{size_of, transmute, transmute_copy, MaybeUninit};
 
 /// A trained [`Nnue`].
-pub const NNUE: Nnue = Nnue::new();
+pub const NNUE: Nnue = Nnue::new(include_bytes!("0cd50043.nnue"));
 
 type L12<N> = CReLU<Affine<Damp<N, 64>, { Nnue::L1 }, { Nnue::L2 }>>;
 type L23<N> = CReLU<Affine<Damp<N, 64>, { Nnue::L2 }, { Nnue::L3 }>>;
@@ -18,6 +18,7 @@ pub struct Nnue {
     pub(super) nns: [L12<L23<L3o>>; Self::PHASES],
 }
 
+#[cfg(not(tarpaulin_include))]
 const fn as_array<T, const N: usize>(slice: &[T], offset: usize) -> &[T; N] {
     assert!(offset + N <= slice.len());
     unsafe { transmute(&slice[offset]) }
@@ -30,10 +31,10 @@ impl Nnue {
     pub(super) const L2: usize = 16;
     pub(super) const L3: usize = 32;
 
+    #[cfg(not(tarpaulin_include))]
     #[cfg(target_endian = "little")]
-    const fn new() -> Self {
+    const fn new(bytes: &[u8]) -> Self {
         let mut cursor = 0;
-        let bytes = include_bytes!("0cd50043.nnue");
 
         match u32::from_le_bytes(*as_array(bytes, cursor)) {
             0xffffffff => cursor += size_of::<u32>(),
