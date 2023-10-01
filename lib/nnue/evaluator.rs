@@ -1,6 +1,6 @@
 use crate::chess::{Color, Move, MoveContext, Piece, Position, Role, Square};
 use crate::chess::{IllegalMove, ImpossibleExchange, ImpossiblePass};
-use crate::nnue::{Feature, Layer, Nnue, Transformer, Vector, NNUE};
+use crate::nnue::{Feature, Layer, Nnue, Vector, NNUE};
 use crate::search::Value;
 use arrayvec::ArrayVec;
 use derive_more::Deref;

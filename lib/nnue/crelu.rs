@@ -5,7 +5,6 @@ use num_traits::AsPrimitive;
 ///
 /// [ReLU]: https://en.wikipedia.org/wiki/Rectifier_(neural_networks)
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
-#[cfg_attr(test, derive(test_strategy::Arbitrary))]
 pub struct CReLU<L>(pub(super) L);
 
 impl<L, T, const N: usize> Layer<Vector<T, N>> for CReLU<L>
@@ -28,9 +27,9 @@ mod tests {
     use test_strategy::proptest;
 
     #[proptest]
-    fn clipped_relu_saturates_between_0_and_max(l: CReLU<Fallthrough>, i: [i32; 3]) {
+    fn clipped_relu_saturates_between_0_and_max(i: [i32; 3]) {
         assert_eq!(
-            l.forward(&i.into()),
+            CReLU(Fallthrough).forward(&i.into()),
             Vector(i.map(|v| v.clamp(0, i8::MAX as _) as _))
         );
     }

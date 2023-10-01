@@ -2,7 +2,6 @@ use crate::nnue::{Axpy, Layer, Vector};
 
 /// The output transformer.
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
-#[cfg_attr(test, derive(test_strategy::Arbitrary))]
 pub struct Output<const I: usize>(pub(super) Vector<i8, I>, pub(super) i32);
 
 impl<const N: usize> Layer<Vector<i8, N>> for Output<N> {
