@@ -12,7 +12,13 @@ use proptest::prelude::*;
 #[cfg_attr(test, derive(test_strategy::Arbitrary))]
 #[cfg_attr(test, arbitrary(bound(T: 'static + Debug + Arbitrary)))]
 #[repr(align(64))]
-pub struct Vector<T, const N: usize>(pub [T; N]);
+pub struct Vector<T, const N: usize>(pub(crate) [T; N]);
+
+impl<T: Default + Copy, const N: usize> Default for Vector<T, N> {
+    fn default() -> Self {
+        Vector([T::default(); N])
+    }
+}
 
 impl<T, const N: usize> Vector<T, N> {
     pub fn map<U>(self, f: fn(T) -> U) -> Vector<U, N> {
@@ -27,8 +33,15 @@ impl<T, const N: usize> Vector<T, N> {
 #[repr(align(64))]
 pub struct Matrix<T, const I: usize, const O: usize>(pub(crate) [[T; I]; O]);
 
-/// A trait for types that implement the expression `self += a * x`.
+impl<T: Default + Copy, const I: usize, const O: usize> Default for Matrix<T, I, O> {
+    fn default() -> Self {
+        Matrix([[T::default(); I]; O])
+    }
+}
+
+/// A trait for types that implement affine transformations.
 pub trait Axpy<A: ?Sized, X: ?Sized> {
+    /// Computes `self += a * x`.
     fn axpy(&mut self, a: &A, x: &X);
 }
 
@@ -118,7 +131,7 @@ mod tests {
 
     #[proptest]
     fn axpy_computes_inner_product_of_matrix_and_vector(a: Matrix<i8, 2, 10>, x: Vector<i8, 2>) {
-        let mut y = Vector([0; 10]);
+        let mut y = Vector::default();
         y.axpy(&a, &x);
 
         assert_eq!(
@@ -154,7 +167,7 @@ mod tests {
         ])]
         x: [usize; 10],
     ) {
-        let mut y = Vector([0; 2]);
+        let mut y = Vector::<_, 2>::default();
         y.axpy(&Matrix(a), &x);
 
         assert_eq!(

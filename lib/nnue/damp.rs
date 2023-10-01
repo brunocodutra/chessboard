@@ -2,7 +2,6 @@ use crate::nnue::{Layer, Vector};
 
 /// Damps neuron activation.
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
-#[cfg_attr(test, derive(test_strategy::Arbitrary))]
 pub struct Damp<L, const SCALE: i32>(pub(super) L);
 
 impl<L, const N: usize, const SCALE: i32> Layer<Vector<i32, N>> for Damp<L, SCALE>
@@ -23,7 +22,10 @@ mod tests {
     use test_strategy::proptest;
 
     #[proptest]
-    fn damp_scales(l: Damp<Fallthrough, 8>, i: [i32; 3]) {
-        assert_eq!(l.forward(&i.into()), Vector(i.map(|v| v / 8)));
+    fn damp_scales(i: [i32; 3]) {
+        assert_eq!(
+            Damp::<_, 8>(Fallthrough).forward(&i.into()),
+            Vector(i.map(|v| v / 8))
+        );
     }
 }

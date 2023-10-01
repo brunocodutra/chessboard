@@ -4,7 +4,6 @@ use crate::nnue::{Axpy, Layer, Matrix, Vector};
 ///
 /// [affine]: https://en.wikipedia.org/wiki/Affine_transformation
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
-#[cfg_attr(test, derive(test_strategy::Arbitrary))]
 pub struct Affine<L, const I: usize, const O: usize>(
     pub(super) Matrix<i8, I, O>,
     pub(super) Vector<i32, O>,
@@ -32,7 +31,7 @@ mod tests {
     #[proptest]
     fn affine_multiplies_by_weight_matrix(w: [[i8; 3]; 2], i: [i8; 3]) {
         assert_eq!(
-            Affine(w.into(), Vector([0; 2]), Fallthrough).forward(&i.into()),
+            Affine(w.into(), Vector::default(), Fallthrough).forward(&i.into()),
             Vector([
                 i[0] as i32 * w[0][0] as i32
                     + i[1] as i32 * w[0][1] as i32
