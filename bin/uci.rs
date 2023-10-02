@@ -64,7 +64,9 @@ impl Uci {
             None => UciInfoAttribute::from_centipawns(pv.score().get().into()),
         };
 
-        self.io.send(UciMessage::Info(vec![score]))?;
+        let pv = UciInfoAttribute::Pv(pv.into_iter().map(UciMove::from).collect());
+
+        self.io.send(UciMessage::Info(vec![score, pv]))?;
         self.io.send(UciMessage::best_move(best.into()))?;
 
         Ok(())
