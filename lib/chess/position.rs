@@ -303,17 +303,12 @@ impl Position {
         if self.is_check() {
             Err(ImpossiblePass)
         } else {
-            let zobrist = self.zobrist().pop();
-            let history = &mut self.1[self.turn() as usize];
-            if history.push(zobrist).is_some() {
-                return Err(ImpossiblePass);
-            }
-
             let null = sm::Move::Put {
                 role: sm::Role::King,
                 to: self.king(self.turn()).into(),
             };
 
+            self.1 = Default::default();
             sm::Position::play_unchecked(&mut self.0, &null);
 
             Ok(())
@@ -697,19 +692,10 @@ mod tests {
     #[proptest]
     fn threefold_repetition_implies_draw(
         #[filter(#pos.outcome().is_none())] mut pos: Position,
-        #[map(|s: Selector| *s.select(#pos.moves()))] m: Move,
+        z: Bits<u16, 16>,
     ) {
-        let rep = pos.clone();
-        let n = Move(m.whither(), m.whence(), Promotion::None);
-
-        for _ in 0..2 {
-            prop_assume!(pos.play(m).is_ok());
-            prop_assume!(pos.pass().is_ok());
-            prop_assume!(pos.play(n).is_ok());
-            prop_assume!(pos.pass().is_ok());
-            prop_assume!(pos == rep);
-        }
-
+        let zobrist = pos.zobrist().pop();
+        pos.1[pos.turn() as usize] = [zobrist, z, zobrist, z].into_iter().collect();
         assert!(pos.is_draw_by_threefold_repetition());
         assert_eq!(pos.outcome(), Some(Outcome::DrawByThreefoldRepetition));
     }
