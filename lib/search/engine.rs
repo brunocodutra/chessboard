@@ -2,8 +2,7 @@ use crate::chess::{Move, Piece, Position, Role, Zobrist};
 use crate::nnue::Evaluator;
 use crate::search::{Depth, Limits, Options, Ply, Pv, Score, Value};
 use crate::search::{Transposition, TranspositionTable};
-use crate::util::{Timeout, Timer};
-use arrayvec::ArrayVec;
+use crate::util::{Buffer, Timeout, Timer};
 use rayon::{prelude::*, ThreadPool, ThreadPoolBuilder};
 use std::sync::atomic::{AtomicI16, Ordering};
 use std::{cmp::max, ops::Range, time::Duration};
@@ -196,7 +195,7 @@ impl Engine {
             }
         }
 
-        let mut moves = ArrayVec::<_, 256>::from_iter(pos.moves().filter_map(|mc| {
+        let mut moves = Buffer::<_, 256>::from_iter(pos.moves().filter_map(|mc| {
             if ply >= depth && !in_check && mc.is_quiet() {
                 return None;
             }

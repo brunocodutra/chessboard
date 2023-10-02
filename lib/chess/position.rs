@@ -1,7 +1,6 @@
 use crate::chess::{Bitboard, Color, Outcome, Piece, Promotion, Role, Square};
 use crate::chess::{Move, MoveContext};
-use crate::util::Bits;
-use arrayvec::ArrayVec;
+use crate::util::{Bits, Buffer};
 use derive_more::{DebugCustom, Display, Error, From};
 use shakmaty as sm;
 use std::hash::{Hash, Hasher};
@@ -47,7 +46,7 @@ pub struct ImpossibleExchange(#[error(not(source))] pub Square);
     fmt = "{}",
     "sm::fen::Fen::from_position(self.0.clone(), sm::EnPassantMode::Legal)"
 )]
-pub struct Position(sm::Chess, [ArrayVec<Bits<u16, 16>, 51>; 2]);
+pub struct Position(sm::Chess, [Buffer<Bits<u16, 16>, 51>; 2]);
 
 impl Hash for Position {
     fn hash<H: Hasher>(&self, state: &mut H) {
@@ -72,7 +71,7 @@ impl Arbitrary for Position {
         (0..256, any::<Selector>()).prop_map(|(moves, selector)| {
             use sm::{zobrist::*, *};
             let mut chess = Chess::default();
-            let mut history = [ArrayVec::<_, 51>::new(), ArrayVec::<_, 51>::new()];
+            let mut history = [Buffer::<_, 51>::new(), Buffer::<_, 51>::new()];
 
             for _ in 0..moves {
                 match selector.try_select(chess.legal_moves()) {
@@ -83,7 +82,7 @@ impl Arbitrary for Position {
                         } else {
                             let history = &mut history[chess.turn() as usize];
                             let zobrist: Zobrist64 = chess.zobrist_hash(EnPassantMode::Legal);
-                            if history.try_push(Zobrist::new(zobrist.0).pop()).is_err() {
+                            if history.push(Zobrist::new(zobrist.0).pop()).is_some() {
                                 break;
                             }
                         };
@@ -284,7 +283,7 @@ impl Position {
                 } else {
                     let zobrist = self.zobrist().pop();
                     let history = &mut self.1[self.turn() as usize];
-                    if history.try_push(zobrist).is_err() {
+                    if history.push(zobrist).is_some() {
                         return Err(IllegalMove(m));
                     }
                 }
@@ -306,7 +305,7 @@ impl Position {
         } else {
             let zobrist = self.zobrist().pop();
             let history = &mut self.1[self.turn() as usize];
-            if history.try_push(zobrist).is_err() {
+            if history.push(zobrist).is_some() {
                 return Err(ImpossiblePass);
             }
 

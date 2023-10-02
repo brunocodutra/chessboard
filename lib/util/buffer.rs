@@ -1,11 +1,11 @@
 use arrayvec::ArrayVec;
 use derive_more::{DebugCustom, Deref, DerefMut};
-use std::fmt::Debug;
+use std::{fmt::Debug, mem::swap};
 
 #[cfg(test)]
 use proptest::{collection::vec, prelude::*};
 
-/// A buffer of fixed capacity.
+/// A stack allocated buffer of fixed capacity.
 #[derive(DebugCustom, Clone, Eq, PartialEq, Hash, Deref, DerefMut)]
 #[cfg_attr(test, derive(test_strategy::Arbitrary))]
 #[cfg_attr(test, arbitrary(bound(T: 'static + Debug + Arbitrary)))]
@@ -19,34 +19,49 @@ pub struct Buffer<T, const N: usize>(
 );
 
 impl<T, const N: usize> Buffer<T, N> {
+    /// Constructs an empty buffer.
+    pub fn new() -> Self {
+        Default::default()
+    }
+
     /// Whether the buffer's len is equal to `N`.
     pub fn is_full(&self) -> bool {
         self.0.is_full()
     }
 
-    /// Pushes an element in the back of the buffer.
+    /// Attempts to pop an element from the back of the buffer.
     ///
-    /// # Panics
+    /// Returns `None` if the buffer is empty.
+    pub fn pop(&mut self) -> Option<T> {
+        self.0.pop()
+    }
+
+    /// Attempts to push an element in the back of the buffer.
     ///
-    /// Panics if the buffer is full.
-    pub fn push(&mut self, e: T) {
-        self.0.push(e);
+    /// Returns `Some(e)` if the buffer is full.
+    pub fn push(&mut self, e: T) -> Option<T> {
+        match self.0.try_push(e) {
+            Err(e) => Some(e.element()),
+            Ok(_) => None,
+        }
     }
 
     /// Pushes an element in front of the buffer.
     ///
-    /// The buffer is truncated if it's full.
+    /// Returns the previous last element if the buffer is full.
     ///
     /// # Panics
     ///
     /// Panics if `N` is `0`.
-    pub fn shift(&mut self, e: T) {
+    pub fn shift(&mut self, mut e: T) -> Option<T> {
         if self.is_full() {
             self.rotate_right(1);
-            self[0] = e;
+            swap(&mut self[0], &mut e);
+            Some(e)
         } else {
             self.push(e);
             self.rotate_right(1);
+            None
         }
     }
 }
@@ -63,22 +78,6 @@ impl<T, const N: usize> IntoIterator for Buffer<T, N> {
     type IntoIter = <ArrayVec<T, N> as IntoIterator>::IntoIter;
     fn into_iter(self) -> Self::IntoIter {
         self.0.into_iter()
-    }
-}
-
-impl<'a, T, const N: usize> IntoIterator for &'a Buffer<T, N> {
-    type Item = <&'a ArrayVec<T, N> as IntoIterator>::Item;
-    type IntoIter = <&'a ArrayVec<T, N> as IntoIterator>::IntoIter;
-    fn into_iter(self) -> Self::IntoIter {
-        (&self.0).into_iter()
-    }
-}
-
-impl<'a, T, const N: usize> IntoIterator for &'a mut Buffer<T, N> {
-    type Item = <&'a mut ArrayVec<T, N> as IntoIterator>::Item;
-    type IntoIter = <&'a mut ArrayVec<T, N> as IntoIterator>::IntoIter;
-    fn into_iter(self) -> Self::IntoIter {
-        (&mut self.0).into_iter()
     }
 }
 
@@ -125,15 +124,26 @@ mod tests {
     }
 
     #[proptest]
-    #[should_panic]
-    fn push_panics_if_full(#[filter(#b.is_full())] mut b: Buffer<u8, 3>, e: u8) {
-        b.push(e);
+    fn pop_returns_none_if_empty() {
+        assert_eq!(Buffer::<u8, 3>::new().pop(), None);
+    }
+
+    #[proptest]
+    fn pop_removes_element_from_the_end(#[filter(!#b.is_empty())] b: Buffer<u8, 3>) {
+        let mut c = b.clone();
+        assert_eq!(c.pop(), Some(b[c.len()]));
+        assert_eq!(b[..c.len()], c[..]);
+    }
+
+    #[proptest]
+    fn push_returns_some_if_full(#[filter(#b.is_full())] mut b: Buffer<u8, 3>, e: u8) {
+        assert_eq!(b.push(e), Some(e));
     }
 
     #[proptest]
     fn push_inserts_element_at_the_end(#[filter(!#b.is_full())] b: Buffer<u8, 3>, e: u8) {
         let mut c = b.clone();
-        c.push(e);
+        assert_eq!(c.push(e), None);
         assert_eq!(c[b.len()], e);
         assert_eq!(c[..b.len()], b[..]);
     }
@@ -145,17 +155,20 @@ mod tests {
     }
 
     #[proptest]
-    fn shift_does_not_truncate_if_not_full(#[filter(!#b.is_full())] b: Buffer<u8, 3>, e: u8) {
+    fn shift_inserts_element_at_the_front(#[filter(!#b.is_full())] b: Buffer<u8, 3>, e: u8) {
         let mut c = b.clone();
-        c.shift(e);
+        assert_eq!(c.shift(e), None);
         assert_eq!(c[0], e);
         assert_eq!(c[1..], b[..]);
     }
 
     #[proptest]
-    fn shift_truncates_if_full(#[filter(#b.is_full())] b: Buffer<u8, 3>, e: u8) {
+    fn shift_returns_previous_last_element_if_full(
+        #[filter(#b.is_full())] b: Buffer<u8, 3>,
+        e: u8,
+    ) {
         let mut c = b.clone();
-        c.shift(e);
+        assert_eq!(c.shift(e), Some(b[b.len() - 1]));
         assert_eq!(c[0], e);
         assert_eq!(c[1..], b[..2]);
     }
