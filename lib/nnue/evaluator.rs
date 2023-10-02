@@ -15,7 +15,7 @@ pub struct Evaluator<'a> {
 }
 
 impl<'a> Evaluator<'a> {
-    fn perspective(pos: &Position, side: Color) -> Buffer<usize, 32> {
+    fn perspective(pos: &Position, side: Color) -> Buffer<u16, 32> {
         pos.iter()
             .zip(repeat(pos.king(side)))
             .map(|((p, s), ks)| Feature(ks, p, s))

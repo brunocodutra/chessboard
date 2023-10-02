@@ -118,6 +118,7 @@ impl From<MoveContext> for sm::Move {
 #[cfg_attr(test, filter(#self.0 != #self.1))]
 #[debug(fmt = "Move({self})")]
 #[display(fmt = "{_0}{_1}{_2}")]
+#[repr(align(4))]
 pub struct Move(pub Square, pub Square, pub Promotion);
 
 impl Move {

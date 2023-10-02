@@ -12,13 +12,13 @@ impl Feature {
     }
 
     /// Feature's index for the given perspective.
-    pub fn index(&self, side: Color) -> usize {
+    pub fn index(&self, side: Color) -> u16 {
         let Feature(ks, p, s) = match side {
             Color::White => *self,
             Color::Black => self.mirror(),
         };
 
-        s.index() as usize + 64 * (p.index().min(10) as usize + 11 * ks.index() as usize)
+        s.index() as u16 + 64 * (p.index().min(10) as u16 + 11 * ks.index() as u16)
     }
 }
 

@@ -5,6 +5,7 @@ use std::ops::Not;
 /// Denotes the color of a chess [`Piece`][`crate::Piece`].
 #[derive(Debug, Display, Copy, Clone, Eq, PartialEq, Hash)]
 #[cfg_attr(test, derive(test_strategy::Arbitrary))]
+#[repr(u8)]
 pub enum Color {
     #[display(fmt = "white")]
     White,

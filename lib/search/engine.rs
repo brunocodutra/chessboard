@@ -195,7 +195,7 @@ impl Engine {
             }
         }
 
-        let mut moves = Buffer::<_, 256>::from_iter(pos.moves().filter_map(|mc| {
+        let mut moves = Buffer::<_, 255>::from_iter(pos.moves().filter_map(|mc| {
             if ply >= depth && !in_check && mc.is_quiet() {
                 return None;
             }
