@@ -1,6 +1,4 @@
-use crate::chess::Move;
-use crate::search::{DepthBounds, Score};
-use crate::util::{Bounds, Buffer};
+use crate::{chess::Move, search::Score, util::Buffer};
 use derive_more::{Deref, DerefMut, IntoIterator};
 use std::{cmp::Ordering, ops::Neg};
 
@@ -9,15 +7,15 @@ use std::{cmp::Ordering, ops::Neg};
 /// [principal variation]: https://www.chessprogramming.org/Principal_Variation
 #[derive(Debug, Clone, Eq, PartialEq, Hash, Deref, DerefMut, IntoIterator)]
 #[cfg_attr(test, derive(test_strategy::Arbitrary))]
-pub struct Pv<const N: usize = { DepthBounds::UPPER as _ }> {
+pub struct Pv {
     score: Score,
     #[deref]
     #[deref_mut]
-    #[into_iterator(owned)]
-    line: Buffer<Move, N>,
+    #[into_iterator]
+    line: Buffer<Move, 15>,
 }
 
-impl<const N: usize> Pv<N> {
+impl Pv {
     /// Constructs a pv.
     pub fn new<I: IntoIterator<Item = Move>>(score: Score, line: I) -> Self {
         Pv {
@@ -37,19 +35,19 @@ impl<const N: usize> Pv<N> {
     }
 }
 
-impl<const N: usize> Ord for Pv<N> {
+impl Ord for Pv {
     fn cmp(&self, other: &Self) -> Ordering {
         self.score.cmp(&other.score)
     }
 }
 
-impl<const N: usize> PartialOrd for Pv<N> {
+impl PartialOrd for Pv {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
         Some(self.cmp(other))
     }
 }
 
-impl<T, const N: usize> PartialEq<T> for Pv<N>
+impl<T> PartialEq<T> for Pv
 where
     Score: PartialEq<T>,
 {
@@ -58,7 +56,7 @@ where
     }
 }
 
-impl<T, const N: usize> PartialOrd<T> for Pv<N>
+impl<T> PartialOrd<T> for Pv
 where
     Score: PartialOrd<T>,
 {
@@ -67,7 +65,7 @@ where
     }
 }
 
-impl<const N: usize> Neg for Pv<N> {
+impl Neg for Pv {
     type Output = Self;
 
     fn neg(self) -> Self::Output {
@@ -81,27 +79,27 @@ mod tests {
     use test_strategy::proptest;
 
     #[proptest]
-    fn score_returns_score(pv: Pv<3>) {
+    fn score_returns_score(pv: Pv) {
         assert_eq!(pv.score(), pv.score);
     }
 
     #[proptest]
-    fn line_returns_line(pv: Pv<3>) {
+    fn line_returns_line(pv: Pv) {
         assert_eq!(pv.line(), &*pv.line);
     }
 
     #[proptest]
-    fn negation_changes_score(pv: Pv<3>) {
+    fn negation_changes_score(pv: Pv) {
         assert_eq!(pv.clone().neg().score(), -pv.score());
     }
 
     #[proptest]
-    fn negation_preserves_line(pv: Pv<3>) {
+    fn negation_preserves_line(pv: Pv) {
         assert_eq!(pv.clone().neg().line(), pv.line());
     }
 
     #[proptest]
-    fn pv_with_larger_score_is_larger(p: Pv<3>, #[filter(#p.score() != #q.score())] q: Pv<3>) {
+    fn pv_with_larger_score_is_larger(p: Pv, #[filter(#p.score() != #q.score())] q: Pv) {
         assert_eq!(p < q, p.score() < q.score());
     }
 }

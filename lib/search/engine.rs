@@ -115,14 +115,14 @@ impl Engine {
     /// A [zero-window] search wrapper for [`Self::ns`].
     ///
     /// [zero-window]: https://www.chessprogramming.org/Null_Window
-    fn nw<const N: usize>(
+    fn nw(
         &self,
         pos: &Evaluator,
         beta: Score,
         depth: Depth,
         ply: Ply,
         timer: Timer,
-    ) -> Result<Pv<N>, Timeout> {
+    ) -> Result<Pv, Timeout> {
         self.ns(pos, beta - 1..beta, depth, ply, timer)
     }
 
@@ -130,14 +130,14 @@ impl Engine {
     ///
     /// [negascout]: https://www.chessprogramming.org/NegaScout
     /// [alpha-beta pruning]: https://www.chessprogramming.org/Alpha-Beta
-    fn ns<const N: usize>(
+    fn ns(
         &self,
         pos: &Evaluator,
         bounds: Range<Score>,
         depth: Depth,
         ply: Ply,
         timer: Timer,
-    ) -> Result<Pv<N>, Timeout> {
+    ) -> Result<Pv, Timeout> {
         assert!(!bounds.is_empty(), "{bounds:?} ≠ ∅");
 
         timer.elapsed()?;
@@ -178,7 +178,7 @@ impl Engine {
         let score = match tpos {
             _ if ply >= depth => pos.value().cast(),
             Some(t) => t.score().normalize(ply),
-            None => self.nw::<1>(pos, beta, ply.cast(), ply, timer)?.score(),
+            None => self.nw(pos, beta, ply.cast(), ply, timer)?.score(),
         };
 
         if ply >= Ply::UPPER {
@@ -187,7 +187,7 @@ impl Engine {
             if let Some(d) = self.nmp(pos, score, beta, depth) {
                 let mut next = pos.clone();
                 next.pass().expect("expected possible pass");
-                if d <= ply || -self.nw::<1>(&next, -beta + 1, d, ply + 1, timer)? >= beta {
+                if d <= ply || -self.nw(&next, -beta + 1, d, ply + 1, timer)? >= beta {
                     #[cfg(not(test))]
                     // The null move pruning heuristic is not exact.
                     return Ok(Pv::new(score, []));
@@ -248,7 +248,7 @@ impl Engine {
 
                 if !in_check {
                     if let Some(d) = self.lmp(&next, guess, alpha, depth) {
-                        if d <= ply || -self.nw::<1>(&next, -alpha, d, ply + 1, timer)? <= alpha {
+                        if d <= ply || -self.nw(&next, -alpha, d, ply + 1, timer)? <= alpha {
                             #[cfg(not(test))]
                             // The late move pruning heuristic is not exact.
                             return Ok(None);
@@ -287,7 +287,7 @@ impl Engine {
     ///
     /// [aspiration windows]: https://www.chessprogramming.org/Aspiration_Windows
     /// [iterative deepening]: https://www.chessprogramming.org/Iterative_Deepening
-    fn aw<const N: usize>(&self, pos: &Position, depth: Depth, timer: Timer) -> Pv<N> {
+    fn aw(&self, pos: &Position, depth: Depth, timer: Timer) -> Pv {
         let mut best = Pv::new(Score::new(0), []);
 
         'id: for d in 0..=depth.get() {
@@ -338,7 +338,7 @@ impl Engine {
     }
 
     /// Searches for the [principal variation][`Pv`].
-    pub fn search<const N: usize>(&mut self, pos: &Position, limits: Limits) -> Pv<N> {
+    pub fn search(&mut self, pos: &Position, limits: Limits) -> Pv {
         let depth = limits.depth();
         let timer = Timer::start(self.time_to_search(pos, limits));
         self.executor.install(|| self.aw(pos, depth, timer))
@@ -385,7 +385,7 @@ mod tests {
     #[should_panic]
     fn nw_panics_if_beta_is_too_small(e: Engine, pos: Position, d: Depth, p: Ply) {
         let pos = Evaluator::borrow(&pos);
-        e.nw::<1>(&pos, Score::LOWER, d, p, Timer::disarmed())?;
+        e.nw(&pos, Score::LOWER, d, p, Timer::disarmed())?;
     }
 
     #[proptest]
@@ -404,7 +404,7 @@ mod tests {
 
         assert_eq!(
             e.nw(&Evaluator::borrow(&pos), b, d, p, Timer::disarmed()),
-            Ok(Pv::<1>::new(s, [m]))
+            Ok(Pv::new(s, [m]))
         );
     }
 
@@ -424,7 +424,7 @@ mod tests {
 
         assert_eq!(
             e.nw(&Evaluator::borrow(&pos), b, d, p, Timer::disarmed()),
-            Ok(Pv::<1>::new(s, [m]))
+            Ok(Pv::new(s, [m]))
         );
     }
 
@@ -444,7 +444,7 @@ mod tests {
 
         assert_eq!(
             e.nw(&Evaluator::borrow(&pos), b, d, p, Timer::disarmed()),
-            Ok(Pv::<1>::new(sc, [m]))
+            Ok(Pv::new(sc, [m]))
         );
     }
 
@@ -458,7 +458,7 @@ mod tests {
         p: Ply,
     ) {
         let pos = Evaluator::borrow(&pos);
-        e.ns::<1>(&pos, b.end..b.start, d, p, Timer::disarmed())?;
+        e.ns(&pos, b.end..b.start, d, p, Timer::disarmed())?;
     }
 
     #[proptest]
@@ -472,7 +472,7 @@ mod tests {
         let pos = Evaluator::borrow(&pos);
         let timer = Timer::start(Duration::ZERO);
         std::thread::sleep(Duration::from_millis(1));
-        assert_eq!(e.ns::<1>(&pos, b, d, p, timer), Err(Timeout));
+        assert_eq!(e.ns(&pos, b, d, p, timer), Err(Timeout));
     }
 
     #[proptest]
@@ -485,7 +485,7 @@ mod tests {
     ) {
         assert_eq!(
             e.ns(&Evaluator::borrow(&pos), b, d, p, Timer::disarmed()),
-            Ok(Pv::<1>::new(Score::new(0), []))
+            Ok(Pv::new(Score::new(0), []))
         );
     }
 
@@ -499,7 +499,7 @@ mod tests {
     ) {
         assert_eq!(
             e.ns(&Evaluator::borrow(&pos), b, d, p, Timer::disarmed()),
-            Ok(Pv::<1>::new(Score::LOWER.normalize(p), []))
+            Ok(Pv::new(Score::LOWER.normalize(p), []))
         );
     }
 
@@ -509,7 +509,7 @@ mod tests {
         let timer = Timer::disarmed();
         let bounds = Score::LOWER..Score::UPPER;
 
-        assert_eq!(e.ns::<1>(&pos, bounds, d, p, timer)?, negamax(&pos, d, p));
+        assert_eq!(e.ns(&pos, bounds, d, p, timer)?, negamax(&pos, d, p));
     }
 
     #[proptest]
@@ -528,8 +528,8 @@ mod tests {
         let timer = Timer::disarmed();
 
         assert_eq!(
-            x.ns::<1>(&pos, bounds.clone(), d, p, timer)?.score(),
-            y.ns::<1>(&pos, bounds, d, p, timer)?.score()
+            x.ns(&pos, bounds.clone(), d, p, timer)?.score(),
+            y.ns(&pos, bounds, d, p, timer)?.score()
         );
     }
 
@@ -540,16 +540,16 @@ mod tests {
         let bounds = Score::LOWER..Score::UPPER;
 
         assert_eq!(
-            e.search::<3>(&pos, Limits::Depth(d)).score(),
-            e.ns::<3>(&pos, bounds, d, Ply::new(0), timer)?.score()
+            e.search(&pos, Limits::Depth(d)).score(),
+            e.ns(&pos, bounds, d, Ply::new(0), timer)?.score()
         );
     }
 
     #[proptest]
     fn search_is_stable(mut e: Engine, pos: Position, d: Depth) {
         assert_eq!(
-            e.search::<3>(&pos, Limits::Depth(d)).score(),
-            e.search::<3>(&pos, Limits::Depth(d)).score()
+            e.search(&pos, Limits::Depth(d)).score(),
+            e.search(&pos, Limits::Depth(d)).score()
         );
     }
 
@@ -560,7 +560,7 @@ mod tests {
         #[strategy(..10u8)] ms: u8,
     ) {
         let t = Instant::now();
-        e.search::<1>(&pos, Limits::Time(Duration::from_millis(ms.into())));
+        e.search(&pos, Limits::Time(Duration::from_millis(ms.into())));
         assert!(t.elapsed() < Duration::from_secs(1));
     }
 
@@ -569,6 +569,6 @@ mod tests {
         mut e: Engine,
         #[filter(#pos.outcome().is_none())] pos: Position,
     ) {
-        assert!(!e.search::<1>(&pos, Limits::Time(Duration::ZERO)).is_empty());
+        assert!(!e.search(&pos, Limits::Time(Duration::ZERO)).is_empty());
     }
 }
