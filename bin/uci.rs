@@ -2,7 +2,7 @@ use crate::io::Io;
 use anyhow::{Context, Error as Anyhow};
 use lib::chess::{Color, Move, Position};
 use lib::nnue::Evaluator;
-use lib::search::{Depth, Engine, Limits, Options, Pv};
+use lib::search::{Depth, Engine, Limits, Options};
 use rayon::max_num_threads;
 use std::io::{stdin, stdout, Stdin, Stdout};
 use std::{num::NonZeroUsize, time::Duration};
@@ -55,7 +55,7 @@ impl Uci {
     }
 
     fn go(&mut self, limits: Limits) -> Result<(), Anyhow> {
-        let pv: Pv<1> = self.engine.search(&self.position, limits);
+        let pv = self.engine.search(&self.position, limits);
         let best = *pv.first().expect("expected some legal move");
 
         let score = match pv.score().mate() {
