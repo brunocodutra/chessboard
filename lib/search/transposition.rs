@@ -1,6 +1,6 @@
 use crate::chess::{Move, Zobrist};
 use crate::search::{Depth, Score};
-use crate::util::{Binary, Bits, Cache};
+use crate::util::{Assume, Binary, Bits, Cache};
 use derive_more::{Display, Error};
 use std::{cmp::Ordering, mem::size_of, ops::RangeInclusive};
 
@@ -196,7 +196,7 @@ impl TranspositionTable {
 
         let sig = self.signature_of(key);
         let bits = self.cache.load(self.index_of(key));
-        match Binary::decode(bits).expect("expected valid encoding") {
+        match Binary::decode(bits).assume() {
             Some(SignedTransposition(t, s)) if s == sig => Some(t),
             _ => None,
         }
@@ -209,12 +209,11 @@ impl TranspositionTable {
         if self.capacity() > 0 {
             let sig = self.signature_of(key);
             let bits = Some(SignedTransposition(transposition, sig)).encode();
-            self.cache.update(self.index_of(key), |r| {
-                match Binary::decode(r).expect("expected valid encoding") {
+            self.cache
+                .update(self.index_of(key), |r| match Binary::decode(r).assume() {
                     Some(SignedTransposition(t, _)) if t > transposition => None,
                     _ => Some(bits),
-                }
-            })
+                })
         }
     }
 }

@@ -1,3 +1,4 @@
+mod assume;
 mod binary;
 mod bits;
 mod bounds;
@@ -6,6 +7,7 @@ mod cache;
 mod saturating;
 mod timer;
 
+pub use assume::*;
 pub use binary::*;
 pub use bits::*;
 pub use bounds::*;

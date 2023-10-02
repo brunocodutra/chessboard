@@ -1,5 +1,5 @@
 use crate::chess::{Bitboard, Color, Move, Outcome, Piece, Role, Square};
-use crate::util::{Bits, Buffer};
+use crate::util::{Assume, Bits, Buffer};
 use derive_more::{DebugCustom, Display, Error, From};
 use shakmaty as sm;
 use std::hash::{Hash, Hasher};
@@ -163,7 +163,7 @@ impl Position {
         self.by_piece(Piece(side, Role::King))
             .into_iter()
             .next()
-            .expect("expected king on the board")
+            .assume()
     }
 
     /// The [`Role`] of the piece on the given [`Square`], if any.

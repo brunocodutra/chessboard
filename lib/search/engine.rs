@@ -2,7 +2,7 @@ use crate::chess::{Move, Piece, Position, Role, Zobrist};
 use crate::nnue::Evaluator;
 use crate::search::{Depth, Limits, Options, Ply, Pv, Score, Value};
 use crate::search::{Transposition, TranspositionTable};
-use crate::util::{Buffer, Timeout, Timer};
+use crate::util::{Assume, Buffer, Timeout, Timer};
 use rayon::{prelude::*, ThreadPool, ThreadPoolBuilder};
 use std::sync::atomic::{AtomicI16, Ordering};
 use std::{cmp::max, ops::Range, time::Duration};
@@ -186,7 +186,7 @@ impl Engine {
         } else if !in_check {
             if let Some(d) = self.nmp(pos, score, beta, depth) {
                 let mut next = pos.clone();
-                next.pass().expect("expected possible pass");
+                next.pass().assume();
                 if d <= ply || -self.nw(&next, -beta + 1, d, ply + 1, timer)? >= beta {
                     #[cfg(not(test))]
                     // The null move pruning heuristic is not exact.
@@ -201,7 +201,7 @@ impl Engine {
             }
 
             let mut next = pos.clone();
-            next.play(m).expect("expected legal move");
+            next.play(m).assume();
             let guess = -next.see(m.whither(), Value::LOWER..Value::UPPER).cast();
 
             let rank = if Some(m) == tpos.map(|t| t.best()) {
@@ -218,7 +218,7 @@ impl Engine {
             None => return Ok(Pv::new(score, [])),
             Some((m, _, _)) => {
                 let mut next = pos.clone();
-                next.play(m).expect("expected legal move");
+                next.play(m).assume();
                 let mut pv = -self.ns(&next, -beta..-alpha, depth, ply + 1, timer)?;
                 pv.shift(m);
                 pv
@@ -244,7 +244,7 @@ impl Engine {
                 }
 
                 let mut next = pos.clone();
-                next.play(m).expect("expected legal move");
+                next.play(m).assume();
 
                 if !in_check {
                     if let Some(d) = self.lmp(&next, guess, alpha, depth) {
@@ -276,7 +276,7 @@ impl Engine {
             })
             .chain([Ok(Some((best, i16::MAX)))])
             .try_reduce(|| None, |a, b| Ok(max(a, b)))?
-            .expect("expected at least one principal variation");
+            .assume();
 
         self.record(zobrist, bounds, depth, ply, best.score(), best[0]);
 
