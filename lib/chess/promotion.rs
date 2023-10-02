@@ -7,6 +7,7 @@ use vampirc_uci::UciPiece;
 /// A promotion specifier.
 #[derive(Debug, Display, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
 #[cfg_attr(test, derive(test_strategy::Arbitrary))]
+#[repr(u8)]
 pub enum Promotion {
     #[display(fmt = "")]
     None,

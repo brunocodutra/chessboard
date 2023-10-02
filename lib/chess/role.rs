@@ -3,6 +3,7 @@ use shakmaty as sm;
 /// Denotes the type of a chess [`Piece`][`crate::Piece`].
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
 #[cfg_attr(test, derive(test_strategy::Arbitrary))]
+#[repr(u8)]
 pub enum Role {
     Pawn,
     Knight,
