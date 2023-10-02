@@ -1,8 +1,7 @@
 use crate::chess::{Color, Move, MoveContext, Piece, Position, Role, Square};
 use crate::chess::{IllegalMove, ImpossibleExchange, ImpossiblePass};
 use crate::nnue::{Feature, Layer, Nnue, Vector, NNUE};
-use crate::search::Value;
-use arrayvec::ArrayVec;
+use crate::{search::Value, util::Buffer};
 use derive_more::Deref;
 use std::{borrow::Cow, iter::repeat, mem::transmute, ops::Range};
 
@@ -16,7 +15,7 @@ pub struct Evaluator<'a> {
 }
 
 impl<'a> Evaluator<'a> {
-    fn perspective(pos: &Position, side: Color) -> ArrayVec<usize, 32> {
+    fn perspective(pos: &Position, side: Color) -> Buffer<usize, 32> {
         pos.iter()
             .zip(repeat(pos.king(side)))
             .map(|((p, s), ks)| Feature(ks, p, s))

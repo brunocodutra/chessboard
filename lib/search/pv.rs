@@ -13,7 +13,7 @@ pub struct Pv<const N: usize = { DepthBounds::UPPER as _ }> {
     score: Score,
     #[deref]
     #[deref_mut]
-    #[into_iterator(owned, ref, ref_mut)]
+    #[into_iterator(owned)]
     line: Buffer<Move, N>,
 }
 
