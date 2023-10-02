@@ -78,23 +78,23 @@ impl<const I: usize, const O: usize> Axpy<Matrix<i8, I, O>, Vector<i8, I>> for V
     }
 }
 
-impl<T, const I: usize, const O: usize> Axpy<Matrix<T, O, I>, [usize]> for Vector<T, O>
+impl<T, const I: usize, const O: usize> Axpy<Matrix<T, O, I>, [u16]> for Vector<T, O>
 where
     T: Copy + AddAssign,
 {
-    fn axpy(&mut self, a: &Matrix<T, O, I>, x: &[usize]) {
+    fn axpy(&mut self, a: &Matrix<T, O, I>, x: &[u16]) {
         let mut chunks = x.chunks_exact(8);
 
         for i in &mut chunks {
             for (o, y) in self.iter_mut().enumerate() {
-                *y += a[i[0]][o];
-                *y += a[i[1]][o];
-                *y += a[i[2]][o];
-                *y += a[i[3]][o];
-                *y += a[i[4]][o];
-                *y += a[i[5]][o];
-                *y += a[i[6]][o];
-                *y += a[i[7]][o];
+                *y += a[i[0] as usize][o];
+                *y += a[i[1] as usize][o];
+                *y += a[i[2] as usize][o];
+                *y += a[i[3] as usize][o];
+                *y += a[i[4] as usize][o];
+                *y += a[i[5] as usize][o];
+                *y += a[i[6] as usize][o];
+                *y += a[i[7] as usize][o];
             }
         }
 
@@ -102,16 +102,16 @@ where
 
         for i in &mut chunks {
             for (o, y) in self.iter_mut().enumerate() {
-                *y += a[i[0]][o];
-                *y += a[i[1]][o];
-                *y += a[i[2]][o];
-                *y += a[i[3]][o];
+                *y += a[i[0] as usize][o];
+                *y += a[i[1] as usize][o];
+                *y += a[i[2] as usize][o];
+                *y += a[i[3] as usize][o];
             }
         }
 
         for i in chunks.remainder() {
             for (o, y) in self.iter_mut().enumerate() {
-                *y += a[*i][o]
+                *y += a[*i as usize][o]
             }
         }
     }
@@ -162,10 +162,10 @@ mod tests {
         ])]
         a: [[i8; 2]; 10],
         #[strategy([
-            0..10usize, 0..10usize, 0..10usize, 0..10usize, 0..10usize,
-            0..10usize, 0..10usize, 0..10usize, 0..10usize, 0..10usize,
+            0..10u16, 0..10u16, 0..10u16, 0..10u16, 0..10u16,
+            0..10u16, 0..10u16, 0..10u16, 0..10u16, 0..10u16,
         ])]
-        x: [usize; 10],
+        x: [u16; 10],
     ) {
         let mut y = Vector::<_, 2>::default();
         y.axpy(&Matrix(a), &x);
@@ -173,26 +173,26 @@ mod tests {
         assert_eq!(
             y,
             Vector([
-                a[x[0]][0]
-                    + a[x[1]][0]
-                    + a[x[2]][0]
-                    + a[x[3]][0]
-                    + a[x[4]][0]
-                    + a[x[5]][0]
-                    + a[x[6]][0]
-                    + a[x[7]][0]
-                    + a[x[8]][0]
-                    + a[x[9]][0],
-                a[x[0]][1]
-                    + a[x[1]][1]
-                    + a[x[2]][1]
-                    + a[x[3]][1]
-                    + a[x[4]][1]
-                    + a[x[5]][1]
-                    + a[x[6]][1]
-                    + a[x[7]][1]
-                    + a[x[8]][1]
-                    + a[x[9]][1],
+                a[x[0] as usize][0]
+                    + a[x[1] as usize][0]
+                    + a[x[2] as usize][0]
+                    + a[x[3] as usize][0]
+                    + a[x[4] as usize][0]
+                    + a[x[5] as usize][0]
+                    + a[x[6] as usize][0]
+                    + a[x[7] as usize][0]
+                    + a[x[8] as usize][0]
+                    + a[x[9] as usize][0],
+                a[x[0] as usize][1]
+                    + a[x[1] as usize][1]
+                    + a[x[2] as usize][1]
+                    + a[x[3] as usize][1]
+                    + a[x[4] as usize][1]
+                    + a[x[5] as usize][1]
+                    + a[x[6] as usize][1]
+                    + a[x[7] as usize][1]
+                    + a[x[8] as usize][1]
+                    + a[x[9] as usize][1],
             ])
         );
     }
