@@ -1,5 +1,5 @@
 use crate::chess::{Role, Square};
-use crate::util::{Binary, Bits};
+use crate::util::{Assume, Binary, Bits};
 use derive_more::{DebugCustom, Display, Error};
 use shakmaty as sm;
 use vampirc_uci::UciMove;
@@ -80,7 +80,7 @@ impl Move {
     pub fn role(&self) -> Role {
         let mut bits = self.role;
         match bits.pop::<u8, 1>().get() {
-            0 => Role::decode(bits.pop()).expect("expected valid encoding"),
+            0 => Role::decode(bits.pop()).assume(),
             _ => Role::Pawn,
         }
     }
@@ -90,7 +90,7 @@ impl Move {
         let mut bits = self.role;
         match bits.pop::<u8, 1>().get() {
             0 => None,
-            _ => Some(Role::decode(bits.pop()).expect("expected valid encoding")),
+            _ => Some(Role::decode(bits.pop()).assume()),
         }
     }
 
@@ -104,10 +104,7 @@ impl Move {
                 Square::new(self.whither.file(), self.whence.rank()),
             ))
         } else {
-            Some((
-                Role::decode(self.capture).expect("expected valid encoding"),
-                self.whither,
-            ))
+            Some((Role::decode(self.capture).assume(), self.whither))
         }
     }
 }

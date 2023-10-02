@@ -68,7 +68,7 @@ impl Uci {
 
     fn go(&mut self, limits: Limits) -> Result<(), Anyhow> {
         let pv = self.engine.search(&self.position, limits);
-        let best = *pv.first().expect("expected some legal move");
+        let best = *pv.first().context("the engine failed to find a move")?;
 
         let score = match pv.score().mate() {
             Some(p) if p > 0 => UciInfoAttribute::from_mate((p + 1).get() / 2),
