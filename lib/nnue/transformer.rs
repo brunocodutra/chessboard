@@ -1,4 +1,5 @@
 use crate::nnue::{Axpy, Layer, Matrix, Vector};
+use crate::util::Assume;
 use std::ops::{AddAssign, SubAssign};
 
 /// An [affine] feature transformer.
@@ -24,14 +25,14 @@ where
     /// Updates the accumulator by adding features.
     pub fn add(&self, feature: u16, accumulator: &mut Vector<T, O>) {
         for (i, a) in accumulator.iter_mut().enumerate() {
-            *a += self.0[feature as usize][i]
+            *a += self.0.get(feature as usize).assume()[i]
         }
     }
 
     /// Updates the accumulator by removing features.
     pub fn remove(&self, feature: u16, accumulator: &mut Vector<T, O>) {
         for (i, a) in accumulator.iter_mut().enumerate() {
-            *a -= self.0[feature as usize][i]
+            *a -= self.0.get(feature as usize).assume()[i]
         }
     }
 }
