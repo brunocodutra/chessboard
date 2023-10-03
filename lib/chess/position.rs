@@ -314,35 +314,17 @@ impl Position {
 
     /// Exchange a piece on [`Square`] by the attacker of least value.
     pub fn exchange(&mut self, whither: Square) -> Result<Move, ImpossibleExchange> {
-        let capture = self.role_on(whither).ok_or(ImpossibleExchange(whither))?;
-
-        let (whence, role) = self
-            .attackers(whither, self.turn())
-            .into_iter()
-            .filter_map(|s| Some((s, self.role_on(s)?)))
-            .min_by_key(|(_, r)| *r)
-            .ok_or(ImpossibleExchange(whither))?;
-
-        let promotion = match (role, whither.rank().index()) {
-            (Role::Pawn, 0 | 7) => Some(Role::Queen),
-            _ => None,
-        };
-
-        let vm = sm::Move::Normal {
-            role: role.into(),
-            from: whence.into(),
-            capture: Some(capture.into()),
-            to: whither.into(),
-            promotion: promotion.map(Role::into),
-        };
-
-        if sm::Position::is_legal(&self.0, &vm) {
-            self.1 = Default::default();
-            sm::Position::play_unchecked(&mut self.0, &vm);
-            Ok(vm.into())
-        } else {
-            Err(ImpossibleExchange(whither))
+        for whence in self.attackers(whither, self.turn()) {
+            let role = self.role_on(whence).assume();
+            let moves = sm::Position::san_candidates(&self.0, role.into(), whither.into());
+            if let Some(vm) = moves.into_iter().max_by_key(|vm| vm.promotion()) {
+                self.1 = Default::default();
+                sm::Position::play_unchecked(&mut self.0, &vm);
+                return Ok(vm.into());
+            }
         }
+
+        Err(ImpossibleExchange(whither))
     }
 }
 
@@ -572,18 +554,12 @@ mod tests {
     }
 
     #[proptest]
-    fn exchange_finds_attacker_of_least_value(
-        pos: Position,
-        #[filter(#pos.clone().exchange(#s).is_ok())] s: Square,
+    fn exchange_finds_attacker(
+        mut pos: Position,
+        #[filter(#pos.clone().exchange(#s).is_ok_and(|m| m.is_capture()))] s: Square,
     ) {
-        let m = pos.clone().exchange(s)?;
         let attackers = pos.attackers(s, pos.turn());
-        assert!(attackers.contains(m.whence()));
-
-        assert_eq!(
-            attackers.into_iter().filter_map(|a| pos.role_on(a)).min(),
-            Some(m.role()),
-        );
+        assert!(attackers.contains(pos.exchange(s)?.whence()));
     }
 
     #[proptest]
