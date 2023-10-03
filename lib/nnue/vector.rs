@@ -1,3 +1,4 @@
+use crate::util::Assume;
 use derive_more::{Deref, DerefMut, From};
 use std::ops::AddAssign;
 
@@ -87,14 +88,14 @@ where
 
         for i in &mut chunks {
             for (o, y) in self.iter_mut().enumerate() {
-                *y += a[i[0] as usize][o];
-                *y += a[i[1] as usize][o];
-                *y += a[i[2] as usize][o];
-                *y += a[i[3] as usize][o];
-                *y += a[i[4] as usize][o];
-                *y += a[i[5] as usize][o];
-                *y += a[i[6] as usize][o];
-                *y += a[i[7] as usize][o];
+                *y += a.get(i[0] as usize).assume()[o];
+                *y += a.get(i[1] as usize).assume()[o];
+                *y += a.get(i[2] as usize).assume()[o];
+                *y += a.get(i[3] as usize).assume()[o];
+                *y += a.get(i[4] as usize).assume()[o];
+                *y += a.get(i[5] as usize).assume()[o];
+                *y += a.get(i[6] as usize).assume()[o];
+                *y += a.get(i[7] as usize).assume()[o];
             }
         }
 
@@ -102,16 +103,16 @@ where
 
         for i in &mut chunks {
             for (o, y) in self.iter_mut().enumerate() {
-                *y += a[i[0] as usize][o];
-                *y += a[i[1] as usize][o];
-                *y += a[i[2] as usize][o];
-                *y += a[i[3] as usize][o];
+                *y += a.get(i[0] as usize).assume()[o];
+                *y += a.get(i[1] as usize).assume()[o];
+                *y += a.get(i[2] as usize).assume()[o];
+                *y += a.get(i[3] as usize).assume()[o];
             }
         }
 
         for i in chunks.remainder() {
             for (o, y) in self.iter_mut().enumerate() {
-                *y += a[*i as usize][o]
+                *y += a.get(*i as usize).assume()[o]
             }
         }
     }
