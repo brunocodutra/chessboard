@@ -115,8 +115,8 @@ impl Uci {
                     let hash = UciMessage::Option(UciOptionConfig::Spin {
                         name: "Hash".to_string(),
                         default: Some((Options::default().hash >> 20) as _),
-                        min: Some(1),
-                        max: Some(u16::MAX.into()),
+                        min: Some(0),
+                        max: Some((usize::MAX >> 20) as _),
                     });
 
                     self.io.send(hash)?;
