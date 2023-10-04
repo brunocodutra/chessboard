@@ -48,6 +48,7 @@ test-strategy = { version = "0.3.1", default-features = false }
 codegen-units = 1
 lto = true
 panic = "abort"
+strip = "symbols"
 
 [profile.dev]
 opt-level = 3
