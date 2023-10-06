@@ -1,84 +1,82 @@
 use crate::chess::{Color, Move, Piece, Position, Role, Square};
 use crate::chess::{IllegalMove, ImpossibleExchange, ImpossiblePass};
-use crate::nnue::{Feature, Layer, Nnue, Vector, NNUE};
+use crate::nnue::{Accumulator, Feature, Material, Positional};
 use crate::{search::Value, util::Buffer};
 use derive_more::Deref;
-use std::{borrow::Cow, iter::repeat, mem::transmute, ops::Range};
+
+fn perspective(pos: &Position, side: Color) -> Buffer<u16, 32> {
+    let k = pos.king(side);
+    Buffer::from_iter(pos.iter().map(|(p, s)| Feature(k, p, s).index(side)))
+}
 
 /// An incrementally evaluated [`Position`].
 #[derive(Debug, Clone, Eq, PartialEq, Hash, Deref)]
-pub struct Evaluator<'a> {
-    #[deref(forward)]
-    pos: Cow<'a, Position>,
-    hidden: [Vector<i16, { Nnue::L1 / 2 }>; 2],
-    psqt: [Vector<i32, { Nnue::PHASES }>; 2],
+#[cfg_attr(test, derive(test_strategy::Arbitrary))]
+pub struct Evaluator<T: Clone + Accumulator = (Material, Positional)> {
+    #[deref]
+    pos: Position,
+    acc: T,
 }
 
-impl<'a> Evaluator<'a> {
-    fn perspective(pos: &Position, side: Color) -> Buffer<u16, 32> {
-        pos.iter()
-            .zip(repeat(pos.king(side)))
-            .map(|((p, s), ks)| Feature(ks, p, s))
-            .map(|f| f.index(side))
-            .collect()
+impl Evaluator {
+    /// Constructs the accumulator from a [`Position`].
+    pub fn new(pos: Position) -> Self {
+        let mut acc = <(Material, Positional)>::default();
+
+        acc.refresh(
+            &perspective(&pos, pos.turn()),
+            &perspective(&pos, !pos.turn()),
+        );
+
+        Evaluator { pos, acc }
     }
 
-    fn new(pos: Cow<'a, Position>) -> Self {
-        let us = Self::perspective(&pos, pos.turn());
-        let them = Self::perspective(&pos, !pos.turn());
-        let psqt = [NNUE.psqt.forward(&us), NNUE.psqt.forward(&them)];
-        let hidden = [
-            NNUE.transformer.forward(&us),
-            NNUE.transformer.forward(&them),
-        ];
-
-        Evaluator { pos, hidden, psqt }
+    /// The [`Position`]'s material evaluator.
+    pub fn material(&self) -> Evaluator<Material> {
+        Evaluator {
+            pos: self.pos.clone(),
+            acc: self.acc.0.clone(),
+        }
     }
 
-    /// Constructs the accumulator from a borrowed [`Position`].
-    pub fn borrow(pos: &'a Position) -> Self {
-        Self::new(Cow::Borrowed(pos))
+    /// The [`Position`]'s positional evaluator.
+    pub fn positional(&self) -> Evaluator<Positional> {
+        Evaluator {
+            pos: self.pos.clone(),
+            acc: self.acc.1.clone(),
+        }
     }
+}
 
-    /// Constructs the accumulator from an owned [`Position`].
-    pub fn own(pos: Position) -> Self {
-        Self::new(Cow::Owned(pos))
-    }
-
-    /// The [`Position`]'s material evaluation.
-    pub fn material(&self) -> Value {
-        let phase = (self.occupied().len() - 1) / 4;
-        Value::saturate((self.psqt[0][phase] - self.psqt[1][phase]) / 32)
-    }
-
-    /// The [`Position`]'s positional evaluation.
-    pub fn positional(&self) -> Value {
-        let phase = (self.occupied().len() - 1) / 4;
-        let l1: &Vector<i16, { Nnue::L1 }> = unsafe { transmute(&self.hidden) };
-        Value::saturate(NNUE.nns[phase].forward(l1) / 16)
-    }
-
+impl<T: Clone + Accumulator> Evaluator<T> {
     /// The [`Position`]'s evaluation.
-    pub fn value(&self) -> Value {
-        self.material() + self.positional()
+    pub fn evaluate(&self) -> Value {
+        let phase = (self.occupied().len() - 1) / 4;
+        Value::saturate(self.acc.evaluate(phase))
     }
 
     /// The Static Exchange Evaluation ([SEE]) algorithm.
     ///
     /// [SEE]: https://www.chessprogramming.org/Static_Exchange_Evaluation
-    pub fn see(&mut self, square: Square, bounds: Range<Value>) -> Value {
-        assert!(!bounds.is_empty(), "{bounds:?} ≠ ∅");
+    pub fn see(&mut self, square: Square) -> Value {
+        let (mut alpha, mut beta) = (Value::LOWER, Value::UPPER);
 
-        let (alpha, beta) = (bounds.start, bounds.end);
-        let alpha = self.value().max(alpha);
+        loop {
+            alpha = alpha.max(self.evaluate());
 
-        if alpha >= beta {
-            return beta;
-        }
+            if alpha >= beta {
+                break beta;
+            } else if self.exchange(square).is_err() {
+                break alpha;
+            }
 
-        match self.exchange(square) {
-            Ok(_) => -self.see(square, -beta..-alpha),
-            Err(_) => alpha,
+            beta = beta.min(-self.evaluate());
+
+            if alpha >= beta {
+                break alpha;
+            } else if self.exchange(square).is_err() {
+                break beta;
+            }
         }
     }
 
@@ -86,15 +84,15 @@ impl<'a> Evaluator<'a> {
     ///
     /// [null-move]: https://www.chessprogramming.org/Null_Move
     pub fn pass(&mut self) -> Result<(), ImpossiblePass> {
-        self.pos.to_mut().pass()?;
-        self.hidden.reverse();
-        self.psqt.reverse();
+        self.pos.pass()?;
+        self.acc.mirror();
         Ok(())
     }
 
     /// Play a [`Move`] if legal in this position.
     pub fn play(&mut self, m: Move) -> Result<Move, IllegalMove> {
-        let m = self.pos.to_mut().play(m)?;
+        let m = self.pos.play(m)?;
+        self.acc.mirror();
         self.update(m);
         Ok(m)
     }
@@ -103,49 +101,33 @@ impl<'a> Evaluator<'a> {
     ///
     /// This may lead to invalid positions.
     pub fn exchange(&mut self, whither: Square) -> Result<Move, ImpossibleExchange> {
-        let m = self.pos.to_mut().exchange(whither)?;
+        let m = self.pos.exchange(whither)?;
+        self.acc.mirror();
         self.update(m);
         Ok(m)
     }
 
     fn update(&mut self, m: Move) {
-        self.hidden.reverse();
-        self.psqt.reverse();
-
         let turn = self.turn();
-        let hidden = &mut self.hidden;
-        let psqt = &mut self.psqt;
 
         if m.role() == Role::King {
-            let us = Self::perspective(&self.pos, turn);
-            let them = Self::perspective(&self.pos, !turn);
-            NNUE.transformer.refresh(&us, &mut hidden[0]);
-            NNUE.transformer.refresh(&them, &mut hidden[1]);
-            NNUE.psqt.refresh(&us, &mut psqt[0]);
-            NNUE.psqt.refresh(&them, &mut psqt[1]);
+            let us = perspective(&self.pos, turn);
+            let them = perspective(&self.pos, !turn);
+            self.acc.refresh(&us, &them);
         } else {
             let kings = [self.pos.king(turn), self.pos.king(!turn)];
 
             let new = Piece(!turn, m.promotion().unwrap_or(m.role()));
             let fts = kings.map(|ks| Feature(ks, new, m.whither()));
-            NNUE.transformer.add(fts[0].index(turn), &mut hidden[0]);
-            NNUE.transformer.add(fts[1].index(!turn), &mut hidden[1]);
-            NNUE.psqt.add(fts[0].index(turn), &mut psqt[0]);
-            NNUE.psqt.add(fts[1].index(!turn), &mut psqt[1]);
+            self.acc.add(fts[0].index(turn), fts[1].index(!turn));
 
             let old = Piece(!turn, m.role());
             let fts = kings.map(|ks| Feature(ks, old, m.whence()));
-            NNUE.transformer.remove(fts[0].index(turn), &mut hidden[0]);
-            NNUE.transformer.remove(fts[1].index(!turn), &mut hidden[1]);
-            NNUE.psqt.remove(fts[0].index(turn), &mut psqt[0]);
-            NNUE.psqt.remove(fts[1].index(!turn), &mut psqt[1]);
+            self.acc.remove(fts[0].index(turn), fts[1].index(!turn));
 
             if let Some((role, square)) = m.capture() {
                 let fts = kings.map(|ks| Feature(ks, Piece(turn, role), square));
-                NNUE.transformer.remove(fts[0].index(turn), &mut hidden[0]);
-                NNUE.transformer.remove(fts[1].index(!turn), &mut hidden[1]);
-                NNUE.psqt.remove(fts[0].index(turn), &mut psqt[0]);
-                NNUE.psqt.remove(fts[1].index(!turn), &mut psqt[1]);
+                self.acc.remove(fts[0].index(turn), fts[1].index(!turn));
             }
         }
     }
@@ -158,53 +140,33 @@ mod tests {
     use test_strategy::proptest;
 
     #[proptest]
-    fn material_evaluation_is_symmetric(#[filter(#pos.clone().pass().is_ok())] pos: Position) {
-        let mut mirror = pos.clone();
-        assert_eq!(mirror.pass(), Ok(()));
-        assert_eq!(
-            Evaluator::own(pos).material(),
-            -Evaluator::own(mirror).material()
-        );
-    }
-
-    #[proptest]
-    fn see_returns_value_within_bounds(
-        pos: Position,
-        s: Square,
-        #[filter(!#r.is_empty())] r: Range<Value>,
-    ) {
-        let (a, b) = (r.start, r.end);
-        assert!((a..=b).contains(&Evaluator::own(pos).see(s, r)));
-    }
-
-    #[proptest]
     fn play_updates_accumulator(
-        #[filter(#pos.outcome().is_none())] mut pos: Position,
-        #[map(|s: Selector| s.select(#pos.moves()))] m: Move,
+        #[filter(#a.outcome().is_none())] mut a: Evaluator,
+        #[map(|s: Selector| s.select(#a.moves()))] m: Move,
     ) {
-        let mut e = Evaluator::own(pos.clone());
-        assert_eq!(e.play(m), pos.play(m));
-        assert_eq!(e, Evaluator::own(pos));
+        let mut b = a.clone();
+        assert_eq!(b.play(m), a.play(m));
+        assert_eq!(b, a);
     }
 
     #[proptest]
-    fn pass_updates_accumulator(#[filter(#pos.clone().pass().is_ok())] mut pos: Position) {
-        let mut e = Evaluator::own(pos.clone());
-        assert_eq!(e.pass(), pos.pass());
-        assert_eq!(e, Evaluator::own(pos));
+    fn pass_updates_accumulator(#[filter(#a.clone().pass().is_ok())] mut a: Evaluator) {
+        let mut b = a.clone();
+        assert_eq!(b.pass(), a.pass());
+        assert_eq!(b, a);
     }
 
     #[proptest]
     fn exchange_updates_accumulator(
-        #[filter(#pos.moves().filter(Move::is_capture).next().is_some())] mut pos: Position,
-        #[map(|s: Selector| s.select(#pos.moves().filter(Move::is_capture)))] m: Move,
+        #[filter(#a.moves().filter(Move::is_capture).next().is_some())] mut a: Evaluator,
+        #[map(|s: Selector| s.select(#a.moves().filter(Move::is_capture)))] m: Move,
     ) {
-        let mut e = Evaluator::own(pos.clone());
+        let mut b = a.clone();
 
         // Skip en passant captures.
-        prop_assume!(e.exchange(m.whither()).is_ok());
+        prop_assume!(b.exchange(m.whither()).is_ok());
 
-        pos.exchange(m.whither())?;
-        assert_eq!(e, Evaluator::own(pos));
+        a.exchange(m.whither())?;
+        assert_eq!(b, a);
     }
 }
