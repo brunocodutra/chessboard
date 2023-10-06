@@ -12,8 +12,8 @@ use std::fmt::Debug;
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash, From, Deref, DerefMut)]
 #[cfg_attr(test, derive(test_strategy::Arbitrary))]
 #[cfg_attr(test, arbitrary(bound(T: 'static + Debug + Arbitrary)))]
-#[repr(C, align(64))]
-pub struct Vector<T, const N: usize>(pub(crate) [T; N]);
+#[repr(C, align(32))]
+pub struct Vector<T, const N: usize>(pub [T; N]);
 
 impl<T: Default + Copy, const N: usize> Default for Vector<T, N> {
     fn default() -> Self {
@@ -31,8 +31,8 @@ impl<T, const N: usize> Vector<T, N> {
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash, From, Deref, DerefMut)]
 #[cfg_attr(test, derive(test_strategy::Arbitrary))]
 #[cfg_attr(test, arbitrary(bound(T: 'static + Debug + Arbitrary)))]
-#[repr(C, align(64))]
-pub struct Matrix<T, const I: usize, const O: usize>(pub(crate) [[T; I]; O]);
+#[repr(C, align(128))]
+pub struct Matrix<T, const I: usize, const O: usize>(pub [[T; I]; O]);
 
 impl<T: Default + Copy, const I: usize, const O: usize> Default for Matrix<T, I, O> {
     fn default() -> Self {

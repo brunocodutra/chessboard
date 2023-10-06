@@ -1,5 +1,6 @@
 use std::mem::{size_of, transmute, transmute_copy, MaybeUninit};
 
+mod accumulator;
 mod affine;
 mod crelu;
 mod damp;
@@ -7,10 +8,13 @@ mod evaluator;
 mod fallthrough;
 mod feature;
 mod layer;
+mod material;
 mod output;
+mod positional;
 mod transformer;
 mod vector;
 
+pub use accumulator::*;
 pub use affine::*;
 pub use crelu::*;
 pub use damp::*;
@@ -18,7 +22,9 @@ pub use evaluator::*;
 pub use fallthrough::*;
 pub use feature::*;
 pub use layer::*;
+pub use material::*;
 pub use output::*;
+pub use positional::*;
 pub use transformer::*;
 pub use vector::*;
 
@@ -34,7 +40,7 @@ type L3o = CReLU<Output<{ Nnue::L3 }>>;
 /// [NNUE]: https://www.chessprogramming.org/NNUE
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
 pub struct Nnue {
-    pub(super) transformer: Transformer<i16, { Self::L0 }, { Self::L1 / 2 }>,
+    pub(super) ft: Transformer<i16, { Self::L0 }, { Self::L1 / 2 }>,
     pub(super) psqt: Transformer<i32, { Self::L0 }, { Self::PHASES }>,
     pub(super) nns: [L12<L23<L3o>>; Self::PHASES],
 }
@@ -67,7 +73,7 @@ impl Nnue {
             _ => panic!("architecture mismatch"),
         }
 
-        let transformer = unsafe {
+        let ft = unsafe {
             const B: usize = size_of::<i16>() * Nnue::L1 / 2;
             let bias = Vector(transmute_copy(as_array::<_, B>(bytes, cursor)));
             cursor += B;
@@ -94,7 +100,7 @@ impl Nnue {
             if phase >= Nnue::PHASES {
                 assert!(cursor == bytes.len());
                 break Nnue {
-                    transformer,
+                    ft,
                     psqt,
                     nns: unsafe { transmute(nns) },
                 };

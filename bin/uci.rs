@@ -85,10 +85,19 @@ impl Uci {
     }
 
     fn eval(&mut self) -> Result<(), Anyhow> {
-        let pos = Evaluator::borrow(&self.position);
+        let pos = Evaluator::new(self.position.clone());
         let (material, positional, value) = match pos.turn() {
-            Color::White => (pos.material(), pos.positional(), pos.value()),
-            Color::Black => (-pos.material(), -pos.positional(), -pos.value()),
+            Color::White => (
+                pos.material().evaluate(),
+                pos.positional().evaluate(),
+                pos.evaluate(),
+            ),
+
+            Color::Black => (
+                -pos.material().evaluate(),
+                -pos.positional().evaluate(),
+                -pos.evaluate(),
+            ),
         };
 
         self.io.send(UciMessage::Info(vec![

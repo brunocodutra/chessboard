@@ -1,7 +1,6 @@
 use crate::chess::{Move, Piece, Position, Role, Zobrist};
 use crate::nnue::Evaluator;
-use crate::search::{Depth, Limits, Options, Ply, Pv, Score, Value};
-use crate::search::{Transposition, TranspositionTable};
+use crate::search::{Depth, Limits, Options, Ply, Pv, Score, Transposition, TranspositionTable};
 use crate::util::{Assume, Buffer, Timeout, Timer};
 use rayon::{prelude::*, ThreadPool, ThreadPoolBuilder};
 use std::sync::atomic::{AtomicI16, Ordering};
@@ -176,7 +175,7 @@ impl Engine {
         };
 
         let score = match tpos {
-            _ if ply >= depth => pos.value().cast(),
+            _ if ply >= depth => pos.evaluate().cast(),
             Some(t) => t.score().normalize(ply),
             None => self.nw(pos, beta, ply.cast(), ply, timer)?.score(),
         };
@@ -202,7 +201,7 @@ impl Engine {
 
             let mut next = pos.clone();
             next.play(m).assume();
-            let guess = -next.see(m.whither(), Value::LOWER..Value::UPPER).cast();
+            let guess = -next.see(m.whither()).cast();
 
             let rank = if Some(m) == tpos.map(|t| t.best()) {
                 i16::MAX
@@ -287,7 +286,7 @@ impl Engine {
     ///
     /// [aspiration windows]: https://www.chessprogramming.org/Aspiration_Windows
     /// [iterative deepening]: https://www.chessprogramming.org/Iterative_Deepening
-    fn aw(&self, pos: &Position, depth: Depth, timer: Timer) -> Pv {
+    fn aw(&self, pos: &Evaluator, depth: Depth, timer: Timer) -> Pv {
         let mut best = Pv::new(Score::new(0), []);
 
         'id: for d in 0..=depth.get() {
@@ -304,8 +303,7 @@ impl Engine {
                 };
 
                 let depth = Depth::new(d);
-                let pos = Evaluator::borrow(pos);
-                let pv = match self.ns(&pos, lower..upper, depth, Ply::new(0), timer) {
+                let pv = match self.ns(pos, lower..upper, depth, Ply::new(0), timer) {
                     Err(_) => break 'id,
                     Ok(pv) => pv,
                 };
@@ -340,14 +338,16 @@ impl Engine {
     /// Searches for the [principal variation][`Pv`].
     pub fn search(&mut self, pos: &Position, limits: Limits) -> Pv {
         let depth = limits.depth();
-        let timer = Timer::start(self.time_to_search(pos, limits));
-        self.executor.install(|| self.aw(pos, depth, timer))
+        let pos = Evaluator::new(pos.clone());
+        let timer = Timer::start(self.time_to_search(&pos, limits));
+        self.executor.install(|| self.aw(&pos, depth, timer))
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::search::Value;
     use proptest::{prop_assume, sample::Selector};
     use std::time::{Duration, Instant};
     use test_strategy::proptest;
@@ -356,7 +356,7 @@ mod tests {
         let score = match pos.outcome() {
             Some(o) if o.is_draw() => return Score::new(0),
             Some(_) => return Score::LOWER.normalize(ply),
-            None => pos.value().cast(),
+            None => pos.evaluate().cast(),
         };
 
         if ply >= Ply::UPPER {
@@ -383,8 +383,7 @@ mod tests {
 
     #[proptest]
     #[should_panic]
-    fn nw_panics_if_beta_is_too_small(e: Engine, pos: Position, d: Depth, p: Ply) {
-        let pos = Evaluator::borrow(&pos);
+    fn nw_panics_if_beta_is_too_small(e: Engine, pos: Evaluator, d: Depth, p: Ply) {
         e.nw(&pos, Score::LOWER, d, p, Timer::disarmed())?;
     }
 
@@ -393,7 +392,7 @@ mod tests {
         #[by_ref]
         #[filter(#e.tt.capacity() > 0)]
         e: Engine,
-        #[filter(#pos.outcome().is_none())] pos: Position,
+        #[filter(#pos.outcome().is_none())] pos: Evaluator,
         #[filter((Value::LOWER..Value::UPPER).contains(&#b))] b: Score,
         d: Depth,
         #[filter(#p >= 0)] p: Ply,
@@ -401,11 +400,7 @@ mod tests {
         #[map(|s: Selector| s.select(#pos.moves()))] m: Move,
     ) {
         e.tt.set(pos.zobrist(), Transposition::lower(d, s, m));
-
-        assert_eq!(
-            e.nw(&Evaluator::borrow(&pos), b, d, p, Timer::disarmed()),
-            Ok(Pv::new(s, [m]))
-        );
+        assert_eq!(e.nw(&pos, b, d, p, Timer::disarmed()), Ok(Pv::new(s, [m])));
     }
 
     #[proptest]
@@ -413,7 +408,7 @@ mod tests {
         #[by_ref]
         #[filter(#e.tt.capacity() > 0)]
         e: Engine,
-        #[filter(#pos.outcome().is_none())] pos: Position,
+        #[filter(#pos.outcome().is_none())] pos: Evaluator,
         #[filter((Value::LOWER..Value::UPPER).contains(&#b))] b: Score,
         d: Depth,
         #[filter(#p >= 0)] p: Ply,
@@ -421,11 +416,7 @@ mod tests {
         #[map(|s: Selector| s.select(#pos.moves()))] m: Move,
     ) {
         e.tt.set(pos.zobrist(), Transposition::upper(d, s, m));
-
-        assert_eq!(
-            e.nw(&Evaluator::borrow(&pos), b, d, p, Timer::disarmed()),
-            Ok(Pv::new(s, [m]))
-        );
+        assert_eq!(e.nw(&pos, b, d, p, Timer::disarmed()), Ok(Pv::new(s, [m])));
     }
 
     #[proptest]
@@ -433,7 +424,7 @@ mod tests {
         #[by_ref]
         #[filter(#e.tt.capacity() > 0)]
         e: Engine,
-        #[filter(#pos.outcome().is_none())] pos: Position,
+        #[filter(#pos.outcome().is_none())] pos: Evaluator,
         #[filter((Value::LOWER..Value::UPPER).contains(&#b))] b: Score,
         d: Depth,
         #[filter(#p >= 0)] p: Ply,
@@ -441,35 +432,29 @@ mod tests {
         #[map(|s: Selector| s.select(#pos.moves()))] m: Move,
     ) {
         e.tt.set(pos.zobrist(), Transposition::exact(d, sc, m));
-
-        assert_eq!(
-            e.nw(&Evaluator::borrow(&pos), b, d, p, Timer::disarmed()),
-            Ok(Pv::new(sc, [m]))
-        );
+        assert_eq!(e.nw(&pos, b, d, p, Timer::disarmed()), Ok(Pv::new(sc, [m])));
     }
 
     #[proptest]
     #[should_panic]
     fn ns_panics_if_alpha_is_not_greater_than_beta(
         e: Engine,
-        pos: Position,
+        pos: Evaluator,
         b: Range<Score>,
         d: Depth,
         p: Ply,
     ) {
-        let pos = Evaluator::borrow(&pos);
         e.ns(&pos, b.end..b.start, d, p, Timer::disarmed())?;
     }
 
     #[proptest]
     fn ns_aborts_if_time_is_up(
         e: Engine,
-        pos: Position,
+        pos: Evaluator,
         #[filter(!#b.is_empty())] b: Range<Score>,
         d: Depth,
         p: Ply,
     ) {
-        let pos = Evaluator::borrow(&pos);
         let timer = Timer::start(Duration::ZERO);
         std::thread::sleep(Duration::from_millis(1));
         assert_eq!(e.ns(&pos, b, d, p, timer), Err(Timeout));
@@ -478,13 +463,13 @@ mod tests {
     #[proptest]
     fn ns_returns_drawn_score_if_game_ends_in_a_draw(
         e: Engine,
-        #[filter(#pos.outcome().is_some_and(|o| o.is_draw()))] pos: Position,
+        #[filter(#pos.outcome().is_some_and(|o| o.is_draw()))] pos: Evaluator,
         #[filter(!#b.is_empty())] b: Range<Score>,
         d: Depth,
         p: Ply,
     ) {
         assert_eq!(
-            e.ns(&Evaluator::borrow(&pos), b, d, p, Timer::disarmed()),
+            e.ns(&pos, b, d, p, Timer::disarmed()),
             Ok(Pv::new(Score::new(0), []))
         );
     }
@@ -492,23 +477,21 @@ mod tests {
     #[proptest]
     fn ns_returns_lost_score_if_game_ends_in_checkmate(
         e: Engine,
-        #[filter(#pos.outcome().is_some_and(|o| o.is_decisive()))] pos: Position,
+        #[filter(#pos.outcome().is_some_and(|o| o.is_decisive()))] pos: Evaluator,
         #[filter(!#b.is_empty())] b: Range<Score>,
         d: Depth,
         p: Ply,
     ) {
         assert_eq!(
-            e.ns(&Evaluator::borrow(&pos), b, d, p, Timer::disarmed()),
+            e.ns(&pos, b, d, p, Timer::disarmed()),
             Ok(Pv::new(Score::LOWER.normalize(p), []))
         );
     }
 
     #[proptest]
-    fn ns_finds_best_score(e: Engine, pos: Position, d: Depth, #[filter(#p >= 0)] p: Ply) {
-        let pos = Evaluator::borrow(&pos);
+    fn ns_finds_best_score(e: Engine, pos: Evaluator, d: Depth, #[filter(#p >= 0)] p: Ply) {
         let timer = Timer::disarmed();
         let bounds = Score::LOWER..Score::UPPER;
-
         assert_eq!(e.ns(&pos, bounds, d, p, timer)?, negamax(&pos, d, p));
     }
 
@@ -516,14 +499,13 @@ mod tests {
     fn ns_does_not_depend_on_configuration(
         x: Options,
         y: Options,
-        pos: Position,
+        pos: Evaluator,
         d: Depth,
         #[filter(#p >= 0)] p: Ply,
     ) {
         let x = Engine::with_options(x);
         let y = Engine::with_options(y);
 
-        let pos = Evaluator::borrow(&pos);
         let bounds = Score::LOWER..Score::UPPER;
         let timer = Timer::disarmed();
 
@@ -535,13 +517,13 @@ mod tests {
 
     #[proptest]
     fn search_finds_the_principal_variation(mut e: Engine, pos: Position, d: Depth) {
-        let pos = Evaluator::borrow(&pos);
         let timer = Timer::disarmed();
         let bounds = Score::LOWER..Score::UPPER;
+        let ply = Ply::new(0);
 
         assert_eq!(
             e.search(&pos, Limits::Depth(d)).score(),
-            e.ns(&pos, bounds, d, Ply::new(0), timer)?.score()
+            e.ns(&Evaluator::new(pos), bounds, d, ply, timer)?.score()
         );
     }
 
