@@ -82,24 +82,14 @@ impl<T, const N: usize> IntoIterator for Buffer<T, N> {
     }
 }
 
-/// Extends a [`Buffer`] with an iterator of elements.
-///
-/// The buffer might be truncated if the number of elements exceeds the internal capacity.
-impl<T, const N: usize> Extend<T> for Buffer<T, N> {
-    fn extend<I: IntoIterator<Item = T>>(&mut self, i: I) {
-        let limit = N - self.len();
-        self.0.extend(i.into_iter().take(limit));
-    }
-}
-
 /// Create a [`Buffer`] from an iterator of elements.
 ///
-/// The buffer might be truncated if the number of elements exceeds the internal capacity.
+/// # Panics
+///
+/// If the number of elements in the iterator exceeds the buffer's capacity.
 impl<T, const N: usize> FromIterator<T> for Buffer<T, N> {
     fn from_iter<I: IntoIterator<Item = T>>(i: I) -> Self {
-        let mut ring = Buffer::default();
-        ring.extend(i);
-        ring
+        Buffer(ArrayVec::from_iter(i))
     }
 }
 
@@ -175,17 +165,8 @@ mod tests {
     }
 
     #[proptest]
-    fn from_iterator_truncates(#[any(size_range(0..=6).lift())] v: Vec<u8>) {
-        assert_eq!(
-            Buffer::<_, 3>::from_iter(v.clone()),
-            v.into_iter().take(3).collect()
-        );
-    }
-
-    #[proptest]
-    fn extend_truncates(mut b: Buffer<u8, 3>, #[any(size_range(0..=6).lift())] v: Vec<u8>) {
-        let l = b.len();
-        b.extend(v.clone());
-        assert_eq!(b[l..], v[..v.len().min(3usize.saturating_sub(l))]);
+    #[should_panic]
+    fn from_iterator_panics_on_overflow(#[any(size_range(4..=10).lift())] v: Vec<u8>) {
+        Buffer::<_, 3>::from_iter(v);
     }
 }
