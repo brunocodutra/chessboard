@@ -41,7 +41,7 @@ vampirc-uci = { version = "0.11.0", default-features = false }
 [dev-dependencies]
 criterion = { version = "0.5.1", default-features = false, features = ["rayon"] }
 num_cpus = { version = "1.16.0", default-features = false }
-proptest = { version = "1.2.0", default-features = false, features = ["std"] }
+proptest = { version = "1.3.1", default-features = false, features = ["std"] }
 test-strategy = { version = "0.3.1", default-features = false }
 
 [profile.release]
