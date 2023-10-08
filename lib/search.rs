@@ -1,5 +1,6 @@
 mod depth;
 mod engine;
+mod killers;
 mod limits;
 mod options;
 mod ply;
@@ -10,6 +11,7 @@ mod value;
 
 pub use depth::*;
 pub use engine::*;
+pub use killers::*;
 pub use limits::*;
 pub use options::*;
 pub use ply::*;

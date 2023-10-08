@@ -1,10 +1,11 @@
 use crate::chess::{Move, Piece, Position, Role, Zobrist};
 use crate::nnue::Evaluator;
-use crate::search::{Depth, Limits, Options, Ply, Pv, Score, Transposition, TranspositionTable};
-use crate::util::{Assume, Buffer, Timeout, Timer};
+use crate::search::{Depth, DepthBounds, Killers, Limits, Options, Ply, Pv, Score, Value};
+use crate::search::{Transposition, TranspositionTable};
+use crate::util::{Assume, Bounds, Buffer, Timeout, Timer};
 use rayon::{prelude::*, ThreadPool, ThreadPoolBuilder};
 use std::sync::atomic::{AtomicI16, Ordering};
-use std::{cmp::max, ops::Range, time::Duration};
+use std::{cell::RefCell, cmp::max, ops::Range, time::Duration};
 
 /// A chess engine.
 #[derive(Debug)]
@@ -23,6 +24,12 @@ impl Default for Engine {
 }
 
 impl Engine {
+    thread_local! {
+        static KILLERS: RefCell<Killers<2, { DepthBounds::UPPER as _ }>> = const {
+            RefCell::new(Killers::new())
+        };
+    }
+
     /// Initializes the engine with the default [`Options`].
     pub fn new() -> Self {
         Self::with_options(Options::default())
@@ -204,8 +211,15 @@ impl Engine {
             let mut next = pos.material();
             let material = next.evaluate();
             next.play(m).assume();
+            let see = -next.see(m.whither());
 
-            Some((m, -next.see(m.whither()) - material))
+            let gain = if Self::KILLERS.with_borrow(|ks| ks.contains(ply, pos.turn(), m)) {
+                Value::new(100).max(see - material)
+            } else {
+                see - material
+            };
+
+            Some((m, gain))
         }));
 
         moves.sort_unstable_by_key(|(_, rank)| *rank);
@@ -217,6 +231,11 @@ impl Engine {
                 next.play(m).assume();
                 let mut pv = -self.ns(&next, -beta..-alpha, depth, ply + 1, timer)?;
                 pv.shift(m);
+
+                if pv >= beta && m.is_quiet() {
+                    Self::KILLERS.with_borrow_mut(|ks| ks.insert(ply, pos.turn(), m));
+                }
+
                 pv
             }
         };
@@ -263,6 +282,10 @@ impl Engine {
                         }
                     },
                 };
+
+                if pv >= beta && m.is_quiet() {
+                    Self::KILLERS.with_borrow_mut(|ks| ks.insert(ply, pos.turn(), m));
+                }
 
                 if pv > alpha {
                     cutoff.fetch_max(pv.score().get(), Ordering::Relaxed);
