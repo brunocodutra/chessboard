@@ -197,17 +197,15 @@ impl Engine {
         let mut moves = Buffer::<_, 256>::from_iter(pos.moves().filter_map(|m| {
             if ply >= depth && !in_check && m.is_quiet() {
                 return None;
+            } else if Some(m) == tpos.map(|t| t.best()) {
+                return Some((m, Value::UPPER));
             }
 
-            let rank = if Some(m) == tpos.map(|t| t.best()) {
-                i16::MAX
-            } else {
-                let mut next = pos.material();
-                next.play(m).assume();
-                -next.see(m.whither()).get()
-            };
+            let mut next = pos.material();
+            let material = next.evaluate();
+            next.play(m).assume();
 
-            Some((m, rank))
+            Some((m, -next.see(m.whither()) - material))
         }));
 
         moves.sort_unstable_by_key(|(_, rank)| *rank);
@@ -234,7 +232,7 @@ impl Engine {
             .into_par_iter()
             .with_max_len(1)
             .rev()
-            .map(|&(m, rank)| {
+            .map(|&(m, gain)| {
                 let alpha = Score::new(cutoff.load(Ordering::Relaxed));
 
                 if alpha >= beta {
@@ -271,9 +269,9 @@ impl Engine {
                 }
 
                 pv.shift(m);
-                Ok(Some((pv, rank)))
+                Ok(Some((pv, gain)))
             })
-            .chain([Ok(Some((best, i16::MAX)))])
+            .chain([Ok(Some((best, Value::UPPER)))])
             .try_reduce(|| None, |a, b| Ok(max(a, b)))?
             .assume();
 
