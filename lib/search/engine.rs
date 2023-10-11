@@ -201,14 +201,14 @@ impl Engine {
             if !is_pv && t.depth() >= depth - ply {
                 let (lower, upper) = t.bounds().into_inner();
                 if lower == upper || upper <= alpha || lower >= beta {
-                    return Ok(Pv::new(t.score().normalize(ply), [t.best()]));
+                    return Ok(Pv::new(score, [t.best()]));
                 }
             }
         }
 
         if ply >= Ply::UPPER {
             return Ok(Pv::new(score, []));
-        } else if !in_check {
+        } else if !is_pv && !in_check {
             if let Some(d) = self.nmp(pos, score, beta, depth) {
                 let mut next = pos.clone();
                 next.pass().assume();
@@ -522,6 +522,19 @@ mod tests {
         let ctrl = Control(Counter::new(u64::MAX), Timer::new(Duration::ZERO));
         std::thread::sleep(Duration::from_millis(1));
         assert_eq!(e.ns(&pos, b, d, p, &ctrl), Err(Interrupted));
+    }
+
+    #[proptest]
+    fn ns_returns_static_evaluation_if_max_ply(
+        e: Engine,
+        #[filter(#pos.outcome().is_none())] pos: Evaluator,
+        #[filter(!#b.is_empty())] b: Range<Score>,
+        d: Depth,
+    ) {
+        assert_eq!(
+            e.ns(&pos, b, d, Ply::UPPER, &Control::default()),
+            Ok(Pv::new(pos.evaluate().cast(), []))
+        );
     }
 
     #[proptest]
