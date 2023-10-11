@@ -261,7 +261,7 @@ impl Engine {
                 let mut next = pos.clone();
                 next.play(m).assume();
 
-                if !in_check {
+                if !in_check && gain < 60 {
                     let guess = -next.clone().see(m.whither()).cast();
                     if let Some(d) = self.lmp(&next, guess, alpha, depth) {
                         if d <= ply || -self.nw(&next, -alpha, d, ply + 1, timer)? <= alpha {
