@@ -155,24 +155,13 @@ impl Engine {
         };
 
         let (alpha, beta) = self.mdp(ply, &bounds);
+        let tpos = self.tt.get(zobrist);
         let is_pv = alpha + 1 < beta;
 
-        if alpha >= beta {
-            return Ok(Pv::new(alpha, []));
-        }
-
-        let tpos = self.tt.get(zobrist);
-
-        if !is_pv {
-            if let Some(t) = tpos {
-                if t.depth() >= depth - ply {
-                    let (lower, upper) = t.bounds().into_inner();
-                    if lower == upper || upper <= alpha || lower >= beta {
-                        return Ok(Pv::new(t.score().normalize(ply), [t.best()]));
-                    }
-                }
-            }
-        }
+        let score = match tpos {
+            Some(t) => t.score().normalize(ply),
+            _ => pos.evaluate().cast(),
+        };
 
         let depth = match tpos {
             #[cfg(not(test))]
@@ -181,11 +170,23 @@ impl Engine {
             _ => depth,
         };
 
-        let score = match tpos {
-            _ if ply >= depth => pos.evaluate().cast(),
-            Some(t) => t.score().normalize(ply),
-            None => self.nw(pos, beta, ply.cast(), ply, timer)?.score(),
+        let alpha = match ply >= depth && !in_check {
+            #[cfg(not(test))]
+            // The stand pat heuristic is not exact.
+            true => alpha.max(score),
+            _ => alpha,
         };
+
+        if alpha >= beta {
+            return Ok(Pv::new(alpha, []));
+        } else if let Some(t) = tpos {
+            if !is_pv && t.depth() >= depth - ply {
+                let (lower, upper) = t.bounds().into_inner();
+                if lower == upper || upper <= alpha || lower >= beta {
+                    return Ok(Pv::new(t.score().normalize(ply), [t.best()]));
+                }
+            }
+        }
 
         if ply >= Ply::UPPER {
             return Ok(Pv::new(score, []));
