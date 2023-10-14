@@ -1,5 +1,4 @@
-use crate::util::{Binary, Bits};
-use derive_more::{Display, Error};
+use derive_more::Display;
 use shakmaty as sm;
 use vampirc_uci::UciPiece;
 
@@ -20,29 +19,6 @@ pub enum Role {
     Queen,
     #[display(fmt = "k")]
     King,
-}
-
-/// The reason why decoding [`Role`] from binary failed.
-#[derive(Debug, Display, Clone, Eq, PartialEq, Error)]
-#[cfg_attr(test, derive(test_strategy::Arbitrary))]
-#[display(fmt = "not a valid role")]
-pub struct DecodeRoleError;
-
-impl Binary for Role {
-    type Bits = Bits<u8, 3>;
-    type Error = DecodeRoleError;
-
-    fn encode(&self) -> Self::Bits {
-        Bits::new(*self as _)
-    }
-
-    fn decode(bits: Self::Bits) -> Result<Self, Self::Error> {
-        use Role::*;
-        [Pawn, Knight, Bishop, Rook, Queen, King]
-            .into_iter()
-            .nth(bits.get() as _)
-            .ok_or(DecodeRoleError)
-    }
 }
 
 #[doc(hidden)]
@@ -105,17 +81,6 @@ impl From<sm::Role> for Role {
 mod tests {
     use super::*;
     use test_strategy::proptest;
-
-    #[proptest]
-    fn decoding_encoded_role_is_an_identity(r: Role) {
-        assert_eq!(Role::decode(r.encode()), Ok(r));
-    }
-
-    #[proptest]
-    fn decoding_role_fails_for_invalid_bits(#[strategy(6u8..8)] n: u8) {
-        let b = <Role as Binary>::Bits::new(n as _);
-        assert_eq!(Role::decode(b), Err(DecodeRoleError));
-    }
 
     #[proptest]
     fn role_has_an_equivalent_shakmaty_representation(r: Role) {
