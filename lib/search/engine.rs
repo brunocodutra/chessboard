@@ -103,17 +103,18 @@ impl Engine {
     /// An implementation of [null move pruning].
     ///
     /// [null move pruning]: https://www.chessprogramming.org/Null_Move_Pruning
-    fn nmp(&self, pos: &Position, guess: Score, beta: Score, depth: Depth) -> Option<Depth> {
+    fn nmp(
+        &self,
+        pos: &Position,
+        guess: Score,
+        beta: Score,
+        depth: Depth,
+        ply: Ply,
+    ) -> Option<Depth> {
         let turn = pos.turn();
-        let r = match pos.by_color(turn).len() - pos.by_piece(Piece(turn, Role::Pawn)).len() {
-            ..=1 => return None,
-            2 => 2,
-            3 => 3,
-            _ => 4,
-        };
-
-        if guess > beta {
-            Some(depth - r)
+        let pawn = Piece(turn, Role::Pawn);
+        if guess > beta && pos.by_color(turn).len() - pos.by_piece(pawn).len() > 1 {
+            Some(depth - 2 - (depth - ply) / 4)
         } else {
             None
         }
@@ -213,7 +214,7 @@ impl Engine {
         if ply >= Ply::UPPER {
             return Ok(Pv::new(score, []));
         } else if !is_pv && !in_check {
-            if let Some(d) = self.nmp(pos, score, beta, depth) {
+            if let Some(d) = self.nmp(pos, score, beta, depth, ply) {
                 let mut next = pos.clone();
                 next.pass();
                 if d <= ply || -self.nw(&next, -beta + 1, d, ply + 1, ctrl)? >= beta {
