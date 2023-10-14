@@ -275,7 +275,32 @@ impl Position {
 
     /// Play a [`Move`] if legal in this position.
     pub fn play(&mut self, m: Move) -> Result<Move, IllegalMove> {
-        let vm = m.into();
+        let vm = if m.is_castling() {
+            sm::Move::Castle {
+                king: m.whence().into(),
+                rook: if m.whence() < m.whither() {
+                    sm::Square::from_coords(sm::File::H, m.whither().rank().into())
+                } else {
+                    sm::Square::from_coords(sm::File::A, m.whither().rank().into())
+                },
+            }
+        } else if m.is_en_passant() {
+            sm::Move::EnPassant {
+                from: m.whence().into(),
+                to: m.whither().into(),
+            }
+        } else {
+            sm::Move::Normal {
+                from: m.whence().into(),
+                to: m.whither().into(),
+                capture: self.role_on(m.whither()).map(Role::into),
+                promotion: m.promotion().map(Role::into),
+                role: self
+                    .role_on(m.whence())
+                    .map_or(Err(IllegalMove), |r| Ok(r.into()))?,
+            }
+        };
+
         if !sm::Position::is_legal(&self.0, &vm) {
             return Err(IllegalMove);
         }

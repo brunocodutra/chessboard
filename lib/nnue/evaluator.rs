@@ -1,6 +1,7 @@
 use crate::chess::{Color, Move, Piece, Position, Role, Square};
 use crate::chess::{IllegalMove, ImpossibleExchange, ImpossiblePass};
 use crate::nnue::{Accumulator, Feature, Material, Positional};
+use crate::util::Assume;
 use crate::{search::Value, util::Buffer};
 use derive_more::Deref;
 
@@ -15,6 +16,13 @@ fn perspective(pos: &Position, side: Color) -> Buffer<u16, 32> {
 pub struct Evaluator<T: Clone + Accumulator = (Material, Positional)> {
     #[deref]
     pos: Position,
+    #[cfg_attr(test, map(|mut acc: T| {
+        acc.refresh(
+            &perspective(&#pos, #pos.turn()),
+            &perspective(&#pos, !#pos.turn()),
+        );
+        acc
+    }))]
     acc: T,
 }
 
@@ -91,9 +99,10 @@ impl<T: Clone + Accumulator> Evaluator<T> {
 
     /// Play a [`Move`] if legal in this position.
     pub fn play(&mut self, m: Move) -> Result<Move, IllegalMove> {
+        let capture = self.role_on(m.whither());
         let m = self.pos.play(m)?;
         self.acc.mirror();
-        self.update(m);
+        self.update(m, capture);
         Ok(m)
     }
 
@@ -101,32 +110,43 @@ impl<T: Clone + Accumulator> Evaluator<T> {
     ///
     /// This may lead to invalid positions.
     pub fn exchange(&mut self, whither: Square) -> Result<Move, ImpossibleExchange> {
+        let capture = self.role_on(whither);
         let m = self.pos.exchange(whither)?;
         self.acc.mirror();
-        self.update(m);
+        self.update(m, capture);
         Ok(m)
     }
 
-    fn update(&mut self, m: Move) {
+    fn update(&mut self, m: Move, capture: Option<Role>) {
         let turn = self.turn();
 
-        if m.role() == Role::King {
+        let role = if m.is_promotion() {
+            Role::Pawn
+        } else {
+            self.role_on(m.whither()).assume()
+        };
+
+        if role == Role::King {
             let us = perspective(&self.pos, turn);
             let them = perspective(&self.pos, !turn);
             self.acc.refresh(&us, &them);
         } else {
             let kings = [self.pos.king(turn), self.pos.king(!turn)];
 
-            let new = Piece(!turn, m.promotion().unwrap_or(m.role()));
+            let new = Piece(!turn, m.promotion().unwrap_or(role));
             let fts = kings.map(|ks| Feature(ks, new, m.whither()));
             self.acc.add(fts[0].index(turn), fts[1].index(!turn));
 
-            let old = Piece(!turn, m.role());
+            let old = Piece(!turn, role);
             let fts = kings.map(|ks| Feature(ks, old, m.whence()));
             self.acc.remove(fts[0].index(turn), fts[1].index(!turn));
 
-            if let Some((role, square)) = m.capture() {
-                let fts = kings.map(|ks| Feature(ks, Piece(turn, role), square));
+            if m.is_en_passant() {
+                let target = Square::new(m.whither().file(), m.whence().rank());
+                let fts = kings.map(|ks| Feature(ks, Piece(turn, Role::Pawn), target));
+                self.acc.remove(fts[0].index(turn), fts[1].index(!turn));
+            } else if let Some(role) = capture {
+                let fts = kings.map(|ks| Feature(ks, Piece(turn, role), m.whither()));
                 self.acc.remove(fts[0].index(turn), fts[1].index(!turn));
             }
         }
@@ -144,16 +164,16 @@ mod tests {
         #[filter(#a.outcome().is_none())] mut a: Evaluator,
         #[map(|s: Selector| s.select(#a.moves()))] m: Move,
     ) {
-        let mut b = a.clone();
-        assert_eq!(b.play(m), a.play(m));
-        assert_eq!(b, a);
+        let mut b = a.pos.clone();
+        assert_eq!(a.play(m), b.play(m));
+        assert_eq!(a, Evaluator::new(b));
     }
 
     #[proptest]
     fn pass_updates_accumulator(#[filter(#a.clone().pass().is_ok())] mut a: Evaluator) {
-        let mut b = a.clone();
-        assert_eq!(b.pass(), a.pass());
-        assert_eq!(b, a);
+        let mut b = a.pos.clone();
+        assert_eq!(a.pass(), b.pass());
+        assert_eq!(a, Evaluator::new(b));
     }
 
     #[proptest]
@@ -161,12 +181,12 @@ mod tests {
         #[filter(#a.moves().filter(Move::is_capture).next().is_some())] mut a: Evaluator,
         #[map(|s: Selector| s.select(#a.moves().filter(Move::is_capture)))] m: Move,
     ) {
-        let mut b = a.clone();
+        let mut b = a.pos.clone();
 
         // Skip en passant captures.
         prop_assume!(b.exchange(m.whither()).is_ok());
 
         a.exchange(m.whither())?;
-        assert_eq!(b, a);
+        assert_eq!(a, Evaluator::new(b));
     }
 }

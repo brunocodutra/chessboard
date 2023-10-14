@@ -1,74 +1,48 @@
 use crate::chess::{Role, Square};
 use crate::util::{Assume, Binary, Bits};
-use derive_more::{DebugCustom, Display, Error};
+use derive_more::{Display, Error};
 use shakmaty as sm;
+use std::{fmt, num::NonZeroU16, ops::RangeBounds};
 use vampirc_uci::UciMove;
 
-#[cfg(test)]
-use crate::chess::Position;
-
-#[cfg(test)]
-use proptest::{prelude::*, sample::*};
-
 /// A chess move.
-#[derive(DebugCustom, Copy, Clone, Eq, PartialEq, Hash)]
-#[debug(
-    fmt = "Move({whence}, {whither}, {}, {:?}, {:?})",
-    "self.role()",
-    "self.promotion()",
-    "self.capture()"
-)]
-#[repr(align(4))]
-pub struct Move {
-    whence: Square,
-    whither: Square,
-    capture: Bits<u8, 3>,
-    role: Bits<u8, 4>,
-}
-
-#[cfg(test)]
-impl Arbitrary for Move {
-    type Parameters = ();
-    type Strategy = BoxedStrategy<Self>;
-
-    fn arbitrary_with(_: Self::Parameters) -> Self::Strategy {
-        (any::<Position>(), any::<Selector>())
-            .prop_filter_map("end position", |(pos, selector)| {
-                selector.try_select(pos.moves())
-            })
-            .boxed()
-    }
-}
+#[derive(Copy, Clone, Eq, PartialEq, Hash)]
+#[cfg_attr(test, derive(test_strategy::Arbitrary))]
+pub struct Move(NonZeroU16);
 
 impl Move {
+    fn bits<R: RangeBounds<u32>>(&self, r: R) -> Bits<u16, 16> {
+        Bits::new(self.0.get()).slice(r)
+    }
+
     /// The source [`Square`].
     pub fn whence(&self) -> Square {
-        self.whence
+        Square::decode(self.bits(10..).pop()).assume()
     }
 
     /// The destination [`Square`].
     pub fn whither(&self) -> Square {
-        self.whither
-    }
-
-    /// Whether this is a promotion move.
-    pub fn is_promotion(&self) -> bool {
-        self.role.slice(..1).get() == 1
+        Square::decode(self.bits(4..).pop()).assume()
     }
 
     /// Whether this is a castling move.
     pub fn is_castling(&self) -> bool {
-        self.role() == Role::King && (self.whence().file() - self.whither().file()).abs() > 1
+        self.bits(..4).get() == 0b0001
     }
 
     /// Whether this is an en passant capture move.
     pub fn is_en_passant(&self) -> bool {
-        self.capture.get() == 0b110
+        self.bits(..4).get() == 0b0011
+    }
+
+    /// Whether this is a promotion move.
+    pub fn is_promotion(&self) -> bool {
+        self.bits(3..=3).get() != 0
     }
 
     /// Whether this is a capture move.
     pub fn is_capture(&self) -> bool {
-        self.capture.get() != 0b111
+        self.bits(2..=2).get() != 0 || (self.bits(1..=1).get() != 0 && !self.is_promotion())
     }
 
     /// Whether this move is neither a capture nor a promotion.
@@ -76,175 +50,121 @@ impl Move {
         !(self.is_capture() || self.is_promotion())
     }
 
-    /// The [`Role`] of the piece moved.
-    pub fn role(&self) -> Role {
-        let mut bits = self.role;
-        match bits.pop::<u8, 1>().get() {
-            0 => Role::decode(bits.pop()).assume(),
-            _ => Role::Pawn,
-        }
-    }
-
-    /// The [`Promotion`] specifier.
+    /// The promotion specifier.
     pub fn promotion(&self) -> Option<Role> {
-        let mut bits = self.role;
-        match bits.pop::<u8, 1>().get() {
-            0 => None,
-            _ => Some(Role::decode(bits.pop()).assume()),
-        }
-    }
-
-    /// The [`Role`] of the piece captured.
-    pub fn capture(&self) -> Option<(Role, Square)> {
-        if !self.is_capture() {
-            None
-        } else if self.is_en_passant() {
-            Some((
-                Role::Pawn,
-                Square::new(self.whither.file(), self.whence.rank()),
-            ))
+        if self.is_promotion() {
+            let idx = self.bits(..2).get() as usize;
+            Some([Role::Knight, Role::Bishop, Role::Rook, Role::Queen][idx])
         } else {
-            Some((Role::decode(self.capture).assume(), self.whither))
+            None
         }
     }
 }
 
-/// The reason why decoding [`Move`] from binary failed.
+impl fmt::Debug for Move {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}{}", self.whence(), self.whither())?;
+
+        if let Some(r) = self.promotion() {
+            write!(f, "={}", r)?;
+        }
+
+        if self.is_en_passant() {
+            write!(f, "^")?;
+        } else if self.is_capture() {
+            write!(f, "x")?;
+        } else if self.is_castling() {
+            write!(f, "~")?;
+        }
+
+        Ok(())
+    }
+}
+
+// The reason why decoding [`Move`] from binary failed.
 #[derive(Debug, Display, Clone, Eq, PartialEq, Error)]
 #[cfg_attr(test, derive(test_strategy::Arbitrary))]
 #[display(fmt = "not a valid move")]
 pub struct DecodeMoveError;
 
-impl From<<Square as Binary>::Error> for DecodeMoveError {
-    fn from(_: <Square as Binary>::Error) -> Self {
-        DecodeMoveError
-    }
-}
-
-impl From<<Role as Binary>::Error> for DecodeMoveError {
-    fn from(_: <Role as Binary>::Error) -> Self {
-        DecodeMoveError
-    }
-}
-
 impl Binary for Move {
-    type Bits = Bits<u32, 19>;
+    type Bits = Bits<u16, 16>;
     type Error = DecodeMoveError;
 
     fn encode(&self) -> Self::Bits {
-        let mut bits = Bits::default();
-        bits.push(self.role);
-        bits.push(self.capture);
-        bits.push(self.whither.encode());
-        bits.push(self.whence.encode());
-        bits
+        self.bits(..)
     }
 
-    fn decode(mut bits: Self::Bits) -> Result<Self, Self::Error> {
-        let whence = Square::decode(bits.pop())?;
-        let whither = Square::decode(bits.pop())?;
-        let capture = bits.pop::<u8, 3>();
-        let role = bits.pop::<u8, 4>();
-
-        // validate encoding
-        Role::decode(role.slice(1..).pop())?;
-
-        Ok(Move {
-            whence,
-            whither,
-            capture,
-            role,
-        })
+    fn decode(bits: Self::Bits) -> Result<Self, Self::Error> {
+        NonZeroU16::new(bits.get()).map_or(Err(DecodeMoveError), |n| Ok(Move(n)))
     }
 }
 
 #[doc(hidden)]
 impl From<sm::Move> for Move {
     fn from(m: sm::Move) -> Self {
+        let mut bits = Bits::<_, 16>::default();
+        bits.push(Square::from(m.from().assume()).encode());
+
         match m {
             sm::Move::Normal {
-                role,
-                from,
-                capture,
                 to,
-                promotion,
+                capture: None,
+                promotion: None,
+                ..
             } => {
-                let mut role = Bits::new(Role::from(promotion.unwrap_or(role)).encode().get());
+                bits.push(Square::from(to).encode());
+                bits.push(Bits::<u8, 4>::new(0));
+            }
+
+            sm::Move::Normal {
+                to,
+                capture: Some(sm::Role::Pawn),
+                promotion: None,
+                ..
+            } => {
+                bits.push(Square::from(to).encode());
+                bits.push(Bits::<u8, 4>::new(0b0010));
+            }
+
+            sm::Move::Normal {
+                to,
+                capture,
+                promotion,
+                ..
+            } => {
+                bits.push(Square::from(to).encode());
+                bits.push(Bits::<u8, 1>::new(promotion.is_some() as _));
+                bits.push(Bits::<u8, 1>::new(capture.is_some() as _));
 
                 match promotion {
-                    None => role.push(Bits::<u8, 1>::new(0)),
-                    Some(_) => role.push(Bits::<u8, 1>::new(1)),
-                }
-
-                Move {
-                    whence: from.into(),
-                    whither: to.into(),
-                    capture: capture.map_or(!Bits::default(), |r| Role::from(r).encode()),
-                    role,
+                    Some(sm::Role::Knight) => bits.push(Bits::<u8, 2>::new(0b00)),
+                    Some(sm::Role::Bishop) => bits.push(Bits::<u8, 2>::new(0b01)),
+                    Some(sm::Role::Rook) => bits.push(Bits::<u8, 2>::new(0b10)),
+                    Some(sm::Role::Queen) => bits.push(Bits::<u8, 2>::new(0b11)),
+                    _ => bits.push(Bits::<u8, 2>::new(0b00)),
                 }
             }
 
-            sm::Move::EnPassant { from, to } => {
-                let mut role = Bits::new(Role::Pawn.encode().get());
-                role.push(Bits::<u8, 1>::new(0));
-
-                Move {
-                    whence: from.into(),
-                    whither: to.into(),
-                    capture: Bits::new(0b110),
-                    role,
-                }
+            sm::Move::EnPassant { to, .. } => {
+                bits.push(Square::from(to).encode());
+                bits.push(Bits::<u8, 4>::new(0b0011))
             }
 
             sm::Move::Castle { king, rook } => {
-                let mut role = Bits::new(Role::King.encode().get());
-                role.push(Bits::<u8, 1>::new(0));
-
-                let whither = if rook > king {
-                    Square::new(sm::File::G.into(), king.rank().into())
+                if rook > king {
+                    bits.push(Square::new(sm::File::G.into(), king.rank().into()).encode())
                 } else {
-                    Square::new(sm::File::C.into(), king.rank().into())
+                    bits.push(Square::new(sm::File::C.into(), king.rank().into()).encode())
                 };
 
-                Move {
-                    whence: king.into(),
-                    whither,
-                    capture: Bits::new(0b111),
-                    role,
-                }
+                bits.push(Bits::<u8, 4>::new(0b0001))
             }
 
-            v => panic!("unexpected {v:?}"),
+            _ => unreachable!(),
         }
-    }
-}
 
-#[doc(hidden)]
-impl From<Move> for sm::Move {
-    fn from(m: Move) -> Self {
-        if m.is_castling() {
-            sm::Move::Castle {
-                king: m.whence().into(),
-                rook: if m.whence() < m.whither() {
-                    sm::Square::from_coords(sm::File::H, m.whither().rank().into())
-                } else {
-                    sm::Square::from_coords(sm::File::A, m.whither().rank().into())
-                },
-            }
-        } else if m.is_en_passant() {
-            sm::Move::EnPassant {
-                from: m.whence().into(),
-                to: m.whither().into(),
-            }
-        } else {
-            sm::Move::Normal {
-                role: m.role().into(),
-                from: m.whence().into(),
-                capture: m.capture().map(|(r, _)| r.into()),
-                to: m.whither().into(),
-                promotion: m.promotion().map(Role::into),
-            }
-        }
+        Move(NonZeroU16::new(bits.get()).assume())
     }
 }
 
@@ -276,8 +196,8 @@ mod tests {
     }
 
     #[proptest]
-    fn move_has_an_equivalent_shakmaty_representation(m: Move) {
-        assert_eq!(Move::from(<sm::Move as From<_>>::from(m)), m);
+    fn decoding_move_fails_for_invalid_bits() {
+        assert_eq!(Move::decode(Bits::default()), Err(DecodeMoveError));
     }
 
     #[proptest]
