@@ -33,7 +33,7 @@ derive_more = { version = "0.99.16", default-features = false, features = [
     "into_iterator",
     "not",
 ] }
-num-traits = { version = "0.2.16", default-features = false, features = ["std"] }
+num-traits = { version = "0.2.17", default-features = false, features = ["std"] }
 rayon = { version = "1.8.0", default-features = false }
 shakmaty = { version = "0.26.0", default-features = false, features = ["std"] }
 vampirc-uci = { version = "0.11.0", default-features = false }
