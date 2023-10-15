@@ -2,7 +2,7 @@ use crate::chess::{Move, Piece, Position, Role, Zobrist};
 use crate::nnue::Evaluator;
 use crate::search::{Depth, DepthBounds, Killers, Limits, Options, Ply, Pv, Score, Value};
 use crate::search::{Transposition, TranspositionTable};
-use crate::util::{Assume, Bounds, Buffer, Timer};
+use crate::util::{Assume, Bounds, Buffer, Counter, Timer};
 use derive_more::{Display, Error};
 use rayon::{prelude::*, ThreadPool, ThreadPoolBuilder};
 use std::sync::atomic::{AtomicI16, Ordering};
@@ -12,6 +12,16 @@ use std::{cell::RefCell, cmp::max, ops::Range, time::Duration};
 #[derive(Debug, Display, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Error)]
 #[display(fmt = "the search was interrupted")]
 struct Interrupted;
+
+/// The search control.
+#[derive(Debug)]
+struct Control(Counter, Timer);
+
+impl Default for Control {
+    fn default() -> Self {
+        Control(Counter::new(u64::MAX), Timer::new(Duration::MAX))
+    }
+}
 
 /// A chess engine.
 #[derive(Debug)]
@@ -133,9 +143,9 @@ impl Engine {
         beta: Score,
         depth: Depth,
         ply: Ply,
-        timer: &Timer,
+        ctrl: &Control,
     ) -> Result<Pv, Interrupted> {
-        self.ns(pos, beta - 1..beta, depth, ply, timer)
+        self.ns(pos, beta - 1..beta, depth, ply, ctrl)
     }
 
     /// An implementation of the [negascout] variation of [alpha-beta pruning] algorithm.
@@ -148,10 +158,11 @@ impl Engine {
         bounds: Range<Score>,
         depth: Depth,
         ply: Ply,
-        timer: &Timer,
+        ctrl @ Control(nodes, timer): &Control,
     ) -> Result<Pv, Interrupted> {
         assert!(!bounds.is_empty(), "{bounds:?} ≠ ∅");
 
+        nodes.count().ok_or(Interrupted)?;
         timer.remaining().ok_or(Interrupted)?;
 
         let in_check = pos.is_check();
@@ -201,7 +212,7 @@ impl Engine {
             if let Some(d) = self.nmp(pos, score, beta, depth) {
                 let mut next = pos.clone();
                 next.pass().assume();
-                if d <= ply || -self.nw(&next, -beta + 1, d, ply + 1, timer)? >= beta {
+                if d <= ply || -self.nw(&next, -beta + 1, d, ply + 1, ctrl)? >= beta {
                     #[cfg(not(test))]
                     // The null move pruning heuristic is not exact.
                     return Ok(Pv::new(score, []));
@@ -237,7 +248,7 @@ impl Engine {
             Some((m, _)) => {
                 let mut next = pos.clone();
                 next.play(m).assume();
-                let mut pv = -self.ns(&next, -beta..-alpha, depth, ply + 1, timer)?;
+                let mut pv = -self.ns(&next, -beta..-alpha, depth, ply + 1, ctrl)?;
                 pv.shift(m);
 
                 if pv >= beta && m.is_quiet() {
@@ -272,7 +283,7 @@ impl Engine {
                 if !in_check && gain < 60 {
                     let guess = -next.clone().see(m.whither()).cast();
                     if let Some(d) = self.lmp(&next, guess, alpha, depth) {
-                        if d <= ply || -self.nw(&next, -alpha, d, ply + 1, timer)? <= alpha {
+                        if d <= ply || -self.nw(&next, -alpha, d, ply + 1, ctrl)? <= alpha {
                             #[cfg(not(test))]
                             // The late move pruning heuristic is not exact.
                             return Ok(None);
@@ -280,13 +291,13 @@ impl Engine {
                     }
                 }
 
-                let mut pv = match -self.nw(&next, -alpha, depth, ply + 1, timer)? {
+                let mut pv = match -self.nw(&next, -alpha, depth, ply + 1, ctrl)? {
                     pv if pv <= alpha || pv >= beta => pv,
                     pv => match Score::new(cutoff.fetch_max(pv.score().get(), Ordering::Relaxed)) {
                         a if a >= beta => return Ok(None),
                         a => {
                             let alpha = pv.score().max(a);
-                            pv.max(-self.ns(&next, -beta..-alpha, depth, ply + 1, timer)?)
+                            pv.max(-self.ns(&next, -beta..-alpha, depth, ply + 1, ctrl)?)
                         }
                     },
                 };
@@ -315,15 +326,15 @@ impl Engine {
     ///
     /// [aspiration windows]: https://www.chessprogramming.org/Aspiration_Windows
     /// [iterative deepening]: https://www.chessprogramming.org/Iterative_Deepening
-    fn aw(&self, pos: &Evaluator, depth: Depth, time: Duration) -> Pv {
-        let timer = Timer::new(time);
+    fn aw(&self, pos: &Evaluator, depth: Depth, nodes: u64, time: Duration) -> Pv {
+        let ref ctrl @ Control(_, ref timer) = Control(Counter::new(nodes), Timer::new(time));
         let mut best = Pv::new(Score::new(0), []);
 
         for d in 0..=1 {
             let depth = Depth::new(d);
             let bounds = Score::LOWER..Score::UPPER;
-            let timer = Timer::new(Duration::MAX);
-            best = self.ns(pos, bounds, depth, Ply::new(0), &timer).assume();
+            let ctrl = Control::default();
+            best = self.ns(pos, bounds, depth, Ply::new(0), &ctrl).assume();
         }
 
         'id: for d in 2..=depth.get() {
@@ -337,7 +348,7 @@ impl Engine {
 
             best = 'aw: loop {
                 let depth = Depth::new(d);
-                let pv = match self.ns(pos, lower..upper, depth, Ply::new(0), &timer) {
+                let pv = match self.ns(pos, lower..upper, depth, Ply::new(0), ctrl) {
                     Err(_) => break 'id,
                     Ok(pv) => pv,
                 };
@@ -372,9 +383,10 @@ impl Engine {
     /// Searches for the [principal variation][`Pv`].
     pub fn search(&mut self, pos: &Position, limits: Limits) -> Pv {
         let depth = limits.depth();
+        let nodes = limits.nodes();
+        let time = self.time_to_search(pos, limits);
         let pos = Evaluator::new(pos.clone());
-        let time = self.time_to_search(&pos, limits);
-        self.executor.install(|| self.aw(&pos, depth, time))
+        self.executor.install(|| self.aw(&pos, depth, nodes, time))
     }
 }
 
@@ -418,7 +430,7 @@ mod tests {
     #[proptest]
     #[should_panic]
     fn nw_panics_if_beta_is_too_small(e: Engine, pos: Evaluator, d: Depth, p: Ply) {
-        e.nw(&pos, Score::LOWER, d, p, &Timer::new(Duration::MAX))?;
+        e.nw(&pos, Score::LOWER, d, p, &Control::default())?;
     }
 
     #[proptest]
@@ -435,8 +447,8 @@ mod tests {
     ) {
         e.tt.set(pos.zobrist(), Transposition::lower(d, s, m));
 
-        let timer = Timer::new(Duration::MAX);
-        assert_eq!(e.nw(&pos, b, d, p, &timer), Ok(Pv::new(s, [m])));
+        let ctrl = Control::default();
+        assert_eq!(e.nw(&pos, b, d, p, &ctrl), Ok(Pv::new(s, [m])));
     }
 
     #[proptest]
@@ -453,8 +465,8 @@ mod tests {
     ) {
         e.tt.set(pos.zobrist(), Transposition::upper(d, s, m));
 
-        let timer = Timer::new(Duration::MAX);
-        assert_eq!(e.nw(&pos, b, d, p, &timer), Ok(Pv::new(s, [m])));
+        let ctrl = Control::default();
+        assert_eq!(e.nw(&pos, b, d, p, &ctrl), Ok(Pv::new(s, [m])));
     }
 
     #[proptest]
@@ -471,8 +483,8 @@ mod tests {
     ) {
         e.tt.set(pos.zobrist(), Transposition::exact(d, sc, m));
 
-        let timer = Timer::new(Duration::MAX);
-        assert_eq!(e.nw(&pos, b, d, p, &timer), Ok(Pv::new(sc, [m])));
+        let ctrl = Control::default();
+        assert_eq!(e.nw(&pos, b, d, p, &ctrl), Ok(Pv::new(sc, [m])));
     }
 
     #[proptest]
@@ -484,7 +496,19 @@ mod tests {
         d: Depth,
         p: Ply,
     ) {
-        e.ns(&pos, b.end..b.start, d, p, &Timer::new(Duration::MAX))?;
+        e.ns(&pos, b.end..b.start, d, p, &Control::default())?;
+    }
+
+    #[proptest]
+    fn ns_aborts_if_maximum_number_of_nodes_visited(
+        e: Engine,
+        pos: Evaluator,
+        #[filter(!#b.is_empty())] b: Range<Score>,
+        d: Depth,
+        p: Ply,
+    ) {
+        let ctrl = Control(Counter::new(0), Timer::new(Duration::MAX));
+        assert_eq!(e.ns(&pos, b, d, p, &ctrl), Err(Interrupted));
     }
 
     #[proptest]
@@ -495,9 +519,9 @@ mod tests {
         d: Depth,
         p: Ply,
     ) {
-        let timer = Timer::new(Duration::ZERO);
+        let ctrl = Control(Counter::new(u64::MAX), Timer::new(Duration::ZERO));
         std::thread::sleep(Duration::from_millis(1));
-        assert_eq!(e.ns(&pos, b, d, p, &timer), Err(Interrupted));
+        assert_eq!(e.ns(&pos, b, d, p, &ctrl), Err(Interrupted));
     }
 
     #[proptest]
@@ -508,8 +532,8 @@ mod tests {
         d: Depth,
         p: Ply,
     ) {
-        let timer = Timer::new(Duration::MAX);
-        assert_eq!(e.ns(&pos, b, d, p, &timer), Ok(Pv::new(Score::new(0), [])));
+        let ctrl = Control::default();
+        assert_eq!(e.ns(&pos, b, d, p, &ctrl), Ok(Pv::new(Score::new(0), [])));
     }
 
     #[proptest]
@@ -521,16 +545,16 @@ mod tests {
         p: Ply,
     ) {
         assert_eq!(
-            e.ns(&pos, b, d, p, &Timer::new(Duration::MAX)),
+            e.ns(&pos, b, d, p, &Control::default()),
             Ok(Pv::new(Score::LOWER.normalize(p), []))
         );
     }
 
     #[proptest]
     fn ns_finds_best_score(e: Engine, pos: Evaluator, d: Depth, #[filter(#p >= 0)] p: Ply) {
-        let timer = Timer::new(Duration::MAX);
+        let ctrl = Control::default();
         let bounds = Score::LOWER..Score::UPPER;
-        assert_eq!(e.ns(&pos, bounds, d, p, &timer)?, negamax(&pos, d, p));
+        assert_eq!(e.ns(&pos, bounds, d, p, &ctrl)?, negamax(&pos, d, p));
     }
 
     #[proptest]
@@ -545,11 +569,11 @@ mod tests {
         let y = Engine::with_options(y);
 
         let bounds = Score::LOWER..Score::UPPER;
-        let timer = Timer::new(Duration::MAX);
+        let ctrl = Control::default();
 
         assert_eq!(
-            x.ns(&pos, bounds.clone(), d, p, &timer)?.score(),
-            y.ns(&pos, bounds, d, p, &timer)?.score()
+            x.ns(&pos, bounds.clone(), d, p, &ctrl)?.score(),
+            y.ns(&pos, bounds, d, p, &ctrl)?.score()
         );
     }
 
@@ -559,13 +583,13 @@ mod tests {
         pos: Position,
         #[filter(#d > 1)] d: Depth,
     ) {
-        let timer = Timer::new(Duration::MAX);
+        let ctrl = Control::default();
         let bounds = Score::LOWER..Score::UPPER;
         let ply = Ply::new(0);
 
         assert_eq!(
             e.search(&pos, Limits::Depth(d)).score(),
-            e.ns(&Evaluator::new(pos), bounds, d, ply, &timer)?.score()
+            e.ns(&Evaluator::new(pos), bounds, d, ply, &ctrl)?.score()
         );
     }
 

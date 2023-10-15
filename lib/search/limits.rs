@@ -13,6 +13,9 @@ pub enum Limits {
     /// The maximum number of plies to search.
     Depth(Depth),
 
+    /// The maximum number of nodes to search.
+    Nodes(u64),
+
     /// The maximum amount of time to spend searching.
     Time(Duration),
 
@@ -27,6 +30,14 @@ impl Limits {
         match self {
             Limits::Depth(d) => *d,
             _ => Depth::UPPER,
+        }
+    }
+
+    /// Maximum number of nodes [`u64::MAX`].
+    pub fn nodes(&self) -> u64 {
+        match self {
+            Limits::Nodes(n) => *n,
+            _ => u64::MAX,
         }
     }
 
@@ -68,10 +79,24 @@ mod tests {
     }
 
     #[proptest]
-    fn depth_returns_max_by_default(t: Duration, i: Duration) {
+    fn depth_returns_max_by_default(n: u64, t: Duration, i: Duration) {
         assert_eq!(Limits::None.depth(), Depth::UPPER);
+        assert_eq!(Limits::Nodes(n).depth(), Depth::UPPER);
         assert_eq!(Limits::Time(t).depth(), Depth::UPPER);
         assert_eq!(Limits::Clock(t, i).depth(), Depth::UPPER);
+    }
+
+    #[proptest]
+    fn nodes_returns_value_if_set(n: u64) {
+        assert_eq!(Limits::Nodes(n).nodes(), n);
+    }
+
+    #[proptest]
+    fn nodes_returns_max_by_default(d: Depth, t: Duration, i: Duration) {
+        assert_eq!(Limits::None.nodes(), u64::MAX);
+        assert_eq!(Limits::Depth(d).nodes(), u64::MAX);
+        assert_eq!(Limits::Time(t).nodes(), u64::MAX);
+        assert_eq!(Limits::Clock(t, i).nodes(), u64::MAX);
     }
 
     #[proptest]
@@ -80,9 +105,10 @@ mod tests {
     }
 
     #[proptest]
-    fn time_returns_max_or_clock_by_default(d: Depth, t: Duration, i: Duration) {
+    fn time_returns_max_or_clock_by_default(d: Depth, n: u64, t: Duration, i: Duration) {
         assert_eq!(Limits::None.time(), Duration::MAX);
         assert_eq!(Limits::Depth(d).time(), Duration::MAX);
+        assert_eq!(Limits::Nodes(n).time(), Duration::MAX);
         assert_eq!(Limits::Clock(t, i).time(), t);
     }
 
@@ -92,9 +118,10 @@ mod tests {
     }
 
     #[proptest]
-    fn clock_returns_max_by_default(d: Depth, t: Duration) {
+    fn clock_returns_max_by_default(d: Depth, n: u64, t: Duration) {
         assert_eq!(Limits::None.clock(), Duration::MAX);
         assert_eq!(Limits::Depth(d).clock(), Duration::MAX);
+        assert_eq!(Limits::Nodes(n).clock(), Duration::MAX);
         assert_eq!(Limits::Time(t).clock(), Duration::MAX);
     }
 
@@ -104,9 +131,10 @@ mod tests {
     }
 
     #[proptest]
-    fn increment_returns_zero_by_default(d: Depth, t: Duration) {
+    fn increment_returns_zero_by_default(d: Depth, n: u64, t: Duration) {
         assert_eq!(Limits::None.increment(), Duration::ZERO);
         assert_eq!(Limits::Depth(d).increment(), Duration::ZERO);
+        assert_eq!(Limits::Nodes(n).increment(), Duration::ZERO);
         assert_eq!(Limits::Time(t).increment(), Duration::ZERO);
     }
 }

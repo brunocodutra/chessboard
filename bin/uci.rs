@@ -255,6 +255,17 @@ impl Uci {
                         }),
                 } if search_moves.is_empty() => self.go(Depth::saturate(depth).into())?,
 
+                UciMessage::Go {
+                    time_control: None,
+                    search_control:
+                        Some(UciSearchControl {
+                            depth: None,
+                            search_moves,
+                            mate: None,
+                            nodes: Some(nodes),
+                        }),
+                } if search_moves.is_empty() => self.go(nodes.into())?,
+
                 UciMessage::Unknown(m, _) if m.to_lowercase() == "eval" => self.eval()?,
 
                 UciMessage::Unknown(m, cause) => {
