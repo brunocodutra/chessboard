@@ -65,33 +65,27 @@ impl<T: 'static + Binary + PrimInt + Unsigned, const W: u32> Bits<T, W> {
 
     /// Shifts bits into the collection.
     ///
-    /// Overflow is ignored.
+    /// # Panics
+    ///
+    /// Panics on overflow.
     pub fn push<U: 'static + Binary + PrimInt + Unsigned + AsPrimitive<T>, const N: u32>(
         &mut self,
         bits: Bits<U, N>,
     ) {
-        *self = if N >= W {
-            Bits::new(bits.get().as_() & ones(W))
-        } else {
-            Bits::new((self.get() << N as _) & ones(W) | bits.get().as_())
-        };
+        *self = Bits::new((self.get() << N as _) & ones(W) | bits.get().as_());
     }
 
     /// Shifts bits out of the collection.
     ///
-    /// Underflow is ignored.
+    /// # Panics
+    ///
+    /// Panics on underflow.
     pub fn pop<U: 'static + Binary + PrimInt + Unsigned, const N: u32>(&mut self) -> Bits<U, N>
     where
         T: AsPrimitive<U>,
     {
         let bits = Bits::new(self.get().as_() & ones(N));
-
-        *self = if N >= W {
-            Bits(T::zero())
-        } else {
-            Bits::new(self.get() >> N as _)
-        };
-
+        *self = Bits::new(self.get() >> N as _);
         bits
     }
 }
@@ -169,12 +163,9 @@ mod tests {
     }
 
     #[proptest]
-    fn push_ignores_overflow(mut a: Bits<u8, 3>, b: Bits<u16, 9>, mut c: Bits<u32, 27>) {
+    #[should_panic]
+    fn push_panics_on_overflow(mut a: Bits<u8, 3>, b: Bits<u16, 9>) {
         a.push(b);
-        assert_eq!(b.slice(..3).get(), a.get().into());
-
-        c.push(b);
-        assert_eq!(c.slice(..9).get(), b.get().into());
     }
 
     #[proptest]
@@ -191,9 +182,9 @@ mod tests {
     }
 
     #[proptest]
-    fn pop_ignores_underflow(a: Bits<u8, 3>, c: Bits<u32, 27>) {
-        assert_eq!(a.clone().pop::<u16, 9>().get(), a.get().into());
-        assert_eq!(c.slice(..9).get(), c.clone().pop::<u16, 9>().get().into());
+    #[should_panic]
+    fn pop_ignores_underflow(mut a: Bits<u8, 3>) {
+        a.pop::<u16, 9>();
     }
 
     #[proptest]
