@@ -64,5 +64,5 @@ path = "bin/main.rs"
 bench = false
 
 [[bench]]
-name = "ttd"
+name = "search"
 harness = false

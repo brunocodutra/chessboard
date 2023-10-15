@@ -1,9 +1,9 @@
-use criterion::{criterion_group, criterion_main, BatchSize, Criterion};
+use criterion::{criterion_group, criterion_main, BatchSize, Criterion, Throughput};
 use lib::search::{Depth, Engine, Options};
 use num_cpus::get_physical;
 use std::num::NonZeroUsize;
 
-fn ttd(c: &mut Criterion, fens: &[&str]) {
+fn search(c: &mut Criterion, fens: &[&str]) {
     let fens: Result<Vec<_>, _> = fens.iter().map(|p| p.parse()).collect();
     let mut positions = fens.unwrap().into_iter().cycle();
     let options = match NonZeroUsize::new(get_physical()) {
@@ -14,19 +14,31 @@ fn ttd(c: &mut Criterion, fens: &[&str]) {
         },
     };
 
-    c.benchmark_group("benches").bench_function("ttd", |b| {
+    let depth = Depth::new(12);
+    c.benchmark_group("search").bench_function("ttd", |b| {
         b.iter_batched_ref(
             || (Engine::with_options(options), positions.next().unwrap()),
-            |(s, pos)| s.search(pos, Depth::new(12).into()),
+            |(s, pos)| s.search(pos, depth.into()),
             BatchSize::SmallInput,
         );
     });
+
+    let nodes = 100000;
+    c.benchmark_group("search")
+        .throughput(Throughput::Elements(nodes))
+        .bench_function("nps", |b| {
+            b.iter_batched_ref(
+                || (Engine::with_options(options), positions.next().unwrap()),
+                |(s, pos)| s.search(pos, nodes.into()),
+                BatchSize::SmallInput,
+            );
+        });
 }
 
 fn bench(c: &mut Criterion) {
     #[rustfmt::skip]
     // https://www.chessprogramming.org/CCR_One_Hour_Test
-    ttd(c, &[
+    search(c, &[
         "rn1qkb1r/pp2pppp/5n2/3p1b2/3P4/2N1P3/PP3PPP/R1BQKBNR w KQkq - 0 1",
         "rn1qkb1r/pp2pppp/5n2/3p1b2/3P4/1QN1P3/PP3PPP/R1B1KBNR b KQkq - 1 1",
         "r1bqk2r/ppp2ppp/2n5/4P3/2Bp2n1/5N1P/PP1N1PP1/R2Q1RK1 b kq - 1 10",
