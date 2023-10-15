@@ -315,7 +315,8 @@ impl Engine {
     ///
     /// [aspiration windows]: https://www.chessprogramming.org/Aspiration_Windows
     /// [iterative deepening]: https://www.chessprogramming.org/Iterative_Deepening
-    fn aw(&self, pos: &Evaluator, depth: Depth, timer: &Timer) -> Pv {
+    fn aw(&self, pos: &Evaluator, depth: Depth, time: Duration) -> Pv {
+        let timer = Timer::new(time);
         let mut best = Pv::new(Score::new(0), []);
 
         for d in 0..=1 {
@@ -326,13 +327,17 @@ impl Engine {
         }
 
         'id: for d in 2..=depth.get() {
+            if timer.remaining() < Some(time / 2) {
+                break 'id;
+            }
+
             let mut w: i16 = 32;
             let mut lower = (best.score() - w / 2).min(Score::UPPER - w);
             let mut upper = (best.score() + w / 2).max(Score::LOWER + w);
 
             best = 'aw: loop {
                 let depth = Depth::new(d);
-                let pv = match self.ns(pos, lower..upper, depth, Ply::new(0), timer) {
+                let pv = match self.ns(pos, lower..upper, depth, Ply::new(0), &timer) {
                     Err(_) => break 'id,
                     Ok(pv) => pv,
                 };
@@ -368,8 +373,8 @@ impl Engine {
     pub fn search(&mut self, pos: &Position, limits: Limits) -> Pv {
         let depth = limits.depth();
         let pos = Evaluator::new(pos.clone());
-        let timer = Timer::new(self.time_to_search(&pos, limits));
-        self.executor.install(|| self.aw(&pos, depth, &timer))
+        let time = self.time_to_search(&pos, limits);
+        self.executor.install(|| self.aw(&pos, depth, time))
     }
 }
 
