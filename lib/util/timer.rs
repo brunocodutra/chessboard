@@ -1,10 +1,6 @@
-use derive_more::{Display, Error};
 use std::time::{Duration, Instant};
 
-#[derive(Debug, Display, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Error)]
-#[display(fmt = "time is up!")]
-pub struct Timeout;
-
+/// Tracks time towards a deadline.
 #[derive(Debug)]
 #[cfg_attr(test, derive(test_strategy::Arbitrary))]
 pub struct Timer {
@@ -19,12 +15,11 @@ impl Timer {
         }
     }
 
-    /// Checks whether the timer has elapsed.
-    pub fn elapsed(&self) -> Result<(), Timeout> {
-        if self.deadline.map(|t| t.elapsed()) > Some(Duration::ZERO) {
-            Err(Timeout)
-        } else {
-            Ok(())
+    /// Returns the time remaining if any.
+    pub fn remaining(&self) -> Option<Duration> {
+        match self.deadline {
+            Some(deadline) => deadline.checked_duration_since(Instant::now()),
+            None => Some(Duration::MAX),
         }
     }
 }
@@ -36,15 +31,21 @@ mod tests {
     use test_strategy::proptest;
 
     #[proptest]
+    fn timer_measures_time_remaining() {
+        let timer = Timer::new(Duration::from_secs(1));
+        assert!(timer.remaining().is_some());
+    }
+
+    #[proptest]
     fn timer_does_not_elapse_before_duration_expires() {
         let timer = Timer::new(Duration::MAX);
-        assert_eq!(timer.elapsed(), Ok(()))
+        assert_eq!(timer.remaining(), Some(Duration::MAX));
     }
 
     #[proptest]
     fn timer_elapses_once_duration_expires() {
         let timer = Timer::new(Duration::ZERO);
         sleep(Duration::from_millis(1));
-        assert_eq!(timer.elapsed(), Err(Timeout))
+        assert_eq!(timer.remaining(), None);
     }
 }

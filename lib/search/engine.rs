@@ -2,10 +2,16 @@ use crate::chess::{Move, Piece, Position, Role, Zobrist};
 use crate::nnue::Evaluator;
 use crate::search::{Depth, DepthBounds, Killers, Limits, Options, Ply, Pv, Score, Value};
 use crate::search::{Transposition, TranspositionTable};
-use crate::util::{Assume, Bounds, Buffer, Timeout, Timer};
+use crate::util::{Assume, Bounds, Buffer, Timer};
+use derive_more::{Display, Error};
 use rayon::{prelude::*, ThreadPool, ThreadPoolBuilder};
 use std::sync::atomic::{AtomicI16, Ordering};
 use std::{cell::RefCell, cmp::max, ops::Range, time::Duration};
+
+/// Indicates the search was interrupted upon reaching the configured limit.
+#[derive(Debug, Display, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Error)]
+#[display(fmt = "the search was interrupted")]
+struct Interrupted;
 
 /// A chess engine.
 #[derive(Debug)]
@@ -128,7 +134,7 @@ impl Engine {
         depth: Depth,
         ply: Ply,
         timer: &Timer,
-    ) -> Result<Pv, Timeout> {
+    ) -> Result<Pv, Interrupted> {
         self.ns(pos, beta - 1..beta, depth, ply, timer)
     }
 
@@ -143,10 +149,11 @@ impl Engine {
         depth: Depth,
         ply: Ply,
         timer: &Timer,
-    ) -> Result<Pv, Timeout> {
+    ) -> Result<Pv, Interrupted> {
         assert!(!bounds.is_empty(), "{bounds:?} ≠ ∅");
 
-        timer.elapsed()?;
+        timer.remaining().ok_or(Interrupted)?;
+
         let in_check = pos.is_check();
         let zobrist = match pos.outcome() {
             Some(o) if o.is_draw() => return Ok(Pv::new(Score::new(0), [])),
@@ -485,7 +492,7 @@ mod tests {
     ) {
         let timer = Timer::new(Duration::ZERO);
         std::thread::sleep(Duration::from_millis(1));
-        assert_eq!(e.ns(&pos, b, d, p, &timer), Err(Timeout));
+        assert_eq!(e.ns(&pos, b, d, p, &timer), Err(Interrupted));
     }
 
     #[proptest]
