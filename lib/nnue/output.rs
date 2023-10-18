@@ -1,15 +1,15 @@
-use crate::nnue::{Axpy, Layer, Vector};
+use crate::nnue::{Axpy, Layer};
 
 /// The output transformer.
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
-pub struct Output<const I: usize>(pub(super) Vector<i8, I>, pub(super) i32);
+pub struct Output<const I: usize>(pub(super) i32, pub(super) [i8; I]);
 
-impl<const N: usize> Layer<Vector<i8, N>> for Output<N> {
+impl<const N: usize> Layer<[i8; N]> for Output<N> {
     type Output = i32;
 
-    fn forward(&self, input: &Vector<i8, N>) -> Self::Output {
-        let mut output = self.1;
-        output.axpy(&self.0, input);
+    fn forward(&self, input: &[i8; N]) -> Self::Output {
+        let mut output = self.0;
+        output.axpy(&self.1, input);
         output
     }
 }
@@ -21,14 +21,14 @@ mod tests {
 
     #[proptest]
     fn output_multiplies_by_weight_vector(w: [i8; 3], i: [i8; 3]) {
-        assert_eq!(
-            Output(w.into(), 0).forward(&i.into()),
-            i[0] as i32 * w[0] as i32 + i[1] as i32 * w[1] as i32 + i[2] as i32 * w[2] as i32,
-        );
+        let mut y = 0;
+        y.axpy(&w, &i);
+
+        assert_eq!(Output(0, w).forward(&i), y);
     }
 
     #[proptest]
     fn output_adds_bias(b: i32, i: [i8; 1]) {
-        assert_eq!(Output(Vector([1]), b).forward(&i.into()), i[0] as i32 + b);
+        assert_eq!(Output(b, [1]).forward(&i), i[0] as i32 + b);
     }
 }

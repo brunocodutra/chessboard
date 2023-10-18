@@ -1,14 +1,12 @@
-use crate::nnue::{Axpy, Layer, Matrix, Vector};
-use crate::util::Assume;
+use crate::nnue::{Axpy, Invert, Layer};
 use std::ops::{AddAssign, SubAssign};
 
-/// An [affine] feature transformer.
-///
-/// [affine]: https://en.wikipedia.org/wiki/Affine_transformation
+/// A feature transformer.
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
+#[repr(align(64))]
 pub struct Transformer<T, const I: usize, const O: usize>(
-    pub(super) Matrix<T, O, I>,
-    pub(super) Vector<T, O>,
+    pub(super) [T; O],
+    pub(super) [[T; O]; I],
 );
 
 impl<T, const I: usize, const O: usize> Transformer<T, I, O>
@@ -16,24 +14,20 @@ where
     T: Copy + AddAssign + SubAssign,
 {
     /// Refreshes accumulator.
-    pub fn refresh(&self, features: &[u16], accumulator: &mut Vector<T, O>) {
+    pub fn refresh(&self, features: &[u16], accumulator: &mut [T; O]) {
         debug_assert!(features.len() <= 32);
-        *accumulator = self.1;
-        accumulator.axpy(&self.0, features)
+        *accumulator = self.0;
+        accumulator.axpy(&self.1, features)
     }
 
     /// Updates the accumulator by adding features.
-    pub fn add(&self, feature: u16, accumulator: &mut Vector<T, O>) {
-        for (i, a) in accumulator.iter_mut().enumerate() {
-            *a += self.0.get(feature as usize).assume()[i]
-        }
+    pub fn add(&self, feature: u16, accumulator: &mut [T; O]) {
+        accumulator.axpy(&self.1, &feature);
     }
 
     /// Updates the accumulator by removing features.
-    pub fn remove(&self, feature: u16, accumulator: &mut Vector<T, O>) {
-        for (i, a) in accumulator.iter_mut().enumerate() {
-            *a -= self.0.get(feature as usize).assume()[i]
-        }
+    pub fn remove(&self, feature: u16, accumulator: &mut [T; O]) {
+        accumulator.axpy(&self.1, &Invert(feature));
     }
 }
 
@@ -41,10 +35,10 @@ impl<T, const I: usize, const O: usize> Layer<[u16]> for Transformer<T, I, O>
 where
     T: Default + Copy + AddAssign + SubAssign,
 {
-    type Output = Vector<T, O>;
+    type Output = [T; O];
 
     fn forward(&self, input: &[u16]) -> Self::Output {
-        let mut accumulator = Vector::default();
+        let mut accumulator = [Default::default(); O];
         self.refresh(input, &mut accumulator);
         accumulator
     }
@@ -63,58 +57,58 @@ mod tests {
         #[strategy([..3u16, ..3, ..3])] i: [u16; 3],
     ) {
         assert_eq!(
-            Transformer(w.into(), Vector::default()).forward(&i),
-            Vector([
+            Transformer([0; 2], w).forward(&i),
+            [
                 w[i[0] as usize][0] + w[i[1] as usize][0] + w[i[2] as usize][0],
                 w[i[0] as usize][1] + w[i[1] as usize][1] + w[i[2] as usize][1],
-            ])
+            ]
         );
     }
 
     #[proptest]
-    fn transformer_adds_bias_vector(w: Matrix<i16, 2, 3>, b: Vector<i16, 2>) {
-        assert_eq!(Transformer(w, b).forward(&[]), b);
+    fn transformer_adds_bias_vector(b: [i16; 2], w: [[i16; 2]; 3]) {
+        assert_eq!(Transformer(b, w).forward(&[]), b);
     }
 
     #[proptest]
     #[should_panic]
     fn transformer_panics_if_too_many_inputs(
-        #[strategy([[-9i16..=9, -9..=9], [-9..=9, -9..=9], [-9..=9, -9..=9]])] w: [[i16; 2]; 3],
         #[strategy([-9i16..=9, -9..=9])] b: [i16; 2],
+        #[strategy([[-9i16..=9, -9..=9], [-9..=9, -9..=9], [-9..=9, -9..=9]])] w: [[i16; 2]; 3],
         #[any(size_range(33..=99).lift())] i: Vec<u16>,
     ) {
-        Transformer(w.into(), b.into()).forward(&i);
+        Transformer(b, w).forward(&i);
     }
 
     #[proptest]
     fn add_updates_accumulator(
-        #[strategy([[-9i16..=9, -9..=9], [-9..=9, -9..=9], [-9..=9, -9..=9]])] w: [[i16; 2]; 3],
         b: [i16; 2],
+        #[strategy([[-9i16..=9, -9..=9], [-9..=9, -9..=9], [-9..=9, -9..=9]])] w: [[i16; 2]; 3],
         #[strategy([-9i16..=9, -9..=9])] prev: [i16; 2],
         #[strategy(..3u16)] f: u16,
     ) {
-        let mut new = Vector(prev);
-        Transformer(w.into(), b.into()).add(f, &mut new);
+        let mut new = prev;
+        Transformer(b, w).add(f, &mut new);
 
         assert_eq!(
             new,
-            Vector([prev[0] + w[f as usize][0], prev[1] + w[f as usize][1]])
+            [prev[0] + w[f as usize][0], prev[1] + w[f as usize][1]]
         );
     }
 
     #[proptest]
     fn remove_updates_accumulator(
-        #[strategy([[-9i16..=9, -9..=9], [-9..=9, -9..=9], [-9..=9, -9..=9]])] w: [[i16; 2]; 3],
         b: [i16; 2],
+        #[strategy([[-9i16..=9, -9..=9], [-9..=9, -9..=9], [-9..=9, -9..=9]])] w: [[i16; 2]; 3],
         #[strategy([-9i16..=9, -9..=9])] prev: [i16; 2],
         #[strategy(..3u16)] f: u16,
     ) {
-        let mut new = Vector(prev);
-        Transformer(w.into(), b.into()).remove(f, &mut new);
+        let mut new = prev;
+        Transformer(b, w).remove(f, &mut new);
 
         assert_eq!(
             new,
-            Vector([prev[0] - w[f as usize][0], prev[1] - w[f as usize][1]])
+            [prev[0] - w[f as usize][0], prev[1] - w[f as usize][1]]
         );
     }
 }

@@ -1,14 +1,13 @@
-use crate::nnue::{Layer, Vector};
-use num_traits::PrimInt;
+use crate::nnue::Layer;
 
 /// A fallthrough [`Layer`].
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
 pub struct Fallthrough;
 
-impl<I: PrimInt, const N: usize> Layer<Vector<I, N>> for Fallthrough {
-    type Output = Vector<I, N>;
+impl<T: Copy, const N: usize> Layer<[T; N]> for Fallthrough {
+    type Output = [T; N];
 
-    fn forward(&self, input: &Vector<I, N>) -> Self::Output {
+    fn forward(&self, input: &[T; N]) -> Self::Output {
         *input
     }
 }
