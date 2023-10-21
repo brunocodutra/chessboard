@@ -8,6 +8,9 @@ use rayon::{prelude::*, ThreadPool, ThreadPoolBuilder};
 use std::sync::atomic::{AtomicI16, Ordering};
 use std::{cell::RefCell, cmp::max, ops::Range, time::Duration};
 
+#[cfg(test)]
+use crate::search::{HashSize, ThreadCount};
+
 /// Indicates the search was interrupted upon reaching the configured limit.
 #[derive(Debug, Display, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Error)]
 #[display(fmt = "the search was interrupted")]
@@ -27,9 +30,9 @@ impl Default for Control {
 #[derive(Debug)]
 #[cfg_attr(test, derive(test_strategy::Arbitrary))]
 pub struct Engine {
-    #[cfg_attr(test, map(|o: Options| ThreadPoolBuilder::new().num_threads(o.threads.get()).build().unwrap()))]
+    #[cfg_attr(test, map(|c: ThreadCount| ThreadPoolBuilder::new().num_threads(c.get()).build().unwrap()))]
     executor: ThreadPool,
-    #[cfg_attr(test, map(|o: Options| TranspositionTable::new(o.hash)))]
+    #[cfg_attr(test, map(|s: HashSize| TranspositionTable::new(s)))]
     tt: TranspositionTable,
 }
 
@@ -54,11 +57,11 @@ impl Engine {
     /// Initializes the engine with the given [`Options`].
     pub fn with_options(options: Options) -> Self {
         Engine {
+            tt: TranspositionTable::new(options.hash),
             executor: ThreadPoolBuilder::new()
                 .num_threads(options.threads.get())
                 .build()
                 .unwrap(),
-            tt: TranspositionTable::new(options.hash),
         }
     }
 
@@ -422,7 +425,7 @@ mod tests {
     }
 
     #[proptest]
-    fn has_is_an_upper_limit_for_table_size(o: Options) {
+    fn hash_is_an_upper_limit_for_table_size(o: Options) {
         let e = Engine::with_options(o);
         prop_assume!(e.tt.capacity() > 1);
         assert!(e.tt.size() <= o.hash);
