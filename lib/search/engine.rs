@@ -326,8 +326,8 @@ impl Engine {
     ///
     /// [aspiration windows]: https://www.chessprogramming.org/Aspiration_Windows
     /// [iterative deepening]: https://www.chessprogramming.org/Iterative_Deepening
-    fn aw(&self, pos: &Evaluator, depth: Depth, nodes: u64, time: Duration) -> Pv {
-        let ref ctrl @ Control(_, ref timer) = Control(Counter::new(nodes), Timer::new(time));
+    fn aw(&self, pos: &Evaluator, depth: Depth, nodes: u64, time: Range<Duration>) -> Pv {
+        let ref ctrl @ Control(_, ref timer) = Control(Counter::new(nodes), Timer::new(time.end));
         let mut best = Pv::new(Score::new(0), []);
 
         for d in 0..=1 {
@@ -338,7 +338,7 @@ impl Engine {
         }
 
         'id: for d in 2..=depth.get() {
-            if timer.remaining() < Some(time / 2) {
+            if timer.remaining() < Duration::checked_sub(time.end, time.start) {
                 break 'id;
             }
 
@@ -368,16 +368,17 @@ impl Engine {
         best
     }
 
-    fn time_to_search(&self, pos: &Position, limits: Limits) -> Duration {
+    fn time_to_search(&self, pos: &Position, limits: Limits) -> Range<Duration> {
         let (clock, inc) = match limits {
             Limits::Clock(c, i) => (c, i),
-            _ => return limits.time(),
+            _ => return limits.time()..limits.time(),
         };
 
         let cap = clock.mul_f32(0.8);
         let excess = clock.saturating_sub(inc);
         let scale = 400 / pos.fullmoves().get().min(40);
-        inc.saturating_add(excess / scale).min(cap)
+        let max = inc.saturating_add(excess / scale).min(cap);
+        max / 2..max
     }
 
     /// Searches for the [principal variation][`Pv`].
