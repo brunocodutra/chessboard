@@ -83,6 +83,11 @@ mod tests {
     use test_strategy::proptest;
 
     #[proptest]
+    fn role_has_an_equivalent_uci_representation(r: Role) {
+        assert_eq!(Role::from(<UciPiece as From<Role>>::from(r)), r);
+    }
+
+    #[proptest]
     fn role_has_an_equivalent_shakmaty_representation(r: Role) {
         assert_eq!(Role::from(sm::Role::from(r)), r);
     }
