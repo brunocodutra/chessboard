@@ -339,13 +339,20 @@ impl Position {
 
     /// Exchange a piece on [`Square`] by the attacker of least value.
     pub fn exchange(&mut self, whither: Square) -> Result<Move, ImpossibleExchange> {
-        for whence in self.attackers(whither, self.turn()) {
-            let role = self.role_on(whence).assume();
-            let moves = sm::Position::san_candidates(&self.0, role.into(), whither.into());
-            if let Some(vm) = moves.into_iter().max_by_key(|vm| vm.promotion()) {
-                self.1 = Default::default();
-                sm::Position::play_unchecked(&mut self.0, &vm);
-                return Ok(vm.into());
+        let turn = self.turn();
+        let attackers = self.attackers(whither, turn);
+
+        use Role::*;
+        if !attackers.is_empty() {
+            for role in [Pawn, Knight, Bishop, Rook, Queen, King] {
+                if self.by_piece(Piece(turn, role)) & attackers != Bitboard::empty() {
+                    let moves = sm::Position::san_candidates(&self.0, role.into(), whither.into());
+                    if let Some(vm) = moves.into_iter().max_by_key(|vm| vm.promotion()) {
+                        self.1 = Default::default();
+                        sm::Position::play_unchecked(&mut self.0, &vm);
+                        return Ok(vm.into());
+                    }
+                }
             }
         }
 
@@ -478,6 +485,7 @@ impl FromStr for Position {
 mod tests {
     use super::*;
     use proptest::sample::Selector;
+    use std::cmp::Reverse;
     use test_strategy::proptest;
 
     #[proptest]
@@ -579,15 +587,6 @@ mod tests {
     }
 
     #[proptest]
-    fn exchange_finds_attacker(
-        mut pos: Position,
-        #[filter(#pos.clone().exchange(#s).is_ok_and(|m| m.is_capture()))] s: Square,
-    ) {
-        let attackers = pos.attackers(s, pos.turn());
-        assert!(attackers.contains(pos.exchange(s)?.whence()));
-    }
-
-    #[proptest]
     fn checkmate_implies_outcome(pos: Position) {
         assert!(!pos.is_checkmate() || pos.outcome() == Some(Outcome::Checkmate(!pos.turn())));
     }
@@ -624,32 +623,51 @@ mod tests {
     }
 
     #[proptest]
-    fn captures_reduce_material(pos: Position) {
-        for m in pos.moves().filter(Move::is_capture) {
-            let mut p = pos.clone();
-            p.play(m)?;
-            assert!(p.by_color(p.turn()).len() < pos.by_color(p.turn()).len());
-        }
+    fn exchange_finds_attacker_of_least_value(
+        #[filter(#pos.moves().filter(Move::is_capture).next().is_some())] pos: Position,
+        #[map(|s: Selector| s.select(#pos.moves().filter(Move::is_capture)).whither())] s: Square,
+    ) {
+        let m = pos.clone().exchange(s)?;
+        let attackers = pos.attackers(s, pos.turn());
+        assert!(attackers.contains(m.whence()));
+
+        let mut moves = Buffer::<_, 128>::from_iter(pos.moves().filter(|m| m.whither() == s));
+        moves.sort_unstable_by_key(|m| (pos.role_on(m.whence()), Reverse(m.promotion())));
+
+        assert_eq!(m.promotion(), moves[0].promotion());
+        assert_eq!(pos.role_on(m.whence()), pos.role_on(moves[0].whence()));
     }
 
     #[proptest]
-    fn promotions_exchange_pawns(pos: Position) {
-        for m in pos.moves().filter(Move::is_promotion) {
-            let mut p = pos.clone();
-            p.play(m)?;
-            let pawn = Piece(pos.turn(), Role::Pawn);
-            assert!(p.by_piece(pawn).len() < pos.by_piece(pawn).len());
-            assert_eq!(p.by_color(pos.turn()).len(), pos.by_color(pos.turn()).len());
-        }
+    fn captures_reduce_material(
+        #[filter(#pos.moves().filter(Move::is_capture).next().is_some())] pos: Position,
+        #[map(|s: Selector| s.select(#pos.moves().filter(Move::is_capture)))] m: Move,
+    ) {
+        let mut p = pos.clone();
+        p.play(m)?;
+        assert!(p.by_color(p.turn()).len() < pos.by_color(p.turn()).len());
     }
 
     #[proptest]
-    fn castles_move_the_king_by_two_files(pos: Position) {
-        for m in pos.moves().filter(Move::is_castling) {
-            assert_eq!(pos[m.whence()], Some(Piece(pos.turn(), Role::King)));
-            assert_eq!(m.whence().rank(), m.whither().rank());
-            assert_eq!((m.whence().file() - m.whither().file()).abs(), 2);
-        }
+    fn promotions_exchange_pawns(
+        #[filter(#pos.moves().filter(Move::is_promotion).next().is_some())] pos: Position,
+        #[map(|s: Selector| s.select(#pos.moves().filter(Move::is_promotion)))] m: Move,
+    ) {
+        let mut p = pos.clone();
+        p.play(m)?;
+        let pawn = Piece(pos.turn(), Role::Pawn);
+        assert!(p.by_piece(pawn).len() < pos.by_piece(pawn).len());
+        assert_eq!(p.by_color(pos.turn()).len(), pos.by_color(pos.turn()).len());
+    }
+
+    #[proptest]
+    fn castles_move_the_king_by_two_files(
+        #[filter(#pos.moves().filter(Move::is_castling).next().is_some())] pos: Position,
+        #[map(|s: Selector| s.select(#pos.moves().filter(Move::is_castling)))] m: Move,
+    ) {
+        assert_eq!(pos[m.whence()], Some(Piece(pos.turn(), Role::King)));
+        assert_eq!(m.whence().rank(), m.whither().rank());
+        assert_eq!((m.whence().file() - m.whither().file()).abs(), 2);
     }
 
     #[proptest]
@@ -665,7 +683,8 @@ mod tests {
     #[proptest]
     fn illegal_move_fails_without_changing_position(
         mut pos: Position,
-        #[filter(#pos.clone().play(#m).is_err())] m: Move,
+        #[filter(!#pos.moves().any(|m| (m.whence(), m.whither()) == (#m.whence(), #m.whither())))]
+        m: Move,
     ) {
         let before = pos.clone();
         assert_eq!(pos.play(m), Err(IllegalMove));
@@ -673,16 +692,14 @@ mod tests {
     }
 
     #[proptest]
-    fn pass_updates_position(#[filter(#pos.clone().pass().is_ok())] mut pos: Position) {
+    fn pass_updates_position(#[filter(!#pos.is_check())] mut pos: Position) {
         let before = pos.clone();
         assert_eq!(pos.pass(), Ok(()));
         assert_ne!(pos, before);
     }
 
     #[proptest]
-    fn impossible_pass_preserves_position(
-        #[filter(#pos.clone().pass().is_err())] mut pos: Position,
-    ) {
+    fn impossible_pass_preserves_position(#[filter(#pos.is_check())] mut pos: Position) {
         let before = pos.clone();
         assert_eq!(pos.pass(), Err(ImpossiblePass));
         assert_eq!(pos, before);
