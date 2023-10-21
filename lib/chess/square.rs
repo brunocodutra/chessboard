@@ -204,7 +204,7 @@ mod tests {
     }
 
     #[proptest]
-    fn square_has_an_equivalent_vampirc_uci_representation(s: Square) {
+    fn square_has_an_equivalent_uci_representation(s: Square) {
         assert_eq!(Square::from(<UciSquare as From<Square>>::from(s)), s);
     }
 
