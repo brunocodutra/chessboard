@@ -1,5 +1,5 @@
 use criterion::{criterion_group, criterion_main, BatchSize, Criterion, Throughput};
-use lib::search::{Depth, Engine, Options};
+use lib::search::{Depth, Engine, Options, ThreadCount};
 use num_cpus::get_physical;
 use std::num::NonZeroUsize;
 
@@ -9,7 +9,7 @@ fn search(c: &mut Criterion, fens: &[&str]) {
     let options = match NonZeroUsize::new(get_physical()) {
         None => Options::default(),
         Some(threads) => Options {
-            threads,
+            threads: ThreadCount::new(threads),
             ..Options::default()
         },
     };

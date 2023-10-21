@@ -1,8 +1,9 @@
 use crate::chess::{Move, Zobrist};
-use crate::search::{Depth, Score};
+use crate::search::{Depth, HashSize, Score};
 use crate::util::{Assume, Binary, Bits, Cache};
 use derive_more::{Display, Error};
-use std::{cmp::Ordering, mem::size_of, ops::RangeInclusive};
+use std::ops::{RangeInclusive, Shr};
+use std::{cmp::Ordering, mem::size_of};
 
 #[cfg(test)]
 use crate::chess::Position;
@@ -137,8 +138,8 @@ impl Binary for SignedTransposition {
 #[cfg_attr(test, derive(test_strategy::Arbitrary))]
 pub struct TranspositionTable {
     #[cfg_attr(test,
-        strategy((..=32usize, hash_map(any::<Position>(), any::<Transposition>(), ..=32)).prop_map(|(cap, ts)| {
-            let cache = Cache::new(cap.next_power_of_two());
+        strategy(hash_map(any::<Position>(), any::<Transposition>(), ..32).prop_map(|ts| {
+            let cache = Cache::new(ts.len().next_power_of_two());
 
             for (pos, t) in ts {
                 let key = pos.zobrist();
@@ -154,20 +155,18 @@ pub struct TranspositionTable {
 }
 
 impl TranspositionTable {
-    /// Constructs a transposition table of at most `size` many bytes.
-    ///
-    /// The `size` specifies an upper bound, as long as the table is not empty.
-    pub fn new(cap: usize) -> Self {
-        let entry_size = size_of::<<Option<SignedTransposition> as Binary>::Bits>();
+    const WIDTH: usize = size_of::<<Option<SignedTransposition> as Binary>::Bits>();
 
+    /// Constructs a transposition table of at most `size` many bytes.
+    pub fn new(size: HashSize) -> Self {
         TranspositionTable {
-            cache: Cache::new(((cap + entry_size) / entry_size).next_power_of_two() / 2),
+            cache: Cache::new((1 + size.shr(1u32)).next_power_of_two() / Self::WIDTH),
         }
     }
 
     /// The actual size of this table in bytes.
-    pub fn size(&self) -> usize {
-        self.capacity() * size_of::<<Option<SignedTransposition> as Binary>::Bits>()
+    pub fn size(&self) -> HashSize {
+        HashSize::new(self.capacity() * Self::WIDTH)
     }
 
     /// The actual size of this table in number of entries.
@@ -274,31 +273,27 @@ mod tests {
     }
 
     #[proptest]
-    fn table_input_size_is_an_upper_limit(#[strategy(..=1024usize)] s: usize) {
+    fn table_input_size_is_an_upper_limit(s: HashSize) {
         assert!(TranspositionTable::new(s).size() <= s);
     }
 
     #[proptest]
     fn table_size_is_exact_if_input_is_power_of_two(
-        #[strategy(size_of::<<Option<SignedTransposition> as Binary>::Bits>()..=1024)] s: usize,
+        #[strategy(TranspositionTable::WIDTH.trailing_zeros()..=HashSize::max().trailing_zeros())]
+        bits: u32,
     ) {
-        assert_eq!(
-            TranspositionTable::new(s.next_power_of_two()).size(),
-            s.next_power_of_two()
-        );
+        let s = HashSize::new(1 << bits);
+        assert_eq!(TranspositionTable::new(s).size(), s);
     }
 
     #[proptest]
     fn table_capacity_equals_the_size_in_bytes(tt: TranspositionTable) {
-        assert_eq!(
-            tt.size(),
-            tt.cache.len() * size_of::<<Option<SignedTransposition> as Binary>::Bits>()
-        );
+        assert_eq!(tt.size(), tt.cache.len() * TranspositionTable::WIDTH);
     }
 
     #[proptest]
     fn get_does_nothing_if_capacity_is_zero(k: Zobrist) {
-        assert_eq!(TranspositionTable::new(0).get(k), None);
+        assert_eq!(TranspositionTable::new(HashSize::new(0)).get(k), None);
     }
 
     #[proptest]
@@ -331,7 +326,7 @@ mod tests {
 
     #[proptest]
     fn set_does_nothing_if_capacity_is_zero(k: Zobrist, t: Transposition) {
-        TranspositionTable::new(0).set(k, t);
+        TranspositionTable::new(HashSize::new(0)).set(k, t);
     }
 
     #[proptest]

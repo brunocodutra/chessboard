@@ -2,10 +2,9 @@ use crate::io::Io;
 use anyhow::{Context, Error as Anyhow};
 use lib::chess::{Color, Position};
 use lib::nnue::Evaluator;
-use lib::search::{Depth, Engine, Limits, Options};
-use rayon::max_num_threads;
+use lib::search::{Depth, Engine, HashSize, Limits, Options, ThreadCount};
 use std::io::{stdin, stdout, Stdin, Stdout};
-use std::{num::NonZeroUsize, time::Duration};
+use std::{num::NonZeroUsize, ops::Shr, time::Duration};
 use vampirc_uci::{self as uci, *};
 
 /// A basic *not fully compliant* UCI server.
@@ -37,19 +36,22 @@ impl Uci {
     }
 
     fn set_hash(&mut self, value: &str) -> Result<(), Anyhow> {
-        self.options.hash = value
-            .parse::<usize>()
-            .context("invalid hash size")?
-            .checked_shl(20)
-            .unwrap_or(usize::MAX);
+        self.options.hash = match value.parse::<usize>().context("invalid hash size")? {
+            s if HashSize::max().shr(20) >= s => HashSize::new(s << 20),
+            _ => return Err(Anyhow::msg("hash size is too large")),
+        };
 
         Ok(())
     }
 
     fn set_threads(&mut self, value: &str) -> Result<(), Anyhow> {
-        self.options.threads = value
+        self.options.threads = match value
             .parse::<NonZeroUsize>()
-            .context("invalid thread count")?;
+            .context("invalid thread count")?
+        {
+            c if ThreadCount::max() >= c => ThreadCount::new(c),
+            _ => return Err(Anyhow::msg("thread count is too large")),
+        };
 
         Ok(())
     }
@@ -123,18 +125,18 @@ impl Uci {
 
                     let hash = UciMessage::Option(UciOptionConfig::Spin {
                         name: "Hash".to_string(),
-                        default: Some((Options::default().hash >> 20) as _),
+                        default: Some(HashSize::default().shr(20) as _),
                         min: Some(0),
-                        max: Some((usize::MAX >> 20) as _),
+                        max: Some(HashSize::max().shr(20) as _),
                     });
 
                     self.io.send(hash)?;
 
                     let thread = UciMessage::Option(UciOptionConfig::Spin {
                         name: "Threads".to_string(),
-                        default: Some(Options::default().threads.get() as _),
+                        default: Some(ThreadCount::default().get() as _),
                         min: Some(1),
-                        max: Some(max_num_threads().try_into().unwrap()),
+                        max: Some(ThreadCount::max().get() as _),
                     });
 
                     self.io.send(thread)?;
@@ -284,5 +286,62 @@ impl Uci {
                 },
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use proptest::prelude::*;
+    use test_strategy::proptest;
+
+    #[proptest]
+    fn set_hash_updates_options(#[strategy(..=HashSize::max().shr(20))] v: usize) {
+        let mut uci = Uci::default();
+        assert!(uci.set_hash(&v.to_string()).is_ok());
+        assert_eq!(uci.options.hash, HashSize::new(v << 20));
+    }
+
+    #[proptest]
+    fn set_hash_fails_if_hash_is_too_large(
+        #[strategy(HashSize::max().shr(20) as u64 + 1..)] v: u64,
+    ) {
+        let mut uci = Uci::default();
+        assert!(uci.set_hash(&v.to_string()).is_err());
+        assert_eq!(uci.options.hash, Options::default().hash);
+    }
+
+    #[proptest]
+    fn set_hash_fails_if_not_a_number(#[filter(#v.parse::<usize>().is_err())] v: String) {
+        let mut uci = Uci::default();
+        assert!(uci.set_hash(&v).is_err());
+        assert_eq!(uci.options.hash, Options::default().hash);
+    }
+
+    #[proptest]
+    fn set_threads_updates_options(
+        #[strategy((1..=ThreadCount::max().get()).prop_map(|t| NonZeroUsize::new(t).unwrap()))]
+        v: NonZeroUsize,
+    ) {
+        let mut uci = Uci::default();
+        assert!(uci.set_threads(&v.to_string()).is_ok());
+        assert_eq!(uci.options.threads, ThreadCount::new(v));
+    }
+
+    #[proptest]
+    fn set_threads_fails_if_hash_is_too_large(
+        #[strategy((ThreadCount::max().get() + 1..).prop_map(|t| NonZeroUsize::new(t).unwrap()))]
+        v: NonZeroUsize,
+    ) {
+        let mut uci = Uci::default();
+        assert!(uci.set_threads(&v.to_string()).is_err());
+        assert_eq!(uci.options.threads, Options::default().threads);
+    }
+
+    #[proptest]
+    fn set_threads_fails_if_not_a_number(#[filter(#v.parse::<NonZeroUsize>().is_err())] v: String) {
+        let mut uci = Uci::default();
+        assert!(uci.set_threads(&v).is_err());
+        assert_eq!(uci.options.threads, Options::default().threads);
     }
 }
