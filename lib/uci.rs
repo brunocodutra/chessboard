@@ -1,8 +1,7 @@
-use crate::io::Io;
+use crate::chess::{Color, Position};
+use crate::search::{Depth, Engine, HashSize, Limits, Options, ThreadCount};
+use crate::{nnue::Evaluator, util::Io};
 use anyhow::{Context, Error as Anyhow};
-use lib::chess::{Color, Position};
-use lib::nnue::Evaluator;
-use lib::search::{Depth, Engine, HashSize, Limits, Options, ThreadCount};
 use std::io::{stdin, stdout, Stdin, Stdout};
 use std::{num::NonZeroUsize, ops::Shr, time::Duration};
 use vampirc_uci::{self as uci, *};
@@ -56,15 +55,15 @@ impl Uci {
         Ok(())
     }
 
-    fn play(&mut self, uci: &UciMove) -> Result<(), Anyhow> {
+    fn play(&mut self, uci: UciMove) -> Result<(), Anyhow> {
         let m = self
             .position
             .moves()
-            .find(|m| UciMove::from(*m) == *uci)
+            .find(|m| UciMove::from(*m) == uci)
             .context("invalid move")?;
 
         self.position.play(m)?;
-        self.moves.push(*uci);
+        self.moves.push(uci);
         Ok(())
     }
 
@@ -169,15 +168,15 @@ impl Uci {
                     moves,
                 } => match moves.as_slice() {
                     [history @ .., m, n] if history == self.moves => {
-                        self.play(m)?;
-                        self.play(n)?;
+                        self.play(*m)?;
+                        self.play(*n)?;
                     }
 
                     ms => {
                         self.position = Position::default();
                         self.moves.clear();
                         for m in ms {
-                            self.play(m)?;
+                            self.play(*m)?;
                         }
                     }
                 },
@@ -292,14 +291,81 @@ impl Uci {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::chess::Move;
     use proptest::prelude::*;
+    use proptest::sample::{size_range, Selector};
+    use std::ops::BitAnd;
     use test_strategy::proptest;
 
     #[proptest]
-    fn set_hash_updates_options(#[strategy(..=HashSize::max().shr(20))] v: usize) {
+    fn new_game_preserves_options(o: Options) {
+        let mut uci = Uci {
+            options: o,
+            ..Uci::default()
+        };
+
+        uci.new_game();
+        assert_eq!(uci.options, o);
+    }
+
+    #[proptest]
+    fn new_game_resets_position(pos: Position) {
+        let mut uci = Uci {
+            position: pos,
+            ..Uci::default()
+        };
+
+        uci.new_game();
+        assert_eq!(uci.position, Position::default());
+    }
+
+    #[proptest]
+    fn new_game_resets_move_history(#[any(size_range(..=10).lift())] ms: Vec<Move>) {
+        let mut uci = Uci {
+            moves: ms.into_iter().map(UciMove::from).collect(),
+            ..Uci::default()
+        };
+
+        uci.new_game();
+        assert_eq!(uci.moves, Vec::default());
+    }
+
+    #[proptest]
+    fn play_updates_position(
+        #[filter(#pos.outcome().is_none())] mut pos: Position,
+        #[map(|s: Selector| s.select(#pos.moves()))] m: Move,
+    ) {
+        let mut uci = Uci {
+            position: pos.clone(),
+            ..Uci::default()
+        };
+
+        assert!(uci.play(m.into()).is_ok());
+        assert_eq!(pos.play(m), Ok(m));
+        assert_eq!(uci.position, pos);
+    }
+
+    #[proptest]
+    fn play_updates_move_history(
+        #[filter(#pos.outcome().is_none())] pos: Position,
+        #[any(size_range(..=10).lift())] ms: Vec<Move>,
+        #[map(|s: Selector| s.select(#pos.moves()))] m: Move,
+    ) {
+        let mut uci = Uci {
+            position: pos.clone(),
+            moves: ms.into_iter().map(UciMove::from).collect(),
+            ..Uci::default()
+        };
+
+        assert!(uci.play(m.into()).is_ok());
+        assert_eq!(uci.moves.last(), Some(&m.into()));
+    }
+
+    #[proptest]
+    fn set_hash_updates_options(s: HashSize) {
         let mut uci = Uci::default();
-        assert!(uci.set_hash(&v.to_string()).is_ok());
-        assert_eq!(uci.options.hash, HashSize::new(v << 20));
+        assert!(uci.set_hash(&s.shr(20u32).to_string()).is_ok());
+        assert_eq!(uci.options.hash, s.bitand(!0 << 20));
     }
 
     #[proptest]
@@ -319,13 +385,10 @@ mod tests {
     }
 
     #[proptest]
-    fn set_threads_updates_options(
-        #[strategy((1..=ThreadCount::max().get()).prop_map(|t| NonZeroUsize::new(t).unwrap()))]
-        v: NonZeroUsize,
-    ) {
+    fn set_threads_updates_options(c: ThreadCount) {
         let mut uci = Uci::default();
-        assert!(uci.set_threads(&v.to_string()).is_ok());
-        assert_eq!(uci.options.threads, ThreadCount::new(v));
+        assert!(uci.set_threads(&c.to_string()).is_ok());
+        assert_eq!(uci.options.threads, c);
     }
 
     #[proptest]

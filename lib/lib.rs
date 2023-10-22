@@ -6,5 +6,7 @@ pub mod chess;
 pub mod nnue;
 /// Minimax searching algorithm.
 pub mod search;
+/// UCI protocol.
+pub mod uci;
 /// Assorted utilities.
 pub mod util;
