@@ -1,4 +1,4 @@
-use anyhow::Error as Anyhow;
+use anyhow::Result;
 use clap::Parser;
 use lib::uci::Uci;
 
@@ -10,11 +10,12 @@ pub struct Cli {
 }
 
 impl Cli {
-    pub fn run(mut self) -> Result<(), Anyhow> {
-        self.server.run()
+    fn run(mut self) -> Result<()> {
+        self.server.run()?;
+        Ok(())
     }
 }
 
-fn main() -> Result<(), Anyhow> {
+fn main() -> Result<()> {
     Cli::parse().run()
 }
