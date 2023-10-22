@@ -6,6 +6,27 @@ use std::io::{self, stdin, stdout, Stdin, Stdout};
 use std::{num::NonZeroUsize, ops::Shr, time::Duration};
 use vampirc_uci::{self as uci, *};
 
+macro_rules! info {
+    ($($arg:tt)*) => {{
+        eprint!("INFO: ");
+        eprintln!($($arg)*);
+    }};
+}
+
+macro_rules! warn {
+    ($($arg:tt)*) => {{
+        eprint!("WARN: ");
+        eprintln!($($arg)*);
+    }};
+}
+
+macro_rules! error {
+    ($($arg:tt)*) => {{
+        eprint!("ERROR: ");
+        eprintln!($($arg)*);
+    }};
+}
+
 /// A basic *not fully compliant* UCI server.
 pub struct Uci {
     io: Io<Stdout, Stdin>,
@@ -37,22 +58,22 @@ impl Uci {
     fn set_hash(&mut self, value: &str) {
         match value.parse::<usize>() {
             Ok(h) if HashSize::max().shr(20) >= h => self.options.hash = HashSize::new(h << 20),
-            Ok(h) => eprintln!("hash size `{h}` is too large"),
-            Err(e) => eprintln!("invalid hash size `{value}`, {e}"),
+            Ok(h) => error!("hash size `{h}` is too large"),
+            Err(e) => error!("invalid hash size `{value}`, {e}"),
         };
     }
 
     fn set_threads(&mut self, value: &str) {
         match value.parse::<NonZeroUsize>() {
             Ok(c) if ThreadCount::max() >= c => self.options.threads = ThreadCount::new(c),
-            Ok(c) => eprintln!("thread count `{c}` is too large"),
-            Err(e) => eprintln!("invalid thread count `{value}`, {e}"),
+            Ok(c) => error!("thread count `{c}` is too large"),
+            Err(e) => error!("invalid thread count `{value}`, {e}"),
         }
     }
 
     fn set_position(&mut self, fen: UciFen) {
         match fen.as_str().parse() {
-            Err(e) => eprintln!("illegal FEN string `{fen}`, {e}"),
+            Err(e) => error!("illegal FEN string `{fen}`, {e}"),
             Ok(pos) => {
                 self.position = pos;
                 self.moves.clear();
@@ -62,7 +83,7 @@ impl Uci {
 
     fn play(&mut self, uci: UciMove) {
         let Some(m) = self.position.moves().find(|m| UciMove::from(*m) == uci) else {
-            return eprintln!("illegal move `{uci}` in position `{}`", self.position);
+            return error!("illegal move `{uci}` in position `{}`", self.position);
         };
 
         self.position.play(m).assume();
@@ -260,23 +281,21 @@ impl Uci {
                         }),
                 } if search_moves.is_empty() => self.go(nodes.into())?,
 
-                UciMessage::Unknown(m, _) if m.to_lowercase() == "eval" => self.eval()?,
+                UciMessage::Unknown(msg, _) if msg.is_empty() => { /* ignore */ }
+                UciMessage::Unknown(msg, _) if msg.to_lowercase() == "eval" => self.eval()?,
 
-                UciMessage::Unknown(m, cause) => {
-                    eprintln!("failed to parse UCI message `{m}`");
-
-                    if let Some(e) = cause {
-                        eprintln!("{e}");
-                    }
-                }
+                UciMessage::Unknown(msg, cause) => match cause {
+                    Some(e) => error!("failed to parse UCI message\n{e}"),
+                    None => error!("failed to parse UCI message `{msg}`"),
+                },
 
                 msg => match msg.direction() {
                     uci::CommunicationDirection::GuiToEngine => {
-                        eprintln!("ignored engine bound message '{msg}'");
+                        warn!("ignored engine bound message '{msg}'");
                     }
 
                     uci::CommunicationDirection::EngineToGui => {
-                        eprintln!("ignored unexpected gui bound message '{msg}'");
+                        info!("ignored unexpected gui bound message '{msg}'");
                     }
                 },
             }
