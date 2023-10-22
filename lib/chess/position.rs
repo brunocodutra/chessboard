@@ -13,14 +13,6 @@ use proptest::{prelude::*, sample::*};
 /// [zobrist hash]: https://www.chessprogramming.org/Zobrist_Hashing
 pub type Zobrist = Bits<u64, 64>;
 
-/// Represents an impossible [null-move] in a given [`Position`].
-///
-/// [null-move]: https://www.chessprogramming.org/Null_Move
-#[derive(Debug, Display, Clone, Eq, PartialEq, Error)]
-#[cfg_attr(test, derive(test_strategy::Arbitrary))]
-#[display(fmt = "passing the turn leads to illegal position")]
-pub struct ImpossiblePass;
-
 /// Represents an impossible exchange on a given [`Square`] in a given [`Position`].
 #[derive(Debug, Display, Clone, Eq, PartialEq, Error)]
 #[cfg_attr(test, derive(test_strategy::Arbitrary))]
@@ -305,13 +297,11 @@ impl Position {
         sm::Position::play_unchecked(&mut self.0, &vm);
     }
 
-    /// Play a [null-move] if legal in this position.
+    /// Play a [null-move].
     ///
     /// [null-move]: https://www.chessprogramming.org/Null_Move
-    pub fn pass(&mut self) -> Result<(), ImpossiblePass> {
-        if self.is_check() {
-            return Err(ImpossiblePass);
-        }
+    pub fn pass(&mut self) {
+        debug_assert!(!self.is_check());
 
         let null = sm::Move::Put {
             role: sm::Role::King,
@@ -320,8 +310,6 @@ impl Position {
 
         self.1 = Default::default();
         sm::Position::play_unchecked(&mut self.0, &null);
-
-        Ok(())
     }
 
     /// Exchange a piece on [`Square`] by the attacker of least value.
@@ -680,15 +668,14 @@ mod tests {
     #[proptest]
     fn pass_updates_position(#[filter(!#pos.is_check())] mut pos: Position) {
         let before = pos.clone();
-        assert_eq!(pos.pass(), Ok(()));
+        pos.pass();
         assert_ne!(pos, before);
     }
 
     #[proptest]
-    fn impossible_pass_preserves_position(#[filter(#pos.is_check())] mut pos: Position) {
-        let before = pos.clone();
-        assert_eq!(pos.pass(), Err(ImpossiblePass));
-        assert_eq!(pos, before);
+    #[should_panic]
+    fn pass_panics_if_in_check(#[filter(#pos.is_check())] mut pos: Position) {
+        pos.pass();
     }
 
     #[proptest]
