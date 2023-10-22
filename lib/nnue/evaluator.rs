@@ -1,5 +1,5 @@
 use crate::chess::{Color, Move, Piece, Position, Role, Square};
-use crate::chess::{IllegalMove, ImpossibleExchange, ImpossiblePass};
+use crate::chess::{ImpossibleExchange, ImpossiblePass};
 use crate::nnue::{Accumulator, Feature, Material, Positional};
 use crate::util::Assume;
 use crate::{search::Value, util::Buffer};
@@ -97,13 +97,12 @@ impl<T: Clone + Accumulator> Evaluator<T> {
         Ok(())
     }
 
-    /// Play a [`Move`] if legal in this position.
-    pub fn play(&mut self, m: Move) -> Result<Move, IllegalMove> {
+    /// Play a [`Move`].
+    pub fn play(&mut self, m: Move) {
         let capture = self.role_on(m.whither());
-        let m = self.pos.play(m)?;
+        self.pos.play(m);
         self.acc.mirror();
         self.update(m, capture);
-        Ok(m)
     }
 
     /// Exchange a piece on [`Square`] by the attacker of least value.
@@ -165,7 +164,8 @@ mod tests {
         #[map(|s: Selector| s.select(#a.moves()))] m: Move,
     ) {
         let mut b = a.pos.clone();
-        assert_eq!(a.play(m), b.play(m));
+        a.play(m);
+        b.play(m);
         assert_eq!(a, Evaluator::new(b));
     }
 
