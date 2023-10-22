@@ -214,7 +214,7 @@ impl Engine {
         } else if !is_pv && !in_check {
             if let Some(d) = self.nmp(pos, score, beta, depth) {
                 let mut next = pos.clone();
-                next.pass().assume();
+                next.pass();
                 if d <= ply || -self.nw(&next, -beta + 1, d, ply + 1, ctrl)? >= beta {
                     #[cfg(not(test))]
                     // The null move pruning heuristic is not exact.

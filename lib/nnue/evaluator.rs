@@ -1,5 +1,4 @@
-use crate::chess::{Color, Move, Piece, Position, Role, Square};
-use crate::chess::{ImpossibleExchange, ImpossiblePass};
+use crate::chess::{Color, ImpossibleExchange, Move, Piece, Position, Role, Square};
 use crate::nnue::{Accumulator, Feature, Material, Positional};
 use crate::util::Assume;
 use crate::{search::Value, util::Buffer};
@@ -88,13 +87,12 @@ impl<T: Clone + Accumulator> Evaluator<T> {
         }
     }
 
-    /// Play a [null-move] if legal in this position.
+    /// Play a [null-move].
     ///
     /// [null-move]: https://www.chessprogramming.org/Null_Move
-    pub fn pass(&mut self) -> Result<(), ImpossiblePass> {
-        self.pos.pass()?;
+    pub fn pass(&mut self) {
+        self.pos.pass();
         self.acc.mirror();
-        Ok(())
     }
 
     /// Play a [`Move`].
@@ -170,9 +168,10 @@ mod tests {
     }
 
     #[proptest]
-    fn pass_updates_accumulator(#[filter(#a.clone().pass().is_ok())] mut a: Evaluator) {
+    fn pass_updates_accumulator(#[filter(!#a.is_check())] mut a: Evaluator) {
         let mut b = a.pos.clone();
-        assert_eq!(a.pass(), b.pass());
+        a.pass();
+        b.pass();
         assert_eq!(a, Evaluator::new(b));
     }
 
