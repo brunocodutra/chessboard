@@ -12,7 +12,7 @@ pub struct Pv {
     #[deref]
     #[deref_mut]
     #[into_iterator]
-    line: Buffer<Move, 15>,
+    line: Buffer<Move, 12>,
 }
 
 impl Pv {
@@ -76,7 +76,13 @@ impl Neg for Pv {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::mem::size_of;
     use test_strategy::proptest;
+
+    #[proptest]
+    fn size_of_pv_is_at_most_32_bytes() {
+        assert!(size_of::<Pv>() <= 32);
+    }
 
     #[proptest]
     fn score_returns_score(pv: Pv) {
