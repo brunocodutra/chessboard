@@ -5,6 +5,7 @@ mod bounds;
 mod buffer;
 mod cache;
 mod counter;
+mod io;
 mod saturating;
 mod timer;
 
@@ -15,5 +16,6 @@ pub use bounds::*;
 pub use buffer::*;
 pub use cache::*;
 pub use counter::*;
+pub use io::*;
 pub use saturating::*;
 pub use timer::*;

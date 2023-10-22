@@ -1,9 +1,6 @@
 use anyhow::Error as Anyhow;
 use clap::Parser;
-use uci::Uci;
-
-mod io;
-mod uci;
+use lib::uci::Uci;
 
 #[derive(Parser)]
 #[clap(author, version, about)]
