@@ -13,12 +13,6 @@ use proptest::{prelude::*, sample::*};
 /// [zobrist hash]: https://www.chessprogramming.org/Zobrist_Hashing
 pub type Zobrist = Bits<u64, 64>;
 
-/// Represents an illegal [`Move`] in a given [`Position`].
-#[derive(Debug, Display, Clone, Eq, PartialEq, Error)]
-#[cfg_attr(test, derive(test_strategy::Arbitrary))]
-#[display(fmt = "this move is illegal in this position")]
-pub struct IllegalMove;
-
 /// Represents an impossible [null-move] in a given [`Position`].
 ///
 /// [null-move]: https://www.chessprogramming.org/Null_Move
@@ -273,8 +267,8 @@ impl Position {
             .map(Move::from)
     }
 
-    /// Play a [`Move`] if legal in this position.
-    pub fn play(&mut self, m: Move) -> Result<Move, IllegalMove> {
+    /// Play a [`Move`].
+    pub fn play(&mut self, m: Move) {
         let vm = if m.is_castling() {
             sm::Move::Castle {
                 king: m.whence().into(),
@@ -295,27 +289,20 @@ impl Position {
                 to: m.whither().into(),
                 capture: self.role_on(m.whither()).map(Role::into),
                 promotion: m.promotion().map(Role::into),
-                role: self
-                    .role_on(m.whence())
-                    .map_or(Err(IllegalMove), |r| Ok(r.into()))?,
+                role: self.role_on(m.whence()).assume().into(),
             }
         };
 
-        if !sm::Position::is_legal(&self.0, &vm) {
-            return Err(IllegalMove);
-        }
+        debug_assert!(sm::Position::is_legal(&self.0, &vm));
 
         if vm.is_zeroing() {
             self.1 = Default::default();
         } else {
             let zobrist = self.zobrist().pop();
-            let history = &mut self.1[self.turn() as usize];
-            history.push(zobrist).map_or(Ok(()), |_| Err(IllegalMove))?;
+            self.1[self.turn() as usize].push(zobrist);
         }
 
         sm::Position::play_unchecked(&mut self.0, &vm);
-
-        Ok(m)
     }
 
     /// Play a [null-move] if legal in this position.
@@ -612,13 +599,13 @@ mod tests {
     }
 
     #[proptest]
-    fn moves_returns_all_legal_moves_from_this_position(
+    fn moves_returns_legal_moves_from_this_position(
         #[filter(#pos.outcome().is_none())] pos: Position,
     ) {
         for m in pos.moves() {
             let mut pos = pos.clone();
             assert_eq!(pos[m.whence()].map(|p| p.color()), Some(pos.turn()));
-            assert_eq!(pos.play(m), Ok(m));
+            pos.play(m);
         }
     }
 
@@ -644,7 +631,7 @@ mod tests {
         #[map(|s: Selector| s.select(#pos.moves().filter(Move::is_capture)))] m: Move,
     ) {
         let mut p = pos.clone();
-        p.play(m)?;
+        p.play(m);
         assert!(p.by_color(p.turn()).len() < pos.by_color(p.turn()).len());
     }
 
@@ -654,7 +641,7 @@ mod tests {
         #[map(|s: Selector| s.select(#pos.moves().filter(Move::is_promotion)))] m: Move,
     ) {
         let mut p = pos.clone();
-        p.play(m)?;
+        p.play(m);
         let pawn = Piece(pos.turn(), Role::Pawn);
         assert!(p.by_piece(pawn).len() < pos.by_piece(pawn).len());
         assert_eq!(p.by_color(pos.turn()).len(), pos.by_color(pos.turn()).len());
@@ -676,19 +663,18 @@ mod tests {
         #[map(|s: Selector| s.select(#pos.moves()))] m: Move,
     ) {
         let prev = pos.clone();
-        assert_eq!(pos.play(m), Ok(m));
+        pos.play(m);
         assert_ne!(pos, prev);
     }
 
     #[proptest]
-    fn illegal_move_fails_without_changing_position(
+    #[should_panic]
+    fn play_panics_if_move_illegal(
         mut pos: Position,
         #[filter(!#pos.moves().any(|m| (m.whence(), m.whither()) == (#m.whence(), #m.whither())))]
         m: Move,
     ) {
-        let before = pos.clone();
-        assert_eq!(pos.play(m), Err(IllegalMove));
-        assert_eq!(pos, before);
+        pos.play(m);
     }
 
     #[proptest]

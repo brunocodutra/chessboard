@@ -11,7 +11,7 @@ fn perft(pos: &Position, depth: u8) -> usize {
             .par_bridge()
             .map(|m| {
                 let mut next = pos.clone();
-                next.play(m).expect("expected legal move");
+                next.play(m);
                 perft(&next, d - 1)
             })
             .sum(),

@@ -1,7 +1,6 @@
 use crate::chess::{Color, Position};
-use crate::nnue::Evaluator;
 use crate::search::{Depth, Engine, HashSize, Limits, Options, ThreadCount};
-use crate::util::{Assume, Io};
+use crate::{nnue::Evaluator, util::Io};
 use std::io::{self, stdin, stdout, Stdin, Stdout};
 use std::{num::NonZeroUsize, ops::Shr, time::Duration};
 use vampirc_uci::{self as uci, *};
@@ -86,7 +85,7 @@ impl Uci {
             return error!("illegal move `{uci}` in position `{}`", self.position);
         };
 
-        self.position.play(m).assume();
+        self.position.play(m);
         self.moves.push(uci);
     }
 
@@ -415,7 +414,7 @@ mod tests {
         };
 
         uci.play(m.into());
-        assert_eq!(pos.play(m), Ok(m));
+        pos.play(m);
         assert_eq!(uci.position, pos);
     }
 

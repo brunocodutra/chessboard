@@ -232,7 +232,7 @@ impl Engine {
 
             let mut next = pos.material();
             let material = next.evaluate();
-            next.play(m).assume();
+            next.play(m);
             let see = -next.see(m.whither());
 
             let gain = if Self::KILLERS.with_borrow(|ks| ks.contains(ply, pos.turn(), m)) {
@@ -250,7 +250,7 @@ impl Engine {
             None => return Ok(Pv::new(score, [])),
             Some((m, _)) => {
                 let mut next = pos.clone();
-                next.play(m).assume();
+                next.play(m);
                 let mut pv = -self.ns(&next, -beta..-alpha, depth, ply + 1, ctrl)?;
                 pv.shift(m);
 
@@ -281,7 +281,7 @@ impl Engine {
                 }
 
                 let mut next = pos.clone();
-                next.play(m).assume();
+                next.play(m);
 
                 if !in_check && gain < 60 {
                     let guess = -next.clone().see(m.whither()).cast();
@@ -417,7 +417,7 @@ mod tests {
             .filter(|m| ply < depth || pos.is_check() || !m.is_quiet())
             .map(|m| {
                 let mut next = pos.clone();
-                next.play(m).unwrap();
+                next.play(m);
                 -negamax(&next, depth, ply + 1)
             })
             .max()
