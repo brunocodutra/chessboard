@@ -1,6 +1,6 @@
-use anyhow::Result;
 use clap::Parser;
 use lib::uci::Uci;
+use std::io;
 
 #[derive(Parser)]
 #[clap(author, version, about)]
@@ -10,12 +10,13 @@ pub struct Cli {
 }
 
 impl Cli {
-    fn run(mut self) -> Result<()> {
-        self.server.run()?;
-        Ok(())
+    fn run(mut self) -> io::Result<()> {
+        self.server.run()
     }
 }
 
-fn main() -> Result<()> {
-    Cli::parse().run()
+fn main() {
+    if let Err(e) = Cli::parse().run() {
+        panic!("{}", e);
+    }
 }
