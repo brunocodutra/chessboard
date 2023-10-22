@@ -1,8 +1,8 @@
 use crate::chess::{Color, Position};
+use crate::nnue::Evaluator;
 use crate::search::{Depth, Engine, HashSize, Limits, Options, ThreadCount};
-use crate::{nnue::Evaluator, util::Io};
-use anyhow::{Context, Error as Anyhow};
-use std::io::{stdin, stdout, Stdin, Stdout};
+use crate::util::{Assume, Io};
+use std::io::{self, stdin, stdout, Stdin, Stdout};
 use std::{num::NonZeroUsize, ops::Shr, time::Duration};
 use vampirc_uci::{self as uci, *};
 
@@ -22,7 +22,7 @@ impl Default for Uci {
             engine: Engine::default(),
             options: Options::default(),
             position: Position::default(),
-            moves: Vec::default(),
+            moves: Vec::with_capacity(128),
         }
     }
 }
@@ -34,42 +34,44 @@ impl Uci {
         self.moves.clear();
     }
 
-    fn set_hash(&mut self, value: &str) -> Result<(), Anyhow> {
-        self.options.hash = match value.parse::<usize>().context("invalid hash size")? {
-            s if HashSize::max().shr(20) >= s => HashSize::new(s << 20),
-            _ => return Err(Anyhow::msg("hash size is too large")),
+    fn set_hash(&mut self, value: &str) {
+        match value.parse::<usize>() {
+            Ok(h) if HashSize::max().shr(20) >= h => self.options.hash = HashSize::new(h << 20),
+            Ok(h) => eprintln!("hash size `{h}` is too large"),
+            Err(e) => eprintln!("invalid hash size `{value}`, {e}"),
         };
-
-        Ok(())
     }
 
-    fn set_threads(&mut self, value: &str) -> Result<(), Anyhow> {
-        self.options.threads = match value
-            .parse::<NonZeroUsize>()
-            .context("invalid thread count")?
-        {
-            c if ThreadCount::max() >= c => ThreadCount::new(c),
-            _ => return Err(Anyhow::msg("thread count is too large")),
-        };
-
-        Ok(())
+    fn set_threads(&mut self, value: &str) {
+        match value.parse::<NonZeroUsize>() {
+            Ok(c) if ThreadCount::max() >= c => self.options.threads = ThreadCount::new(c),
+            Ok(c) => eprintln!("thread count `{c}` is too large"),
+            Err(e) => eprintln!("invalid thread count `{value}`, {e}"),
+        }
     }
 
-    fn play(&mut self, uci: UciMove) -> Result<(), Anyhow> {
-        let m = self
-            .position
-            .moves()
-            .find(|m| UciMove::from(*m) == uci)
-            .context("invalid move")?;
+    fn set_position(&mut self, fen: UciFen) {
+        match fen.as_str().parse() {
+            Err(e) => eprintln!("illegal FEN string `{fen}`, {e}"),
+            Ok(pos) => {
+                self.position = pos;
+                self.moves.clear();
+            }
+        }
+    }
 
-        self.position.play(m)?;
+    fn play(&mut self, uci: UciMove) {
+        let Some(m) = self.position.moves().find(|m| UciMove::from(*m) == uci) else {
+            return eprintln!("illegal move `{uci}` in position `{}`", self.position);
+        };
+
+        self.position.play(m).assume();
         self.moves.push(uci);
-        Ok(())
     }
 
-    fn go(&mut self, limits: Limits) -> Result<(), Anyhow> {
+    fn go(&mut self, limits: Limits) -> io::Result<()> {
         let pv = self.engine.search(&self.position, limits);
-        let best = *pv.first().context("the engine failed to find a move")?;
+        let best = *pv.first().expect("the engine failed to find a move");
 
         let score = match pv.score().mate() {
             Some(p) if p > 0 => UciInfoAttribute::from_mate((p + 1).get() / 2),
@@ -85,7 +87,7 @@ impl Uci {
         Ok(())
     }
 
-    fn eval(&mut self) -> Result<(), Anyhow> {
+    fn eval(&mut self) -> io::Result<()> {
         let pos = Evaluator::new(self.position.clone());
         let (material, positional, value) = match pos.turn() {
             Color::White => (
@@ -111,7 +113,7 @@ impl Uci {
     }
 
     /// Runs the UCI server.
-    pub fn run(&mut self) -> Result<(), Anyhow> {
+    pub fn run(&mut self) -> io::Result<()> {
         loop {
             self.io.flush()?;
             match uci::parse_one(self.io.recv()?.trim()) {
@@ -145,18 +147,12 @@ impl Uci {
                 UciMessage::SetOption {
                     name,
                     value: Some(value),
-                } if name.to_lowercase() == "hash" => match self.set_hash(&value) {
-                    Ok(_) => self.new_game(),
-                    Err(e) => eprintln!("{:?}", e),
-                },
+                } if name.to_lowercase() == "hash" => self.set_hash(&value),
 
                 UciMessage::SetOption {
                     name,
                     value: Some(value),
-                } if name.to_lowercase() == "threads" => match self.set_threads(&value) {
-                    Ok(_) => self.new_game(),
-                    Err(e) => eprintln!("{:?}", e),
-                },
+                } if name.to_lowercase() == "threads" => self.set_threads(&value),
 
                 UciMessage::UciNewGame => self.new_game(),
                 UciMessage::IsReady => self.io.send(UciMessage::ReadyOk)?,
@@ -168,15 +164,15 @@ impl Uci {
                     moves,
                 } => match moves.as_slice() {
                     [history @ .., m, n] if history == self.moves => {
-                        self.play(*m)?;
-                        self.play(*n)?;
+                        self.play(*m);
+                        self.play(*n);
                     }
 
                     ms => {
                         self.position = Position::default();
                         self.moves.clear();
                         for m in ms {
-                            self.play(*m)?;
+                            self.play(*m);
                         }
                     }
                 },
@@ -185,10 +181,7 @@ impl Uci {
                     startpos: false,
                     fen: Some(fen),
                     moves,
-                } if moves.is_empty() => {
-                    self.position = fen.as_str().parse()?;
-                    self.moves.clear();
-                }
+                } if moves.is_empty() => self.set_position(fen),
 
                 UciMessage::Go {
                     time_control: None,
@@ -270,17 +263,20 @@ impl Uci {
                 UciMessage::Unknown(m, _) if m.to_lowercase() == "eval" => self.eval()?,
 
                 UciMessage::Unknown(m, cause) => {
-                    let error = cause.map(Anyhow::new).unwrap_or_else(|| Anyhow::msg(m));
-                    eprintln!("{:?}", error.context("failed to parse UCI message"));
+                    eprintln!("failed to parse UCI message `{m}`");
+
+                    if let Some(e) = cause {
+                        eprintln!("{e}");
+                    }
                 }
 
                 msg => match msg.direction() {
                     uci::CommunicationDirection::GuiToEngine => {
-                        eprintln!("ignored engine bound message '{}'", msg);
+                        eprintln!("ignored engine bound message '{msg}'");
                     }
 
                     uci::CommunicationDirection::EngineToGui => {
-                        eprintln!("ignored unexpected gui bound message '{}'", msg);
+                        eprintln!("ignored unexpected gui bound message '{msg}'");
                     }
                 },
             }
@@ -331,6 +327,65 @@ mod tests {
     }
 
     #[proptest]
+    fn set_hash_updates_options(s: HashSize) {
+        let mut uci = Uci::default();
+        uci.set_hash(&s.shr(20u32).to_string());
+        assert_eq!(uci.options.hash, s.bitand(!0 << 20));
+    }
+
+    #[proptest]
+    fn set_hash_ignores_value_too_large(#[strategy(HashSize::max().shr(20) as u64 + 1..)] v: u64) {
+        let mut uci = Uci::default();
+        uci.set_hash(&v.to_string());
+        assert_eq!(uci.options.hash, Options::default().hash);
+    }
+
+    #[proptest]
+    fn set_hash_ignores_not_a_number(#[filter(#v.parse::<usize>().is_err())] v: String) {
+        let mut uci = Uci::default();
+        uci.set_hash(&v);
+        assert_eq!(uci.options.hash, Options::default().hash);
+    }
+
+    #[proptest]
+    fn set_threads_updates_options(c: ThreadCount) {
+        let mut uci = Uci::default();
+        uci.set_threads(&c.to_string());
+        assert_eq!(uci.options.threads, c);
+    }
+
+    #[proptest]
+    fn set_threads_ignores_number_too_large(
+        #[strategy((ThreadCount::max().get() + 1..).prop_map(|t| NonZeroUsize::new(t).unwrap()))]
+        v: NonZeroUsize,
+    ) {
+        let mut uci = Uci::default();
+        uci.set_threads(&v.to_string());
+        assert_eq!(uci.options.threads, Options::default().threads);
+    }
+
+    #[proptest]
+    fn set_threads_ignores_not_a_number(#[filter(#v.parse::<NonZeroUsize>().is_err())] v: String) {
+        let mut uci = Uci::default();
+        uci.set_threads(&v);
+        assert_eq!(uci.options.threads, Options::default().threads);
+    }
+
+    #[proptest]
+    fn set_position_updates_position(pos: Position) {
+        let mut uci = Uci::default();
+        uci.set_position(UciFen(pos.to_string()));
+        assert_eq!(uci.position, pos);
+    }
+
+    #[proptest]
+    fn set_position_ignores_illegal_fen(#[filter(#fen.parse::<Position>().is_err())] fen: String) {
+        let mut uci = Uci::default();
+        uci.set_position(UciFen(fen));
+        assert_eq!(uci.position, Position::default());
+    }
+
+    #[proptest]
     fn play_updates_position(
         #[filter(#pos.outcome().is_none())] mut pos: Position,
         #[map(|s: Selector| s.select(#pos.moves()))] m: Move,
@@ -340,7 +395,7 @@ mod tests {
             ..Uci::default()
         };
 
-        assert!(uci.play(m.into()).is_ok());
+        uci.play(m.into());
         assert_eq!(pos.play(m), Ok(m));
         assert_eq!(uci.position, pos);
     }
@@ -353,58 +408,33 @@ mod tests {
     ) {
         let mut uci = Uci {
             position: pos.clone(),
-            moves: ms.into_iter().map(UciMove::from).collect(),
+            moves: ms.iter().copied().map(UciMove::from).collect(),
             ..Uci::default()
         };
 
-        assert!(uci.play(m.into()).is_ok());
-        assert_eq!(uci.moves.last(), Some(&m.into()));
+        uci.play(m.into());
+
+        assert_eq!(
+            uci.moves,
+            Vec::from_iter(ms.into_iter().chain([m]).map(UciMove::from))
+        );
     }
 
     #[proptest]
-    fn set_hash_updates_options(s: HashSize) {
-        let mut uci = Uci::default();
-        assert!(uci.set_hash(&s.shr(20u32).to_string()).is_ok());
-        assert_eq!(uci.options.hash, s.bitand(!0 << 20));
-    }
-
-    #[proptest]
-    fn set_hash_fails_if_hash_is_too_large(
-        #[strategy(HashSize::max().shr(20) as u64 + 1..)] v: u64,
+    fn play_ignores_illegal_move(
+        #[filter(#pos.outcome().is_none())] pos: Position,
+        #[any(size_range(..=10).lift())] ms: Vec<Move>,
+        #[filter(!#pos.moves().any(|m| (m.whence(), m.whither()) == (#m.whence(), #m.whither())))]
+        m: Move,
     ) {
-        let mut uci = Uci::default();
-        assert!(uci.set_hash(&v.to_string()).is_err());
-        assert_eq!(uci.options.hash, Options::default().hash);
-    }
+        let mut uci = Uci {
+            position: pos.clone(),
+            moves: ms.iter().copied().map(UciMove::from).collect(),
+            ..Uci::default()
+        };
 
-    #[proptest]
-    fn set_hash_fails_if_not_a_number(#[filter(#v.parse::<usize>().is_err())] v: String) {
-        let mut uci = Uci::default();
-        assert!(uci.set_hash(&v).is_err());
-        assert_eq!(uci.options.hash, Options::default().hash);
-    }
-
-    #[proptest]
-    fn set_threads_updates_options(c: ThreadCount) {
-        let mut uci = Uci::default();
-        assert!(uci.set_threads(&c.to_string()).is_ok());
-        assert_eq!(uci.options.threads, c);
-    }
-
-    #[proptest]
-    fn set_threads_fails_if_hash_is_too_large(
-        #[strategy((ThreadCount::max().get() + 1..).prop_map(|t| NonZeroUsize::new(t).unwrap()))]
-        v: NonZeroUsize,
-    ) {
-        let mut uci = Uci::default();
-        assert!(uci.set_threads(&v.to_string()).is_err());
-        assert_eq!(uci.options.threads, Options::default().threads);
-    }
-
-    #[proptest]
-    fn set_threads_fails_if_not_a_number(#[filter(#v.parse::<NonZeroUsize>().is_err())] v: String) {
-        let mut uci = Uci::default();
-        assert!(uci.set_threads(&v).is_err());
-        assert_eq!(uci.options.threads, Options::default().threads);
+        uci.play(m.into());
+        assert_eq!(uci.position, pos);
+        assert_eq!(uci.moves, Vec::from_iter(ms.into_iter().map(UciMove::from)));
     }
 }
