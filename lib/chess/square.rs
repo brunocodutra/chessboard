@@ -1,25 +1,41 @@
 use crate::chess::{File, Rank};
 use crate::util::{Binary, Bits};
-use derive_more::{DebugCustom, Display};
 use shakmaty as sm;
-use std::convert::{Infallible, TryInto};
+use std::{convert::Infallible, fmt};
 use vampirc_uci::UciSquare;
 
-#[cfg(test)]
-use proptest::sample::select;
-
 /// Denotes a square on the chess board.
-#[derive(DebugCustom, Display, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
 #[cfg_attr(test, derive(test_strategy::Arbitrary))]
-#[debug(fmt = "{self}")]
-#[display(fmt = "{}{}", "self.file()", "self.rank()")]
-#[repr(transparent)]
-pub struct Square(#[cfg_attr(test, strategy(select(sm::Square::ALL.as_ref())))] sm::Square);
+#[repr(u8)]
+#[rustfmt::skip]
+pub enum Square {
+    A1, B1, C1, D1, E1, F1, G1, H1,
+    A2, B2, C2, D2, E2, F2, G2, H2,
+    A3, B3, C3, D3, E3, F3, G3, H3,
+    A4, B4, C4, D4, E4, F4, G4, H4,
+    A5, B5, C5, D5, E5, F5, G5, H5,
+    A6, B6, C6, D6, E6, F6, G6, H6,
+    A7, B7, C7, D7, E7, F7, G7, H7,
+    A8, B8, C8, D8, E8, F8, G8, H8,
+}
 
 impl Square {
+    #[rustfmt::skip]
+    const SQUARES: [Self; 64] = [
+        Square::A1, Square::B1, Square::C1, Square::D1, Square::E1, Square::F1, Square::G1, Square::H1,
+        Square::A2, Square::B2, Square::C2, Square::D2, Square::E2, Square::F2, Square::G2, Square::H2,
+        Square::A3, Square::B3, Square::C3, Square::D3, Square::E3, Square::F3, Square::G3, Square::H3,
+        Square::A4, Square::B4, Square::C4, Square::D4, Square::E4, Square::F4, Square::G4, Square::H4,
+        Square::A5, Square::B5, Square::C5, Square::D5, Square::E5, Square::F5, Square::G5, Square::H5,
+        Square::A6, Square::B6, Square::C6, Square::D6, Square::E6, Square::F6, Square::G6, Square::H6,
+        Square::A7, Square::B7, Square::C7, Square::D7, Square::E7, Square::F7, Square::G7, Square::H7,
+        Square::A8, Square::B8, Square::C8, Square::D8, Square::E8, Square::F8, Square::G8, Square::H8,
+    ];
+
     /// Constructs [`Square`] from a pair of [`File`] and [`Rank`].
     pub fn new(f: File, r: Rank) -> Self {
-        Square(sm::Square::from_coords(f.into(), r.into()))
+        Self::from_index(f.index() + r.index() * 8)
     }
 
     /// Constructs [`Square`] from index.
@@ -28,34 +44,40 @@ impl Square {
     ///
     /// Panics if `i` is not in the range (0..64).
     pub fn from_index(i: u8) -> Self {
-        Square(i.try_into().unwrap())
+        Self::SQUARES[i as usize]
     }
 
     /// This squares's index in the range (0..64).
     ///
     /// Squares are ordered from a1 = 0 to h8 = 63, files then ranks, so b1 = 2 and a2 = 8.
     pub fn index(&self) -> u8 {
-        self.0.into()
+        *self as _
     }
 
     /// Returns an iterator over [`Square`]s ordered by [index][`Square::index`].
     pub fn iter() -> impl DoubleEndedIterator<Item = Self> + ExactSizeIterator {
-        sm::Square::ALL.into_iter().map(Square)
+        Self::SQUARES.into_iter()
     }
 
     /// This square's [`File`].
     pub fn file(&self) -> File {
-        self.0.file().into()
+        File::from_index(self.index() % 8)
     }
 
     /// This square's [`Rank`].
     pub fn rank(&self) -> Rank {
-        self.0.rank().into()
+        Rank::from_index(self.index() / 8)
     }
 
     /// Mirrors this square's [`Rank`].
     pub fn mirror(&self) -> Self {
-        self.0.flip_vertical().into()
+        Self::from_index(self.index() ^ Square::A8.index())
+    }
+}
+
+impl fmt::Display for Square {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}{}", self.file(), self.rank())
     }
 }
 
@@ -64,7 +86,7 @@ impl Binary for Square {
     type Error = Infallible;
 
     fn encode(&self) -> Self::Bits {
-        Bits::new(self.index() as _)
+        Bits::new(*self as _)
     }
 
     fn decode(bits: Self::Bits) -> Result<Self, Self::Error> {
@@ -95,14 +117,14 @@ impl From<UciSquare> for Square {
 #[doc(hidden)]
 impl From<sm::Square> for Square {
     fn from(s: sm::Square) -> Self {
-        Square(s)
+        Square::from_index(s as _)
     }
 }
 
 #[doc(hidden)]
 impl From<Square> for sm::Square {
     fn from(s: Square) -> Self {
-        s.0
+        sm::Square::new(s as _)
     }
 }
 

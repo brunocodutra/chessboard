@@ -1,40 +1,64 @@
-use derive_more::{DebugCustom, Display};
+use derive_more::Display;
 use shakmaty as sm;
-use std::{convert::TryInto, ops::Sub};
-
-#[cfg(test)]
-use proptest::sample::select;
+use std::ops::Sub;
 
 /// Denotes a row on the chess board.
-#[derive(DebugCustom, Display, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
+#[derive(Debug, Display, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
 #[cfg_attr(test, derive(test_strategy::Arbitrary))]
-#[debug(fmt = "{self}")]
-#[repr(transparent)]
-pub struct Rank(#[cfg_attr(test, strategy(select(sm::Rank::ALL.as_ref())))] sm::Rank);
+#[repr(u8)]
+pub enum Rank {
+    #[display(fmt = "1")]
+    First,
+    #[display(fmt = "2")]
+    Second,
+    #[display(fmt = "3")]
+    Third,
+    #[display(fmt = "4")]
+    Fourth,
+    #[display(fmt = "5")]
+    Fifth,
+    #[display(fmt = "6")]
+    Sixth,
+    #[display(fmt = "7")]
+    Seventh,
+    #[display(fmt = "8")]
+    Eighth,
+}
 
 impl Rank {
+    const FILES: [Self; 8] = [
+        Rank::First,
+        Rank::Second,
+        Rank::Third,
+        Rank::Fourth,
+        Rank::Fifth,
+        Rank::Sixth,
+        Rank::Seventh,
+        Rank::Eighth,
+    ];
+
     /// Constructs [`Rank`] from index.
     ///
     /// # Panics
     ///
     /// Panics if `i` is not in the range (0..=7).
     pub fn from_index(i: u8) -> Self {
-        Rank(i.try_into().unwrap())
+        Self::FILES[i as usize]
     }
 
-    /// This rank's index in the range (0..=7).
+    /// This ranks's index in the range (0..=7).
     pub fn index(&self) -> u8 {
-        self.0.into()
+        *self as _
     }
 
     /// Returns an iterator over [`Rank`]s ordered by [index][`Rank::index`].
     pub fn iter() -> impl DoubleEndedIterator<Item = Self> + ExactSizeIterator {
-        sm::Rank::ALL.into_iter().map(Rank)
+        Self::FILES.into_iter()
     }
 
     /// Mirrors this rank.
     pub fn mirror(&self) -> Self {
-        self.0.flip_vertical().into()
+        Self::from_index(Rank::Eighth as u8 - *self as u8)
     }
 }
 
@@ -49,14 +73,14 @@ impl Sub for Rank {
 #[doc(hidden)]
 impl From<sm::Rank> for Rank {
     fn from(r: sm::Rank) -> Self {
-        Rank(r)
+        Rank::from_index(r as _)
     }
 }
 
 #[doc(hidden)]
 impl From<Rank> for sm::Rank {
     fn from(r: Rank) -> Self {
-        r.0
+        sm::Rank::new(r as _)
     }
 }
 

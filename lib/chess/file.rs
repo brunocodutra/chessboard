@@ -1,40 +1,64 @@
-use derive_more::{DebugCustom, Display};
+use derive_more::Display;
 use shakmaty as sm;
-use std::{convert::TryInto, ops::Sub};
-
-#[cfg(test)]
-use proptest::sample::select;
+use std::ops::Sub;
 
 /// Denotes a column on the chess board.
-#[derive(DebugCustom, Display, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
+#[derive(Debug, Display, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
 #[cfg_attr(test, derive(test_strategy::Arbitrary))]
-#[debug(fmt = "{self}")]
-#[repr(transparent)]
-pub struct File(#[cfg_attr(test, strategy(select(sm::File::ALL.as_ref())))] sm::File);
+#[repr(u8)]
+pub enum File {
+    #[display(fmt = "a")]
+    A,
+    #[display(fmt = "b")]
+    B,
+    #[display(fmt = "c")]
+    C,
+    #[display(fmt = "d")]
+    D,
+    #[display(fmt = "e")]
+    E,
+    #[display(fmt = "f")]
+    F,
+    #[display(fmt = "g")]
+    G,
+    #[display(fmt = "h")]
+    H,
+}
 
 impl File {
+    const FILES: [Self; 8] = [
+        File::A,
+        File::B,
+        File::C,
+        File::D,
+        File::E,
+        File::F,
+        File::G,
+        File::H,
+    ];
+
     /// Constructs [`File`] from index.
     ///
     /// # Panics
     ///
     /// Panics if `i` is not in the range (0..=7).
     pub fn from_index(i: u8) -> Self {
-        File(i.try_into().unwrap())
+        Self::FILES[i as usize]
     }
 
     /// This files's index in the range (0..=7).
     pub fn index(&self) -> u8 {
-        self.0.into()
+        *self as _
     }
 
     /// Returns an iterator over [`File`]s ordered by [index][`File::index`].
     pub fn iter() -> impl DoubleEndedIterator<Item = Self> + ExactSizeIterator {
-        sm::File::ALL.into_iter().map(File)
+        Self::FILES.into_iter()
     }
 
     /// Mirrors this file.
     pub fn mirror(&self) -> Self {
-        self.0.flip_horizontal().into()
+        Self::from_index(File::H as u8 - *self as u8)
     }
 }
 
@@ -49,14 +73,14 @@ impl Sub for File {
 #[doc(hidden)]
 impl From<sm::File> for File {
     fn from(f: sm::File) -> Self {
-        File(f)
+        File::from_index(f as _)
     }
 }
 
 #[doc(hidden)]
 impl From<File> for sm::File {
     fn from(f: File) -> Self {
-        f.0
+        sm::File::new(f as _)
     }
 }
 
