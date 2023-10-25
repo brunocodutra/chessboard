@@ -1,6 +1,6 @@
 use crate::chess::{File, Rank};
 use crate::util::{Binary, Bits};
-use shakmaty as sm;
+use cozy_chess as cc;
 use std::{convert::Infallible, fmt, ops::Sub};
 use vampirc_uci::UciSquare;
 
@@ -123,16 +123,16 @@ impl From<UciSquare> for Square {
 }
 
 #[doc(hidden)]
-impl From<sm::Square> for Square {
-    fn from(s: sm::Square) -> Self {
+impl From<cc::Square> for Square {
+    fn from(s: cc::Square) -> Self {
         Square::from_index(s as _)
     }
 }
 
 #[doc(hidden)]
-impl From<Square> for sm::Square {
+impl From<Square> for cc::Square {
     fn from(s: Square) -> Self {
-        sm::Square::new(s as _)
+        cc::Square::index_const(s as _)
     }
 }
 
@@ -223,7 +223,7 @@ mod tests {
     }
 
     #[proptest]
-    fn square_has_an_equivalent_shakmaty_representation(s: Square) {
-        assert_eq!(Square::from(sm::Square::from(s)), s);
+    fn square_has_an_equivalent_cozy_chess_representation(s: Square) {
+        assert_eq!(Square::from(cc::Square::from(s)), s);
     }
 }

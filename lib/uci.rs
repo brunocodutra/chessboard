@@ -1,4 +1,4 @@
-use crate::chess::{Color, Position};
+use crate::chess::{Color, Position, Square};
 use crate::search::{Depth, Engine, HashSize, Limits, Options, ThreadCount};
 use crate::{nnue::Evaluator, util::Io};
 use std::io::{self, stdin, stdout, Stdin, Stdout};
@@ -81,7 +81,9 @@ impl Uci {
     }
 
     fn play(&mut self, uci: UciMove) {
-        let Some(m) = self.position.moves().find(|m| UciMove::from(*m) == uci) else {
+        let whence: Square = uci.from.into();
+        let moves = self.position.moves(whence.into());
+        let Some(m) = moves.into_iter().find(|m| UciMove::from(*m) == uci) else {
             return error!("illegal move `{uci}` in position `{}`", self.position);
         };
 
@@ -305,7 +307,7 @@ impl Uci {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::chess::Move;
+    use crate::chess::{Bitboard, Move};
     use proptest::prelude::*;
     use proptest::sample::{size_range, Selector};
     use std::ops::BitAnd;
@@ -406,7 +408,7 @@ mod tests {
     #[proptest]
     fn play_updates_position(
         #[filter(#pos.outcome().is_none())] mut pos: Position,
-        #[map(|s: Selector| s.select(#pos.moves()))] m: Move,
+        #[map(|s: Selector| s.select(#pos.moves(Bitboard::full())))] m: Move,
     ) {
         let mut uci = Uci {
             position: pos.clone(),
@@ -422,7 +424,7 @@ mod tests {
     fn play_updates_move_history(
         #[filter(#pos.outcome().is_none())] pos: Position,
         #[any(size_range(..=10).lift())] ms: Vec<Move>,
-        #[map(|s: Selector| s.select(#pos.moves()))] m: Move,
+        #[map(|s: Selector| s.select(#pos.moves(Bitboard::full())))] m: Move,
     ) {
         let mut uci = Uci {
             position: pos.clone(),
@@ -440,9 +442,11 @@ mod tests {
 
     #[proptest]
     fn play_ignores_illegal_move(
-        #[filter(#pos.outcome().is_none())] pos: Position,
+        #[by_ref]
+        #[filter(#pos.outcome().is_none())]
+        pos: Position,
         #[any(size_range(..=10).lift())] ms: Vec<Move>,
-        #[filter(!#pos.moves().any(|m| (m.whence(), m.whither()) == (#m.whence(), #m.whither())))]
+        #[filter(!#pos.moves(Bitboard::full()).any(|m| (m.whence(), m.whither()) == (#m.whence(), #m.whither())))]
         m: Move,
     ) {
         let mut uci = Uci {

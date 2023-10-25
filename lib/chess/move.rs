@@ -1,7 +1,6 @@
 use crate::chess::{Role, Square};
 use crate::util::{Assume, Binary, Bits};
 use derive_more::{Display, Error};
-use shakmaty as sm;
 use std::{fmt, num::NonZeroU16, ops::RangeBounds};
 use vampirc_uci::UciMove;
 
@@ -13,6 +12,48 @@ pub struct Move(NonZeroU16);
 impl Move {
     fn bits<R: RangeBounds<u32>>(&self, r: R) -> Bits<u16, 16> {
         Bits::new(self.0.get()).slice(r)
+    }
+
+    /// Constructs a castling move.
+    pub fn castling(whence: Square, whither: Square) -> Self {
+        let mut bits = Bits::<_, 16>::default();
+        bits.push(whence.encode());
+        bits.push(whither.encode());
+        bits.push(Bits::<u8, 4>::new(0b0001));
+        Move(NonZeroU16::new(bits.get()).assume())
+    }
+
+    /// Constructs an en passant move.
+    pub fn en_passant(whence: Square, whither: Square) -> Self {
+        let mut bits = Bits::<_, 16>::default();
+        bits.push(whence.encode());
+        bits.push(whither.encode());
+        bits.push(Bits::<u8, 4>::new(0b0011));
+        Move(NonZeroU16::new(bits.get()).assume())
+    }
+
+    /// Constructs a regular move.
+    pub fn regular(
+        whence: Square,
+        whither: Square,
+        promotion: Option<Role>,
+        capture: Option<Role>,
+    ) -> Self {
+        let mut bits = Bits::<_, 16>::default();
+        bits.push(whence.encode());
+        bits.push(whither.encode());
+
+        if capture == Some(Role::Pawn) {
+            bits.push(Bits::<u8, 4>::new(0b0010))
+        } else {
+            bits.push(Bits::<u8, 1>::new(promotion.is_some() as _));
+            bits.push(Bits::<u8, 1>::new(capture.is_some() as _));
+            bits.push(Bits::<u8, 2>::new(
+                promotion.map_or(0, |r| r.index().clamp(1, 4) - 1),
+            ));
+        }
+
+        Move(NonZeroU16::new(bits.get()).assume())
     }
 
     /// The source [`Square`].
@@ -100,67 +141,6 @@ impl Binary for Move {
 }
 
 #[doc(hidden)]
-impl From<sm::Move> for Move {
-    fn from(m: sm::Move) -> Self {
-        let mut bits = Bits::<_, 16>::default();
-        bits.push(Square::from(m.from().assume()).encode());
-
-        match m {
-            sm::Move::Normal {
-                to,
-                capture: None,
-                promotion: None,
-                ..
-            } => {
-                bits.push(Square::from(to).encode());
-                bits.push(Bits::<u8, 4>::new(0));
-            }
-
-            sm::Move::Normal {
-                to,
-                capture: Some(sm::Role::Pawn),
-                promotion: None,
-                ..
-            } => {
-                bits.push(Square::from(to).encode());
-                bits.push(Bits::<u8, 4>::new(0b0010));
-            }
-
-            sm::Move::Normal {
-                to,
-                capture,
-                promotion,
-                ..
-            } => {
-                bits.push(Square::from(to).encode());
-                bits.push(Bits::<u8, 1>::new(promotion.is_some() as _));
-                bits.push(Bits::<u8, 1>::new(capture.is_some() as _));
-                bits.push(Bits::<u8, 2>::new(promotion.map_or(0, |r| r as u8 - 2)));
-            }
-
-            sm::Move::EnPassant { to, .. } => {
-                bits.push(Square::from(to).encode());
-                bits.push(Bits::<u8, 4>::new(0b0011))
-            }
-
-            sm::Move::Castle { king, rook } => {
-                if rook > king {
-                    bits.push(Square::new(sm::File::G.into(), king.rank().into()).encode())
-                } else {
-                    bits.push(Square::new(sm::File::C.into(), king.rank().into()).encode())
-                };
-
-                bits.push(Bits::<u8, 4>::new(0b0001))
-            }
-
-            _ => unreachable!(),
-        }
-
-        Move(NonZeroU16::new(bits.get()).assume())
-    }
-}
-
-#[doc(hidden)]
 impl From<Move> for UciMove {
     fn from(m: Move) -> Self {
         UciMove {
@@ -174,6 +154,8 @@ impl From<Move> for UciMove {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::chess::{Bitboard, Position};
+    use proptest::sample::Selector;
     use std::mem::size_of;
     use test_strategy::proptest;
 
@@ -193,27 +175,44 @@ mod tests {
     }
 
     #[proptest]
-    fn castling_moves_are_never_captures(m: Move) {
-        assert!(!m.is_castling() || !m.is_capture());
+    fn move_can_be_constructed(
+        #[by_ref]
+        #[filter(#pos.outcome().is_none())]
+        pos: Position,
+        #[map(|s: Selector| s.select(#pos.moves(Bitboard::full())))] m: Move,
+    ) {
+        if m.is_castling() {
+            assert_eq!(Move::castling(m.whence(), m.whither()), m);
+        } else if m.is_en_passant() {
+            assert_eq!(Move::en_passant(m.whence(), m.whither()), m);
+        } else {
+            let c = pos.role_on(m.whither());
+            assert_eq!(Move::regular(m.whence(), m.whither(), m.promotion(), c), m);
+        }
     }
 
     #[proptest]
-    fn castling_moves_are_never_promotions(m: Move) {
-        assert!(!m.is_castling() || !m.is_promotion());
+    fn castling_moves_are_never_captures(wc: Square, wt: Square) {
+        assert!(!Move::castling(wc, wt).is_capture());
     }
 
     #[proptest]
-    fn en_passant_moves_are_always_captures(m: Move) {
-        assert!(!m.is_en_passant() || m.is_capture());
+    fn castling_moves_are_never_promotions(wc: Square, wt: Square) {
+        assert!(!Move::castling(wc, wt).is_promotion());
     }
 
     #[proptest]
-    fn captures_are_never_quiet(m: Move) {
-        assert!(!m.is_capture() || !m.is_quiet());
+    fn en_passant_moves_are_always_captures(wc: Square, wt: Square) {
+        assert!(Move::en_passant(wc, wt).is_capture());
     }
 
     #[proptest]
-    fn promotions_are_never_quiet(m: Move) {
-        assert!(!m.is_promotion() || !m.is_quiet());
+    fn promotions_are_never_quiet(wc: Square, wt: Square, p: Role, c: Option<Role>) {
+        assert!(!Move::regular(wc, wt, Some(p), c).is_quiet());
+    }
+
+    #[proptest]
+    fn captures_are_never_quiet(wc: Square, wt: Square, p: Option<Role>, c: Role) {
+        assert!(!Move::regular(wc, wt, p, Some(c)).is_quiet());
     }
 }

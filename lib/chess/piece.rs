@@ -1,5 +1,4 @@
 use crate::chess::{Color, Role};
-use shakmaty as sm;
 
 /// A chess [piece][`Role`] of a certain [`Color`].
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
@@ -28,23 +27,6 @@ impl Piece {
     }
 }
 
-#[doc(hidden)]
-impl From<sm::Piece> for Piece {
-    fn from(p: sm::Piece) -> Self {
-        Piece(p.color.into(), p.role.into())
-    }
-}
-
-#[doc(hidden)]
-impl From<Piece> for sm::Piece {
-    fn from(p: Piece) -> Self {
-        sm::Piece {
-            color: p.color().into(),
-            role: p.role().into(),
-        }
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -69,10 +51,5 @@ mod tests {
     fn piece_has_a_mirror_of_the_same_role_and_opposite_color(p: Piece) {
         assert_eq!(p.mirror().role(), p.role());
         assert_eq!(p.mirror().color(), !p.color());
-    }
-
-    #[proptest]
-    fn piece_has_an_equivalent_shakmaty_representation(p: Piece) {
-        assert_eq!(Piece::from(sm::Piece::from(p)), p);
     }
 }

@@ -1,7 +1,7 @@
-use crate::chess::{Bitboard, Color, Move, Outcome, Piece, Role, Square};
+use crate::chess::{Bitboard, Color, File, Move, Outcome, Piece, Rank, Role, Square};
 use crate::util::{Assume, Bits, Buffer};
-use derive_more::{DebugCustom, Display, Error, From};
-use shakmaty as sm;
+use cozy_chess as cc;
+use derive_more::{DebugCustom, Display, Error};
 use std::hash::{Hash, Hasher};
 use std::{num::NonZeroU32, ops::Index, str::FromStr};
 
@@ -19,16 +19,16 @@ pub type Zobrist = Bits<u64, 64>;
 #[display(fmt = "no possible exchange on square `{_0}`")]
 pub struct ImpossibleExchange(#[error(not(source))] pub Square);
 
-/// The current position on the chess board.
+/// The current position on the board board.
 ///
 /// This type guarantees that it only holds valid positions.
 #[derive(DebugCustom, Display, Default, Clone)]
 #[debug(fmt = "Position({self})")]
-#[display(
-    fmt = "{}",
-    "sm::fen::Fen::from_position(self.0.clone(), sm::EnPassantMode::Legal)"
-)]
-pub struct Position(sm::Chess, [Buffer<Bits<u16, 16>, 51>; 2]);
+#[display(fmt = "{board}")]
+pub struct Position {
+    board: cc::Board,
+    history: [Buffer<Bits<u16, 16>, 51>; 2],
+}
 
 impl Hash for Position {
     fn hash<H: Hasher>(&self, state: &mut H) {
@@ -40,7 +40,7 @@ impl Eq for Position {}
 
 impl PartialEq for Position {
     fn eq(&self, other: &Self) -> bool {
-        self.0 == other.0
+        self.board == other.board
     }
 }
 
@@ -52,30 +52,36 @@ impl Arbitrary for Position {
     fn arbitrary_with(_: Self::Parameters) -> Self::Strategy {
         (0..256, any::<Selector>())
             .prop_map(|(moves, selector)| {
-                use sm::{zobrist::*, *};
-                let mut chess = Chess::default();
+                let mut board = cc::Board::default();
                 let mut history = [Buffer::<_, 51>::new(), Buffer::<_, 51>::new()];
 
                 for _ in 0..moves {
-                    match selector.try_select(chess.legal_moves()) {
+                    if board.halfmove_clock() >= 100 {
+                        break;
+                    }
+
+                    let turn = board.side_to_move();
+                    let mut moves = Buffer::<_, 18>::new();
+                    board.generate_moves(|ms| {
+                        moves.push(ms);
+                        false
+                    });
+
+                    match selector.try_select(moves.into_iter().flatten()) {
                         None => break,
                         Some(m) => {
-                            if m.is_zeroing() {
-                                history = Default::default();
+                            let zobrist = Zobrist::new(board.hash()).pop();
+                            board.play_unchecked(m);
+                            if board.halfmove_clock() > 0 {
+                                history[turn as usize].push(zobrist);
                             } else {
-                                let history = &mut history[chess.turn() as usize];
-                                let zobrist: Zobrist64 = chess.zobrist_hash(EnPassantMode::Legal);
-                                if history.push(Zobrist::new(zobrist.0).pop()).is_some() {
-                                    break;
-                                }
-                            };
-
-                            chess.play_unchecked(&m);
+                                history = Default::default();
+                            }
                         }
                     }
                 }
 
-                Position(chess, history)
+                Position { board, history }
             })
             .no_shrink()
             .boxed()
@@ -85,103 +91,94 @@ impl Arbitrary for Position {
 impl Position {
     /// The side to move.
     pub fn turn(&self) -> Color {
-        sm::Position::turn(&self.0).into()
+        self.board.side_to_move().into()
     }
 
     /// The number of halfmoves since the last capture or pawn advance.
     ///
     /// It resets to 0 whenever a piece is captured or a pawn is moved.
-    pub fn halfmoves(&self) -> u32 {
-        sm::Position::halfmoves(&self.0)
+    pub fn halfmoves(&self) -> u8 {
+        self.board.halfmove_clock()
     }
 
     /// The current move number since the start of the game.
     ///
     /// It starts at 1, and is incremented after every move by black.
     pub fn fullmoves(&self) -> NonZeroU32 {
-        sm::Position::fullmoves(&self.0)
+        NonZeroU32::new(self.board.fullmove_number() as _).assume()
     }
 
     /// The en passant square.
-    pub fn en_passant_square(&self) -> Option<Square> {
-        sm::Position::ep_square(&self.0, sm::EnPassantMode::Legal).map(Square::from)
+    pub fn en_passant(&self) -> Option<Square> {
+        self.board.en_passant().map(|f| match self.turn() {
+            Color::White => Square::new(f.into(), Rank::Sixth),
+            Color::Black => Square::new(f.into(), Rank::Third),
+        })
     }
 
     /// This position's [zobrist hash].
     ///
     /// [zobrist hash]: https://www.chessprogramming.org/Zobrist_Hashing
     pub fn zobrist(&self) -> Zobrist {
-        let z: sm::zobrist::Zobrist64 =
-            sm::zobrist::ZobristHash::zobrist_hash(&self.0, sm::EnPassantMode::Legal);
-        Bits::new(z.0)
+        Bits::new(self.board.hash())
     }
 
     /// An iterator over all pieces on the board.
-    pub fn iter(&self) -> impl DoubleEndedIterator<Item = (Piece, Square)> + ExactSizeIterator {
-        sm::Position::board(&self.0)
-            .clone()
-            .into_iter()
-            .map(|(s, p)| (p.into(), s.into()))
+    pub fn iter(&self) -> impl ExactSizeIterator<Item = (Piece, Square)> + '_ {
+        self.occupied().into_iter().map(|s| (self[s].assume(), s))
     }
 
     /// [`Square`]s occupied.
     pub fn occupied(&self) -> Bitboard {
-        sm::Position::board(&self.0).occupied().into()
+        self.board.occupied().into()
     }
 
     /// [`Square`]s occupied by a [`Color`].
     pub fn by_color(&self, c: Color) -> Bitboard {
-        sm::Position::board(&self.0).by_color(c.into()).into()
+        self.board.colors(c.into()).into()
     }
 
     /// [`Square`]s occupied by a [`Role`].
     pub fn by_role(&self, r: Role) -> Bitboard {
-        sm::Position::board(&self.0).by_role(r.into()).into()
+        self.board.pieces(r.into()).into()
     }
 
     /// [`Square`]s occupied by a [`Piece`].
-    pub fn by_piece(&self, p: Piece) -> Bitboard {
-        sm::Position::board(&self.0).by_piece(p.into()).into()
+    pub fn by_piece(&self, Piece(c, r): Piece) -> Bitboard {
+        self.board.colored_pieces(c.into(), r.into()).into()
     }
 
     /// [`Square`] occupied by a the king of the given color.
     pub fn king(&self, side: Color) -> Square {
-        self.by_piece(Piece(side, Role::King))
-            .into_iter()
-            .next()
-            .assume()
+        self.board.king(side.into()).into()
     }
 
     /// The [`Role`] of the piece on the given [`Square`], if any.
     pub fn role_on(&self, s: Square) -> Option<Role> {
-        sm::Position::board(&self.0)
-            .role_at(s.into())
-            .map(Role::from)
+        self.board.piece_on(s.into()).map(Role::from)
     }
 
     /// The [`Color`] of the piece on the given [`Square`], if any.
     pub fn color_on(&self, s: Square) -> Option<Color> {
-        sm::Position::board(&self.0)
-            .color_at(s.into())
-            .map(Color::from)
+        self.board.color_on(s.into()).map(Color::from)
     }
 
     /// The [`Piece`] on the given [`Square`], if any.
     pub fn piece_on(&self, s: Square) -> Option<Piece> {
-        sm::Position::board(&self.0)
-            .piece_at(s.into())
-            .map(Piece::from)
+        Option::zip(self.color_on(s), self.role_on(s)).map(|(c, r)| Piece(c, r))
     }
 
     /// Into where a [`Piece`] on this [`Square`] can attack.
     pub fn attacks(&self, s: Square, Piece(c, r): Piece) -> Bitboard {
+        let blk = self.occupied().into();
+
         Bitboard::from(match r {
-            Role::Pawn => sm::attacks::pawn_attacks(c.into(), s.into()),
-            Role::Knight => sm::attacks::knight_attacks(s.into()),
-            Role::Bishop => sm::attacks::bishop_attacks(s.into(), self.occupied().into()),
-            Role::Rook => sm::attacks::rook_attacks(s.into(), self.occupied().into()),
-            Role::Queen => sm::attacks::queen_attacks(s.into(), self.occupied().into()),
-            Role::King => sm::attacks::king_attacks(s.into()),
+            Role::Pawn => cc::get_pawn_attacks(s.into(), c.into()),
+            Role::Knight => cc::get_knight_moves(s.into()),
+            Role::Bishop => cc::get_bishop_moves(s.into(), blk),
+            Role::Rook => cc::get_rook_moves(s.into(), blk),
+            Role::Queen => cc::get_bishop_moves(s.into(), blk) | cc::get_rook_moves(s.into(), blk),
+            Role::King => cc::get_king_moves(s.into()),
         })
     }
 
@@ -193,7 +190,7 @@ impl Position {
     /// How many other times this position has repeated.
     pub fn repetitions(&self) -> usize {
         let zobrist = self.zobrist().pop();
-        let history = &self.1[self.turn() as usize];
+        let history = &self.history[self.turn() as usize];
         history.iter().filter(|z| **z == zobrist).count()
     }
 
@@ -201,21 +198,21 @@ impl Position {
     ///
     /// [check]: https://www.chessprogramming.org/Check
     pub fn is_check(&self) -> bool {
-        sm::Position::is_check(&self.0)
+        !self.board.checkers().is_empty()
     }
 
     /// Whether this position is a [checkmate].
     ///
     /// [checkmate]: https://www.chessprogramming.org/Checkmate
     pub fn is_checkmate(&self) -> bool {
-        sm::Position::is_checkmate(&self.0)
+        self.is_check() & !self.board.generate_moves(|_| true)
     }
 
     /// Whether this position is a [stalemate].
     ///
     /// [stalemate]: https://www.chessprogramming.org/Stalemate
     pub fn is_stalemate(&self) -> bool {
-        sm::Position::is_stalemate(&self.0)
+        !self.is_check() & !self.board.generate_moves(|_| true)
     }
 
     /// Whether the game is a draw by [Threefold repetition].
@@ -236,7 +233,16 @@ impl Position {
     ///
     /// [insufficient material]: https://www.chessprogramming.org/Material#InsufficientMaterial
     pub fn is_material_insufficient(&self) -> bool {
-        sm::Position::is_insufficient_material(&self.0)
+        match self.occupied().len() {
+            2 => true,
+            3 => !self.by_role(Role::Bishop).is_empty() || !self.by_role(Role::Knight).is_empty(),
+            _ => {
+                let bishops = self.by_role(Role::Bishop);
+                bishops | self.by_role(Role::King) == self.occupied()
+                    && (bishops & Bitboard::light() == Bitboard::empty()
+                        || bishops & Bitboard::dark() == Bitboard::empty())
+            }
+        }
     }
 
     /// The [`Outcome`] of the game in case this position is final.
@@ -256,81 +262,103 @@ impl Position {
         }
     }
 
-    /// An iterator over the legal [`Move`]s that can be played in this position.
-    pub fn moves(&self) -> impl DoubleEndedIterator<Item = Move> + ExactSizeIterator {
-        sm::Position::legal_moves(&self.0)
-            .into_iter()
-            .map(Move::from)
+    /// An iterator over the legal [`Move`]s that can be played from a subset of squares in this position.
+    pub fn moves(&self, whence: Bitboard) -> impl Iterator<Item = Move> + '_ {
+        let mut moves = Buffer::<_, 18>::new();
+        self.board.generate_moves_for(whence.into(), |ms| {
+            moves.push(ms);
+            false
+        });
+
+        moves.into_iter().flat_map(move |ms| {
+            let role = ms.piece.into();
+            let whence = ms.from.into();
+            ms.into_iter().map(move |m| {
+                let whither = m.to.into();
+                match role {
+                    Role::Pawn if self.en_passant() == Some(whither) => {
+                        Move::en_passant(whence, whither)
+                    }
+
+                    Role::King if whither.file() - whence.file() > 1 => {
+                        Move::castling(whence, Square::new(File::G, whither.rank()))
+                    }
+
+                    Role::King if whence.file() - whither.file() > 1 => {
+                        Move::castling(whence, Square::new(File::C, whither.rank()))
+                    }
+
+                    _ => {
+                        let promotion = m.promotion.map(|r| r.into());
+                        Move::regular(whence, whither, promotion, self.role_on(whither))
+                    }
+                }
+            })
+        })
     }
 
     /// Play a [`Move`].
     pub fn play(&mut self, m: Move) {
-        let vm = if m.is_castling() {
-            sm::Move::Castle {
-                king: m.whence().into(),
-                rook: if m.whence() < m.whither() {
-                    sm::Square::from_coords(sm::File::H, m.whither().rank().into())
-                } else {
-                    sm::Square::from_coords(sm::File::A, m.whither().rank().into())
-                },
-            }
-        } else if m.is_en_passant() {
-            sm::Move::EnPassant {
-                from: m.whence().into(),
-                to: m.whither().into(),
-            }
+        let from = m.whence();
+        let to = if !m.is_castling() {
+            m.whither()
+        } else if from < m.whither() {
+            Square::new(File::H, m.whither().rank())
         } else {
-            sm::Move::Normal {
-                from: m.whence().into(),
-                to: m.whither().into(),
-                capture: self.role_on(m.whither()).map(Role::into),
-                promotion: m.promotion().map(Role::into),
-                role: self.role_on(m.whence()).assume().into(),
-            }
+            Square::new(File::A, m.whither().rank())
         };
 
-        debug_assert!(sm::Position::is_legal(&self.0, &vm));
+        let m = cc::Move {
+            from: from.into(),
+            to: to.into(),
+            promotion: m.promotion().map(Role::into),
+        };
 
-        if vm.is_zeroing() {
-            self.1 = Default::default();
+        let turn = self.turn();
+        let zobrist = self.zobrist().pop();
+
+        debug_assert!(self.board.is_legal(m), "`{m}` is illegal in `{self}`");
+        self.board.play_unchecked(m);
+
+        if self.halfmoves() > 0 {
+            self.history[turn as usize].push(zobrist);
         } else {
-            let zobrist = self.zobrist().pop();
-            self.1[self.turn() as usize].push(zobrist);
+            self.history = Default::default();
         }
-
-        sm::Position::play_unchecked(&mut self.0, &vm);
     }
 
     /// Play a [null-move].
     ///
     /// [null-move]: https://www.chessprogramming.org/Null_Move
     pub fn pass(&mut self) {
-        debug_assert!(!self.is_check());
-
-        let null = sm::Move::Put {
-            role: sm::Role::King,
-            to: self.king(self.turn()).into(),
-        };
-
-        self.1 = Default::default();
-        sm::Position::play_unchecked(&mut self.0, &null);
+        debug_assert!(!self.is_check(), "null move is illegal in `{self}`");
+        self.board = self.board.null_move().assume();
+        self.history = Default::default();
     }
 
     /// Exchange a piece on [`Square`] by the attacker of least value.
     pub fn exchange(&mut self, whither: Square) -> Result<Move, ImpossibleExchange> {
         let turn = self.turn();
-        if !self.by_color(!turn).contains(whither) {
-            return Err(ImpossibleExchange(whither));
-        }
+        let capture = match self[whither] {
+            Some(Piece(c, r)) if c == !turn => Some(r),
+            _ => return Err(ImpossibleExchange(whither)),
+        };
 
         for role in Role::iter() {
-            let p = Piece(turn, role);
-            if self.by_piece(p) & self.attackers(whither, p) != Bitboard::empty() {
-                let moves = sm::Position::san_candidates(&self.0, role.into(), whither.into());
-                if let Some(vm) = moves.into_iter().max_by_key(|vm| vm.promotion()) {
-                    self.1 = Default::default();
-                    sm::Position::play_unchecked(&mut self.0, &vm);
-                    return Ok(vm.into());
+            let piece = Piece(turn, role);
+            for whence in self.by_piece(piece) & self.attackers(whither, piece) {
+                let ms = cc::PieceMoves {
+                    piece: role.into(),
+                    from: whence.into(),
+                    to: cc::Square::from(whither).into(),
+                };
+
+                if let Some(m) = ms.into_iter().max_by_key(|m| m.promotion) {
+                    if self.board.try_play(m).is_ok() {
+                        self.history = Default::default();
+                        let promotion = m.promotion.map(Role::from);
+                        return Ok(Move::regular(whence, whither, promotion, capture));
+                    }
                 }
             }
         }
@@ -364,85 +392,37 @@ impl Index<Square> for Position {
 }
 
 /// The reason why parsing the FEN string failed.
-#[derive(Debug, Display, Clone, Eq, PartialEq, Error, From)]
-pub enum ParsePositionError {
-    InvalidFen(InvalidFen),
-    IllegalPosition(IllegalPosition),
-}
-
-/// The reason why the string is not valid FEN.
 #[derive(Debug, Display, Clone, Eq, PartialEq, Error)]
-pub enum InvalidFen {
-    #[display(fmt = "syntax error at the piece placement field")]
+pub enum ParsePositionError {
+    #[display(fmt = "failed to parse piece placement")]
     InvalidPlacement,
-    #[display(fmt = "syntax error at the side to move field")]
-    InvalidTurn,
-    #[display(fmt = "syntax error at the castling rights field")]
+    #[display(fmt = "failed to parse side to move")]
+    InvalidSideToMove,
+    #[display(fmt = "failed to parse castling rights")]
     InvalidCastlingRights,
-    #[display(fmt = "syntax error at the en passant square field")]
+    #[display(fmt = "failed to parse en passant square")]
     InvalidEnPassantSquare,
-    #[display(fmt = "syntax error at the halfmove clock field")]
+    #[display(fmt = "failed to parse halfmove clock")]
     InvalidHalfmoveClock,
-    #[display(fmt = "syntax error at the fullmove counter field")]
-    InvalidFullmoves,
+    #[display(fmt = "failed to parse fullmove number")]
+    InvalidFullmoveNumber,
     #[display(fmt = "unspecified syntax error")]
     InvalidSyntax,
 }
 
 #[doc(hidden)]
-impl From<sm::fen::ParseFenError> for InvalidFen {
-    fn from(e: sm::fen::ParseFenError) -> Self {
-        use InvalidFen::*;
+impl From<cc::FenParseError> for ParsePositionError {
+    fn from(e: cc::FenParseError) -> Self {
+        use ParsePositionError::*;
         match e {
-            sm::fen::ParseFenError::InvalidBoard => InvalidPlacement,
-            sm::fen::ParseFenError::InvalidTurn => InvalidTurn,
-            sm::fen::ParseFenError::InvalidCastling => InvalidCastlingRights,
-            sm::fen::ParseFenError::InvalidEpSquare => InvalidEnPassantSquare,
-            sm::fen::ParseFenError::InvalidHalfmoveClock => InvalidHalfmoveClock,
-            sm::fen::ParseFenError::InvalidFullmoves => InvalidFullmoves,
-            _ => InvalidSyntax,
-        }
-    }
-}
-
-/// The reason why the position represented by the FEN string is illegal.
-#[derive(Debug, Display, Clone, Eq, PartialEq, Error)]
-pub enum IllegalPosition {
-    #[display(fmt = "at least one side has no king")]
-    MissingKing,
-    #[display(fmt = "at least one side has multiple kings")]
-    TooManyKings,
-    #[display(fmt = "there are pawns on the back-rank")]
-    PawnsOnBackRank,
-    #[display(fmt = "the player in check is not to move")]
-    OppositeCheck,
-    #[display(fmt = "invalid en passant square; wrong rank, occupied, or missing pushed pawn")]
-    InvalidEnPassantSquare,
-    #[display(fmt = "invalid castling rights")]
-    InvalidCastlingRights,
-    #[display(fmt = "no sequence of legal moves can reach this position")]
-    Other,
-}
-
-#[doc(hidden)]
-impl From<sm::PositionError<sm::Chess>> for IllegalPosition {
-    fn from(e: sm::PositionError<sm::Chess>) -> Self {
-        let kinds = e.kinds();
-
-        if kinds.contains(sm::PositionErrorKinds::MISSING_KING) {
-            IllegalPosition::MissingKing
-        } else if kinds.contains(sm::PositionErrorKinds::TOO_MANY_KINGS) {
-            IllegalPosition::TooManyKings
-        } else if kinds.contains(sm::PositionErrorKinds::PAWNS_ON_BACKRANK) {
-            IllegalPosition::PawnsOnBackRank
-        } else if kinds.contains(sm::PositionErrorKinds::OPPOSITE_CHECK) {
-            IllegalPosition::OppositeCheck
-        } else if kinds.contains(sm::PositionErrorKinds::INVALID_EP_SQUARE) {
-            IllegalPosition::InvalidEnPassantSquare
-        } else if kinds.contains(sm::PositionErrorKinds::INVALID_CASTLING_RIGHTS) {
-            IllegalPosition::InvalidCastlingRights
-        } else {
-            IllegalPosition::Other
+            cc::FenParseError::InvalidBoard => InvalidPlacement,
+            cc::FenParseError::InvalidSideToMove => InvalidSideToMove,
+            cc::FenParseError::InvalidCastlingRights => InvalidCastlingRights,
+            cc::FenParseError::InvalidEnPassant => InvalidEnPassantSquare,
+            cc::FenParseError::InvalidHalfMoveClock => InvalidHalfmoveClock,
+            cc::FenParseError::InvalidFullmoveNumber => InvalidFullmoveNumber,
+            cc::FenParseError::MissingField => InvalidSyntax,
+            cc::FenParseError::TooManyFields => InvalidSyntax,
         }
     }
 }
@@ -451,12 +431,10 @@ impl FromStr for Position {
     type Err = ParsePositionError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let fen: sm::fen::Fen = s.parse().map_err(InvalidFen::from)?;
-        let chess: sm::Chess = sm::Setup::from(fen)
-            .position(sm::CastlingMode::Standard)
-            .map_err(IllegalPosition::from)?;
-
-        Ok(Position(chess, Default::default()))
+        Ok(Position {
+            board: s.parse()?,
+            history: Default::default(),
+        })
     }
 }
 
@@ -466,30 +444,6 @@ mod tests {
     use proptest::sample::Selector;
     use std::cmp::Reverse;
     use test_strategy::proptest;
-
-    #[proptest]
-    fn turn_returns_the_current_side_to_play(pos: Position) {
-        let setup = sm::Position::into_setup(pos.0.clone(), sm::EnPassantMode::Legal);
-        assert_eq!(pos.turn(), setup.turn.into());
-    }
-
-    #[proptest]
-    fn halfmoves_returns_the_number_of_halfmoves_since_last_irreversible_move(pos: Position) {
-        let setup = sm::Position::into_setup(pos.0.clone(), sm::EnPassantMode::Legal);
-        assert_eq!(pos.halfmoves(), setup.halfmoves);
-    }
-
-    #[proptest]
-    fn fullmoves_returns_the_current_move_number(pos: Position) {
-        let setup = sm::Position::into_setup(pos.0.clone(), sm::EnPassantMode::Legal);
-        assert_eq!(pos.fullmoves(), setup.fullmoves);
-    }
-
-    #[proptest]
-    fn en_passant_square_returns_the_en_passant_square(pos: Position) {
-        let setup = sm::Position::into_setup(pos.0.clone(), sm::EnPassantMode::Legal);
-        assert_eq!(pos.en_passant_square(), setup.ep_square.map(Square::from));
-    }
 
     #[proptest]
     fn iter_returns_pieces_and_squares(pos: Position) {
@@ -584,25 +538,30 @@ mod tests {
     fn moves_returns_legal_moves_from_this_position(
         #[filter(#pos.outcome().is_none())] pos: Position,
     ) {
-        for m in pos.moves() {
-            let mut pos = pos.clone();
-            assert_eq!(pos[m.whence()].map(|p| p.color()), Some(pos.turn()));
-            pos.play(m);
+        for m in pos.moves(Bitboard::full()) {
+            pos.clone().play(m);
+        }
+    }
+
+    #[proptest]
+    fn moves_can_filter_by_source_squares(pos: Position, wc: Bitboard) {
+        for m in pos.moves(wc) {
+            assert!(wc.contains(m.whence()));
         }
     }
 
     #[proptest]
     fn exchange_finds_attacker_of_least_value(
         #[by_ref]
-        #[filter(#pos.moves().filter(|m| m.is_capture() && !m.is_en_passant()).next().is_some())]
+        #[filter(#pos.moves(Bitboard::full()).filter(|m| m.is_capture() && !m.is_en_passant()).next().is_some())]
         pos: Position,
-        #[map(|s: Selector| s.select(#pos.moves().filter(|m| m.is_capture() && !m.is_en_passant())).whither())]
+        #[map(|s: Selector| s.select(#pos.moves(Bitboard::full()).filter(|m| m.is_capture() && !m.is_en_passant())).whither())]
         s: Square,
     ) {
         let m = pos.clone().exchange(s)?;
 
         let lva = pos
-            .moves()
+            .moves(Bitboard::full())
             .filter(|m| m.whither() == s)
             .filter(Move::is_capture)
             .min_by_key(|m| (pos.role_on(m.whence()), Reverse(m.promotion())))
@@ -622,8 +581,11 @@ mod tests {
 
     #[proptest]
     fn captures_reduce_material(
-        #[filter(#pos.moves().filter(Move::is_capture).next().is_some())] pos: Position,
-        #[map(|s: Selector| s.select(#pos.moves().filter(Move::is_capture)))] m: Move,
+        #[by_ref]
+        #[filter(#pos.moves(Bitboard::full()).filter(Move::is_capture).next().is_some())]
+        pos: Position,
+        #[map(|s: Selector| s.select(#pos.moves(Bitboard::full()).filter(Move::is_capture)))]
+        m: Move,
     ) {
         let mut p = pos.clone();
         p.play(m);
@@ -632,8 +594,11 @@ mod tests {
 
     #[proptest]
     fn promotions_exchange_pawns(
-        #[filter(#pos.moves().filter(Move::is_promotion).next().is_some())] pos: Position,
-        #[map(|s: Selector| s.select(#pos.moves().filter(Move::is_promotion)))] m: Move,
+        #[by_ref]
+        #[filter(#pos.moves(Bitboard::full()).filter(Move::is_promotion).next().is_some())]
+        pos: Position,
+        #[map(|s: Selector| s.select(#pos.moves(Bitboard::full()).filter(Move::is_promotion)))]
+        m: Move,
     ) {
         let mut p = pos.clone();
         p.play(m);
@@ -644,8 +609,11 @@ mod tests {
 
     #[proptest]
     fn castles_move_the_king_by_two_files(
-        #[filter(#pos.moves().filter(Move::is_castling).next().is_some())] pos: Position,
-        #[map(|s: Selector| s.select(#pos.moves().filter(Move::is_castling)))] m: Move,
+        #[by_ref]
+        #[filter(#pos.moves(Bitboard::full()).filter(Move::is_castling).next().is_some())]
+        pos: Position,
+        #[map(|s: Selector| s.select(#pos.moves(Bitboard::full()).filter(Move::is_castling)))]
+        m: Move,
     ) {
         assert_eq!(pos[m.whence()], Some(Piece(pos.turn(), Role::King)));
         assert_eq!(m.whence().rank(), m.whither().rank());
@@ -655,7 +623,7 @@ mod tests {
     #[proptest]
     fn legal_move_updates_position(
         #[filter(#pos.outcome().is_none())] mut pos: Position,
-        #[map(|s: Selector| s.select(#pos.moves()))] m: Move,
+        #[map(|s: Selector| s.select(#pos.moves(Bitboard::full())))] m: Move,
     ) {
         let prev = pos.clone();
         pos.play(m);
@@ -665,8 +633,8 @@ mod tests {
     #[proptest]
     #[should_panic]
     fn play_panics_if_move_illegal(
-        mut pos: Position,
-        #[filter(!#pos.moves().any(|m| (m.whence(), m.whither()) == (#m.whence(), #m.whither())))]
+        #[by_ref] mut pos: Position,
+        #[filter(!#pos.moves(Bitboard::full()).any(|m| (m.whence(), m.whither()) == (#m.whence(), #m.whither())))]
         m: Move,
     ) {
         pos.play(m);
@@ -691,7 +659,7 @@ mod tests {
         z: Bits<u16, 16>,
     ) {
         let zobrist = pos.zobrist().pop();
-        pos.1[pos.turn() as usize] = [zobrist, z, zobrist, z].into_iter().collect();
+        pos.history[pos.turn() as usize] = [zobrist, z, zobrist, z].into_iter().collect();
         assert!(pos.is_draw_by_threefold_repetition());
         assert_eq!(pos.outcome(), Some(Outcome::DrawByThreefoldRepetition));
     }

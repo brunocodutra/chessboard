@@ -1,5 +1,5 @@
+use cozy_chess as cc;
 use derive_more::Display;
-use shakmaty as sm;
 use vampirc_uci::UciPiece;
 
 /// The type of a chess [`Piece`][`crate::Piece`].
@@ -80,30 +80,16 @@ impl From<UciPiece> for Role {
 }
 
 #[doc(hidden)]
-impl From<Role> for sm::Role {
+impl From<Role> for cc::Piece {
     fn from(r: Role) -> Self {
-        match r {
-            Role::Pawn => sm::Role::Pawn,
-            Role::Knight => sm::Role::Knight,
-            Role::Bishop => sm::Role::Bishop,
-            Role::Rook => sm::Role::Rook,
-            Role::Queen => sm::Role::Queen,
-            Role::King => sm::Role::King,
-        }
+        cc::Piece::index_const(r as _)
     }
 }
 
 #[doc(hidden)]
-impl From<sm::Role> for Role {
-    fn from(r: sm::Role) -> Self {
-        match r {
-            sm::Role::Pawn => Role::Pawn,
-            sm::Role::Knight => Role::Knight,
-            sm::Role::Bishop => Role::Bishop,
-            sm::Role::Rook => Role::Rook,
-            sm::Role::Queen => Role::Queen,
-            sm::Role::King => Role::King,
-        }
+impl From<cc::Piece> for Role {
+    fn from(r: cc::Piece) -> Self {
+        Role::from_index(r as _)
     }
 }
 
@@ -168,7 +154,7 @@ mod tests {
     }
 
     #[proptest]
-    fn role_has_an_equivalent_shakmaty_representation(r: Role) {
-        assert_eq!(Role::from(sm::Role::from(r)), r);
+    fn role_has_an_equivalent_cozy_chess_representation(r: Role) {
+        assert_eq!(Role::from(cc::Piece::from(r)), r);
     }
 }
