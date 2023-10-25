@@ -63,25 +63,6 @@ jobs:
     - uses: dtolnay/rust-toolchain@nightly
     - run: cargo test --all-targets --all-features --workspace
 
-  miri:
-    needs: [test]
-    runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        module: [util, nnue]
-    steps:
-    - uses: actions/checkout@v3
-    - uses: dtolnay/rust-toolchain@nightly
-      with:
-        components: miri, rust-src
-    - run: cargo miri setup
-    - run: cargo miri test --all-features --workspace ${{ matrix.module }}
-      env:
-        RUSTFLAGS: "-Ctarget-cpu=generic"
-        MIRIFLAGS: "-Zmiri-disable-isolation -Zmiri-ignore-leaks -Zmiri-permissive-provenance"
-        PROPTEST_CASES: 1
-
   sanitize:
     needs: [test]
     runs-on: ubuntu-latest

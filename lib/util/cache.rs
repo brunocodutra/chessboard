@@ -66,7 +66,7 @@ impl<T: NoUninit + Default> Cache<T> {
 mod tests {
     use super::*;
     use proptest::collection::size_range;
-    use rayon::{prelude::*, ThreadPoolBuilder};
+    use rayon::prelude::*;
     use std::sync::Arc;
     use test_strategy::proptest;
 
@@ -144,14 +144,12 @@ mod tests {
         #[any((1..100).into())] c: Arc<Cache<u64>>,
         #[any(size_range(#c.len()).lift())] vs: Vec<u64>,
     ) {
-        ThreadPoolBuilder::new().build()?.install(|| {
-            vs.par_iter().enumerate().for_each(|(i, v)| {
-                c.store(i, *v);
-            });
+        vs.par_iter().enumerate().for_each(|(i, v)| {
+            c.store(i, *v);
+        });
 
-            vs.into_par_iter().enumerate().for_each(|(i, v)| {
-                assert_eq!(c.load(i), v);
-            });
+        vs.into_par_iter().enumerate().for_each(|(i, v)| {
+            assert_eq!(c.load(i), v);
         });
     }
 }
