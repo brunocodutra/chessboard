@@ -1,5 +1,5 @@
+use cozy_chess as cc;
 use derive_more::Display;
-use shakmaty as sm;
 use std::ops::Not;
 
 /// The color of a chess [`Piece`][`crate::Piece`].
@@ -25,21 +25,21 @@ impl Not for Color {
 }
 
 #[doc(hidden)]
-impl From<sm::Color> for Color {
-    fn from(c: sm::Color) -> Self {
+impl From<cc::Color> for Color {
+    fn from(c: cc::Color) -> Self {
         match c {
-            sm::Color::White => Color::White,
-            sm::Color::Black => Color::Black,
+            cc::Color::White => Color::White,
+            cc::Color::Black => Color::Black,
         }
     }
 }
 
 #[doc(hidden)]
-impl From<Color> for sm::Color {
+impl From<Color> for cc::Color {
     fn from(c: Color) -> Self {
         match c {
-            Color::White => sm::Color::White,
-            Color::Black => sm::Color::Black,
+            Color::White => cc::Color::White,
+            Color::Black => cc::Color::Black,
         }
     }
 }
@@ -55,7 +55,7 @@ mod tests {
     }
 
     #[proptest]
-    fn color_has_an_equivalent_shakmaty_representation(c: Color) {
-        assert_eq!(Color::from(sm::Color::from(c)), c);
+    fn color_has_an_equivalent_cozy_chess_representation(c: Color) {
+        assert_eq!(Color::from(cc::Color::from(c)), c);
     }
 }

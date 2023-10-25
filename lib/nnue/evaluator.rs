@@ -26,7 +26,7 @@ pub struct Evaluator<T: Clone + Accumulator = (Material, Positional)> {
 }
 
 impl Evaluator {
-    /// Constructs the accumulator from a [`Position`].
+    /// Constructs the evaluator from a [`Position`].
     pub fn new(pos: Position) -> Self {
         let mut acc = <(Material, Positional)>::default();
 
@@ -153,13 +153,14 @@ impl<T: Clone + Accumulator> Evaluator<T> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::chess::Bitboard;
     use proptest::sample::Selector;
     use test_strategy::proptest;
 
     #[proptest]
-    fn play_updates_accumulator(
+    fn play_updates_evaluator(
         #[filter(#a.outcome().is_none())] mut a: Evaluator,
-        #[map(|s: Selector| s.select(#a.moves()))] m: Move,
+        #[map(|s: Selector| s.select(#a.moves(Bitboard::full())))] m: Move,
     ) {
         let mut b = a.pos.clone();
         a.play(m);
@@ -168,7 +169,7 @@ mod tests {
     }
 
     #[proptest]
-    fn pass_updates_accumulator(#[filter(!#a.is_check())] mut a: Evaluator) {
+    fn pass_updates_evaluator(#[filter(!#a.is_check())] mut a: Evaluator) {
         let mut b = a.pos.clone();
         a.pass();
         b.pass();
@@ -178,9 +179,9 @@ mod tests {
     #[proptest]
     fn exchange_updates_evaluator(
         #[by_ref]
-        #[filter(#a.moves().filter(|m| m.is_capture() && !m.is_en_passant()).next().is_some())]
+        #[filter(#a.moves(Bitboard::full()).filter(|m| m.is_capture() && !m.is_en_passant()).next().is_some())]
         mut a: Evaluator,
-        #[map(|s: Selector| s.select(#a.moves().filter(|m| m.is_capture() && !m.is_en_passant())).whither())]
+        #[map(|s: Selector| s.select(#a.moves(Bitboard::full()).filter(|m| m.is_capture() && !m.is_en_passant())).whither())]
         s: Square,
     ) {
         let mut b = a.pos.clone();

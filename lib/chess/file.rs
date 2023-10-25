@@ -1,5 +1,5 @@
+use cozy_chess as cc;
 use derive_more::Display;
-use shakmaty as sm;
 use std::ops::Sub;
 
 /// A column on the chess board.
@@ -71,16 +71,16 @@ impl Sub for File {
 }
 
 #[doc(hidden)]
-impl From<sm::File> for File {
-    fn from(f: sm::File) -> Self {
+impl From<cc::File> for File {
+    fn from(f: cc::File) -> Self {
         File::from_index(f as _)
     }
 }
 
 #[doc(hidden)]
-impl From<File> for sm::File {
+impl From<File> for cc::File {
     fn from(f: File) -> Self {
-        sm::File::new(f as _)
+        cc::File::index_const(f as _)
     }
 }
 
@@ -151,7 +151,7 @@ mod tests {
     }
 
     #[proptest]
-    fn file_has_an_equivalent_shakmaty_representation(f: File) {
-        assert_eq!(File::from(sm::File::from(f)), f);
+    fn file_has_an_equivalent_cozy_chess_representation(f: File) {
+        assert_eq!(File::from(cc::File::from(f)), f);
     }
 }

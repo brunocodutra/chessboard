@@ -1,4 +1,4 @@
-use crate::chess::{Move, Piece, Position, Role, Zobrist};
+use crate::chess::{Bitboard, Move, Piece, Position, Role};
 use crate::nnue::Evaluator;
 use crate::search::{Depth, DepthBounds, Killers, Limits, Options, Ply, Pv, Score, Value};
 use crate::search::{Transposition, TranspositionTable};
@@ -68,7 +68,7 @@ impl Engine {
     /// Records a `[Transposition`].
     fn record(
         &self,
-        zobrist: Zobrist,
+        pos: &Position,
         bounds: Range<Score>,
         depth: Depth,
         ply: Ply,
@@ -76,7 +76,7 @@ impl Engine {
         best: Move,
     ) {
         self.tt.set(
-            zobrist,
+            pos.zobrist(),
             if score >= bounds.end {
                 Transposition::lower(depth - ply, score.normalize(-ply), best)
             } else if score <= bounds.start {
@@ -168,15 +168,14 @@ impl Engine {
         nodes.count().ok_or(Interrupted)?;
         timer.remaining().ok_or(Interrupted)?;
 
-        let in_check = pos.is_check();
-        let zobrist = match pos.outcome() {
+        let in_check = match pos.outcome() {
             Some(o) if o.is_draw() => return Ok(Pv::new(Score::new(0), [])),
             Some(_) => return Ok(Pv::new(Score::LOWER.normalize(ply), [])),
-            None => pos.zobrist(),
+            None => pos.is_check(),
         };
 
         let (alpha, beta) = self.mdp(ply, &bounds);
-        let tpos = self.tt.get(zobrist);
+        let tpos = self.tt.get(pos.zobrist());
         let is_pv = alpha + 1 < beta;
 
         let score = match tpos {
@@ -223,7 +222,7 @@ impl Engine {
             }
         }
 
-        let mut moves = Buffer::<_, 256>::from_iter(pos.moves().filter_map(|m| {
+        let mut moves = Buffer::<_, 256>::from_iter(pos.moves(Bitboard::full()).filter_map(|m| {
             if ply >= depth && !in_check && m.is_quiet() {
                 return None;
             } else if Some(m) == tpos.map(|t| t.best()) {
@@ -263,7 +262,7 @@ impl Engine {
         };
 
         if best >= beta {
-            self.record(zobrist, bounds, depth, ply, best.score(), best[0]);
+            self.record(pos, bounds, depth, ply, best.score(), best[0]);
             return Ok(best);
         }
 
@@ -320,7 +319,7 @@ impl Engine {
             .try_reduce(|| None, |a, b| Ok(max(a, b)))?
             .assume();
 
-        self.record(zobrist, bounds, depth, ply, best.score(), best[0]);
+        self.record(pos, bounds, depth, ply, best.score(), best[0]);
 
         Ok(best)
     }
@@ -413,7 +412,7 @@ mod tests {
             return score;
         }
 
-        pos.moves()
+        pos.moves(Bitboard::full())
             .filter(|m| ply < depth || pos.is_check() || !m.is_quiet())
             .map(|m| {
                 let mut next = pos.clone();
@@ -447,7 +446,7 @@ mod tests {
         d: Depth,
         #[filter(#p >= 0)] p: Ply,
         #[filter(#s.mate().is_none() && #s >= #b)] s: Score,
-        #[map(|s: Selector| s.select(#pos.moves()))] m: Move,
+        #[map(|s: Selector| s.select(#pos.moves(Bitboard::full())))] m: Move,
     ) {
         e.tt.set(pos.zobrist(), Transposition::lower(d, s, m));
 
@@ -465,7 +464,7 @@ mod tests {
         d: Depth,
         #[filter(#p >= 0)] p: Ply,
         #[filter(#s.mate().is_none() && #s < #b)] s: Score,
-        #[map(|s: Selector| s.select(#pos.moves()))] m: Move,
+        #[map(|s: Selector| s.select(#pos.moves(Bitboard::full())))] m: Move,
     ) {
         e.tt.set(pos.zobrist(), Transposition::upper(d, s, m));
 
@@ -483,7 +482,7 @@ mod tests {
         d: Depth,
         #[filter(#p >= 0)] p: Ply,
         #[filter(#sc.mate().is_none())] sc: Score,
-        #[map(|s: Selector| s.select(#pos.moves()))] m: Move,
+        #[map(|s: Selector| s.select(#pos.moves(Bitboard::full())))] m: Move,
     ) {
         e.tt.set(pos.zobrist(), Transposition::exact(d, sc, m));
 

@@ -1,5 +1,5 @@
+use cozy_chess as cc;
 use derive_more::Display;
-use shakmaty as sm;
 use std::ops::Sub;
 
 /// A row on the chess board.
@@ -71,16 +71,16 @@ impl Sub for Rank {
 }
 
 #[doc(hidden)]
-impl From<sm::Rank> for Rank {
-    fn from(r: sm::Rank) -> Self {
+impl From<cc::Rank> for Rank {
+    fn from(r: cc::Rank) -> Self {
         Rank::from_index(r as _)
     }
 }
 
 #[doc(hidden)]
-impl From<Rank> for sm::Rank {
+impl From<Rank> for cc::Rank {
     fn from(r: Rank) -> Self {
-        sm::Rank::new(r as _)
+        cc::Rank::index_const(r as _)
     }
 }
 
@@ -151,7 +151,7 @@ mod tests {
     }
 
     #[proptest]
-    fn rank_has_an_equivalent_shakmaty_representation(r: Rank) {
-        assert_eq!(Rank::from(sm::Rank::from(r)), r);
+    fn rank_has_an_equivalent_cozy_chess_representation(r: Rank) {
+        assert_eq!(Rank::from(cc::Rank::from(r)), r);
     }
 }

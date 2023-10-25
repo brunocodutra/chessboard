@@ -1,6 +1,6 @@
 use crate::chess::{File, Rank, Square};
+use cozy_chess as cc;
 use derive_more::{BitAnd, BitAndAssign, BitOr, BitOrAssign, DebugCustom, Not};
-use shakmaty as sm;
 
 #[cfg(test)]
 use proptest::prelude::*;
@@ -10,23 +10,33 @@ use proptest::prelude::*;
     DebugCustom, Copy, Clone, Eq, PartialEq, Hash, Not, BitAnd, BitAndAssign, BitOr, BitOrAssign,
 )]
 #[cfg_attr(test, derive(test_strategy::Arbitrary))]
-#[debug(fmt = "{_0:?}")]
-pub struct Bitboard(#[cfg_attr(test, strategy(any::<u64>().prop_map(sm::Bitboard)))] sm::Bitboard);
+#[debug(fmt = "{_0:#?}")]
+pub struct Bitboard(#[cfg_attr(test, strategy(any::<u64>().prop_map(cc::BitBoard)))] cc::BitBoard);
 
 impl Bitboard {
     /// An empty board.
     pub const fn empty() -> Self {
-        Bitboard(sm::Bitboard::EMPTY)
+        Bitboard(cc::BitBoard::EMPTY)
     }
 
     /// A full board.
     pub const fn full() -> Self {
-        Bitboard(sm::Bitboard::FULL)
+        Bitboard(cc::BitBoard::FULL)
+    }
+
+    /// Light squares.
+    pub const fn light() -> Self {
+        Bitboard(cc::BitBoard::LIGHT_SQUARES)
+    }
+
+    /// Dark squares.
+    pub const fn dark() -> Self {
+        Bitboard(cc::BitBoard::DARK_SQUARES)
     }
 
     /// The number of [`Square`]s on the board.
     pub const fn len(&self) -> usize {
-        self.0.count()
+        self.0.len() as _
     }
 
     /// Whether the board is empty.
@@ -36,30 +46,30 @@ impl Bitboard {
 
     /// Whether this [`Square`] is on the board.
     pub fn contains(&self, s: Square) -> bool {
-        self.0.contains(s.into())
+        self.0.has(s.into())
     }
 }
 
 impl From<File> for Bitboard {
     fn from(f: File) -> Self {
-        Bitboard(<sm::Bitboard as From<sm::File>>::from(f.into()))
+        Bitboard(<cc::BitBoard as From<cc::File>>::from(f.into()))
     }
 }
 
 impl From<Rank> for Bitboard {
     fn from(r: Rank) -> Self {
-        Bitboard(<sm::Bitboard as From<sm::Rank>>::from(r.into()))
+        Bitboard(<cc::BitBoard as From<cc::Rank>>::from(r.into()))
     }
 }
 
 impl From<Square> for Bitboard {
     fn from(s: Square) -> Self {
-        Bitboard(<sm::Bitboard as From<sm::Square>>::from(s.into()))
+        Bitboard(<cc::BitBoard as From<cc::Square>>::from(s.into()))
     }
 }
 
 /// An iterator over the [`Square`]s in a [`Bitboard`].
-pub struct Iter(sm::bitboard::IntoIter);
+pub struct Iter(cc::BitBoardIter);
 
 impl Iterator for Iter {
     type Item = Square;
@@ -85,14 +95,14 @@ impl IntoIterator for Bitboard {
 }
 
 #[doc(hidden)]
-impl From<sm::Bitboard> for Bitboard {
-    fn from(bb: sm::Bitboard) -> Self {
+impl From<cc::BitBoard> for Bitboard {
+    fn from(bb: cc::BitBoard) -> Self {
         Bitboard(bb)
     }
 }
 
 #[doc(hidden)]
-impl From<Bitboard> for sm::Bitboard {
+impl From<Bitboard> for cc::BitBoard {
     fn from(bb: Bitboard) -> Self {
         bb.0
     }
@@ -111,6 +121,12 @@ mod tests {
     #[proptest]
     fn full_constructs_board_with_all_squares() {
         assert_eq!(Bitboard::full().into_iter().count(), 64);
+    }
+
+    #[proptest]
+    fn light_and_dark_bitboards_are_complementary() {
+        assert_eq!(Bitboard::light() | Bitboard::dark(), Bitboard::full());
+        assert_eq!(Bitboard::light() & Bitboard::dark(), Bitboard::empty());
     }
 
     #[proptest]
@@ -158,7 +174,7 @@ mod tests {
     }
 
     #[proptest]
-    fn bitboard_has_an_equivalent_shakmaty_representation(bb: Bitboard) {
-        assert_eq!(Bitboard::from(sm::Bitboard::from(bb)), bb);
+    fn bitboard_has_an_equivalent_cozy_chess_representation(bb: Bitboard) {
+        assert_eq!(Bitboard::from(cc::BitBoard::from(bb)), bb);
     }
 }
