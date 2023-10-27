@@ -59,9 +59,9 @@ impl From<Square> for Bitboard {
 }
 
 /// An iterator over the [`Square`]s in a [`Bitboard`].
-pub struct BitboardIter(sm::bitboard::IntoIter);
+pub struct Iter(sm::bitboard::IntoIter);
 
-impl Iterator for BitboardIter {
+impl Iterator for Iter {
     type Item = Square;
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -69,12 +69,18 @@ impl Iterator for BitboardIter {
     }
 }
 
+impl ExactSizeIterator for Iter {
+    fn len(&self) -> usize {
+        self.0.len()
+    }
+}
+
 impl IntoIterator for Bitboard {
     type Item = Square;
-    type IntoIter = BitboardIter;
+    type IntoIter = Iter;
 
     fn into_iter(self) -> Self::IntoIter {
-        BitboardIter(self.0.into_iter())
+        Iter(self.0.into_iter())
     }
 }
 
