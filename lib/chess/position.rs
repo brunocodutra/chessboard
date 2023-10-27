@@ -317,9 +317,8 @@ impl Position {
         let turn = self.turn();
         let attackers = self.attackers(whither, turn);
 
-        use Role::*;
         if !attackers.is_empty() {
-            for role in [Pawn, Knight, Bishop, Rook, Queen, King] {
+            for role in Role::iter() {
                 if self.by_piece(Piece(turn, role)) & attackers != Bitboard::empty() {
                     let moves = sm::Position::san_candidates(&self.0, role.into(), whither.into());
                     if let Some(vm) = moves.into_iter().max_by_key(|vm| vm.promotion()) {

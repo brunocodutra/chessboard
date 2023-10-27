@@ -1,10 +1,10 @@
 use crate::chess::{File, Rank};
 use crate::util::{Binary, Bits};
 use shakmaty as sm;
-use std::{convert::Infallible, fmt};
+use std::{convert::Infallible, fmt, ops::Sub};
 use vampirc_uci::UciSquare;
 
-/// Denotes a square on the chess board.
+/// A square on the chess board.
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
 #[cfg_attr(test, derive(test_strategy::Arbitrary))]
 #[repr(u8)]
@@ -94,6 +94,14 @@ impl Binary for Square {
     }
 }
 
+impl Sub for Square {
+    type Output = i8;
+
+    fn sub(self, rhs: Self) -> Self::Output {
+        self.index() as i8 - rhs.index() as i8
+    }
+}
+
 #[doc(hidden)]
 impl From<Square> for UciSquare {
     fn from(s: Square) -> Self {
@@ -131,6 +139,7 @@ impl From<Square> for sm::Square {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::util::Buffer;
     use std::mem::size_of;
     use test_strategy::proptest;
 
@@ -145,18 +154,41 @@ mod tests {
     }
 
     #[proptest]
+    fn square_has_an_index(s: Square) {
+        assert_eq!(Square::from_index(s.index()), s);
+    }
+
+    #[proptest]
+
+    fn from_index_constructs_square_by_index(#[strategy(0u8..64)] i: u8) {
+        assert_eq!(Square::from_index(i).index(), i);
+    }
+
+    #[proptest]
+    #[should_panic]
+
+    fn from_index_panics_if_index_out_of_range(#[strategy(64u8..)] i: u8) {
+        Square::from_index(i);
+    }
+
+    #[proptest]
+    fn square_is_ordered_by_index(a: Square, b: Square) {
+        assert_eq!(a < b, a.index() < b.index());
+    }
+
+    #[proptest]
     fn iter_returns_iterator_over_files_in_order() {
         assert_eq!(
-            Square::iter().collect::<Vec<_>>(),
-            (0..=63).map(Square::from_index).collect::<Vec<_>>()
+            Square::iter().collect::<Buffer<_, 64>>(),
+            (0..=63).map(Square::from_index).collect()
         );
     }
 
     #[proptest]
     fn iter_returns_double_ended_iterator() {
         assert_eq!(
-            Square::iter().rev().collect::<Vec<_>>(),
-            (0..=63).rev().map(Square::from_index).collect::<Vec<_>>()
+            Square::iter().rev().collect::<Buffer<_, 64>>(),
+            (0..=63).rev().map(Square::from_index).collect()
         );
     }
 
@@ -176,31 +208,13 @@ mod tests {
     }
 
     #[proptest]
-    fn square_has_an_index(s: Square) {
-        assert_eq!(Square::from_index(s.index()), s);
-    }
-
-    #[proptest]
     fn square_has_a_mirror_on_the_same_file(s: Square) {
         assert_eq!(s.mirror(), Square::new(s.file(), s.rank().mirror()));
     }
 
     #[proptest]
-
-    fn from_index_constructs_square_by_index(#[strategy(0u8..64)] i: u8) {
-        assert_eq!(Square::from_index(i).index(), i);
-    }
-
-    #[proptest]
-    #[should_panic]
-
-    fn from_index_panics_if_index_out_of_range(#[strategy(64u8..)] i: u8) {
-        Square::from_index(i);
-    }
-
-    #[proptest]
-    fn square_is_ordered_by_index(a: Square, b: Square) {
-        assert_eq!(a < b, a.index() < b.index());
+    fn subtracting_squares_gives_distance(a: Square, b: Square) {
+        assert_eq!(a - b, a.index() as i8 - b.index() as i8);
     }
 
     #[proptest]
