@@ -2,7 +2,7 @@ use derive_more::Display;
 use shakmaty as sm;
 use std::ops::Sub;
 
-/// Denotes a column on the chess board.
+/// A column on the chess board.
 #[derive(Debug, Display, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
 #[cfg_attr(test, derive(test_strategy::Arbitrary))]
 #[repr(u8)]
@@ -87,6 +87,7 @@ impl From<File> for sm::File {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::util::Buffer;
     use std::mem::size_of;
     use test_strategy::proptest;
 
@@ -96,39 +97,8 @@ mod tests {
     }
 
     #[proptest]
-    fn iter_returns_iterator_over_files_in_order() {
-        assert_eq!(
-            File::iter().collect::<Vec<_>>(),
-            (0..=7).map(File::from_index).collect::<Vec<_>>()
-        );
-    }
-
-    #[proptest]
-    fn iter_returns_double_ended_iterator() {
-        assert_eq!(
-            File::iter().rev().collect::<Vec<_>>(),
-            (0..=7).rev().map(File::from_index).collect::<Vec<_>>()
-        );
-    }
-
-    #[proptest]
-    fn iter_returns_iterator_of_exact_size() {
-        assert_eq!(File::iter().len(), 8);
-    }
-
-    #[proptest]
     fn file_has_an_index(f: File) {
         assert_eq!(File::from_index(f.index()), f);
-    }
-
-    #[proptest]
-    fn file_has_a_mirror(f: File) {
-        assert_eq!(f.mirror().index(), 7 - f.index());
-    }
-
-    #[proptest]
-    fn subtracting_files_gives_distance(a: File, b: File) {
-        assert_eq!(a - b, a.index() as i8 - b.index() as i8);
     }
 
     #[proptest]
@@ -147,6 +117,37 @@ mod tests {
     #[proptest]
     fn file_is_ordered_by_index(a: File, b: File) {
         assert_eq!(a < b, a.index() < b.index());
+    }
+
+    #[proptest]
+    fn iter_returns_iterator_over_files_in_order() {
+        assert_eq!(
+            File::iter().collect::<Buffer<_, 8>>(),
+            (0..=7).map(File::from_index).collect()
+        );
+    }
+
+    #[proptest]
+    fn iter_returns_double_ended_iterator() {
+        assert_eq!(
+            File::iter().rev().collect::<Buffer<_, 8>>(),
+            (0..=7).rev().map(File::from_index).collect()
+        );
+    }
+
+    #[proptest]
+    fn iter_returns_iterator_of_exact_size() {
+        assert_eq!(File::iter().len(), 8);
+    }
+
+    #[proptest]
+    fn file_has_a_mirror(f: File) {
+        assert_eq!(f.mirror().index(), 7 - f.index());
+    }
+
+    #[proptest]
+    fn subtracting_files_gives_distance(a: File, b: File) {
+        assert_eq!(a - b, a.index() as i8 - b.index() as i8);
     }
 
     #[proptest]

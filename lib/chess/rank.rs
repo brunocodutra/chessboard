@@ -2,7 +2,7 @@ use derive_more::Display;
 use shakmaty as sm;
 use std::ops::Sub;
 
-/// Denotes a row on the chess board.
+/// A row on the chess board.
 #[derive(Debug, Display, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
 #[cfg_attr(test, derive(test_strategy::Arbitrary))]
 #[repr(u8)]
@@ -87,6 +87,7 @@ impl From<Rank> for sm::Rank {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::util::Buffer;
     use std::mem::size_of;
     use test_strategy::proptest;
 
@@ -96,39 +97,8 @@ mod tests {
     }
 
     #[proptest]
-    fn iter_returns_iterator_over_ranks_in_order() {
-        assert_eq!(
-            Rank::iter().collect::<Vec<_>>(),
-            (0..=7).map(Rank::from_index).collect::<Vec<_>>()
-        );
-    }
-
-    #[proptest]
-    fn iter_returns_double_ended_iterator() {
-        assert_eq!(
-            Rank::iter().rev().collect::<Vec<_>>(),
-            (0..=7).rev().map(Rank::from_index).collect::<Vec<_>>()
-        );
-    }
-
-    #[proptest]
-    fn iter_returns_iterator_of_exact_size() {
-        assert_eq!(Rank::iter().len(), 8);
-    }
-
-    #[proptest]
     fn rank_has_an_index(r: Rank) {
         assert_eq!(Rank::from_index(r.index()), r);
-    }
-
-    #[proptest]
-    fn rank_has_a_mirror(r: Rank) {
-        assert_eq!(r.mirror().index(), 7 - r.index());
-    }
-
-    #[proptest]
-    fn subtracting_ranks_gives_distance(a: Rank, b: Rank) {
-        assert_eq!(a - b, a.index() as i8 - b.index() as i8);
     }
 
     #[proptest]
@@ -147,6 +117,37 @@ mod tests {
     #[proptest]
     fn rank_is_ordered_by_index(a: Rank, b: Rank) {
         assert_eq!(a < b, a.index() < b.index());
+    }
+
+    #[proptest]
+    fn iter_returns_iterator_over_ranks_in_order() {
+        assert_eq!(
+            Rank::iter().collect::<Buffer<_, 8>>(),
+            (0..=7).map(Rank::from_index).collect()
+        );
+    }
+
+    #[proptest]
+    fn iter_returns_double_ended_iterator() {
+        assert_eq!(
+            Rank::iter().rev().collect::<Buffer<_, 8>>(),
+            (0..=7).rev().map(Rank::from_index).collect()
+        );
+    }
+
+    #[proptest]
+    fn iter_returns_iterator_of_exact_size() {
+        assert_eq!(Rank::iter().len(), 8);
+    }
+
+    #[proptest]
+    fn rank_has_a_mirror(r: Rank) {
+        assert_eq!(r.mirror().index(), 7 - r.index());
+    }
+
+    #[proptest]
+    fn subtracting_ranks_gives_distance(a: Rank, b: Rank) {
+        assert_eq!(a - b, a.index() as i8 - b.index() as i8);
     }
 
     #[proptest]

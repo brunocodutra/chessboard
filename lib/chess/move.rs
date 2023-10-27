@@ -25,6 +25,20 @@ impl Move {
         Square::decode(self.bits(4..).pop()).assume()
     }
 
+    /// The promotion specifier.
+    pub fn promotion(&self) -> Option<Role> {
+        if self.is_promotion() {
+            Some(Role::from_index(self.bits(..2).get() as u8 + 1))
+        } else {
+            None
+        }
+    }
+
+    /// Whether this is a promotion move.
+    pub fn is_promotion(&self) -> bool {
+        self.bits(3..=3).get() != 0
+    }
+
     /// Whether this is a castling move.
     pub fn is_castling(&self) -> bool {
         self.bits(..4).get() == 0b0001
@@ -35,11 +49,6 @@ impl Move {
         self.bits(..4).get() == 0b0011
     }
 
-    /// Whether this is a promotion move.
-    pub fn is_promotion(&self) -> bool {
-        self.bits(3..=3).get() != 0
-    }
-
     /// Whether this is a capture move.
     pub fn is_capture(&self) -> bool {
         self.bits(2..=2).get() != 0 || (self.bits(1..=1).get() != 0 && !self.is_promotion())
@@ -48,16 +57,6 @@ impl Move {
     /// Whether this move is neither a capture nor a promotion.
     pub fn is_quiet(&self) -> bool {
         !(self.is_capture() || self.is_promotion())
-    }
-
-    /// The promotion specifier.
-    pub fn promotion(&self) -> Option<Role> {
-        if self.is_promotion() {
-            let idx = self.bits(..2).get() as usize;
-            Some([Role::Knight, Role::Bishop, Role::Rook, Role::Queen][idx])
-        } else {
-            None
-        }
     }
 }
 
@@ -136,14 +135,7 @@ impl From<sm::Move> for Move {
                 bits.push(Square::from(to).encode());
                 bits.push(Bits::<u8, 1>::new(promotion.is_some() as _));
                 bits.push(Bits::<u8, 1>::new(capture.is_some() as _));
-
-                match promotion {
-                    Some(sm::Role::Knight) => bits.push(Bits::<u8, 2>::new(0b00)),
-                    Some(sm::Role::Bishop) => bits.push(Bits::<u8, 2>::new(0b01)),
-                    Some(sm::Role::Rook) => bits.push(Bits::<u8, 2>::new(0b10)),
-                    Some(sm::Role::Queen) => bits.push(Bits::<u8, 2>::new(0b11)),
-                    _ => bits.push(Bits::<u8, 2>::new(0b00)),
-                }
+                bits.push(Bits::<u8, 2>::new(promotion.map_or(0, |r| r as u8 - 2)));
             }
 
             sm::Move::EnPassant { to, .. } => {
