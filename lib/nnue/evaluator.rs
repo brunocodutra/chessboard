@@ -153,7 +153,7 @@ impl<T: Clone + Accumulator> Evaluator<T> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use proptest::{prop_assume, sample::Selector};
+    use proptest::sample::Selector;
     use test_strategy::proptest;
 
     #[proptest]
@@ -176,16 +176,16 @@ mod tests {
     }
 
     #[proptest]
-    fn exchange_updates_accumulator(
-        #[filter(#a.moves().filter(Move::is_capture).next().is_some())] mut a: Evaluator,
-        #[map(|s: Selector| s.select(#a.moves().filter(Move::is_capture)))] m: Move,
+    fn exchange_updates_evaluator(
+        #[by_ref]
+        #[filter(#a.moves().filter(|m| m.is_capture() && !m.is_en_passant()).next().is_some())]
+        mut a: Evaluator,
+        #[map(|s: Selector| s.select(#a.moves().filter(|m| m.is_capture() && !m.is_en_passant())).whither())]
+        s: Square,
     ) {
         let mut b = a.pos.clone();
-
-        // Skip en passant captures.
-        prop_assume!(b.exchange(m.whither()).is_ok());
-
-        a.exchange(m.whither())?;
+        a.exchange(s)?;
+        b.exchange(s)?;
         assert_eq!(a, Evaluator::new(b));
     }
 }
