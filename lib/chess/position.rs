@@ -173,17 +173,21 @@ impl Position {
             .map(Piece::from)
     }
 
-    /// Into where the piece in this [`Square`] can attack.
-    pub fn attacks(&self, s: Square) -> Bitboard {
-        sm::Position::board(&self.0).attacks_from(s.into()).into()
+    /// Into where a [`Piece`] on this [`Square`] can attack.
+    pub fn attacks(&self, s: Square, Piece(c, r): Piece) -> Bitboard {
+        Bitboard::from(match r {
+            Role::Pawn => sm::attacks::pawn_attacks(c.into(), s.into()),
+            Role::Knight => sm::attacks::knight_attacks(s.into()),
+            Role::Bishop => sm::attacks::bishop_attacks(s.into(), self.occupied().into()),
+            Role::Rook => sm::attacks::rook_attacks(s.into(), self.occupied().into()),
+            Role::Queen => sm::attacks::queen_attacks(s.into(), self.occupied().into()),
+            Role::King => sm::attacks::king_attacks(s.into()),
+        })
     }
 
-    /// From where pieces of this [`Color`] can attack into this [`Square`].
-    pub fn attackers(&self, s: Square, c: Color) -> Bitboard {
-        let board = sm::Position::board(&self.0);
-        board
-            .attacks_to(s.into(), c.into(), board.occupied())
-            .into()
+    /// From where a [`Piece`] can attack into this [`Square`].
+    pub fn attackers(&self, s: Square, p: Piece) -> Bitboard {
+        self.attacks(s, p.mirror())
     }
 
     /// How many other times this position has repeated.
@@ -315,17 +319,18 @@ impl Position {
     /// Exchange a piece on [`Square`] by the attacker of least value.
     pub fn exchange(&mut self, whither: Square) -> Result<Move, ImpossibleExchange> {
         let turn = self.turn();
-        let attackers = self.attackers(whither, turn);
+        if !self.by_color(!turn).contains(whither) {
+            return Err(ImpossibleExchange(whither));
+        }
 
-        if !attackers.is_empty() {
-            for role in Role::iter() {
-                if self.by_piece(Piece(turn, role)) & attackers != Bitboard::empty() {
-                    let moves = sm::Position::san_candidates(&self.0, role.into(), whither.into());
-                    if let Some(vm) = moves.into_iter().max_by_key(|vm| vm.promotion()) {
-                        self.1 = Default::default();
-                        sm::Position::play_unchecked(&mut self.0, &vm);
-                        return Ok(vm.into());
-                    }
+        for role in Role::iter() {
+            let p = Piece(turn, role);
+            if self.by_piece(p) & self.attackers(whither, p) != Bitboard::empty() {
+                let moves = sm::Position::san_candidates(&self.0, role.into(), whither.into());
+                if let Some(vm) = moves.into_iter().max_by_key(|vm| vm.promotion()) {
+                    self.1 = Default::default();
+                    sm::Position::play_unchecked(&mut self.0, &vm);
+                    return Ok(vm.into());
                 }
             }
         }
@@ -535,28 +540,18 @@ mod tests {
     }
 
     #[proptest]
-    fn attacks_returns_squares_attacked_by_this_piece(pos: Position, s: Square) {
-        for whither in pos.attacks(s) {
-            assert!(pos.attackers(whither, pos[s].unwrap().color()).contains(s))
+    fn attacks_returns_squares_attacked_by_a_piece(pos: Position) {
+        for (p, s) in pos.iter() {
+            for whither in pos.attacks(s, p) {
+                assert!(pos.attackers(whither, p).contains(s))
+            }
         }
     }
 
     #[proptest]
-    fn attacks_returns_empty_iterator_if_square_is_not_occupied(
-        pos: Position,
-        #[filter(#pos[#s].is_none())] s: Square,
-    ) {
-        assert_eq!(pos.attacks(s).len(), 0);
-    }
-
-    #[proptest]
-    fn attackers_returns_squares_from_where_pieces_of_a_color_can_attack(
-        pos: Position,
-        s: Square,
-        c: Color,
-    ) {
-        for whence in pos.attackers(s, c) {
-            assert!(pos.attacks(whence).contains(s))
+    fn attackers_returns_squares_from_where_a_piece_can_attack(pos: Position, s: Square, p: Piece) {
+        for whence in pos.attackers(s, p) {
+            assert!(pos.attacks(whence, p).contains(s))
         }
     }
 
@@ -598,18 +593,31 @@ mod tests {
 
     #[proptest]
     fn exchange_finds_attacker_of_least_value(
-        #[filter(#pos.moves().filter(Move::is_capture).next().is_some())] pos: Position,
-        #[map(|s: Selector| s.select(#pos.moves().filter(Move::is_capture)).whither())] s: Square,
+        #[by_ref]
+        #[filter(#pos.moves().filter(|m| m.is_capture() && !m.is_en_passant()).next().is_some())]
+        pos: Position,
+        #[map(|s: Selector| s.select(#pos.moves().filter(|m| m.is_capture() && !m.is_en_passant())).whither())]
+        s: Square,
     ) {
         let m = pos.clone().exchange(s)?;
-        let attackers = pos.attackers(s, pos.turn());
-        assert!(attackers.contains(m.whence()));
 
-        let mut moves = Buffer::<_, 128>::from_iter(pos.moves().filter(|m| m.whither() == s));
-        moves.sort_unstable_by_key(|m| (pos.role_on(m.whence()), Reverse(m.promotion())));
+        let lva = pos
+            .moves()
+            .filter(|m| m.whither() == s)
+            .filter(Move::is_capture)
+            .min_by_key(|m| (pos.role_on(m.whence()), Reverse(m.promotion())))
+            .unwrap();
 
-        assert_eq!(m.promotion(), moves[0].promotion());
-        assert_eq!(pos.role_on(m.whence()), pos.role_on(moves[0].whence()));
+        assert_eq!(m.promotion(), lva.promotion());
+        assert_eq!(pos.role_on(m.whence()), pos.role_on(lva.whence()));
+    }
+
+    #[proptest]
+    fn exchange_fails_if_not_a_regular_capture(
+        mut pos: Position,
+        #[filter(#pos.color_on(#s) != Some(!#pos.turn()))] s: Square,
+    ) {
+        assert_eq!(pos.exchange(s), Err(ImpossibleExchange(s)));
     }
 
     #[proptest]
