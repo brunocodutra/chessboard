@@ -1,9 +1,10 @@
 use crate::chess::{Move, Zobrist};
 use crate::search::{Depth, HashSize, Score};
-use crate::util::{Assume, Binary, Bits, Cache};
+use crate::util::{Assume, Binary, Bits};
 use derive_more::{Display, Error};
+use std::mem::size_of;
 use std::ops::{RangeInclusive, Shr};
-use std::{cmp::Ordering, mem::size_of};
+use std::sync::atomic::{AtomicU64, Ordering};
 
 #[cfg(test)]
 use crate::chess::Position;
@@ -13,36 +14,48 @@ use proptest::{collection::*, prelude::*};
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
 #[cfg_attr(test, derive(test_strategy::Arbitrary))]
-enum Kind {
+enum TranspositionKind {
     Lower,
     Upper,
     Exact,
+}
+
+/// The reason why decoding [`Transposition`] [`Kind`] from binary failed.
+#[derive(Debug, Display, Clone, Eq, PartialEq, Error)]
+#[cfg_attr(test, derive(test_strategy::Arbitrary))]
+#[display(fmt = "not a valid transposition kind")]
+struct DecodeTranspositionKindError;
+
+impl Binary for TranspositionKind {
+    type Bits = Bits<u8, 2>;
+    type Error = DecodeTranspositionKindError;
+
+    fn encode(&self) -> Self::Bits {
+        Bits::<u8, 2>::new(*self as _)
+    }
+
+    fn decode(mut bits: Self::Bits) -> Result<Self, Self::Error> {
+        match bits.pop::<u8, 2>().get() {
+            0 => Ok(TranspositionKind::Lower),
+            1 => Ok(TranspositionKind::Upper),
+            2 => Ok(TranspositionKind::Exact),
+            _ => Err(DecodeTranspositionKindError),
+        }
+    }
 }
 
 /// A partial search result.
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
 #[cfg_attr(test, derive(test_strategy::Arbitrary))]
 pub struct Transposition {
-    kind: Kind,
+    kind: TranspositionKind,
     depth: Depth,
     score: Score,
     best: Move,
 }
 
-impl PartialOrd for Transposition {
-    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        Some(self.cmp(other))
-    }
-}
-
-impl Ord for Transposition {
-    fn cmp(&self, other: &Self) -> Ordering {
-        (self.depth, self.kind).cmp(&(other.depth, other.kind))
-    }
-}
-
 impl Transposition {
-    fn new(kind: Kind, depth: Depth, score: Score, best: Move) -> Self {
+    fn new(kind: TranspositionKind, depth: Depth, score: Score, best: Move) -> Self {
         Transposition {
             kind,
             depth,
@@ -53,25 +66,25 @@ impl Transposition {
 
     /// Constructs a [`Transposition`] given a lower bound for the score, the depth searched, and best [`Move`].
     pub fn lower(depth: Depth, score: Score, best: Move) -> Self {
-        Transposition::new(Kind::Lower, depth, score, best)
+        Transposition::new(TranspositionKind::Lower, depth, score, best)
     }
 
     /// Constructs a [`Transposition`] given an upper bound for the score, the depth searched, and best [`Move`].
     pub fn upper(depth: Depth, score: Score, best: Move) -> Self {
-        Transposition::new(Kind::Upper, depth, score, best)
+        Transposition::new(TranspositionKind::Upper, depth, score, best)
     }
 
     /// Constructs a [`Transposition`] given the exact score, the depth searched, and best [`Move`].
     pub fn exact(depth: Depth, score: Score, best: Move) -> Self {
-        Transposition::new(Kind::Exact, depth, score, best)
+        Transposition::new(TranspositionKind::Exact, depth, score, best)
     }
 
     /// Bounds for the exact score.
     pub fn bounds(&self) -> RangeInclusive<Score> {
         match self.kind {
-            Kind::Lower => self.score..=Score::UPPER,
-            Kind::Upper => Score::LOWER..=self.score,
-            Kind::Exact => self.score..=self.score,
+            TranspositionKind::Lower => self.score..=Score::UPPER,
+            TranspositionKind::Upper => Score::LOWER..=self.score,
+            TranspositionKind::Exact => self.score..=self.score,
         }
     }
 
@@ -109,27 +122,25 @@ impl Binary for SignedTransposition {
 
     fn encode(&self) -> Self::Bits {
         let mut bits = Bits::default();
-        bits.push(self.1.encode());
-        bits.push(self.0.best.encode());
-        bits.push(self.0.score.encode());
         bits.push(self.0.depth.encode());
-        bits.push(Bits::<u8, 2>::new(self.0.kind as _));
+        bits.push(self.0.kind.encode());
+        bits.push(self.0.score.encode());
+        bits.push(self.0.best.encode());
+        bits.push(self.1.encode());
         bits
     }
 
     fn decode(mut bits: Self::Bits) -> Result<Self, Self::Error> {
-        Ok(SignedTransposition(
-            Transposition {
-                kind: [Kind::Lower, Kind::Upper, Kind::Exact]
-                    .into_iter()
-                    .nth(bits.pop::<_, 2>().get())
-                    .ok_or(DecodeTranspositionError)?,
-                depth: Depth::decode(bits.pop()).map_err(|_| DecodeTranspositionError)?,
-                score: Score::decode(bits.pop()).map_err(|_| DecodeTranspositionError)?,
-                best: Move::decode(bits.pop()).map_err(|_| DecodeTranspositionError)?,
-            },
-            Signature::decode(bits.pop()).map_err(|_| DecodeTranspositionError)?,
-        ))
+        let sig = Signature::decode(bits.pop()).map_err(|_| DecodeTranspositionError)?;
+
+        let tpos = Transposition {
+            best: Move::decode(bits.pop()).map_err(|_| DecodeTranspositionError)?,
+            score: Score::decode(bits.pop()).map_err(|_| DecodeTranspositionError)?,
+            kind: TranspositionKind::decode(bits.pop()).map_err(|_| DecodeTranspositionError)?,
+            depth: Depth::decode(bits.pop()).map_err(|_| DecodeTranspositionError)?,
+        };
+
+        Ok(SignedTransposition(tpos, sig))
     }
 }
 
@@ -139,19 +150,19 @@ impl Binary for SignedTransposition {
 pub struct TranspositionTable {
     #[cfg_attr(test,
         strategy(hash_map(any::<Position>(), any::<Transposition>(), ..32).prop_map(|ts| {
-            let cache = Cache::new(ts.len().next_power_of_two());
+            let mut cache: Box<[AtomicU64]> = (0..ts.len().next_power_of_two()).map(|_| AtomicU64::default()).collect();
 
             for (pos, t) in ts {
                 let key = pos.zobrist();
-                let idx = key.slice(..cache.len().trailing_zeros()).get() as _;
+                let idx = key.slice(..cache.len().trailing_zeros()).get() as usize;
                 let sig = key.slice(cache.len().trailing_zeros()..).pop();
-                cache.store(idx, Some(SignedTransposition(t, sig)).encode());
+                *cache[idx].get_mut() = Some(SignedTransposition(t, sig)).encode().get();
             }
 
             cache
         }))
     )]
-    cache: Cache<<Option<SignedTransposition> as Binary>::Bits>,
+    cache: Box<[AtomicU64]>,
 }
 
 impl TranspositionTable {
@@ -159,8 +170,10 @@ impl TranspositionTable {
 
     /// Constructs a transposition table of at most `size` many bytes.
     pub fn new(size: HashSize) -> Self {
+        let capacity = (1 + size.shr(1u32)).next_power_of_two() / Self::WIDTH;
+
         TranspositionTable {
-            cache: Cache::new((1 + size.shr(1u32)).next_power_of_two() / Self::WIDTH),
+            cache: (0..capacity).map(|_| AtomicU64::default()).collect(),
         }
     }
 
@@ -172,11 +185,6 @@ impl TranspositionTable {
     /// The actual size of this table in number of entries.
     pub fn capacity(&self) -> usize {
         self.cache.len()
-    }
-
-    /// Clears the table.
-    pub fn clear(&mut self) {
-        self.cache.clear()
     }
 
     fn signature_of(&self, key: Zobrist) -> Signature {
@@ -194,7 +202,7 @@ impl TranspositionTable {
         }
 
         let sig = self.signature_of(key);
-        let bits = self.cache.load(self.index_of(key));
+        let bits = Bits::new(self.cache[self.index_of(key)].load(Ordering::Relaxed));
         match Binary::decode(bits).assume() {
             Some(SignedTransposition(t, s)) if s == sig => Some(t),
             _ => None,
@@ -204,15 +212,11 @@ impl TranspositionTable {
     /// Stores a [`Transposition`] in the slot associated with `key`.
     ///
     /// In the slot if not empty, the [`Transposition`] with greater depth is chosen.
-    pub fn set(&self, key: Zobrist, transposition: Transposition) {
+    pub fn set(&self, key: Zobrist, tpos: Transposition) {
         if self.capacity() > 0 {
             let sig = self.signature_of(key);
-            let bits = Some(SignedTransposition(transposition, sig)).encode();
-            self.cache
-                .update(self.index_of(key), |r| match Binary::decode(r).assume() {
-                    Some(SignedTransposition(t, _)) if t > transposition => None,
-                    _ => Some(bits),
-                })
+            let bits = Some(SignedTransposition(tpos, sig)).encode();
+            self.cache[self.index_of(key)].fetch_max(bits.get(), Ordering::Relaxed);
         }
     }
 }
@@ -226,7 +230,7 @@ mod tests {
     fn lower_constructs_lower_bound_transposition(s: Score, d: Depth, m: Move) {
         assert_eq!(
             Transposition::lower(d, s, m),
-            Transposition::new(Kind::Lower, d, s, m)
+            Transposition::new(TranspositionKind::Lower, d, s, m)
         );
     }
 
@@ -234,7 +238,7 @@ mod tests {
     fn upper_constructs_upper_bound_transposition(s: Score, d: Depth, m: Move) {
         assert_eq!(
             Transposition::upper(d, s, m),
-            Transposition::new(Kind::Upper, d, s, m)
+            Transposition::new(TranspositionKind::Upper, d, s, m)
         );
     }
 
@@ -242,29 +246,13 @@ mod tests {
     fn exact_constructs_exact_transposition(s: Score, d: Depth, m: Move) {
         assert_eq!(
             Transposition::exact(d, s, m),
-            Transposition::new(Kind::Exact, d, s, m)
+            Transposition::new(TranspositionKind::Exact, d, s, m)
         );
     }
 
     #[proptest]
     fn transposition_score_is_between_bounds(t: Transposition) {
         assert!(t.bounds().contains(&t.score()));
-    }
-
-    #[proptest]
-    fn transposition_with_larger_depth_is_larger(
-        t: Transposition,
-        #[filter(#t.depth() != #u.depth())] u: Transposition,
-    ) {
-        assert_eq!(t < u, t.depth() < u.depth());
-    }
-
-    #[proptest]
-    fn transpositions_with_same_depth_are_compared_by_kind(
-        t: Transposition,
-        #[filter(#t.depth() == #u.depth())] u: Transposition,
-    ) {
-        assert_eq!(t < u, t.kind < u.kind);
     }
 
     #[proptest]
@@ -297,30 +285,30 @@ mod tests {
     }
 
     #[proptest]
-    fn get_returns_none_if_transposition_does_not_exist(tt: TranspositionTable, k: Zobrist) {
-        tt.cache.store(tt.index_of(k), Bits::default());
+    fn get_returns_none_if_transposition_does_not_exist(mut tt: TranspositionTable, k: Zobrist) {
+        *tt.cache[tt.index_of(k)].get_mut() = 0;
         assert_eq!(tt.get(k), None);
     }
 
     #[proptest]
     fn get_returns_none_if_signature_does_not_match(
-        tt: TranspositionTable,
+        mut tt: TranspositionTable,
         t: Transposition,
         k: Zobrist,
     ) {
         let st = Some(SignedTransposition(t, !tt.signature_of(k)));
-        tt.cache.store(tt.index_of(k), st.encode());
+        *tt.cache[tt.index_of(k)].get_mut() = st.encode().get();
         assert_eq!(tt.get(k), None);
     }
 
     #[proptest]
     fn get_returns_some_if_transposition_exists(
-        tt: TranspositionTable,
+        mut tt: TranspositionTable,
         t: Transposition,
         k: Zobrist,
     ) {
         let st = Some(SignedTransposition(t, tt.signature_of(k)));
-        tt.cache.store(tt.index_of(k), st.encode());
+        *tt.cache[tt.index_of(k)].get_mut() = st.encode().get();
         assert_eq!(tt.get(k), Some(t));
     }
 
@@ -330,17 +318,17 @@ mod tests {
     }
 
     #[proptest]
-    fn set_keeps_greater_transposition(
-        tt: TranspositionTable,
+    fn set_keeps_transposition_with_greater_depth(
+        #[by_ref] mut tt: TranspositionTable,
         t: Transposition,
-        u: Transposition,
+        #[filter(#t.depth() != #u.depth())] u: Transposition,
         k: Zobrist,
     ) {
         let st = Some(SignedTransposition(t, tt.signature_of(k)));
-        tt.cache.store(tt.index_of(k), st.encode());
+        *tt.cache[tt.index_of(k)].get_mut() = st.encode().get();
         tt.set(k, u);
 
-        if t > u {
+        if t.depth() > u.depth() {
             assert_eq!(tt.get(k), Some(t));
         } else {
             assert_eq!(tt.get(k), Some(u));
@@ -349,31 +337,25 @@ mod tests {
 
     #[proptest]
     fn set_ignores_the_signature_mismatch(
-        #[by_ref] tt: TranspositionTable,
+        #[by_ref] mut tt: TranspositionTable,
         t: Transposition,
         #[filter(#u.depth() > #t.depth())] u: Transposition,
         k: Zobrist,
     ) {
         let st = Some(SignedTransposition(t, !tt.signature_of(k)));
-        tt.cache.store(tt.index_of(k), st.encode());
+        *tt.cache[tt.index_of(k)].get_mut() = st.encode().get();
         tt.set(k, u);
         assert_eq!(tt.get(k), Some(u));
     }
 
     #[proptest]
     fn set_stores_transposition_if_none_exists(
-        tt: TranspositionTable,
+        mut tt: TranspositionTable,
         t: Transposition,
         k: Zobrist,
     ) {
-        tt.cache.store(tt.index_of(k), Bits::default());
+        *tt.cache[tt.index_of(k)].get_mut() = 0;
         tt.set(k, t);
         assert_eq!(tt.get(k), Some(t));
-    }
-
-    #[proptest]
-    fn clear_resets_cache(mut tt: TranspositionTable, k: Zobrist) {
-        tt.clear();
-        assert_eq!(tt.get(k), None);
     }
 }
