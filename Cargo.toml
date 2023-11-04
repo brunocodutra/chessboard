@@ -11,8 +11,6 @@ keywords = ["chess"]
 
 [dependencies]
 arrayvec = { version = "0.7.3", default-features = false, features = ["std"] }
-atomic = { version = "0.6.0", default-features = false, features = ["std"] }
-bytemuck = { version = "1.13.1", default-features = false }
 clap = { version = "4.4.7", default-features = false, features = [
     "derive",
     "help",
