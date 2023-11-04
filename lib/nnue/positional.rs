@@ -38,7 +38,7 @@ impl Accumulator for Positional {
 
     fn evaluate(&self, phase: usize) -> i32 {
         let l1: &[i16; Nnue::L1] = unsafe { transmute(&self.0) };
-        NNUE.nns[phase].forward(l1) / 16
+        NNUE.output[phase].forward(l1) / 16
     }
 }
 
