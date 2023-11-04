@@ -142,14 +142,6 @@ impl Axpy<i8x16, i8x16> for i32x4 {
     }
 }
 
-impl<const I: usize, const O: usize> Axpy<[[i8; I]; O], [i8; I]> for [i32; O] {
-    fn axpy(&mut self, a: &[[i8; I]; O], x: &[i8; I]) {
-        for (o, y) in self.iter_mut().enumerate() {
-            y.axpy(&a[o], x);
-        }
-    }
-}
-
 impl<T, const I: usize, const O: usize> Axpy<[[T; O]; I], [u16]> for [T; O]
 where
     T: Copy + AddAssign,
@@ -229,19 +221,6 @@ mod tests {
         y.axpy(&a, &x);
 
         assert_eq!(y, a.iter().zip(x).map(|(&a, x)| a as i32 * x as i32).sum());
-    }
-
-    #[proptest]
-    fn axpy_computes_inner_product_of_matrix_and_vector(a: [[i8; 50]; 10], x: [i8; 50]) {
-        let x = x.map(|v| v.max(0));
-
-        let mut y = [0; 10];
-        y.axpy(&a, &x);
-
-        assert_eq!(
-            y,
-            a.map(|a| a.iter().zip(x).map(|(&a, x)| a as i32 * x as i32).sum())
-        );
     }
 
     #[proptest]
