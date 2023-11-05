@@ -1,5 +1,5 @@
 use crate::chess::{Move, Piece, Position, Role};
-use crate::nnue::{Evaluator, Value};
+use crate::nnue::{Evaluator, Value, NNUE};
 use crate::search::{Depth, DepthBounds, Killers, Limits, Options, Ply, Pv, Score};
 use crate::search::{Transposition, TranspositionTable};
 use crate::util::{Assume, Bounds, Buffer, Counter, Timer};
@@ -56,6 +56,8 @@ impl Engine {
 
     /// Initializes the engine with the given [`Options`].
     pub fn with_options(options: Options) -> Self {
+        lazy_static::initialize(&NNUE);
+
         Engine {
             tt: TranspositionTable::new(options.hash),
             executor: ThreadPoolBuilder::new()

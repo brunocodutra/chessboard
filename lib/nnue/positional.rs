@@ -4,6 +4,7 @@ use std::mem::transmute;
 /// An accumulator for the feature transformer.
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
 #[cfg_attr(test, derive(test_strategy::Arbitrary))]
+#[repr(align(64))]
 pub struct Positional(
     #[cfg_attr(test, map(|vs: [[i8; { Nnue::L1 / 2 }]; 2]| vs.map(|v| v.map(i16::from))))]
     [[i16; Nnue::L1 / 2]; 2],
