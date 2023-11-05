@@ -1,4 +1,4 @@
-#![feature(array_chunks, const_maybe_uninit_write, const_mut_refs, portable_simd)]
+#![feature(array_chunks, new_uninit, portable_simd)]
 
 /// Chess domain types.
 pub mod chess;
