@@ -72,6 +72,7 @@ impl Sub for File {
 
 #[doc(hidden)]
 impl From<cc::File> for File {
+    #[inline(always)]
     fn from(f: cc::File) -> Self {
         File::from_index(f as _)
     }
@@ -79,6 +80,7 @@ impl From<cc::File> for File {
 
 #[doc(hidden)]
 impl From<File> for cc::File {
+    #[inline(always)]
     fn from(f: File) -> Self {
         cc::File::index_const(f as _)
     }
