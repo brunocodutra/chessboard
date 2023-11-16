@@ -81,6 +81,7 @@ impl From<UciPiece> for Role {
 
 #[doc(hidden)]
 impl From<Role> for cc::Piece {
+    #[inline(always)]
     fn from(r: Role) -> Self {
         cc::Piece::index_const(r as _)
     }
@@ -88,6 +89,7 @@ impl From<Role> for cc::Piece {
 
 #[doc(hidden)]
 impl From<cc::Piece> for Role {
+    #[inline(always)]
     fn from(r: cc::Piece) -> Self {
         Role::from_index(r as _)
     }
