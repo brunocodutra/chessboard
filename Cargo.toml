@@ -48,6 +48,10 @@ strip = "symbols"
 [profile.dev]
 opt-level = 3
 
+[profile.bench]
+debug = true
+strip = false
+
 [lib]
 name = "lib"
 path = "lib/lib.rs"
