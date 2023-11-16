@@ -72,6 +72,7 @@ impl Sub for Rank {
 
 #[doc(hidden)]
 impl From<cc::Rank> for Rank {
+    #[inline(always)]
     fn from(r: cc::Rank) -> Self {
         Rank::from_index(r as _)
     }
@@ -79,6 +80,7 @@ impl From<cc::Rank> for Rank {
 
 #[doc(hidden)]
 impl From<Rank> for cc::Rank {
+    #[inline(always)]
     fn from(r: Rank) -> Self {
         cc::Rank::index_const(r as _)
     }

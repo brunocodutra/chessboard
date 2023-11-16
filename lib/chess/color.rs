@@ -26,6 +26,7 @@ impl Not for Color {
 
 #[doc(hidden)]
 impl From<cc::Color> for Color {
+    #[inline(always)]
     fn from(c: cc::Color) -> Self {
         match c {
             cc::Color::White => Color::White,
@@ -36,6 +37,7 @@ impl From<cc::Color> for Color {
 
 #[doc(hidden)]
 impl From<Color> for cc::Color {
+    #[inline(always)]
     fn from(c: Color) -> Self {
         match c {
             Color::White => cc::Color::White,

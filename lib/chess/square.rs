@@ -124,6 +124,7 @@ impl From<UciSquare> for Square {
 
 #[doc(hidden)]
 impl From<cc::Square> for Square {
+    #[inline(always)]
     fn from(s: cc::Square) -> Self {
         Square::from_index(s as _)
     }
@@ -131,6 +132,7 @@ impl From<cc::Square> for Square {
 
 #[doc(hidden)]
 impl From<Square> for cc::Square {
+    #[inline(always)]
     fn from(s: Square) -> Self {
         cc::Square::index_const(s as _)
     }

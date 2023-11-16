@@ -96,6 +96,7 @@ impl IntoIterator for Bitboard {
 
 #[doc(hidden)]
 impl From<cc::BitBoard> for Bitboard {
+    #[inline(always)]
     fn from(bb: cc::BitBoard) -> Self {
         Bitboard(bb)
     }
@@ -103,6 +104,7 @@ impl From<cc::BitBoard> for Bitboard {
 
 #[doc(hidden)]
 impl From<Bitboard> for cc::BitBoard {
+    #[inline(always)]
     fn from(bb: Bitboard) -> Self {
         bb.0
     }
