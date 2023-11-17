@@ -9,6 +9,7 @@ use proptest::prelude::*;
 #[cfg(test)]
 use std::ops::RangeInclusive;
 
+#[inline(always)]
 fn ones<T: PrimInt + Unsigned>(n: u32) -> T {
     match n {
         0 => T::zero(),
@@ -33,17 +34,20 @@ impl<T: 'static + Binary + PrimInt + Unsigned, const W: u32> Bits<T, W> {
     /// # Panics
     ///
     /// Panics if `b` is too wide.
+    #[inline(always)]
     pub fn new(b: T) -> Self {
         assert!(b <= ones(W));
         Bits(b)
     }
 
     /// Get raw collection of bits.
+    #[inline(always)]
     pub fn get(&self) -> T {
         self.0
     }
 
     /// Returns a slice of bits.
+    #[inline(always)]
     pub fn slice<R: RangeBounds<u32>>(&self, r: R) -> Self {
         let a = match r.start_bound() {
             Bound::Included(&i) => i,
@@ -65,6 +69,7 @@ impl<T: 'static + Binary + PrimInt + Unsigned, const W: u32> Bits<T, W> {
     /// # Panics
     ///
     /// Panics on overflow.
+    #[inline(always)]
     pub fn push<U: 'static + Binary + PrimInt + Unsigned + AsPrimitive<T>, const N: u32>(
         &mut self,
         bits: Bits<U, N>,
@@ -77,6 +82,7 @@ impl<T: 'static + Binary + PrimInt + Unsigned, const W: u32> Bits<T, W> {
     /// # Panics
     ///
     /// Panics on underflow.
+    #[inline(always)]
     pub fn pop<U: 'static + Binary + PrimInt + Unsigned, const N: u32>(&mut self) -> Bits<U, N>
     where
         T: AsPrimitive<U>,
@@ -88,6 +94,7 @@ impl<T: 'static + Binary + PrimInt + Unsigned, const W: u32> Bits<T, W> {
 }
 
 impl<T: 'static + Binary + PrimInt + Unsigned, const W: u32> Default for Bits<T, W> {
+    #[inline(always)]
     fn default() -> Self {
         Bits::new(T::zero())
     }
@@ -96,6 +103,7 @@ impl<T: 'static + Binary + PrimInt + Unsigned, const W: u32> Default for Bits<T,
 impl<T: 'static + Binary + PrimInt + Unsigned, const W: u32> Not for Bits<T, W> {
     type Output = Self;
 
+    #[inline(always)]
     fn not(self) -> Self::Output {
         Bits::new(!self.get() & ones(W))
     }
