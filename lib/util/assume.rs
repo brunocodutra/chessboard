@@ -12,7 +12,7 @@ pub trait Assume {
 impl<T> Assume for Option<T> {
     type Assumed = T;
 
-    #[inline]
+    #[inline(always)]
     #[track_caller]
     fn assume(self) -> Self::Assumed {
         #[cfg(not(test))]
@@ -29,7 +29,7 @@ impl<T> Assume for Option<T> {
 impl<T, E: Debug> Assume for Result<T, E> {
     type Assumed = T;
 
-    #[inline]
+    #[inline(always)]
     #[track_caller]
     fn assume(self) -> Self::Assumed {
         #[cfg(not(test))]
