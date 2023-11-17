@@ -31,16 +31,18 @@ pub struct Position {
 }
 
 impl Hash for Position {
+    #[inline(always)]
     fn hash<H: Hasher>(&self, state: &mut H) {
-        state.write_u64(self.zobrist().get())
+        self.zobrist().hash(state)
     }
 }
 
 impl Eq for Position {}
 
 impl PartialEq for Position {
+    #[inline(always)]
     fn eq(&self, other: &Self) -> bool {
-        self.board == other.board
+        self.board.eq(&other.board)
     }
 }
 
@@ -90,6 +92,7 @@ impl Arbitrary for Position {
 
 impl Position {
     /// The side to move.
+    #[inline(always)]
     pub fn turn(&self) -> Color {
         self.board.side_to_move().into()
     }
@@ -97,6 +100,7 @@ impl Position {
     /// The number of halfmoves since the last capture or pawn advance.
     ///
     /// It resets to 0 whenever a piece is captured or a pawn is moved.
+    #[inline(always)]
     pub fn halfmoves(&self) -> u8 {
         self.board.halfmove_clock()
     }
@@ -104,11 +108,13 @@ impl Position {
     /// The current move number since the start of the game.
     ///
     /// It starts at 1, and is incremented after every move by black.
+    #[inline(always)]
     pub fn fullmoves(&self) -> NonZeroU32 {
         NonZeroU32::new(self.board.fullmove_number() as _).assume()
     }
 
     /// The en passant square.
+    #[inline(always)]
     pub fn en_passant(&self) -> Option<Square> {
         self.board.en_passant().map(|f| match self.turn() {
             Color::White => Square::new(f.into(), Rank::Sixth),
@@ -119,56 +125,67 @@ impl Position {
     /// This position's [zobrist hash].
     ///
     /// [zobrist hash]: https://www.chessprogramming.org/Zobrist_Hashing
+    #[inline(always)]
     pub fn zobrist(&self) -> Zobrist {
         Bits::new(self.board.hash())
     }
 
     /// An iterator over all pieces on the board.
+    #[inline(always)]
     pub fn iter(&self) -> impl ExactSizeIterator<Item = (Piece, Square)> + '_ {
         self.occupied().into_iter().map(|s| (self[s].assume(), s))
     }
 
     /// [`Square`]s occupied.
+    #[inline(always)]
     pub fn occupied(&self) -> Bitboard {
         self.board.occupied().into()
     }
 
     /// [`Square`]s occupied by a [`Color`].
+    #[inline(always)]
     pub fn by_color(&self, c: Color) -> Bitboard {
         self.board.colors(c.into()).into()
     }
 
     /// [`Square`]s occupied by a [`Role`].
+    #[inline(always)]
     pub fn by_role(&self, r: Role) -> Bitboard {
         self.board.pieces(r.into()).into()
     }
 
     /// [`Square`]s occupied by a [`Piece`].
+    #[inline(always)]
     pub fn by_piece(&self, Piece(c, r): Piece) -> Bitboard {
         self.board.colored_pieces(c.into(), r.into()).into()
     }
 
     /// [`Square`] occupied by a the king of the given color.
+    #[inline(always)]
     pub fn king(&self, side: Color) -> Square {
         self.board.king(side.into()).into()
     }
 
     /// The [`Role`] of the piece on the given [`Square`], if any.
+    #[inline(always)]
     pub fn role_on(&self, s: Square) -> Option<Role> {
         self.board.piece_on(s.into()).map(Role::from)
     }
 
     /// The [`Color`] of the piece on the given [`Square`], if any.
+    #[inline(always)]
     pub fn color_on(&self, s: Square) -> Option<Color> {
         self.board.color_on(s.into()).map(Color::from)
     }
 
     /// The [`Piece`] on the given [`Square`], if any.
+    #[inline(always)]
     pub fn piece_on(&self, s: Square) -> Option<Piece> {
         Option::zip(self.color_on(s), self.role_on(s)).map(|(c, r)| Piece(c, r))
     }
 
     /// Into where a [`Piece`] on this [`Square`] can attack.
+    #[inline(always)]
     pub fn attacks(&self, s: Square, Piece(c, r): Piece) -> Bitboard {
         let blk = self.occupied().into();
 
@@ -183,11 +200,13 @@ impl Position {
     }
 
     /// From where a [`Piece`] can attack into this [`Square`].
+    #[inline(always)]
     pub fn attackers(&self, s: Square, p: Piece) -> Bitboard {
         self.attacks(s, p.mirror())
     }
 
     /// How many other times this position has repeated.
+    #[inline(always)]
     pub fn repetitions(&self) -> usize {
         let zobrist = self.zobrist().pop();
         let history = &self.history[self.turn() as usize];
@@ -197,6 +216,7 @@ impl Position {
     /// Whether this position is a [check].
     ///
     /// [check]: https://www.chessprogramming.org/Check
+    #[inline(always)]
     pub fn is_check(&self) -> bool {
         !self.board.checkers().is_empty()
     }
@@ -204,6 +224,7 @@ impl Position {
     /// Whether this position is a [checkmate].
     ///
     /// [checkmate]: https://www.chessprogramming.org/Checkmate
+    #[inline(always)]
     pub fn is_checkmate(&self) -> bool {
         self.is_check() & !self.board.generate_moves(|_| true)
     }
@@ -211,6 +232,7 @@ impl Position {
     /// Whether this position is a [stalemate].
     ///
     /// [stalemate]: https://www.chessprogramming.org/Stalemate
+    #[inline(always)]
     pub fn is_stalemate(&self) -> bool {
         !self.is_check() & !self.board.generate_moves(|_| true)
     }
@@ -218,6 +240,7 @@ impl Position {
     /// Whether the game is a draw by [Threefold repetition].
     ///
     /// [Threefold repetition]: https://en.wikipedia.org/wiki/Threefold_repetition
+    #[inline(always)]
     pub fn is_draw_by_threefold_repetition(&self) -> bool {
         self.repetitions() > 1
     }
@@ -225,6 +248,7 @@ impl Position {
     /// Whether the game is a draw by the [50-move rule].
     ///
     /// [50-move rule]: https://en.wikipedia.org/wiki/Fifty-move_rule
+    #[inline(always)]
     pub fn is_draw_by_50_move_rule(&self) -> bool {
         self.halfmoves() >= 100
     }
@@ -232,6 +256,7 @@ impl Position {
     /// Whether this position has [insufficient material].
     ///
     /// [insufficient material]: https://www.chessprogramming.org/Material#InsufficientMaterial
+    #[inline(always)]
     pub fn is_material_insufficient(&self) -> bool {
         match self.occupied().len() {
             2 => true,
@@ -246,6 +271,7 @@ impl Position {
     }
 
     /// The [`Outcome`] of the game in case this position is final.
+    #[inline(always)]
     pub fn outcome(&self) -> Option<Outcome> {
         if self.is_checkmate() {
             Some(Outcome::Checkmate(!self.turn()))
@@ -263,6 +289,7 @@ impl Position {
     }
 
     /// An iterator over the legal [`Move`]s that can be played from a subset of squares in this position.
+    #[inline(always)]
     pub fn moves(&self, whence: Bitboard) -> impl Iterator<Item = Move> + '_ {
         let mut moves = Buffer::<_, 18>::new();
         self.board.generate_moves_for(whence.into(), |ms| {
@@ -298,6 +325,7 @@ impl Position {
     }
 
     /// Play a [`Move`].
+    #[inline(always)]
     pub fn play(&mut self, m: Move) {
         let from = m.whence();
         let to = if !m.is_castling() {
@@ -330,6 +358,7 @@ impl Position {
     /// Play a [null-move].
     ///
     /// [null-move]: https://www.chessprogramming.org/Null_Move
+    #[inline(always)]
     pub fn pass(&mut self) {
         debug_assert!(!self.is_check(), "null move is illegal in `{self}`");
         self.board = self.board.null_move().assume();
@@ -337,6 +366,7 @@ impl Position {
     }
 
     /// Exchange a piece on [`Square`] by the attacker of least value.
+    #[inline(always)]
     pub fn exchange(&mut self, whither: Square) -> Result<Move, ImpossibleExchange> {
         let turn = self.turn();
         let capture = match self[whither] {
@@ -371,6 +401,7 @@ impl Position {
 impl Index<Square> for Position {
     type Output = Option<Piece>;
 
+    #[inline(always)]
     fn index(&self, s: Square) -> &Self::Output {
         use {Color::*, Role::*};
         match self.piece_on(s) {
