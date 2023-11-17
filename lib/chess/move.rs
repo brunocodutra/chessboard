@@ -10,11 +10,13 @@ use vampirc_uci::UciMove;
 pub struct Move(NonZeroU16);
 
 impl Move {
+    #[inline(always)]
     fn bits<R: RangeBounds<u32>>(&self, r: R) -> Bits<u16, 16> {
         Bits::new(self.0.get()).slice(r)
     }
 
     /// Constructs a castling move.
+    #[inline(always)]
     pub fn castling(whence: Square, whither: Square) -> Self {
         let mut bits = Bits::<_, 16>::default();
         bits.push(whence.encode());
@@ -24,6 +26,7 @@ impl Move {
     }
 
     /// Constructs an en passant move.
+    #[inline(always)]
     pub fn en_passant(whence: Square, whither: Square) -> Self {
         let mut bits = Bits::<_, 16>::default();
         bits.push(whence.encode());
@@ -33,6 +36,7 @@ impl Move {
     }
 
     /// Constructs a regular move.
+    #[inline(always)]
     pub fn regular(
         whence: Square,
         whither: Square,
@@ -57,16 +61,19 @@ impl Move {
     }
 
     /// The source [`Square`].
+    #[inline(always)]
     pub fn whence(&self) -> Square {
         Square::decode(self.bits(10..).pop()).assume()
     }
 
     /// The destination [`Square`].
+    #[inline(always)]
     pub fn whither(&self) -> Square {
         Square::decode(self.bits(4..).pop()).assume()
     }
 
     /// The promotion specifier.
+    #[inline(always)]
     pub fn promotion(&self) -> Option<Role> {
         if self.is_promotion() {
             Some(Role::from_index(self.bits(..2).get() as u8 + 1))
@@ -76,26 +83,31 @@ impl Move {
     }
 
     /// Whether this is a promotion move.
+    #[inline(always)]
     pub fn is_promotion(&self) -> bool {
         self.bits(3..=3).get() != 0
     }
 
     /// Whether this is a castling move.
+    #[inline(always)]
     pub fn is_castling(&self) -> bool {
         self.bits(..4).get() == 0b0001
     }
 
     /// Whether this is an en passant capture move.
+    #[inline(always)]
     pub fn is_en_passant(&self) -> bool {
         self.bits(..4).get() == 0b0011
     }
 
     /// Whether this is a capture move.
+    #[inline(always)]
     pub fn is_capture(&self) -> bool {
         self.bits(2..=2).get() != 0 || (self.bits(1..=1).get() != 0 && !self.is_promotion())
     }
 
     /// Whether this move is neither a capture nor a promotion.
+    #[inline(always)]
     pub fn is_quiet(&self) -> bool {
         !(self.is_capture() || self.is_promotion())
     }
