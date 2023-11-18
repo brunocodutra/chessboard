@@ -13,7 +13,7 @@ use crate::search::{HashSize, ThreadCount};
 
 /// Indicates the search was interrupted upon reaching the configured limit.
 #[derive(Debug, Display, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Error)]
-#[display(fmt = "the search was interrupted")]
+#[display("the search was interrupted")]
 struct Interrupted;
 
 /// The search control.

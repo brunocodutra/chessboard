@@ -43,7 +43,7 @@ impl Score {
 /// The reason why decoding [`Score`] from binary failed.
 #[derive(Debug, Display, Clone, Eq, PartialEq, Error)]
 #[cfg_attr(test, derive(test_strategy::Arbitrary))]
-#[display(fmt = "not a valid score")]
+#[display("not a valid score")]
 pub struct DecodeScoreError;
 
 impl Binary for Score {

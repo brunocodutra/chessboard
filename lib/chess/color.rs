@@ -7,9 +7,9 @@ use std::ops::Not;
 #[cfg_attr(test, derive(test_strategy::Arbitrary))]
 #[repr(u8)]
 pub enum Color {
-    #[display(fmt = "white")]
+    #[display("white")]
     White,
-    #[display(fmt = "black")]
+    #[display("black")]
     Black,
 }
 

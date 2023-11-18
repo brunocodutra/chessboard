@@ -1,5 +1,5 @@
 use crate::util::Bounds;
-use derive_more::DebugCustom;
+use derive_more::Debug;
 use num_traits::{cast, clamp, AsPrimitive, PrimInt};
 use std::cmp::Ordering;
 use std::hash::{Hash, Hasher};
@@ -9,13 +9,13 @@ use std::ops::{Add, Div, Mul, Neg, Sub};
 use proptest::prelude::*;
 
 #[cfg(test)]
-use std::{fmt::Debug, ops::RangeInclusive};
+use std::ops::RangeInclusive;
 
 /// A saturating bounded integer.
-#[derive(DebugCustom)]
+#[derive(Debug)]
 #[cfg_attr(test, derive(test_strategy::Arbitrary))]
 #[cfg_attr(test, arbitrary(bound(T::Integer: 'static + Debug, RangeInclusive<T::Integer>: Strategy<Value = T::Integer>)))]
-#[debug(fmt = "Saturating({:?})", "i32::from(*self)")]
+#[debug("Saturating({:?})", "i32::from(*self)")]
 #[repr(transparent)]
 pub struct Saturating<T: Bounds>(#[cfg_attr(test, strategy(T::LOWER..=T::UPPER))] T::Integer);
 
@@ -181,6 +181,7 @@ impl<T: Bounds, U: PrimInt + Into<i32> + AsPrimitive<i32>> Div<U> for Saturating
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::fmt::Debug;
     use test_strategy::proptest;
 
     struct AsymmetricBounds;

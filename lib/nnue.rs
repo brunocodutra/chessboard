@@ -83,7 +83,7 @@ impl Nnue {
             let weight = transmute_copy(as_array::<_, W>(bytes, cursor));
             cursor += W;
 
-            Transformer(bias, weight)
+            Transformer::new(bias, weight)
         };
 
         let psqt = unsafe {
@@ -91,7 +91,7 @@ impl Nnue {
             let weight = transmute_copy(as_array::<_, W>(bytes, cursor));
             cursor += W;
 
-            Transformer([0; Nnue::PHASES], weight)
+            Transformer::new([0; Nnue::PHASES], weight)
         };
 
         let mut phase = 0;
@@ -143,9 +143,9 @@ impl Nnue {
                 (bias, weight)
             };
 
-            let l3o = CReLU(Output(l3ob, l3ow));
-            let l23 = CReLU(Affine(l23b, l23w, Damp(l3o)));
-            let l12 = CReLU(Affine(l12b, l12w, Damp(l23)));
+            let l3o = CReLU::new(Output::new(l3ob, l3ow));
+            let l23 = CReLU::new(Affine::new(l23b, l23w, Damp::new(l3o)));
+            let l12 = CReLU::new(Affine::new(l12b, l12w, Damp::new(l23)));
 
             nns[phase].write(l12);
             phase += 1;

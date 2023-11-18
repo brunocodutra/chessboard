@@ -12,13 +12,14 @@ keywords = ["chess"]
 [dependencies]
 arrayvec = { version = "0.7.3", default-features = false, features = ["std"] }
 cozy-chess = { version = "0.3.3", default-features = false, features = ["std"] }
-derive_more = { version = "0.99.16", default-features = false, features = [
+derive_more = { version = "1.0.0-beta.6", default-features = false, features = [
     "add",
     "add_assign",
     "constructor",
     "deref",
     "deref_mut",
     "display",
+    "debug",
     "error",
     "from",
     "into_iterator",

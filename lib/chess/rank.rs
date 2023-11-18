@@ -7,21 +7,21 @@ use std::ops::Sub;
 #[cfg_attr(test, derive(test_strategy::Arbitrary))]
 #[repr(u8)]
 pub enum Rank {
-    #[display(fmt = "1")]
+    #[display("1")]
     First,
-    #[display(fmt = "2")]
+    #[display("2")]
     Second,
-    #[display(fmt = "3")]
+    #[display("3")]
     Third,
-    #[display(fmt = "4")]
+    #[display("4")]
     Fourth,
-    #[display(fmt = "5")]
+    #[display("5")]
     Fifth,
-    #[display(fmt = "6")]
+    #[display("6")]
     Sixth,
-    #[display(fmt = "7")]
+    #[display("7")]
     Seventh,
-    #[display(fmt = "8")]
+    #[display("8")]
     Eighth,
 }
 
