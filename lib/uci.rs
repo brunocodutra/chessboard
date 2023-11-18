@@ -1,5 +1,5 @@
 use crate::chess::{Color, Position, Square};
-use crate::search::{Depth, Engine, HashSize, Limits, Options, ThreadCount};
+use crate::search::{Depth, Engine, HashSize, Limits, Options, Score, ThreadCount};
 use crate::{nnue::Evaluator, util::Io};
 use std::io::{self, stdin, stdout, Stdin, Stdout};
 use std::{num::NonZeroUsize, ops::Shr, time::Duration};
@@ -111,18 +111,18 @@ impl Uci {
 
     fn eval(&mut self) -> io::Result<()> {
         let pos = Evaluator::new(self.position.clone());
-        let (material, positional, value) = match pos.turn() {
-            Color::White => (
-                pos.material().evaluate(),
-                pos.positional().evaluate(),
-                pos.evaluate(),
-            ),
+        let [material, positional, value]: [Score; 3] = match pos.turn() {
+            Color::White => [
+                pos.material().evaluate().cast(),
+                pos.positional().evaluate().cast(),
+                pos.evaluate().cast(),
+            ],
 
-            Color::Black => (
-                -pos.material().evaluate(),
-                -pos.positional().evaluate(),
-                -pos.evaluate(),
-            ),
+            Color::Black => [
+                -pos.material().evaluate().cast(),
+                -pos.positional().evaluate().cast(),
+                -pos.evaluate().cast(),
+            ],
         };
 
         self.io.send(UciMessage::Info(vec![

@@ -12,6 +12,7 @@ mod material;
 mod output;
 mod positional;
 mod transformer;
+mod value;
 mod vector;
 
 pub use accumulator::*;
@@ -26,6 +27,7 @@ pub use material::*;
 pub use output::*;
 pub use positional::*;
 pub use transformer::*;
+pub use value::*;
 
 use vector::*;
 
