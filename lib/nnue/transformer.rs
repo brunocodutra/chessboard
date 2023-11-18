@@ -4,6 +4,7 @@ use std::ops::{AddAssign, SubAssign};
 
 /// A feature transformer.
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash, Constructor)]
+#[repr(align(64))]
 pub struct Transformer<T, const I: usize, const O: usize> {
     pub(super) bias: [T; O],
     pub(super) weight: [[T; O]; I],
