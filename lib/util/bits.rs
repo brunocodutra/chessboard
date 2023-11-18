@@ -1,4 +1,4 @@
-use derive_more::{DebugCustom, Display};
+use derive_more::{Debug, Display};
 use num_traits::{AsPrimitive, PrimInt, Unsigned};
 use std::fmt::Binary;
 use std::ops::{Bound, Not, RangeBounds};
@@ -7,7 +7,7 @@ use std::ops::{Bound, Not, RangeBounds};
 use proptest::prelude::*;
 
 #[cfg(test)]
-use std::{fmt::Debug, ops::RangeInclusive};
+use std::ops::RangeInclusive;
 
 fn ones<T: PrimInt + Unsigned>(n: u32) -> T {
     match n {
@@ -17,13 +17,11 @@ fn ones<T: PrimInt + Unsigned>(n: u32) -> T {
 }
 
 /// A fixed width collection of bits.
-#[derive(DebugCustom, Display, Copy, Clone, Eq, PartialEq, Hash)]
+#[derive(Debug, Display, Copy, Clone, Eq, PartialEq, Hash)]
 #[cfg_attr(test, derive(test_strategy::Arbitrary))]
 #[cfg_attr(test, arbitrary(bound(T: 'static + Debug + Binary, RangeInclusive<T>: Strategy<Value = T>)))]
-#[debug(bound = "T: Binary")]
-#[debug(fmt = "Bits({self})")]
-#[display(bound = "T: Binary")]
-#[display(fmt = "{_0:b}")]
+#[debug("Bits({_0:b})")]
+#[display("{_0:b}")]
 #[repr(transparent)]
 pub struct Bits<T: PrimInt + Unsigned, const W: u32>(
     #[cfg_attr(test, strategy(T::zero()..=ones(W)))] T,
@@ -106,6 +104,7 @@ impl<T: 'static + Binary + PrimInt + Unsigned, const W: u32> Not for Bits<T, W> 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::fmt::Debug;
     use test_strategy::proptest;
 
     #[proptest]

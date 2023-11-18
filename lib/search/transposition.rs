@@ -23,7 +23,7 @@ enum TranspositionKind {
 /// The reason why decoding [`Transposition`] [`Kind`] from binary failed.
 #[derive(Debug, Display, Clone, Eq, PartialEq, Error)]
 #[cfg_attr(test, derive(test_strategy::Arbitrary))]
-#[display(fmt = "not a valid transposition kind")]
+#[display("not a valid transposition kind")]
 struct DecodeTranspositionKindError;
 
 impl Binary for TranspositionKind {
@@ -113,7 +113,7 @@ struct SignedTransposition(Transposition, Signature);
 /// The reason why decoding [`Transposition`] from binary failed.
 #[derive(Debug, Display, Clone, Eq, PartialEq, Error)]
 #[cfg_attr(test, derive(test_strategy::Arbitrary))]
-#[display(fmt = "not a valid transposition")]
+#[display("not a valid transposition")]
 pub struct DecodeTranspositionError;
 
 impl Binary for SignedTransposition {

@@ -1,16 +1,15 @@
 use arrayvec::ArrayVec;
-use derive_more::{DebugCustom, Deref, DerefMut};
-use std::{fmt::Debug, mem::swap};
+use derive_more::{Debug, Deref, DerefMut, IntoIterator};
+use std::mem::swap;
 
 #[cfg(test)]
 use proptest::{collection::vec, prelude::*};
 
 /// A stack allocated buffer of fixed capacity.
-#[derive(DebugCustom, Clone, Eq, PartialEq, Hash, Deref, DerefMut)]
+#[derive(Debug, Clone, Eq, PartialEq, Hash, Deref, DerefMut, IntoIterator)]
 #[cfg_attr(test, derive(test_strategy::Arbitrary))]
-#[cfg_attr(test, arbitrary(bound(T: 'static + Debug + Arbitrary)))]
-#[debug(bound = "T: Debug")]
-#[debug(fmt = "Buffer({_0:?})")]
+#[cfg_attr(test, arbitrary(bound(T: 'static + Arbitrary)))]
+#[debug("Buffer({_0:?})")]
 pub struct Buffer<T, const N: usize>(
     #[cfg_attr(test, strategy(vec(any::<T>(), 0..=N).prop_map(ArrayVec::from_iter)))]
     #[deref(forward)]
@@ -73,14 +72,6 @@ impl<T, const N: usize> Default for Buffer<T, N> {
     }
 }
 
-impl<T, const N: usize> IntoIterator for Buffer<T, N> {
-    type Item = <ArrayVec<T, N> as IntoIterator>::Item;
-    type IntoIter = <ArrayVec<T, N> as IntoIterator>::IntoIter;
-    fn into_iter(self) -> Self::IntoIter {
-        self.0.into_iter()
-    }
-}
-
 /// Create a [`Buffer`] from an iterator of elements.
 ///
 /// # Panics
@@ -96,6 +87,7 @@ impl<T, const N: usize> FromIterator<T> for Buffer<T, N> {
 mod tests {
     use super::*;
     use proptest::sample::size_range;
+    use std::fmt::Debug;
     use test_strategy::proptest;
 
     #[proptest]

@@ -124,7 +124,7 @@ impl fmt::Debug for Move {
 // The reason why decoding [`Move`] from binary failed.
 #[derive(Debug, Display, Clone, Eq, PartialEq, Error)]
 #[cfg_attr(test, derive(test_strategy::Arbitrary))]
-#[display(fmt = "not a valid move")]
+#[display("not a valid move")]
 pub struct DecodeMoveError;
 
 impl Binary for Move {

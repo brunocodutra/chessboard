@@ -7,21 +7,21 @@ use std::ops::Sub;
 #[cfg_attr(test, derive(test_strategy::Arbitrary))]
 #[repr(u8)]
 pub enum File {
-    #[display(fmt = "a")]
+    #[display("a")]
     A,
-    #[display(fmt = "b")]
+    #[display("b")]
     B,
-    #[display(fmt = "c")]
+    #[display("c")]
     C,
-    #[display(fmt = "d")]
+    #[display("d")]
     D,
-    #[display(fmt = "e")]
+    #[display("e")]
     E,
-    #[display(fmt = "f")]
+    #[display("f")]
     F,
-    #[display(fmt = "g")]
+    #[display("g")]
     G,
-    #[display(fmt = "h")]
+    #[display("h")]
     H,
 }
 

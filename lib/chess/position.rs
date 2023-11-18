@@ -1,7 +1,7 @@
 use crate::chess::{Bitboard, Color, File, Move, Outcome, Piece, Rank, Role, Square};
 use crate::util::{Assume, Bits, Buffer};
 use cozy_chess as cc;
-use derive_more::{DebugCustom, Display, Error};
+use derive_more::{Debug, Display, Error};
 use std::hash::{Hash, Hasher};
 use std::{num::NonZeroU32, ops::Index, str::FromStr};
 
@@ -16,15 +16,15 @@ pub type Zobrist = Bits<u64, 64>;
 /// Represents an impossible exchange on a given [`Square`] in a given [`Position`].
 #[derive(Debug, Display, Clone, Eq, PartialEq, Error)]
 #[cfg_attr(test, derive(test_strategy::Arbitrary))]
-#[display(fmt = "no possible exchange on square `{_0}`")]
+#[display("no possible exchange on square `{_0}`")]
 pub struct ImpossibleExchange(#[error(not(source))] pub Square);
 
 /// The current position on the board board.
 ///
 /// This type guarantees that it only holds valid positions.
-#[derive(DebugCustom, Display, Default, Clone)]
-#[debug(fmt = "Position({self})")]
-#[display(fmt = "{board}")]
+#[derive(Debug, Display, Default, Clone)]
+#[debug("Position({self})")]
+#[display("{board}")]
 pub struct Position {
     board: cc::Board,
     history: [Buffer<Bits<u16, 16>, 51>; 2],
@@ -394,19 +394,19 @@ impl Index<Square> for Position {
 /// The reason why parsing the FEN string failed.
 #[derive(Debug, Display, Clone, Eq, PartialEq, Error)]
 pub enum ParsePositionError {
-    #[display(fmt = "failed to parse piece placement")]
+    #[display("failed to parse piece placement")]
     InvalidPlacement,
-    #[display(fmt = "failed to parse side to move")]
+    #[display("failed to parse side to move")]
     InvalidSideToMove,
-    #[display(fmt = "failed to parse castling rights")]
+    #[display("failed to parse castling rights")]
     InvalidCastlingRights,
-    #[display(fmt = "failed to parse en passant square")]
+    #[display("failed to parse en passant square")]
     InvalidEnPassantSquare,
-    #[display(fmt = "failed to parse halfmove clock")]
+    #[display("failed to parse halfmove clock")]
     InvalidHalfmoveClock,
-    #[display(fmt = "failed to parse fullmove number")]
+    #[display("failed to parse fullmove number")]
     InvalidFullmoveNumber,
-    #[display(fmt = "unspecified syntax error")]
+    #[display("unspecified syntax error")]
     InvalidSyntax,
 }
 
@@ -442,7 +442,7 @@ impl FromStr for Position {
 mod tests {
     use super::*;
     use proptest::sample::Selector;
-    use std::cmp::Reverse;
+    use std::{cmp::Reverse, fmt::Debug};
     use test_strategy::proptest;
 
     #[proptest]

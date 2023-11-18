@@ -5,19 +5,19 @@ use derive_more::Display;
 #[derive(Debug, Display, Copy, Clone, Eq, PartialEq, Hash)]
 #[cfg_attr(test, derive(test_strategy::Arbitrary))]
 pub enum Outcome {
-    #[display(fmt = "checkmate by the {_0} player")]
+    #[display("checkmate by the {_0} player")]
     Checkmate(Color),
 
-    #[display(fmt = "stalemate")]
+    #[display("stalemate")]
     Stalemate,
 
-    #[display(fmt = "draw by threefold repetition")]
+    #[display("draw by threefold repetition")]
     DrawByThreefoldRepetition,
 
-    #[display(fmt = "draw by the 50-move rule")]
+    #[display("draw by the 50-move rule")]
     DrawBy50MoveRule,
 
-    #[display(fmt = "draw by insufficient material")]
+    #[display("draw by insufficient material")]
     DrawByInsufficientMaterial,
 }
 

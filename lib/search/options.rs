@@ -1,5 +1,5 @@
 use crate::util::Assume;
-use derive_more::{DebugCustom, Deref};
+use derive_more::{Debug, Deref};
 use rayon::max_num_threads;
 use std::{cmp::Ordering, num::NonZeroUsize};
 
@@ -7,9 +7,9 @@ use std::{cmp::Ordering, num::NonZeroUsize};
 use proptest::prelude::*;
 
 /// The hash size in bytes.
-#[derive(DebugCustom, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Deref)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Deref)]
 #[cfg_attr(test, derive(test_strategy::Arbitrary))]
-#[debug(fmt = "HashSize({_0})")]
+#[debug("HashSize({_0})")]
 pub struct HashSize(#[cfg_attr(test, strategy(..=Self::MAX))] usize);
 
 impl HashSize {
@@ -57,9 +57,9 @@ impl PartialOrd<usize> for HashSize {
 }
 
 /// The thread count.
-#[derive(DebugCustom, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Deref)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Deref)]
 #[cfg_attr(test, derive(test_strategy::Arbitrary))]
-#[debug(fmt = "ThreadCount({_0})")]
+#[debug("ThreadCount({_0})")]
 pub struct ThreadCount(
     #[cfg_attr(test, strategy((1..=4usize).prop_map(|t| NonZeroUsize::new(t).assume())))]
     NonZeroUsize,
@@ -128,6 +128,7 @@ pub struct Options {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::fmt::Debug;
     use test_strategy::proptest;
 
     #[proptest]

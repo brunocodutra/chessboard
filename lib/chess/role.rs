@@ -7,17 +7,17 @@ use vampirc_uci::UciPiece;
 #[cfg_attr(test, derive(test_strategy::Arbitrary))]
 #[repr(u8)]
 pub enum Role {
-    #[display(fmt = "p")]
+    #[display("p")]
     Pawn,
-    #[display(fmt = "n")]
+    #[display("n")]
     Knight,
-    #[display(fmt = "b")]
+    #[display("b")]
     Bishop,
-    #[display(fmt = "r")]
+    #[display("r")]
     Rook,
-    #[display(fmt = "q")]
+    #[display("q")]
     Queen,
-    #[display(fmt = "k")]
+    #[display("k")]
     King,
 }
 

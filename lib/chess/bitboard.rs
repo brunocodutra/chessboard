@@ -1,16 +1,16 @@
 use crate::chess::{File, Rank, Square};
 use cozy_chess as cc;
-use derive_more::{BitAnd, BitAndAssign, BitOr, BitOrAssign, DebugCustom, Not};
+use derive_more::{BitAnd, BitAndAssign, BitOr, BitOrAssign, Debug, Not};
 
 #[cfg(test)]
 use proptest::prelude::*;
 
 /// A set of squares on a chess board.
 #[derive(
-    DebugCustom, Copy, Clone, Eq, PartialEq, Hash, Not, BitAnd, BitAndAssign, BitOr, BitOrAssign,
+    Debug, Copy, Clone, Eq, PartialEq, Hash, Not, BitAnd, BitAndAssign, BitOr, BitOrAssign,
 )]
 #[cfg_attr(test, derive(test_strategy::Arbitrary))]
-#[debug(fmt = "{_0:#?}")]
+#[debug("{_0:#?}")]
 pub struct Bitboard(#[cfg_attr(test, strategy(any::<u64>().prop_map(cc::BitBoard)))] cc::BitBoard);
 
 impl Bitboard {
@@ -111,6 +111,7 @@ impl From<Bitboard> for cc::BitBoard {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::fmt::Debug;
     use test_strategy::proptest;
 
     #[proptest]
