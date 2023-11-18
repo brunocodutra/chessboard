@@ -1,6 +1,4 @@
-use crate::search::Score;
 use crate::util::{Bounds, Saturating};
-use std::fmt;
 
 pub struct ValueBounds;
 
@@ -12,9 +10,3 @@ impl Bounds for ValueBounds {
 
 /// A position's static evaluation.
 pub type Value = Saturating<ValueBounds>;
-
-impl fmt::Display for Value {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        <Score as fmt::Display>::fmt(&self.cast(), f)
-    }
-}

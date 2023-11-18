@@ -1,7 +1,6 @@
 use crate::chess::{Color, ImpossibleExchange, Move, Piece, Position, Role, Square};
-use crate::nnue::{Accumulator, Feature, Material, Positional};
-use crate::util::Assume;
-use crate::{search::Value, util::Buffer};
+use crate::nnue::{Accumulator, Feature, Material, Positional, Value};
+use crate::util::{Assume, Buffer};
 use derive_more::Deref;
 
 fn perspective(pos: &Position, side: Color) -> Buffer<u16, 32> {

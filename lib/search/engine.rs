@@ -1,6 +1,6 @@
 use crate::chess::{Bitboard, Move, Piece, Position, Role};
-use crate::nnue::Evaluator;
-use crate::search::{Depth, DepthBounds, Killers, Limits, Options, Ply, Pv, Score, Value};
+use crate::nnue::{Evaluator, Value};
+use crate::search::{Depth, DepthBounds, Killers, Limits, Options, Ply, Pv, Score};
 use crate::search::{Transposition, TranspositionTable};
 use crate::util::{Assume, Bounds, Buffer, Counter, Timer};
 use derive_more::{Display, Error};
@@ -396,7 +396,6 @@ impl Engine {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::search::Value;
     use proptest::{prop_assume, sample::Selector};
     use std::time::{Duration, Instant};
     use test_strategy::proptest;
