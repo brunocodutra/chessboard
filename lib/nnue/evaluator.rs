@@ -105,7 +105,8 @@ impl<T: Clone + Accumulator> Evaluator<T> {
     /// Exchange a piece on [`Square`] by the attacker of least value.
     ///
     /// This may lead to invalid positions.
-    pub fn exchange(&mut self, whither: Square) -> Result<Move, ImpossibleExchange> {
+    #[inline(always)]
+    fn exchange(&mut self, whither: Square) -> Result<Move, ImpossibleExchange> {
         let capture = self.role_on(whither);
         let m = self.pos.exchange(whither)?;
         self.acc.mirror();
@@ -113,6 +114,7 @@ impl<T: Clone + Accumulator> Evaluator<T> {
         Ok(m)
     }
 
+    #[inline(always)]
     fn update(&mut self, m: Move, capture: Option<Role>) {
         let turn = self.turn();
 
