@@ -137,7 +137,7 @@ impl Engine {
         }
     }
 
-    /// A [zero-window] search wrapper for [`Self::ns`].
+    /// A [zero-window] alpha-beta search.
     ///
     /// [zero-window]: https://www.chessprogramming.org/Null_Window
     fn nw(
@@ -148,14 +148,14 @@ impl Engine {
         ply: Ply,
         ctrl: &Control,
     ) -> Result<Pv, Interrupted> {
-        self.ns(pos, beta - 1..beta, depth, ply, ctrl)
+        self.pvs(pos, beta - 1..beta, depth, ply, ctrl)
     }
 
-    /// An implementation of the [negascout] variation of [alpha-beta pruning] algorithm.
+    /// An implementation of the [PVS] variation of [alpha-beta pruning] algorithm.
     ///
-    /// [negascout]: https://www.chessprogramming.org/NegaScout
+    /// [PVS]: https://www.chessprogramming.org/Principal_Variation_Search
     /// [alpha-beta pruning]: https://www.chessprogramming.org/Alpha-Beta
-    fn ns(
+    fn pvs(
         &self,
         pos: &Evaluator,
         bounds: Range<Score>,
@@ -250,7 +250,7 @@ impl Engine {
             Some((m, _)) => {
                 let mut next = pos.clone();
                 next.play(m);
-                let mut pv = -self.ns(&next, -beta..-alpha, depth, ply + 1, ctrl)?;
+                let mut pv = -self.pvs(&next, -beta..-alpha, depth, ply + 1, ctrl)?;
                 pv.shift(m);
 
                 if pv >= beta && m.is_quiet() {
@@ -270,7 +270,6 @@ impl Engine {
 
         let (best, _) = moves
             .into_par_iter()
-            .with_max_len(1)
             .rev()
             .map(|&(m, gain)| {
                 let alpha = Score::new(cutoff.load(Ordering::Relaxed));
@@ -295,13 +294,7 @@ impl Engine {
 
                 let mut pv = match -self.nw(&next, -alpha, depth, ply + 1, ctrl)? {
                     pv if pv <= alpha || pv >= beta => pv,
-                    pv => match Score::new(cutoff.fetch_max(pv.score().get(), Ordering::Relaxed)) {
-                        a if a >= beta => return Ok(None),
-                        a => {
-                            let alpha = pv.score().max(a);
-                            pv.max(-self.ns(&next, -beta..-alpha, depth, ply + 1, ctrl)?)
-                        }
-                    },
+                    _ => -self.pvs(&next, -beta..-alpha, depth, ply + 1, ctrl)?,
                 };
 
                 if pv >= beta && m.is_quiet() {
@@ -336,7 +329,7 @@ impl Engine {
             let depth = Depth::new(d);
             let bounds = Score::LOWER..Score::UPPER;
             let ctrl = Control::default();
-            best = self.ns(pos, bounds, depth, Ply::new(0), &ctrl).assume();
+            best = self.pvs(pos, bounds, depth, Ply::new(0), &ctrl).assume();
         }
 
         'id: for d in 2..=depth.get() {
@@ -350,7 +343,7 @@ impl Engine {
 
             best = 'aw: loop {
                 let depth = Depth::new(d);
-                let pv = match self.ns(pos, lower..upper, depth, Ply::new(0), ctrl) {
+                let pv = match self.pvs(pos, lower..upper, depth, Ply::new(0), ctrl) {
                     Err(_) => break 'id,
                     Ok(pv) => pv,
                 };
@@ -491,18 +484,18 @@ mod tests {
 
     #[proptest]
     #[should_panic]
-    fn ns_panics_if_alpha_is_not_greater_than_beta(
+    fn pvs_panics_if_alpha_is_not_greater_than_beta(
         e: Engine,
         pos: Evaluator,
         b: Range<Score>,
         d: Depth,
         p: Ply,
     ) {
-        e.ns(&pos, b.end..b.start, d, p, &Control::default())?;
+        e.pvs(&pos, b.end..b.start, d, p, &Control::default())?;
     }
 
     #[proptest]
-    fn ns_aborts_if_maximum_number_of_nodes_visited(
+    fn pvs_aborts_if_maximum_number_of_nodes_visited(
         e: Engine,
         pos: Evaluator,
         #[filter(!#b.is_empty())] b: Range<Score>,
@@ -510,11 +503,11 @@ mod tests {
         p: Ply,
     ) {
         let ctrl = Control(Counter::new(0), Timer::new(Duration::MAX));
-        assert_eq!(e.ns(&pos, b, d, p, &ctrl), Err(Interrupted));
+        assert_eq!(e.pvs(&pos, b, d, p, &ctrl), Err(Interrupted));
     }
 
     #[proptest]
-    fn ns_aborts_if_time_is_up(
+    fn pvs_aborts_if_time_is_up(
         e: Engine,
         pos: Evaluator,
         #[filter(!#b.is_empty())] b: Range<Score>,
@@ -523,24 +516,24 @@ mod tests {
     ) {
         let ctrl = Control(Counter::new(u64::MAX), Timer::new(Duration::ZERO));
         std::thread::sleep(Duration::from_millis(1));
-        assert_eq!(e.ns(&pos, b, d, p, &ctrl), Err(Interrupted));
+        assert_eq!(e.pvs(&pos, b, d, p, &ctrl), Err(Interrupted));
     }
 
     #[proptest]
-    fn ns_returns_static_evaluation_if_max_ply(
+    fn pvs_returns_static_evaluation_if_max_ply(
         e: Engine,
         #[filter(#pos.outcome().is_none())] pos: Evaluator,
         #[filter(!#b.is_empty())] b: Range<Score>,
         d: Depth,
     ) {
         assert_eq!(
-            e.ns(&pos, b, d, Ply::UPPER, &Control::default()),
+            e.pvs(&pos, b, d, Ply::UPPER, &Control::default()),
             Ok(Pv::new(pos.evaluate().cast(), []))
         );
     }
 
     #[proptest]
-    fn ns_returns_drawn_score_if_game_ends_in_a_draw(
+    fn pvs_returns_drawn_score_if_game_ends_in_a_draw(
         e: Engine,
         #[filter(#pos.outcome().is_some_and(|o| o.is_draw()))] pos: Evaluator,
         #[filter(!#b.is_empty())] b: Range<Score>,
@@ -548,11 +541,11 @@ mod tests {
         p: Ply,
     ) {
         let ctrl = Control::default();
-        assert_eq!(e.ns(&pos, b, d, p, &ctrl), Ok(Pv::new(Score::new(0), [])));
+        assert_eq!(e.pvs(&pos, b, d, p, &ctrl), Ok(Pv::new(Score::new(0), [])));
     }
 
     #[proptest]
-    fn ns_returns_lost_score_if_game_ends_in_checkmate(
+    fn pvs_returns_lost_score_if_game_ends_in_checkmate(
         e: Engine,
         #[filter(#pos.outcome().is_some_and(|o| o.is_decisive()))] pos: Evaluator,
         #[filter(!#b.is_empty())] b: Range<Score>,
@@ -560,20 +553,20 @@ mod tests {
         p: Ply,
     ) {
         assert_eq!(
-            e.ns(&pos, b, d, p, &Control::default()),
+            e.pvs(&pos, b, d, p, &Control::default()),
             Ok(Pv::new(Score::LOWER.normalize(p), []))
         );
     }
 
     #[proptest]
-    fn ns_finds_best_score(e: Engine, pos: Evaluator, d: Depth, #[filter(#p >= 0)] p: Ply) {
+    fn pvs_finds_best_score(e: Engine, pos: Evaluator, d: Depth, #[filter(#p >= 0)] p: Ply) {
         let ctrl = Control::default();
         let bounds = Score::LOWER..Score::UPPER;
-        assert_eq!(e.ns(&pos, bounds, d, p, &ctrl)?, negamax(&pos, d, p));
+        assert_eq!(e.pvs(&pos, bounds, d, p, &ctrl)?, negamax(&pos, d, p));
     }
 
     #[proptest]
-    fn ns_does_not_depend_on_configuration(
+    fn pvs_does_not_depend_on_configuration(
         x: Options,
         y: Options,
         pos: Evaluator,
@@ -587,8 +580,8 @@ mod tests {
         let ctrl = Control::default();
 
         assert_eq!(
-            x.ns(&pos, bounds.clone(), d, p, &ctrl)?.score(),
-            y.ns(&pos, bounds, d, p, &ctrl)?.score()
+            x.pvs(&pos, bounds.clone(), d, p, &ctrl)?.score(),
+            y.pvs(&pos, bounds, d, p, &ctrl)?.score()
         );
     }
 
@@ -604,7 +597,7 @@ mod tests {
 
         assert_eq!(
             e.search(&pos, Limits::Depth(d)).score(),
-            e.ns(&Evaluator::new(pos), bounds, d, ply, &ctrl)?.score()
+            e.pvs(&Evaluator::new(pos), bounds, d, ply, &ctrl)?.score()
         );
     }
 
