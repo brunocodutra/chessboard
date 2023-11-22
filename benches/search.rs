@@ -1,12 +1,11 @@
 use criterion::{criterion_group, criterion_main, BatchSize, Criterion, Throughput};
+use lib::chess::Position;
 use lib::search::{Depth, Engine, Options, ThreadCount};
-use num_cpus::get_physical;
 use std::num::NonZeroUsize;
 
 fn search(c: &mut Criterion, fens: &[&str]) {
-    let fens: Result<Vec<_>, _> = fens.iter().map(|p| p.parse()).collect();
-    let mut positions = fens.unwrap().into_iter().cycle();
-    let options = match NonZeroUsize::new(get_physical()) {
+    let positions: Vec<Position> = Result::from_iter(fens.iter().map(|p| p.parse())).unwrap();
+    let options = match NonZeroUsize::new(num_cpus::get() / 2) {
         None => Options::default(),
         Some(threads) => Options {
             threads: ThreadCount::new(threads),
@@ -14,22 +13,30 @@ fn search(c: &mut Criterion, fens: &[&str]) {
         },
     };
 
-    let depth = Depth::new(12);
+    let depth = Depth::new(7);
     c.benchmark_group("search").bench_function("ttd", |b| {
         b.iter_batched_ref(
-            || (Engine::with_options(options), positions.next().unwrap()),
-            |(s, pos)| s.search(pos, depth.into()),
+            || Engine::with_options(options),
+            |e| {
+                for pos in &positions {
+                    e.search(pos, depth.into());
+                }
+            },
             BatchSize::SmallInput,
         );
     });
 
-    let nodes = 100000;
+    let nodes = 10000;
     c.benchmark_group("search")
-        .throughput(Throughput::Elements(nodes))
+        .throughput(Throughput::Elements(nodes * positions.len() as u64))
         .bench_function("nps", |b| {
             b.iter_batched_ref(
-                || (Engine::with_options(options), positions.next().unwrap()),
-                |(s, pos)| s.search(pos, nodes.into()),
+                || Engine::with_options(options),
+                |e| {
+                    for pos in &positions {
+                        e.search(pos, nodes.into());
+                    }
+                },
                 BatchSize::SmallInput,
             );
         });
