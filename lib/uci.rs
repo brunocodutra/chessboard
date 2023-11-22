@@ -1,7 +1,7 @@
 use crate::chess::{Color, Position, Square};
+use crate::nnue::Evaluator;
 use crate::search::{Depth, Engine, HashSize, Limits, Options, Score, ThreadCount};
-use crate::{nnue::Evaluator, util::Io};
-use std::io::{self, stdin, stdout, Stdin, Stdout};
+use std::io::{self, stdin, stdout, BufRead, BufReader, Lines, Read, Stdin, Stdout, Write};
 use std::{num::NonZeroUsize, ops::Shr, time::Duration};
 use vampirc_uci::{self as uci, *};
 
@@ -27,27 +27,33 @@ macro_rules! error {
 }
 
 /// A basic *not fully compliant* UCI server.
-pub struct Uci {
-    io: Io<Stdout, Stdin>,
+pub struct Uci<W: Write, R: Read> {
+    output: W,
+    input: Lines<BufReader<R>>,
     engine: Engine,
     options: Options,
     position: Position,
     moves: Vec<UciMove>,
 }
 
-impl Default for Uci {
+impl Default for Uci<Stdout, Stdin> {
     fn default() -> Self {
+        Self::new(stdout(), stdin())
+    }
+}
+
+impl<W: Write, R: Read> Uci<W, R> {
+    pub fn new(writer: W, reader: R) -> Self {
         Uci {
-            io: Io::new(stdout(), stdin()),
+            output: writer,
+            input: BufReader::new(reader).lines(),
             engine: Engine::default(),
             options: Options::default(),
             position: Position::default(),
             moves: Vec::with_capacity(128),
         }
     }
-}
 
-impl Uci {
     fn new_game(&mut self) {
         self.engine = Engine::with_options(self.options);
         self.position = Position::default();
@@ -103,8 +109,8 @@ impl Uci {
 
         let pv = UciInfoAttribute::Pv(pv.into_iter().map(UciMove::from).collect());
 
-        self.io.send(UciMessage::Info(vec![score, pv]))?;
-        self.io.send(UciMessage::best_move(best.into()))?;
+        writeln!(self.output, "{}", UciMessage::Info(vec![score, pv]))?;
+        writeln!(self.output, "{}", UciMessage::best_move(best.into()))?;
 
         Ok(())
     }
@@ -125,11 +131,15 @@ impl Uci {
             ],
         };
 
-        self.io.send(UciMessage::Info(vec![
-            UciInfoAttribute::Any("material".to_string(), material.to_string()),
-            UciInfoAttribute::Any("positional".to_string(), positional.to_string()),
-            UciInfoAttribute::Any("value".to_string(), value.to_string()),
-        ]))?;
+        writeln!(
+            self.output,
+            "{}",
+            UciMessage::Info(vec![
+                UciInfoAttribute::Any("material".to_string(), material.to_string()),
+                UciInfoAttribute::Any("positional".to_string(), positional.to_string()),
+                UciInfoAttribute::Any("value".to_string(), value.to_string()),
+            ])
+        )?;
 
         Ok(())
     }
@@ -137,14 +147,20 @@ impl Uci {
     /// Runs the UCI server.
     pub fn run(&mut self) -> io::Result<()> {
         loop {
-            self.io.flush()?;
-            match uci::parse_one(self.io.recv()?.trim()) {
+            let cmd = match self.input.next() {
+                None => break Ok(()),
+                Some(Err(e)) => break Err(e),
+                Some(Ok(s)) => s,
+            };
+
+            self.output.flush()?;
+            match uci::parse_one(cmd.trim()) {
                 UciMessage::Uci => {
                     let name = UciMessage::id_name(env!("CARGO_PKG_NAME"));
                     let authors = UciMessage::id_author(env!("CARGO_PKG_AUTHORS"));
 
-                    self.io.send(name)?;
-                    self.io.send(authors)?;
+                    writeln!(self.output, "{name}")?;
+                    writeln!(self.output, "{authors}")?;
 
                     let hash = UciMessage::Option(UciOptionConfig::Spin {
                         name: "Hash".to_string(),
@@ -153,7 +169,7 @@ impl Uci {
                         max: Some(HashSize::max().shr(20) as _),
                     });
 
-                    self.io.send(hash)?;
+                    writeln!(self.output, "{hash}")?;
 
                     let thread = UciMessage::Option(UciOptionConfig::Spin {
                         name: "Threads".to_string(),
@@ -162,8 +178,8 @@ impl Uci {
                         max: Some(ThreadCount::max().get() as _),
                     });
 
-                    self.io.send(thread)?;
-                    self.io.send(UciMessage::UciOk)?;
+                    writeln!(self.output, "{thread}")?;
+                    writeln!(self.output, "{}", UciMessage::UciOk)?;
                 }
 
                 UciMessage::SetOption {
@@ -177,7 +193,7 @@ impl Uci {
                 } if name.to_lowercase() == "threads" => self.set_threads(&value),
 
                 UciMessage::UciNewGame => self.new_game(),
-                UciMessage::IsReady => self.io.send(UciMessage::ReadyOk)?,
+                UciMessage::IsReady => writeln!(self.output, "{}", UciMessage::ReadyOk)?,
                 UciMessage::Quit => break Ok(()),
 
                 UciMessage::Position {
