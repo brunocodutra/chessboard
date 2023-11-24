@@ -1,7 +1,7 @@
 use crate::chess::{Color, Position, Square};
 use crate::nnue::Evaluator;
 use crate::search::{Depth, Engine, HashSize, Limits, Options, Score, ThreadCount};
-use std::io::{self, stdin, stdout, BufRead, BufReader, Lines, Read, Stdin, Stdout, Write};
+use std::io::{self, stdin, stdout, Write};
 use std::{num::NonZeroUsize, ops::Shr, time::Duration};
 use vampirc_uci::{self as uci, *};
 
@@ -27,33 +27,25 @@ macro_rules! error {
 }
 
 /// A basic *not fully compliant* UCI server.
-pub struct Uci<W: Write, R: Read> {
-    output: W,
-    input: Lines<BufReader<R>>,
+pub struct Uci {
     engine: Engine,
     options: Options,
     position: Position,
     moves: Vec<UciMove>,
 }
 
-impl Default for Uci<Stdout, Stdin> {
+impl Default for Uci {
     fn default() -> Self {
-        Self::new(stdout(), stdin())
-    }
-}
-
-impl<W: Write, R: Read> Uci<W, R> {
-    pub fn new(writer: W, reader: R) -> Self {
-        Uci {
-            output: writer,
-            input: BufReader::new(reader).lines(),
+        Self {
             engine: Engine::default(),
             options: Options::default(),
             position: Position::default(),
             moves: Vec::with_capacity(128),
         }
     }
+}
 
+impl Uci {
     fn new_game(&mut self) {
         self.engine = Engine::with_options(self.options);
         self.position = Position::default();
@@ -97,7 +89,7 @@ impl<W: Write, R: Read> Uci<W, R> {
         self.moves.push(uci);
     }
 
-    fn go(&mut self, limits: Limits) -> io::Result<()> {
+    fn go(&mut self, limits: Limits) -> Vec<UciMessage> {
         let pv = self.engine.search(&self.position, limits);
         let best = *pv.first().expect("the engine failed to find a move");
 
@@ -109,13 +101,13 @@ impl<W: Write, R: Read> Uci<W, R> {
 
         let pv = UciInfoAttribute::Pv(pv.into_iter().map(UciMove::from).collect());
 
-        writeln!(self.output, "{}", UciMessage::Info(vec![score, pv]))?;
-        writeln!(self.output, "{}", UciMessage::best_move(best.into()))?;
-
-        Ok(())
+        vec![
+            UciMessage::Info(vec![score, pv]),
+            UciMessage::best_move(best.into()),
+        ]
     }
 
-    fn eval(&mut self) -> io::Result<()> {
+    fn eval(&mut self) -> Vec<UciMessage> {
         let pos = Evaluator::new(self.position.clone());
         let [material, positional, value]: [Score; 3] = match pos.turn() {
             Color::White => [
@@ -131,192 +123,208 @@ impl<W: Write, R: Read> Uci<W, R> {
             ],
         };
 
-        writeln!(
-            self.output,
-            "{}",
-            UciMessage::Info(vec![
-                UciInfoAttribute::Any("material".to_string(), material.to_string()),
-                UciInfoAttribute::Any("positional".to_string(), positional.to_string()),
-                UciInfoAttribute::Any("value".to_string(), value.to_string()),
-            ])
-        )?;
+        vec![UciMessage::Info(vec![
+            UciInfoAttribute::Any("material".to_string(), material.to_string()),
+            UciInfoAttribute::Any("positional".to_string(), positional.to_string()),
+            UciInfoAttribute::Any("value".to_string(), value.to_string()),
+        ])]
+    }
 
-        Ok(())
+    /// Processes one [`UciMessage`].
+    pub fn process(&mut self, msg: UciMessage) -> Option<Vec<UciMessage>> {
+        match msg {
+            UciMessage::Uci => {
+                let name = UciMessage::id_name(env!("CARGO_PKG_NAME"));
+                let authors = UciMessage::id_author(env!("CARGO_PKG_AUTHORS"));
+
+                let hash = UciMessage::Option(UciOptionConfig::Spin {
+                    name: "Hash".to_string(),
+                    default: Some(HashSize::default().shr(20) as _),
+                    min: Some(0),
+                    max: Some(HashSize::max().shr(20) as _),
+                });
+
+                let thread = UciMessage::Option(UciOptionConfig::Spin {
+                    name: "Threads".to_string(),
+                    default: Some(ThreadCount::default().get() as _),
+                    min: Some(1),
+                    max: Some(ThreadCount::max().get() as _),
+                });
+
+                Some(vec![name, authors, hash, thread, UciMessage::UciOk])
+            }
+
+            UciMessage::SetOption {
+                name,
+                value: Some(value),
+            } if name.to_lowercase() == "hash" => {
+                self.set_hash(&value);
+                Some(vec![])
+            }
+
+            UciMessage::SetOption {
+                name,
+                value: Some(value),
+            } if name.to_lowercase() == "threads" => {
+                self.set_threads(&value);
+                Some(vec![])
+            }
+
+            UciMessage::UciNewGame => {
+                self.new_game();
+                Some(vec![])
+            }
+
+            UciMessage::IsReady => Some(vec![UciMessage::ReadyOk]),
+            UciMessage::Quit => None,
+
+            UciMessage::Position {
+                startpos: true,
+                fen: None,
+                moves,
+            } => match moves.as_slice() {
+                [history @ .., m, n] if history == self.moves => {
+                    self.play(*m);
+                    self.play(*n);
+                    Some(vec![])
+                }
+
+                ms => {
+                    self.moves.clear();
+                    self.position = Position::default();
+                    ms.iter().for_each(|&m| self.play(m));
+                    Some(vec![])
+                }
+            },
+
+            UciMessage::Position {
+                startpos: false,
+                fen: Some(fen),
+                moves,
+            } if moves.is_empty() => {
+                self.set_position(fen);
+                Some(vec![])
+            }
+
+            UciMessage::Go {
+                time_control: None,
+                search_control: None,
+            }
+            | UciMessage::Go {
+                time_control: Some(UciTimeControl::Infinite),
+                search_control: None,
+            } => Some(self.go(Limits::None)),
+
+            UciMessage::Go {
+                time_control: Some(UciTimeControl::MoveTime(time)),
+                search_control: None,
+            } => {
+                let time = time.to_std().unwrap_or(Duration::MAX);
+                Some(self.go(Limits::Time(time)))
+            }
+
+            UciMessage::Go {
+                search_control: None,
+                time_control:
+                    Some(UciTimeControl::TimeLeft {
+                        white_time: Some(time),
+                        white_increment: Some(increment),
+                        moves_to_go: None,
+                        ..
+                    }),
+            } if self.position.turn() == Color::White => {
+                let limits = Limits::Clock(
+                    time.to_std().unwrap_or(Duration::MAX),
+                    increment.to_std().unwrap_or(Duration::MAX),
+                );
+
+                Some(self.go(limits))
+            }
+
+            UciMessage::Go {
+                search_control: None,
+                time_control:
+                    Some(UciTimeControl::TimeLeft {
+                        black_time: Some(time),
+                        black_increment: Some(increment),
+                        moves_to_go: None,
+                        ..
+                    }),
+            } if self.position.turn() == Color::Black => {
+                let limits = Limits::Clock(
+                    time.to_std().unwrap_or(Duration::MAX),
+                    increment.to_std().unwrap_or(Duration::MAX),
+                );
+
+                Some(self.go(limits))
+            }
+
+            UciMessage::Go {
+                time_control: None,
+                search_control:
+                    Some(UciSearchControl {
+                        depth: Some(depth),
+                        search_moves,
+                        mate: None,
+                        nodes: None,
+                    }),
+            } if search_moves.is_empty() => Some(self.go(Depth::saturate(depth).into())),
+
+            UciMessage::Go {
+                time_control: None,
+                search_control:
+                    Some(UciSearchControl {
+                        depth: None,
+                        search_moves,
+                        mate: None,
+                        nodes: Some(nodes),
+                    }),
+            } if search_moves.is_empty() => Some(self.go(nodes.into())),
+
+            UciMessage::Unknown(msg, _) if msg.to_lowercase() == "eval" => Some(self.eval()),
+            UciMessage::Unknown(msg, _) if msg.is_empty() => Some(vec![]),
+
+            UciMessage::Unknown(_, Some(e)) => {
+                error!("failed to parse UCI message\n{e}");
+                Some(vec![])
+            }
+
+            UciMessage::Unknown(msg, None) => {
+                error!("failed to parse UCI message `{msg}`");
+                Some(vec![])
+            }
+
+            msg => match msg.direction() {
+                uci::CommunicationDirection::GuiToEngine => {
+                    warn!("ignored engine bound message '{msg}'");
+                    Some(vec![])
+                }
+
+                uci::CommunicationDirection::EngineToGui => {
+                    info!("ignored unexpected gui bound message '{msg}'");
+                    Some(vec![])
+                }
+            },
+        }
     }
 
     /// Runs the UCI server.
     pub fn run(&mut self) -> io::Result<()> {
-        loop {
-            let cmd = match self.input.next() {
-                None => break Ok(()),
-                Some(Err(e)) => break Err(e),
-                Some(Ok(s)) => s,
+        for line in stdin().lines() {
+            let request = uci::parse_one(line?.trim());
+            let Some(reply) = self.process(request) else {
+                break;
             };
 
-            self.output.flush()?;
-            match uci::parse_one(cmd.trim()) {
-                UciMessage::Uci => {
-                    let name = UciMessage::id_name(env!("CARGO_PKG_NAME"));
-                    let authors = UciMessage::id_author(env!("CARGO_PKG_AUTHORS"));
-
-                    writeln!(self.output, "{name}")?;
-                    writeln!(self.output, "{authors}")?;
-
-                    let hash = UciMessage::Option(UciOptionConfig::Spin {
-                        name: "Hash".to_string(),
-                        default: Some(HashSize::default().shr(20) as _),
-                        min: Some(0),
-                        max: Some(HashSize::max().shr(20) as _),
-                    });
-
-                    writeln!(self.output, "{hash}")?;
-
-                    let thread = UciMessage::Option(UciOptionConfig::Spin {
-                        name: "Threads".to_string(),
-                        default: Some(ThreadCount::default().get() as _),
-                        min: Some(1),
-                        max: Some(ThreadCount::max().get() as _),
-                    });
-
-                    writeln!(self.output, "{thread}")?;
-                    writeln!(self.output, "{}", UciMessage::UciOk)?;
-                }
-
-                UciMessage::SetOption {
-                    name,
-                    value: Some(value),
-                } if name.to_lowercase() == "hash" => self.set_hash(&value),
-
-                UciMessage::SetOption {
-                    name,
-                    value: Some(value),
-                } if name.to_lowercase() == "threads" => self.set_threads(&value),
-
-                UciMessage::UciNewGame => self.new_game(),
-                UciMessage::IsReady => writeln!(self.output, "{}", UciMessage::ReadyOk)?,
-                UciMessage::Quit => break Ok(()),
-
-                UciMessage::Position {
-                    startpos: true,
-                    fen: None,
-                    moves,
-                } => match moves.as_slice() {
-                    [history @ .., m, n] if history == self.moves => {
-                        self.play(*m);
-                        self.play(*n);
-                    }
-
-                    ms => {
-                        self.position = Position::default();
-                        self.moves.clear();
-                        for m in ms {
-                            self.play(*m);
-                        }
-                    }
-                },
-
-                UciMessage::Position {
-                    startpos: false,
-                    fen: Some(fen),
-                    moves,
-                } if moves.is_empty() => self.set_position(fen),
-
-                UciMessage::Go {
-                    time_control: None,
-                    search_control: None,
-                }
-                | UciMessage::Go {
-                    time_control: Some(UciTimeControl::Infinite),
-                    search_control: None,
-                } => {
-                    self.go(Limits::None)?;
-                }
-
-                UciMessage::Go {
-                    time_control: Some(UciTimeControl::MoveTime(time)),
-                    search_control: None,
-                } => {
-                    let time = time.to_std().unwrap_or(Duration::MAX);
-                    self.go(Limits::Time(time))?;
-                }
-
-                UciMessage::Go {
-                    search_control: None,
-                    time_control:
-                        Some(UciTimeControl::TimeLeft {
-                            white_time: Some(time),
-                            white_increment: Some(increment),
-                            moves_to_go: None,
-                            ..
-                        }),
-                } if self.position.turn() == Color::White => {
-                    let limits = Limits::Clock(
-                        time.to_std().unwrap_or(Duration::MAX),
-                        increment.to_std().unwrap_or(Duration::MAX),
-                    );
-
-                    self.go(limits)?;
-                }
-
-                UciMessage::Go {
-                    search_control: None,
-                    time_control:
-                        Some(UciTimeControl::TimeLeft {
-                            black_time: Some(time),
-                            black_increment: Some(increment),
-                            moves_to_go: None,
-                            ..
-                        }),
-                } if self.position.turn() == Color::Black => {
-                    let limits = Limits::Clock(
-                        time.to_std().unwrap_or(Duration::MAX),
-                        increment.to_std().unwrap_or(Duration::MAX),
-                    );
-
-                    self.go(limits)?;
-                }
-
-                UciMessage::Go {
-                    time_control: None,
-                    search_control:
-                        Some(UciSearchControl {
-                            depth: Some(depth),
-                            search_moves,
-                            mate: None,
-                            nodes: None,
-                        }),
-                } if search_moves.is_empty() => self.go(Depth::saturate(depth).into())?,
-
-                UciMessage::Go {
-                    time_control: None,
-                    search_control:
-                        Some(UciSearchControl {
-                            depth: None,
-                            search_moves,
-                            mate: None,
-                            nodes: Some(nodes),
-                        }),
-                } if search_moves.is_empty() => self.go(nodes.into())?,
-
-                UciMessage::Unknown(msg, _) if msg.is_empty() => { /* ignore */ }
-                UciMessage::Unknown(msg, _) if msg.to_lowercase() == "eval" => self.eval()?,
-
-                UciMessage::Unknown(msg, cause) => match cause {
-                    Some(e) => error!("failed to parse UCI message\n{e}"),
-                    None => error!("failed to parse UCI message `{msg}`"),
-                },
-
-                msg => match msg.direction() {
-                    uci::CommunicationDirection::GuiToEngine => {
-                        warn!("ignored engine bound message '{msg}'");
-                    }
-
-                    uci::CommunicationDirection::EngineToGui => {
-                        info!("ignored unexpected gui bound message '{msg}'");
-                    }
-                },
+            let mut stdout = stdout().lock();
+            for msg in reply {
+                writeln!(&mut stdout, "{msg}")?;
             }
+
+            stdout.flush()?;
         }
+
+        Ok(())
     }
 }
 
@@ -328,6 +336,7 @@ mod tests {
     use proptest::sample::{size_range, Selector};
     use std::ops::BitAnd;
     use test_strategy::proptest;
+    use vampirc_uci::Duration as UciDuration;
 
     #[proptest]
     fn new_game_preserves_options(o: Options) {
@@ -474,5 +483,154 @@ mod tests {
         uci.play(m.into());
         assert_eq!(uci.position, pos);
         assert_eq!(uci.moves, Vec::from_iter(ms.into_iter().map(UciMove::from)));
+    }
+
+    #[proptest]
+    fn process_handles_uci() {
+        let mut uci = Uci::default();
+
+        assert!(uci
+            .process(UciMessage::Uci)
+            .is_some_and(|v| v.contains(&UciMessage::UciOk)));
+    }
+
+    #[proptest]
+    fn process_handles_new_game(
+        o: Options,
+        pos: Position,
+        #[any(size_range(..=10).lift())] ms: Vec<Move>,
+    ) {
+        let mut uci = Uci {
+            options: o,
+            position: pos,
+            moves: ms.into_iter().map(UciMove::from).collect(),
+            ..Uci::default()
+        };
+
+        uci.process(UciMessage::UciNewGame);
+        assert_eq!(uci.options, o);
+        assert_eq!(uci.position, Position::default());
+        assert_eq!(uci.moves, Vec::default());
+    }
+
+    #[proptest]
+    fn process_handles_option_hash(s: HashSize) {
+        let mut uci = Uci::default();
+
+        uci.process(UciMessage::SetOption {
+            name: "hash".to_string(),
+            value: Some(s.shr(20u32).to_string()),
+        });
+
+        assert_eq!(uci.options.hash, s.bitand(!0 << 20));
+    }
+
+    #[proptest]
+    fn process_handles_option_threads(c: ThreadCount) {
+        let mut uci = Uci::default();
+
+        uci.process(UciMessage::SetOption {
+            name: "threads".to_string(),
+            value: Some(c.to_string()),
+        });
+
+        assert_eq!(uci.options.threads, c);
+    }
+
+    #[proptest]
+    fn process_handles_ready() {
+        let mut uci = Uci::default();
+
+        assert_eq!(
+            uci.process(UciMessage::IsReady),
+            Some(vec![UciMessage::ReadyOk])
+        );
+    }
+
+    #[proptest]
+    fn process_handles_quit() {
+        let mut uci = Uci::default();
+        assert_eq!(uci.process(UciMessage::Quit), None);
+    }
+
+    #[proptest]
+    fn process_handles_position(pos: Position) {
+        let mut uci = Uci::default();
+
+        uci.process(UciMessage::Position {
+            startpos: false,
+            fen: Some(UciFen(pos.to_string())),
+            moves: vec![],
+        });
+
+        assert_eq!(uci.position, pos);
+    }
+
+    #[proptest]
+    fn process_handles_go_depth(d: Depth) {
+        let mut uci = Uci::default();
+
+        let reply = uci.process(UciMessage::Go {
+            time_control: None,
+            search_control: Some(UciSearchControl::depth(d.get())),
+        });
+
+        assert!(reply.is_some_and(|v| v.iter().any(|m| matches!(m, UciMessage::BestMove { .. }))));
+    }
+
+    #[proptest]
+    fn process_handles_go_nodes(#[strategy(..1000u64)] n: u64) {
+        let mut uci = Uci::default();
+
+        let reply = uci.process(UciMessage::Go {
+            time_control: None,
+            search_control: Some(UciSearchControl::nodes(n)),
+        });
+
+        assert!(reply.is_some_and(|v| v.iter().any(|m| matches!(m, UciMessage::BestMove { .. }))));
+    }
+
+    #[proptest]
+    fn process_handles_go_time(#[strategy(..10u8)] ms: u8) {
+        let mut uci = Uci::default();
+
+        let time = Duration::from_millis(ms as _);
+        let reply = uci.process(UciMessage::Go {
+            time_control: Some(UciTimeControl::MoveTime(UciDuration::from_std(time)?)),
+            search_control: None,
+        });
+
+        assert!(reply.is_some_and(|v| v.iter().any(|m| matches!(m, UciMessage::BestMove { .. }))));
+    }
+
+    #[proptest]
+    fn process_handles_go_time_left(#[strategy(..10u8)] t: u8, #[strategy(..10u8)] i: u8) {
+        let mut uci = Uci::default();
+
+        let clock = Duration::from_millis(t as _);
+        let inc = Duration::from_millis(i as _);
+        let reply = uci.process(UciMessage::Go {
+            time_control: Some(UciTimeControl::TimeLeft {
+                white_time: Some(UciDuration::from_std(clock)?),
+                black_time: None,
+                white_increment: Some(UciDuration::from_std(inc)?),
+                black_increment: None,
+                moves_to_go: None,
+            }),
+            search_control: None,
+        });
+
+        assert!(reply.is_some_and(|v| v.iter().any(|m| matches!(m, UciMessage::BestMove { .. }))));
+    }
+
+    #[proptest]
+    fn process_handles_eval(pos: Position) {
+        let mut uci = Uci {
+            position: pos,
+            ..Uci::default()
+        };
+
+        let reply = uci.process(UciMessage::Unknown("eval".to_string(), None));
+        assert_eq!(reply, Some(uci.eval()));
     }
 }
