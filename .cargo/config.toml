@@ -1,2 +1,8 @@
 [build]
 rustflags = ["-Ctarget-cpu=native"]
+
+[unstable]
+profile-rustflags = true
+
+[profile.release]
+rustflags = ["-Zlocation-detail=none"]
