@@ -110,17 +110,20 @@ impl<T: Bounds> Saturating<T> {
     /// # Panics
     ///
     /// Panics if `i` is outside of the bounds.
+    #[inline(always)]
     pub fn new(i: T::Integer) -> Self {
         assert!((T::LOWER..=T::UPPER).contains(&i));
         Saturating(i)
     }
 
     /// Returns the raw integer.
+    #[inline(always)]
     pub const fn get(&self) -> T::Integer {
         self.0
     }
 
     /// Constructs `Self` from a raw integer through saturation.
+    #[inline(always)]
     pub fn saturate<I: PrimInt>(i: I) -> Self {
         let min = cast(T::LOWER).unwrap_or_else(I::min_value);
         let max = cast(T::UPPER).unwrap_or_else(I::max_value);
@@ -128,6 +131,7 @@ impl<T: Bounds> Saturating<T> {
     }
 
     /// Lossy conversion between saturating integers.
+    #[inline(always)]
     pub fn cast<U: Bounds>(&self) -> Saturating<U> {
         Saturating::saturate(self.get())
     }
@@ -136,6 +140,7 @@ impl<T: Bounds> Saturating<T> {
 impl<T: Bounds> Copy for Saturating<T> {}
 
 impl<T: Bounds> Clone for Saturating<T> {
+    #[inline(always)]
     fn clone(&self) -> Self {
         *self
     }
@@ -147,6 +152,7 @@ impl<T: Bounds, U: Bounds> PartialEq<Saturating<U>> for Saturating<T>
 where
     Self: PartialEq<U::Integer>,
 {
+    #[inline(always)]
     fn eq(&self, other: &Saturating<U>) -> bool {
         self.eq(&other.get())
     }
@@ -156,6 +162,7 @@ impl<T: Bounds> Ord for Saturating<T>
 where
     Self: PartialEq<Self> + PartialOrd,
 {
+    #[inline(always)]
     fn cmp(&self, other: &Self) -> Ordering {
         self.get().cmp(&other.get())
     }
@@ -165,12 +172,14 @@ impl<T: Bounds, U: Bounds> PartialOrd<Saturating<U>> for Saturating<T>
 where
     Self: PartialOrd<U::Integer>,
 {
+    #[inline(always)]
     fn partial_cmp(&self, other: &Saturating<U>) -> Option<Ordering> {
         self.partial_cmp(&other.get())
     }
 }
 
 impl<T: Bounds<Integer = I>, I: Hash> Hash for Saturating<T> {
+    #[inline(always)]
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.get().hash(state)
     }
@@ -185,6 +194,7 @@ where
 {
     type Output = Self;
 
+    #[inline(always)]
     fn add(self, rhs: Saturating<U>) -> Self::Output {
         self + rhs.get()
     }
@@ -199,6 +209,7 @@ where
 {
     type Output = Self;
 
+    #[inline(always)]
     fn sub(self, rhs: Saturating<U>) -> Self::Output {
         self - rhs.get()
     }
@@ -213,6 +224,7 @@ where
 {
     type Output = Self;
 
+    #[inline(always)]
     fn mul(self, rhs: Saturating<U>) -> Self::Output {
         self * rhs.get()
     }
@@ -227,6 +239,7 @@ where
 {
     type Output = Self;
 
+    #[inline(always)]
     fn div(self, rhs: Saturating<U>) -> Self::Output {
         self / rhs.get()
     }
@@ -239,6 +252,7 @@ where
     K: 'static + PrimInt,
     (I, J): Larger<Integer = K>,
 {
+    #[inline(always)]
     fn eq(&self, other: &J) -> bool {
         K::eq(&self.get().as_(), &other.as_())
     }
@@ -251,6 +265,7 @@ where
     K: 'static + PrimInt,
     (I, J): Larger<Integer = K>,
 {
+    #[inline(always)]
     fn partial_cmp(&self, other: &J) -> Option<Ordering> {
         K::partial_cmp(&self.get().as_(), &other.as_())
     }
@@ -263,6 +278,7 @@ where
 {
     type Output = Self;
 
+    #[inline(always)]
     fn neg(self) -> Self::Output {
         Saturating::saturate(J::neg(self.get().as_()))
     }
@@ -277,6 +293,7 @@ where
 {
     type Output = Self;
 
+    #[inline(always)]
     fn add(self, rhs: J) -> Self::Output {
         Saturating::saturate(K::add(self.get().as_(), rhs.as_()))
     }
@@ -291,6 +308,7 @@ where
 {
     type Output = Self;
 
+    #[inline(always)]
     fn sub(self, rhs: J) -> Self::Output {
         Saturating::saturate(K::sub(self.get().as_(), rhs.as_()))
     }
@@ -305,6 +323,7 @@ where
 {
     type Output = Self;
 
+    #[inline(always)]
     fn mul(self, rhs: J) -> Self::Output {
         Saturating::saturate(K::mul(self.get().as_(), rhs.as_()))
     }
@@ -319,6 +338,7 @@ where
 {
     type Output = Self;
 
+    #[inline(always)]
     fn div(self, rhs: J) -> Self::Output {
         Saturating::saturate(K::div(self.get().as_(), rhs.as_()))
     }
