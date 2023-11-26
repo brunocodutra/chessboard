@@ -1,6 +1,6 @@
-use crate::util::Bounds;
+use crate::util::{Assume, Bounds};
 use derive_more::Debug;
-use num_traits::{cast, clamp, AsPrimitive, PrimInt};
+use num_traits::{cast, clamp, AsPrimitive, PrimInt, Signed};
 use std::cmp::Ordering;
 use std::hash::{Hash, Hasher};
 use std::ops::{Add, Div, Mul, Neg, Sub};
@@ -11,11 +11,90 @@ use proptest::prelude::*;
 #[cfg(test)]
 use std::ops::RangeInclusive;
 
+trait Larger {
+    type Integer: PrimInt + Signed;
+}
+
+impl<T: PrimInt + Signed> Larger for (T, T) {
+    type Integer = T;
+}
+
+impl Larger for (i8, i16) {
+    type Integer = i16;
+}
+
+impl Larger for (i16, i8) {
+    type Integer = i16;
+}
+
+impl Larger for (i8, i32) {
+    type Integer = i32;
+}
+
+impl Larger for (i32, i8) {
+    type Integer = i32;
+}
+
+impl Larger for (i8, i64) {
+    type Integer = i64;
+}
+
+impl Larger for (i64, i8) {
+    type Integer = i64;
+}
+
+impl Larger for (i16, i32) {
+    type Integer = i32;
+}
+
+impl Larger for (i32, i16) {
+    type Integer = i32;
+}
+
+impl Larger for (i16, i64) {
+    type Integer = i64;
+}
+
+impl Larger for (i64, i16) {
+    type Integer = i64;
+}
+
+impl Larger for (i32, i64) {
+    type Integer = i64;
+}
+
+impl Larger for (i64, i32) {
+    type Integer = i64;
+}
+
+trait NextLarger {
+    type Integer: PrimInt + Signed;
+}
+
+impl<I, J, K: NextLarger> NextLarger for (I, J)
+where
+    Self: Larger<Integer = K>,
+{
+    type Integer = K::Integer;
+}
+
+impl NextLarger for i8 {
+    type Integer = i16;
+}
+
+impl NextLarger for i16 {
+    type Integer = i32;
+}
+
+impl NextLarger for i32 {
+    type Integer = i64;
+}
+
 /// A saturating bounded integer.
 #[derive(Debug)]
 #[cfg_attr(test, derive(test_strategy::Arbitrary))]
 #[cfg_attr(test, arbitrary(bound(T::Integer: 'static + Debug, RangeInclusive<T::Integer>: Strategy<Value = T::Integer>)))]
-#[debug("Saturating({:?})", "i32::from(*self)")]
+#[debug("Saturating({_0:?})")]
 #[repr(transparent)]
 pub struct Saturating<T: Bounds>(#[cfg_attr(test, strategy(T::LOWER..=T::UPPER))] T::Integer);
 
@@ -42,10 +121,10 @@ impl<T: Bounds> Saturating<T> {
     }
 
     /// Constructs `Self` from a raw integer through saturation.
-    pub fn saturate<U: PrimInt>(i: U) -> Self {
-        let min = cast(T::LOWER).unwrap_or_else(U::min_value);
-        let max = cast(T::UPPER).unwrap_or_else(U::max_value);
-        Saturating::new(cast(clamp(i, min, max)).unwrap())
+    pub fn saturate<I: PrimInt>(i: I) -> Self {
+        let min = cast(T::LOWER).unwrap_or_else(I::min_value);
+        let max = cast(T::UPPER).unwrap_or_else(I::max_value);
+        Saturating::new(cast(clamp(i, min, max)).assume())
     }
 
     /// Lossy conversion between saturating integers.
@@ -62,59 +141,48 @@ impl<T: Bounds> Clone for Saturating<T> {
     }
 }
 
-impl<T: Bounds> Hash for Saturating<T> {
-    fn hash<H: Hasher>(&self, state: &mut H) {
-        state.write_i32(self.get().as_());
-    }
-}
+impl<T: Bounds> Eq for Saturating<T> where Self: PartialEq<Self> {}
 
-impl<T: Bounds> From<Saturating<T>> for i32 {
-    fn from(s: Saturating<T>) -> Self {
-        s.get().into()
-    }
-}
-
-impl<T: Bounds> Eq for Saturating<T> {}
-
-impl<T: Bounds, U: Bounds> PartialEq<Saturating<U>> for Saturating<T> {
+impl<T: Bounds, U: Bounds> PartialEq<Saturating<U>> for Saturating<T>
+where
+    Self: PartialEq<U::Integer>,
+{
     fn eq(&self, other: &Saturating<U>) -> bool {
         self.eq(&other.get())
     }
 }
 
-impl<T: Bounds, U: PrimInt + Into<i32> + AsPrimitive<i32>> PartialEq<U> for Saturating<T> {
-    fn eq(&self, other: &U) -> bool {
-        i32::eq(&self.get().as_(), &other.as_())
-    }
-}
-
-impl<T: Bounds> Ord for Saturating<T> {
+impl<T: Bounds> Ord for Saturating<T>
+where
+    Self: PartialEq<Self> + PartialOrd,
+{
     fn cmp(&self, other: &Self) -> Ordering {
         self.get().cmp(&other.get())
     }
 }
 
-impl<T: Bounds, U: Bounds> PartialOrd<Saturating<U>> for Saturating<T> {
+impl<T: Bounds, U: Bounds> PartialOrd<Saturating<U>> for Saturating<T>
+where
+    Self: PartialOrd<U::Integer>,
+{
     fn partial_cmp(&self, other: &Saturating<U>) -> Option<Ordering> {
         self.partial_cmp(&other.get())
     }
 }
 
-impl<T: Bounds, U: PrimInt + Into<i32> + AsPrimitive<i32>> PartialOrd<U> for Saturating<T> {
-    fn partial_cmp(&self, other: &U) -> Option<Ordering> {
-        i32::partial_cmp(&self.get().as_(), &other.as_())
+impl<T: Bounds<Integer = I>, I: Hash> Hash for Saturating<T> {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.get().hash(state)
     }
 }
 
-impl<T: Bounds> Neg for Saturating<T> {
-    type Output = Self;
-
-    fn neg(self) -> Self::Output {
-        Saturating::saturate(i32::saturating_neg(self.get().as_()))
-    }
-}
-
-impl<T: Bounds, U: Bounds> Add<Saturating<U>> for Saturating<T> {
+impl<T: Bounds<Integer = I>, U: Bounds<Integer = J>, I, J, K> Add<Saturating<U>> for Saturating<T>
+where
+    I: AsPrimitive<K>,
+    J: AsPrimitive<K>,
+    K: 'static + PrimInt + Signed,
+    (I, J): NextLarger<Integer = K>,
+{
     type Output = Self;
 
     fn add(self, rhs: Saturating<U>) -> Self::Output {
@@ -122,15 +190,13 @@ impl<T: Bounds, U: Bounds> Add<Saturating<U>> for Saturating<T> {
     }
 }
 
-impl<T: Bounds, U: PrimInt + Into<i32> + AsPrimitive<i32>> Add<U> for Saturating<T> {
-    type Output = Self;
-
-    fn add(self, rhs: U) -> Self::Output {
-        Saturating::saturate(i32::saturating_add(self.get().as_(), rhs.as_()))
-    }
-}
-
-impl<T: Bounds, U: Bounds> Sub<Saturating<U>> for Saturating<T> {
+impl<T: Bounds<Integer = I>, U: Bounds<Integer = J>, I, J, K> Sub<Saturating<U>> for Saturating<T>
+where
+    I: AsPrimitive<K>,
+    J: AsPrimitive<K>,
+    K: 'static + PrimInt + Signed,
+    (I, J): NextLarger<Integer = K>,
+{
     type Output = Self;
 
     fn sub(self, rhs: Saturating<U>) -> Self::Output {
@@ -138,15 +204,13 @@ impl<T: Bounds, U: Bounds> Sub<Saturating<U>> for Saturating<T> {
     }
 }
 
-impl<T: Bounds, U: PrimInt + Into<i32> + AsPrimitive<i32>> Sub<U> for Saturating<T> {
-    type Output = Self;
-
-    fn sub(self, rhs: U) -> Self::Output {
-        Saturating::saturate(i32::saturating_sub(self.get().as_(), rhs.as_()))
-    }
-}
-
-impl<T: Bounds, U: Bounds> Mul<Saturating<U>> for Saturating<T> {
+impl<T: Bounds<Integer = I>, U: Bounds<Integer = J>, I, J, K> Mul<Saturating<U>> for Saturating<T>
+where
+    I: AsPrimitive<K>,
+    J: AsPrimitive<K>,
+    K: 'static + PrimInt + Signed,
+    (I, J): NextLarger<Integer = K>,
+{
     type Output = Self;
 
     fn mul(self, rhs: Saturating<U>) -> Self::Output {
@@ -154,15 +218,13 @@ impl<T: Bounds, U: Bounds> Mul<Saturating<U>> for Saturating<T> {
     }
 }
 
-impl<T: Bounds, U: PrimInt + Into<i32> + AsPrimitive<i32>> Mul<U> for Saturating<T> {
-    type Output = Self;
-
-    fn mul(self, rhs: U) -> Self::Output {
-        Saturating::saturate(i32::saturating_mul(self.get().as_(), rhs.as_()))
-    }
-}
-
-impl<T: Bounds, U: Bounds> Div<Saturating<U>> for Saturating<T> {
+impl<T: Bounds<Integer = I>, U: Bounds<Integer = J>, I, J, K> Div<Saturating<U>> for Saturating<T>
+where
+    I: AsPrimitive<K>,
+    J: AsPrimitive<K>,
+    K: 'static + PrimInt + Signed,
+    (I, J): NextLarger<Integer = K>,
+{
     type Output = Self;
 
     fn div(self, rhs: Saturating<U>) -> Self::Output {
@@ -170,11 +232,95 @@ impl<T: Bounds, U: Bounds> Div<Saturating<U>> for Saturating<T> {
     }
 }
 
-impl<T: Bounds, U: PrimInt + Into<i32> + AsPrimitive<i32>> Div<U> for Saturating<T> {
+impl<T: Bounds<Integer = I>, I, J, K> PartialEq<J> for Saturating<T>
+where
+    I: AsPrimitive<K>,
+    J: AsPrimitive<K>,
+    K: 'static + PrimInt,
+    (I, J): Larger<Integer = K>,
+{
+    fn eq(&self, other: &J) -> bool {
+        K::eq(&self.get().as_(), &other.as_())
+    }
+}
+
+impl<T: Bounds<Integer = I>, I, J, K> PartialOrd<J> for Saturating<T>
+where
+    I: AsPrimitive<K>,
+    J: AsPrimitive<K>,
+    K: 'static + PrimInt,
+    (I, J): Larger<Integer = K>,
+{
+    fn partial_cmp(&self, other: &J) -> Option<Ordering> {
+        K::partial_cmp(&self.get().as_(), &other.as_())
+    }
+}
+
+impl<T: Bounds<Integer = I>, I, J> Neg for Saturating<T>
+where
+    I: AsPrimitive<J> + NextLarger<Integer = J>,
+    J: 'static + PrimInt + Signed,
+{
     type Output = Self;
 
-    fn div(self, rhs: U) -> Self::Output {
-        Saturating::saturate(i32::saturating_div(self.get().as_(), rhs.as_()))
+    fn neg(self) -> Self::Output {
+        Saturating::saturate(J::neg(self.get().as_()))
+    }
+}
+
+impl<T: Bounds<Integer = I>, I, J, K> Add<J> for Saturating<T>
+where
+    I: AsPrimitive<K>,
+    J: AsPrimitive<K>,
+    K: 'static + PrimInt + Signed,
+    (I, J): NextLarger<Integer = K>,
+{
+    type Output = Self;
+
+    fn add(self, rhs: J) -> Self::Output {
+        Saturating::saturate(K::add(self.get().as_(), rhs.as_()))
+    }
+}
+
+impl<T: Bounds<Integer = I>, I, J, K> Sub<J> for Saturating<T>
+where
+    I: AsPrimitive<K>,
+    J: AsPrimitive<K>,
+    K: 'static + PrimInt + Signed,
+    (I, J): NextLarger<Integer = K>,
+{
+    type Output = Self;
+
+    fn sub(self, rhs: J) -> Self::Output {
+        Saturating::saturate(K::sub(self.get().as_(), rhs.as_()))
+    }
+}
+
+impl<T: Bounds<Integer = I>, I, J, K> Mul<J> for Saturating<T>
+where
+    I: AsPrimitive<K>,
+    J: AsPrimitive<K>,
+    K: 'static + PrimInt + Signed,
+    (I, J): NextLarger<Integer = K>,
+{
+    type Output = Self;
+
+    fn mul(self, rhs: J) -> Self::Output {
+        Saturating::saturate(K::mul(self.get().as_(), rhs.as_()))
+    }
+}
+
+impl<T: Bounds<Integer = I>, I, J, K> Div<J> for Saturating<T>
+where
+    I: AsPrimitive<K>,
+    J: AsPrimitive<K>,
+    K: 'static + PrimInt + Signed,
+    (I, J): NextLarger<Integer = K>,
+{
+    type Output = Self;
+
+    fn div(self, rhs: J) -> Self::Output {
+        Saturating::saturate(K::div(self.get().as_(), rhs.as_()))
     }
 }
 
@@ -188,8 +334,8 @@ mod tests {
 
     impl Bounds for AsymmetricBounds {
         type Integer = i8;
-        const LOWER: Self::Integer = -5;
-        const UPPER: Self::Integer = 9;
+        const LOWER: Self::Integer = -89;
+        const UPPER: Self::Integer = 111;
     }
 
     #[proptest]
@@ -244,12 +390,14 @@ mod tests {
 
     #[proptest]
     fn negation_saturates(s: Saturating<AsymmetricBounds>) {
-        assert_eq!(-s, Saturating::<AsymmetricBounds>::saturate(-s.get()));
+        let r = Saturating::<AsymmetricBounds>::saturate(s.get().saturating_neg());
+
+        assert_eq!(-s, r);
     }
 
     #[proptest]
     fn addition_saturates(a: Saturating<AsymmetricBounds>, b: Saturating<AsymmetricBounds>) {
-        let r = Saturating::<AsymmetricBounds>::saturate(a.get() + b.get());
+        let r = Saturating::<AsymmetricBounds>::saturate(i8::saturating_add(a.get(), b.get()));
 
         assert_eq!(a + b, r);
         assert_eq!(a + b.get(), r);
@@ -257,7 +405,7 @@ mod tests {
 
     #[proptest]
     fn subtraction_saturates(a: Saturating<AsymmetricBounds>, b: Saturating<AsymmetricBounds>) {
-        let r = Saturating::<AsymmetricBounds>::saturate(a.get() - b.get());
+        let r = Saturating::<AsymmetricBounds>::saturate(i8::saturating_sub(a.get(), b.get()));
 
         assert_eq!(a - b, r);
         assert_eq!(a - b.get(), r);
@@ -265,7 +413,7 @@ mod tests {
 
     #[proptest]
     fn multiplication_saturates(a: Saturating<AsymmetricBounds>, b: Saturating<AsymmetricBounds>) {
-        let r = Saturating::<AsymmetricBounds>::saturate(a.get() * b.get());
+        let r = Saturating::<AsymmetricBounds>::saturate(i8::saturating_mul(a.get(), b.get()));
 
         assert_eq!(a * b, r);
         assert_eq!(a * b.get(), r);
@@ -276,7 +424,7 @@ mod tests {
         a: Saturating<AsymmetricBounds>,
         #[filter(#b != 0)] b: Saturating<AsymmetricBounds>,
     ) {
-        let r = Saturating::<AsymmetricBounds>::saturate(a.get() / b.get());
+        let r = Saturating::<AsymmetricBounds>::saturate(i8::saturating_div(a.get(), b.get()));
 
         assert_eq!(a / b, r);
         assert_eq!(a / b.get(), r);

@@ -4,7 +4,7 @@ use std::convert::Infallible;
 pub struct DepthBounds;
 
 impl Bounds for DepthBounds {
-    type Integer = u8;
+    type Integer = i8;
 
     const LOWER: Self::Integer = 0;
 
@@ -23,11 +23,11 @@ impl Binary for Depth {
     type Error = Infallible;
 
     fn encode(&self) -> Self::Bits {
-        Bits::new(self.get())
+        Bits::new(self.get() as _)
     }
 
     fn decode(bits: Self::Bits) -> Result<Self, Self::Error> {
-        Ok(Depth::new(bits.get()))
+        Ok(Depth::new(bits.get() as _))
     }
 }
 
