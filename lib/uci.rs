@@ -572,7 +572,7 @@ mod tests {
 
         let reply = uci.process(UciMessage::Go {
             time_control: None,
-            search_control: Some(UciSearchControl::depth(d.get())),
+            search_control: Some(UciSearchControl::depth(d.get() as _)),
         });
 
         assert!(reply.is_some_and(|v| v.iter().any(|m| matches!(m, UciMessage::BestMove { .. }))));

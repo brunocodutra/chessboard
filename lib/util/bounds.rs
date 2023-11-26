@@ -1,9 +1,9 @@
-use num_traits::{AsPrimitive, PrimInt};
+use num_traits::{PrimInt, Signed};
 
 /// Trait for integer bounds.
 pub trait Bounds {
     /// The equivalent primitive integer
-    type Integer: PrimInt + Into<i32> + AsPrimitive<i32>;
+    type Integer: PrimInt + Signed;
 
     /// The lower bound.
     const LOWER: Self::Integer;

@@ -56,7 +56,7 @@ impl Binary for Score {
 
     fn decode(bits: Self::Bits) -> Result<Self, Self::Error> {
         if bits != !Bits::default() {
-            Ok(Self::LOWER + bits.get())
+            Ok(Self::LOWER + bits.get() as i16)
         } else {
             Err(DecodeScoreError)
         }
