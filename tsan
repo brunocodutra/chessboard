@@ -1,0 +1,10 @@
+# https://github.com/crossbeam-rs/crossbeam/blob/18afbb6ed2f98e55ae5cc10578e54762232a2437/ci/tsan
+
+# The epoch-based GC uses fences.
+race:crossbeam_epoch
+
+# Push and steal operations in crossbeam-deque may cause data races, but such
+# data races are safe. If a data race happens, the value read by `steal` is
+# forgotten and the steal operation is then retried.
+race:crossbeam_deque*push
+race:crossbeam_deque*steal

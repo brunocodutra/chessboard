@@ -78,6 +78,7 @@ jobs:
     - run: cargo test --tests --all-features --workspace --target x86_64-unknown-linux-gnu -Z build-std -- --test-threads=1
       env:
         RUSTFLAGS: "-Z sanitizer=${{ matrix.sanitizer }}"
+        TSAN_OPTIONS: "suppressions=tsan"
 
   coverage:
     needs: [test]
