@@ -1,9 +1,4 @@
-use derive_more::{Display, Error};
 use std::sync::atomic::{AtomicU64, Ordering};
-
-#[derive(Debug, Display, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Error)]
-#[display("counter exhausted")]
-pub struct Exhausted;
 
 /// A counter towards a limit.
 #[derive(Debug)]
