@@ -1,6 +1,5 @@
 use cozy_chess as cc;
 use derive_more::Display;
-use vampirc_uci::UciPiece;
 
 /// The type of a chess [`Piece`][`crate::Piece`].
 #[derive(Debug, Display, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
@@ -48,34 +47,6 @@ impl Role {
     /// Returns an iterator over [`Role`]s ordered by [index][`Role::index`].
     pub fn iter() -> impl DoubleEndedIterator<Item = Self> + ExactSizeIterator {
         Self::ROLES.into_iter()
-    }
-}
-
-#[doc(hidden)]
-impl From<Role> for UciPiece {
-    fn from(r: Role) -> Self {
-        match r {
-            Role::Pawn => UciPiece::Pawn,
-            Role::Knight => UciPiece::Knight,
-            Role::Bishop => UciPiece::Bishop,
-            Role::Rook => UciPiece::Rook,
-            Role::Queen => UciPiece::Queen,
-            Role::King => UciPiece::King,
-        }
-    }
-}
-
-#[doc(hidden)]
-impl From<UciPiece> for Role {
-    fn from(r: UciPiece) -> Self {
-        match r {
-            UciPiece::Pawn => Role::Pawn,
-            UciPiece::Knight => Role::Knight,
-            UciPiece::Bishop => Role::Bishop,
-            UciPiece::Rook => Role::Rook,
-            UciPiece::Queen => Role::Queen,
-            UciPiece::King => Role::King,
-        }
     }
 }
 
@@ -148,11 +119,6 @@ mod tests {
     #[proptest]
     fn iter_returns_iterator_of_exact_size() {
         assert_eq!(Role::iter().len(), 6);
-    }
-
-    #[proptest]
-    fn role_has_an_equivalent_uci_representation(r: Role) {
-        assert_eq!(Role::from(UciPiece::from(r)), r);
     }
 
     #[proptest]

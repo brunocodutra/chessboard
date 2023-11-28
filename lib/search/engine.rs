@@ -1,4 +1,4 @@
-use crate::chess::{Bitboard, Move, Piece, Position, Role};
+use crate::chess::{Move, Piece, Position, Role};
 use crate::nnue::{Evaluator, Value};
 use crate::search::{Depth, DepthBounds, Killers, Limits, Options, Ply, Pv, Score};
 use crate::search::{Transposition, TranspositionTable};
@@ -222,7 +222,7 @@ impl Engine {
             }
         }
 
-        let mut moves = Buffer::<_, 256>::from_iter(pos.moves(Bitboard::full()).filter_map(|m| {
+        let mut moves = Buffer::<_, 256>::from_iter(pos.moves().filter_map(|m| {
             if ply >= depth && !in_check && m.is_quiet() {
                 return None;
             } else if Some(m) == tpos.map(|t| t.best()) {
@@ -404,7 +404,7 @@ mod tests {
             return score;
         }
 
-        pos.moves(Bitboard::full())
+        pos.moves()
             .filter(|m| ply < depth || pos.is_check() || !m.is_quiet())
             .map(|m| {
                 let mut next = pos.clone();
@@ -438,7 +438,7 @@ mod tests {
         d: Depth,
         #[filter(#p >= 0)] p: Ply,
         #[filter(#s.mate().is_none() && #s >= #b)] s: Score,
-        #[map(|s: Selector| s.select(#pos.moves(Bitboard::full())))] m: Move,
+        #[map(|s: Selector| s.select(#pos.moves()))] m: Move,
     ) {
         e.tt.set(pos.zobrist(), Transposition::lower(d, s, m));
 
@@ -456,7 +456,7 @@ mod tests {
         d: Depth,
         #[filter(#p >= 0)] p: Ply,
         #[filter(#s.mate().is_none() && #s < #b)] s: Score,
-        #[map(|s: Selector| s.select(#pos.moves(Bitboard::full())))] m: Move,
+        #[map(|s: Selector| s.select(#pos.moves()))] m: Move,
     ) {
         e.tt.set(pos.zobrist(), Transposition::upper(d, s, m));
 
@@ -474,7 +474,7 @@ mod tests {
         d: Depth,
         #[filter(#p >= 0)] p: Ply,
         #[filter(#sc.mate().is_none())] sc: Score,
-        #[map(|s: Selector| s.select(#pos.moves(Bitboard::full())))] m: Move,
+        #[map(|s: Selector| s.select(#pos.moves()))] m: Move,
     ) {
         e.tt.set(pos.zobrist(), Transposition::exact(d, sc, m));
 

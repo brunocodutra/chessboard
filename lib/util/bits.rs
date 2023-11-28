@@ -40,7 +40,7 @@ impl<T: 'static + Binary + PrimInt + Unsigned, const W: u32> Bits<T, W> {
         Bits(b)
     }
 
-    /// Get raw collection of bits.
+    /// Returns raw collection of bits.
     #[inline(always)]
     pub fn get(&self) -> T {
         self.0

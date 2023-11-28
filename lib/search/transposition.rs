@@ -2,9 +2,8 @@ use crate::chess::{Move, Zobrist};
 use crate::search::{Depth, HashSize, Score};
 use crate::util::{Assume, Binary, Bits};
 use derive_more::{Display, Error};
-use std::mem::size_of;
-use std::ops::{RangeInclusive, Shr};
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::{mem::size_of, ops::RangeInclusive};
 
 #[cfg(test)]
 use crate::chess::Position;
@@ -170,7 +169,7 @@ impl TranspositionTable {
 
     /// Constructs a transposition table of at most `size` many bytes.
     pub fn new(size: HashSize) -> Self {
-        let capacity = (1 + size.shr(1u32)).next_power_of_two() / Self::WIDTH;
+        let capacity = (1 + size.get() / 2).next_power_of_two() / Self::WIDTH;
 
         TranspositionTable {
             cache: (0..capacity).map(|_| AtomicU64::default()).collect(),
@@ -267,7 +266,7 @@ mod tests {
 
     #[proptest]
     fn table_size_is_exact_if_input_is_power_of_two(
-        #[strategy(TranspositionTable::WIDTH.trailing_zeros()..=HashSize::max().trailing_zeros())]
+        #[strategy(TranspositionTable::WIDTH.trailing_zeros()..=HashSize::max().get().trailing_zeros())]
         bits: u32,
     ) {
         let s = HashSize::new(1 << bits);

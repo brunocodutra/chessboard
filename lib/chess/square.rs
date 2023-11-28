@@ -2,7 +2,6 @@ use crate::chess::{File, Rank};
 use crate::util::{Binary, Bits};
 use cozy_chess as cc;
 use std::{convert::Infallible, fmt, ops::Sub};
-use vampirc_uci::UciSquare;
 
 /// A square on the chess board.
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
@@ -103,26 +102,6 @@ impl Sub for Square {
 }
 
 #[doc(hidden)]
-impl From<Square> for UciSquare {
-    fn from(s: Square) -> Self {
-        UciSquare {
-            file: (s.file().index() + b'a').into(),
-            rank: s.rank().index() + 1,
-        }
-    }
-}
-
-#[doc(hidden)]
-impl From<UciSquare> for Square {
-    fn from(s: UciSquare) -> Self {
-        Square::new(
-            File::from_index((u32::from(s.file) - u32::from('a')) as _),
-            Rank::from_index(s.rank - 1),
-        )
-    }
-}
-
-#[doc(hidden)]
 impl From<cc::Square> for Square {
     #[inline(always)]
     fn from(s: cc::Square) -> Self {
@@ -217,11 +196,6 @@ mod tests {
     #[proptest]
     fn subtracting_squares_gives_distance(a: Square, b: Square) {
         assert_eq!(a - b, a.index() as i8 - b.index() as i8);
-    }
-
-    #[proptest]
-    fn square_has_an_equivalent_uci_representation(s: Square) {
-        assert_eq!(Square::from(<UciSquare as From<Square>>::from(s)), s);
     }
 
     #[proptest]
