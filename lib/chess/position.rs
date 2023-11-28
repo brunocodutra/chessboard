@@ -290,9 +290,9 @@ impl Position {
 
     /// An iterator over the legal [`Move`]s that can be played from a subset of squares in this position.
     #[inline(always)]
-    pub fn moves(&self, whence: Bitboard) -> impl Iterator<Item = Move> + '_ {
+    pub fn moves(&self) -> impl Iterator<Item = Move> + '_ {
         let mut moves = Buffer::<_, 18>::new();
-        self.board.generate_moves_for(whence.into(), |ms| {
+        self.board.generate_moves(|ms| {
             moves.push(ms);
             false
         });
@@ -570,30 +570,23 @@ mod tests {
     fn moves_returns_legal_moves_from_this_position(
         #[filter(#pos.outcome().is_none())] pos: Position,
     ) {
-        for m in pos.moves(Bitboard::full()) {
+        for m in pos.moves() {
             pos.clone().play(m);
-        }
-    }
-
-    #[proptest]
-    fn moves_can_filter_by_source_squares(pos: Position, wc: Bitboard) {
-        for m in pos.moves(wc) {
-            assert!(wc.contains(m.whence()));
         }
     }
 
     #[proptest]
     fn exchange_finds_attacker_of_least_value(
         #[by_ref]
-        #[filter(#pos.moves(Bitboard::full()).filter(|m| m.is_capture() && !m.is_en_passant()).next().is_some())]
+        #[filter(#pos.moves().filter(|m| m.is_capture() && !m.is_en_passant()).next().is_some())]
         pos: Position,
-        #[map(|s: Selector| s.select(#pos.moves(Bitboard::full()).filter(|m| m.is_capture() && !m.is_en_passant())).whither())]
+        #[map(|s: Selector| s.select(#pos.moves().filter(|m| m.is_capture() && !m.is_en_passant())).whither())]
         s: Square,
     ) {
         let m = pos.clone().exchange(s)?;
 
         let lva = pos
-            .moves(Bitboard::full())
+            .moves()
             .filter(|m| m.whither() == s)
             .filter(Move::is_capture)
             .min_by_key(|m| (pos.role_on(m.whence()), Reverse(m.promotion())))
@@ -614,10 +607,9 @@ mod tests {
     #[proptest]
     fn captures_reduce_material(
         #[by_ref]
-        #[filter(#pos.moves(Bitboard::full()).filter(Move::is_capture).next().is_some())]
+        #[filter(#pos.moves().filter(Move::is_capture).next().is_some())]
         pos: Position,
-        #[map(|s: Selector| s.select(#pos.moves(Bitboard::full()).filter(Move::is_capture)))]
-        m: Move,
+        #[map(|s: Selector| s.select(#pos.moves().filter(Move::is_capture)))] m: Move,
     ) {
         let mut p = pos.clone();
         p.play(m);
@@ -627,10 +619,9 @@ mod tests {
     #[proptest]
     fn promotions_exchange_pawns(
         #[by_ref]
-        #[filter(#pos.moves(Bitboard::full()).filter(Move::is_promotion).next().is_some())]
+        #[filter(#pos.moves().filter(Move::is_promotion).next().is_some())]
         pos: Position,
-        #[map(|s: Selector| s.select(#pos.moves(Bitboard::full()).filter(Move::is_promotion)))]
-        m: Move,
+        #[map(|s: Selector| s.select(#pos.moves().filter(Move::is_promotion)))] m: Move,
     ) {
         let mut p = pos.clone();
         p.play(m);
@@ -642,10 +633,9 @@ mod tests {
     #[proptest]
     fn castles_move_the_king_by_two_files(
         #[by_ref]
-        #[filter(#pos.moves(Bitboard::full()).filter(Move::is_castling).next().is_some())]
+        #[filter(#pos.moves().filter(Move::is_castling).next().is_some())]
         pos: Position,
-        #[map(|s: Selector| s.select(#pos.moves(Bitboard::full()).filter(Move::is_castling)))]
-        m: Move,
+        #[map(|s: Selector| s.select(#pos.moves().filter(Move::is_castling)))] m: Move,
     ) {
         assert_eq!(pos[m.whence()], Some(Piece(pos.turn(), Role::King)));
         assert_eq!(m.whence().rank(), m.whither().rank());
@@ -655,7 +645,7 @@ mod tests {
     #[proptest]
     fn legal_move_updates_position(
         #[filter(#pos.outcome().is_none())] mut pos: Position,
-        #[map(|s: Selector| s.select(#pos.moves(Bitboard::full())))] m: Move,
+        #[map(|s: Selector| s.select(#pos.moves()))] m: Move,
     ) {
         let prev = pos.clone();
         pos.play(m);
@@ -666,7 +656,7 @@ mod tests {
     #[should_panic]
     fn play_panics_if_move_illegal(
         #[by_ref] mut pos: Position,
-        #[filter(!#pos.moves(Bitboard::full()).any(|m| (m.whence(), m.whither()) == (#m.whence(), #m.whither())))]
+        #[filter(!#pos.moves().any(|m| (m.whence(), m.whither()) == (#m.whence(), #m.whither())))]
         m: Move,
     ) {
         pos.play(m);
@@ -707,7 +697,7 @@ mod tests {
     }
 
     #[proptest]
-    fn parsing_invalid_fen_fails(
+    fn parsing_position_fails_for_invalid_fen(
         pos: Position,
         #[strategy(..=#pos.to_string().len())] n: usize,
         #[strategy("[^[:ascii:]]+")] r: String,

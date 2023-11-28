@@ -1,13 +1,13 @@
-use lib::chess::{Bitboard, Position};
+use lib::chess::Position;
 use rayon::prelude::*;
 use test_strategy::proptest;
 
 fn perft(pos: &Position, depth: u8) -> usize {
     match depth {
         0 => 1,
-        1 => pos.moves(Bitboard::full()).count(),
+        1 => pos.moves().count(),
         d => pos
-            .moves(Bitboard::full())
+            .moves()
             .par_bridge()
             .map(|m| {
                 let mut next = pos.clone();

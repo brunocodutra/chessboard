@@ -2,7 +2,6 @@ use crate::chess::{Role, Square};
 use crate::util::{Assume, Binary, Bits};
 use derive_more::{Display, Error};
 use std::{fmt, num::NonZeroU16, ops::RangeBounds};
-use vampirc_uci::UciMove;
 
 /// A chess move.
 #[derive(Copy, Clone, Eq, PartialEq, Hash)]
@@ -115,11 +114,7 @@ impl Move {
 
 impl fmt::Debug for Move {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}{}", self.whence(), self.whither())?;
-
-        if let Some(r) = self.promotion() {
-            write!(f, "={}", r)?;
-        }
+        write!(f, "{self}")?;
 
         if self.is_en_passant() {
             write!(f, "^")?;
@@ -127,6 +122,18 @@ impl fmt::Debug for Move {
             write!(f, "x")?;
         } else if self.is_castling() {
             write!(f, "~")?;
+        }
+
+        Ok(())
+    }
+}
+
+impl fmt::Display for Move {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}{}", self.whence(), self.whither())?;
+
+        if let Some(r) = self.promotion() {
+            write!(f, "{}", r)?;
         }
 
         Ok(())
@@ -152,21 +159,10 @@ impl Binary for Move {
     }
 }
 
-#[doc(hidden)]
-impl From<Move> for UciMove {
-    fn from(m: Move) -> Self {
-        UciMove {
-            from: m.whence().into(),
-            to: m.whither().into(),
-            promotion: m.promotion().map(Role::into),
-        }
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::chess::{Bitboard, Position};
+    use crate::chess::Position;
     use proptest::sample::Selector;
     use std::mem::size_of;
     use test_strategy::proptest;
@@ -191,7 +187,7 @@ mod tests {
         #[by_ref]
         #[filter(#pos.outcome().is_none())]
         pos: Position,
-        #[map(|s: Selector| s.select(#pos.moves(Bitboard::full())))] m: Move,
+        #[map(|s: Selector| s.select(#pos.moves()))] m: Move,
     ) {
         if m.is_castling() {
             assert_eq!(Move::castling(m.whence(), m.whither()), m);
