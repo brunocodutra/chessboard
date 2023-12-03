@@ -1,7 +1,7 @@
 use crate::util::Assume;
 use std::mem::transmute;
 use std::ops::{AddAssign, SubAssign};
-use std::simd::{i32x4, i32x8, i8x16, i8x32, simd_swizzle, SimdInt};
+use std::simd::{i32x4, i32x8, i8x16, i8x32, prelude::*, simd_swizzle};
 
 #[cfg(target_arch = "x86_64")]
 #[cfg(any(
