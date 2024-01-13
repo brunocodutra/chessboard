@@ -198,7 +198,8 @@ impl Engine {
             _ => depth,
         };
 
-        let alpha = match ply >= depth && !in_check {
+        let quiesce = ply >= depth && !in_check;
+        let alpha = match quiesce {
             #[cfg(not(test))]
             // The stand pat heuristic is not exact.
             true => alpha.max(score),
@@ -231,27 +232,23 @@ impl Engine {
         }
 
         let mut moves = Buffer::<_, 256>::from_iter(pos.moves().filter_map(|m| {
-            if ply >= depth && !in_check && m.is_quiet() {
-                return None;
+            if quiesce && m.is_quiet() {
+                None
             } else if Some(m) == tpos.map(|t| t.best()) {
-                return Some((m, Value::UPPER));
-            }
-
-            let mut next = pos.material();
-            let material = next.evaluate();
-            next.play(m);
-            let see = -next.see(m.whither());
-
-            let gain = if Self::KILLERS.with_borrow(|ks| ks.contains(ply, pos.turn(), m)) {
-                Value::new(100).max(see - material)
+                Some((m, Value::UPPER))
+            } else if Self::KILLERS.with_borrow(|ks| ks.contains(ply, pos.turn(), m)) {
+                Some((m, Value::new(100)))
+            } else if m.is_quiet() {
+                Some((m, Value::new(0)))
             } else {
-                see - material
-            };
-
-            Some((m, gain))
+                let mut next = pos.material();
+                let material = next.evaluate();
+                next.play(m);
+                Some((m, -next.evaluate() - material))
+            }
         }));
 
-        moves.sort_unstable_by_key(|(_, rank)| *rank);
+        moves.sort_unstable_by_key(|(_, gain)| *gain);
 
         let best = match moves.pop() {
             None => return Ok(Pv::new(score, [])),
@@ -289,7 +286,7 @@ impl Engine {
                 let mut next = pos.clone();
                 next.play(m);
 
-                if !in_check && gain < 60 {
+                if !in_check && gain < 100 {
                     let guess = -next.clone().see(m.whither()).cast();
                     if let Some(d) = self.lmp(&next, guess, alpha, depth, ply) {
                         if d <= ply || -self.nw(&next, -alpha, d, ply + 1, ctrl)? <= alpha {
