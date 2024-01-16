@@ -1,18 +1,18 @@
 use crate::nnue::{Accumulator, Layer, Nnue, NNUE};
+use crate::util::AlignTo64;
 use std::mem::transmute;
 
 /// An accumulator for the feature transformer.
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
 #[cfg_attr(test, derive(test_strategy::Arbitrary))]
-#[repr(align(64))]
 pub struct Positional(
-    #[cfg_attr(test, map(|vs: [[i8; { Nnue::L1 / 2 }]; 2]| vs.map(|v| v.map(i16::from))))]
-    [[i16; Nnue::L1 / 2]; 2],
+    #[cfg_attr(test, map(|vs: [[i8; { Nnue::L1 / 2 }]; 2]| AlignTo64(vs.map(|v| v.map(i16::from)))))]
+     AlignTo64<[[i16; Nnue::L1 / 2]; 2]>,
 );
 
 impl Default for Positional {
     fn default() -> Self {
-        Positional([[0; Nnue::L1 / 2]; 2])
+        Positional(AlignTo64([[0; Nnue::L1 / 2]; 2]))
     }
 }
 
@@ -37,7 +37,7 @@ impl Accumulator for Positional {
     }
 
     fn evaluate(&self, phase: usize) -> i32 {
-        let l1: &[i16; Nnue::L1] = unsafe { transmute(&self.0) };
+        let l1: &AlignTo64<[i16; Nnue::L1]> = unsafe { transmute(&self.0) };
         NNUE.output[phase].forward(l1) / 16
     }
 }
