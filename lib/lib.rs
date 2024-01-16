@@ -1,4 +1,4 @@
-#![feature(array_chunks, new_uninit, portable_simd)]
+#![feature(array_chunks, new_uninit, stdarch_x86_mm_shuffle)]
 
 /// Chess domain types.
 pub mod chess;

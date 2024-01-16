@@ -1,3 +1,4 @@
+mod align;
 mod assume;
 mod binary;
 mod bits;
@@ -7,6 +8,7 @@ mod counter;
 mod saturating;
 mod timer;
 
+pub use align::*;
 pub use assume::*;
 pub use binary::*;
 pub use bits::*;

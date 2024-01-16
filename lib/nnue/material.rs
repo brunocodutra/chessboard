@@ -1,12 +1,12 @@
 use crate::nnue::{Accumulator, Nnue, NNUE};
+use crate::util::AlignTo64;
 
 /// An accumulator for the psqt transformer.
 #[derive(Debug, Default, Clone, Eq, PartialEq, Hash)]
 #[cfg_attr(test, derive(test_strategy::Arbitrary))]
-#[repr(align(64))]
 pub struct Material(
-    #[cfg_attr(test, map(|vs: [[i16; Nnue::PHASES]; 2]| vs.map(|v| v.map(i32::from))))]
-    [[i32; Nnue::PHASES]; 2],
+    #[cfg_attr(test, map(|vs: [[i8; { Nnue::PHASES }]; 2]| AlignTo64(vs.map(|v| v.map(i32::from)))))]
+     AlignTo64<[[i32; Nnue::PHASES]; 2]>,
 );
 
 impl Accumulator for Material {
