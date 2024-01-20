@@ -1,6 +1,7 @@
 use byteorder::{LittleEndian, ReadBytesExt};
-use std::{io, mem::transmute};
-use zstd::Decoder;
+use ruzstd::StreamingDecoder;
+use std::io::{self, Read};
+use std::mem::transmute;
 
 mod accumulator;
 mod evaluator;
@@ -24,8 +25,11 @@ pub use value::*;
 
 lazy_static::lazy_static! {
     /// A trained [`Nnue`].
-    pub static ref NNUE: Box<Nnue> =
-        Nnue::load(include_bytes!("nnue/nn.zst")).expect("failed to load the NNUE");
+    pub static ref NNUE: Box<Nnue> = {
+        let encoded = include_bytes!("nnue/nn.zst").as_slice();
+        let decoder = StreamingDecoder::new(encoded).expect("failed to initialize zstd decoder");
+        Nnue::load(decoder).expect("failed to load the NNUE")
+    };
 }
 
 /// An [Efficiently Updatable Neural Network][NNUE].
@@ -43,25 +47,24 @@ impl Nnue {
     const L0: usize = 64 * 64 * 11;
     const L1: usize = 1024;
 
-    fn load(bytes: &[u8]) -> io::Result<Box<Self>> {
+    fn load<T: Read>(mut reader: T) -> io::Result<Box<Self>> {
         let mut nnue: Box<Self> = unsafe { Box::new_zeroed().assume_init() };
-        let mut buffer = Decoder::new(bytes)?;
 
-        buffer.read_i16_into::<LittleEndian>(&mut *nnue.ft.bias)?;
-        buffer.read_i16_into::<LittleEndian>(unsafe {
+        reader.read_i16_into::<LittleEndian>(&mut *nnue.ft.bias)?;
+        reader.read_i16_into::<LittleEndian>(unsafe {
             transmute::<_, &mut [_; Self::L0 * Self::L1 / 2]>(&mut *nnue.ft.weight)
         })?;
 
-        buffer.read_i32_into::<LittleEndian>(unsafe {
+        reader.read_i32_into::<LittleEndian>(unsafe {
             transmute::<_, &mut [_; Self::L0 * Self::PHASES]>(&mut *nnue.psqt.weight)
         })?;
 
         for nn in &mut nnue.output {
-            nn.bias = buffer.read_i32::<LittleEndian>()?;
-            buffer.read_i8_into(&mut *nn.weight)?;
+            nn.bias = reader.read_i32::<LittleEndian>()?;
+            reader.read_i8_into(&mut *nn.weight)?;
         }
 
-        debug_assert!(buffer.read_u8().is_err());
+        debug_assert!(reader.read_u8().is_err());
 
         Ok(nnue)
     }
