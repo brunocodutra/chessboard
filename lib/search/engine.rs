@@ -63,7 +63,7 @@ impl Engine {
             executor: ThreadPoolBuilder::new()
                 .num_threads(options.threads.get())
                 .build()
-                .unwrap(),
+                .expect("failed to initialize thread pool"),
         }
     }
 
