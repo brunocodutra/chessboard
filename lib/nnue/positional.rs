@@ -17,25 +17,30 @@ impl Default for Positional {
 }
 
 impl Accumulator for Positional {
+    #[inline(always)]
     fn mirror(&mut self) {
         self.0.reverse()
     }
 
+    #[inline(always)]
     fn refresh(&mut self, us: &[u16], them: &[u16]) {
         NNUE.ft.refresh(us, &mut self.0[0]);
         NNUE.ft.refresh(them, &mut self.0[1]);
     }
 
+    #[inline(always)]
     fn add(&mut self, us: u16, them: u16) {
         NNUE.ft.add(us, &mut self.0[0]);
         NNUE.ft.add(them, &mut self.0[1]);
     }
 
+    #[inline(always)]
     fn remove(&mut self, us: u16, them: u16) {
         NNUE.ft.remove(us, &mut self.0[0]);
         NNUE.ft.remove(them, &mut self.0[1]);
     }
 
+    #[inline(always)]
     fn evaluate(&self, phase: usize) -> i32 {
         let l1: &AlignTo64<[i16; Nnue::L1]> = unsafe { transmute(&self.0) };
         NNUE.output[phase].forward(l1) / 16

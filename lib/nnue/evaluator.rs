@@ -96,7 +96,13 @@ impl<T: Clone + Accumulator> Evaluator<T> {
 
     /// Play a [`Move`].
     pub fn play(&mut self, m: Move) {
-        let capture = self.role_on(m.whither());
+        let capture = if m.is_en_passant() {
+            let target = Square::new(m.whither().file(), m.whence().rank());
+            Some((Role::Pawn, target))
+        } else {
+            self.role_on(m.whither()).map(|r| (r, m.whither()))
+        };
+
         self.pos.play(m);
         self.acc.mirror();
         self.update(m, capture);
@@ -105,17 +111,15 @@ impl<T: Clone + Accumulator> Evaluator<T> {
     /// Exchange a piece on [`Square`] by the attacker of least value.
     ///
     /// This may lead to invalid positions.
-    #[inline(always)]
     fn exchange(&mut self, whither: Square) -> Result<Move, ImpossibleExchange> {
-        let capture = self.role_on(whither);
+        let capture = self.role_on(whither).map(|r| (r, whither));
         let m = self.pos.exchange(whither)?;
         self.acc.mirror();
         self.update(m, capture);
         Ok(m)
     }
 
-    #[inline(always)]
-    fn update(&mut self, m: Move, capture: Option<Role>) {
+    fn update(&mut self, m: Move, capture: Option<(Role, Square)>) {
         let turn = self.turn();
 
         let role = if m.is_promotion() {
@@ -139,12 +143,8 @@ impl<T: Clone + Accumulator> Evaluator<T> {
             let fts = kings.map(|ks| Feature(ks, old, m.whence()));
             self.acc.remove(fts[0].index(turn), fts[1].index(!turn));
 
-            if m.is_en_passant() {
-                let target = Square::new(m.whither().file(), m.whence().rank());
-                let fts = kings.map(|ks| Feature(ks, Piece(Role::Pawn, turn), target));
-                self.acc.remove(fts[0].index(turn), fts[1].index(!turn));
-            } else if let Some(role) = capture {
-                let fts = kings.map(|ks| Feature(ks, Piece(role, turn), m.whither()));
+            if let Some((r, s)) = capture {
+                let fts = kings.map(|ks| Feature(ks, Piece(r, turn), s));
                 self.acc.remove(fts[0].index(turn), fts[1].index(!turn));
             }
         }

@@ -10,25 +10,30 @@ pub struct Material(
 );
 
 impl Accumulator for Material {
+    #[inline(always)]
     fn mirror(&mut self) {
         self.0.reverse()
     }
 
+    #[inline(always)]
     fn refresh(&mut self, us: &[u16], them: &[u16]) {
         NNUE.psqt.refresh(us, &mut self.0[0]);
         NNUE.psqt.refresh(them, &mut self.0[1]);
     }
 
+    #[inline(always)]
     fn add(&mut self, us: u16, them: u16) {
         NNUE.psqt.add(us, &mut self.0[0]);
         NNUE.psqt.add(them, &mut self.0[1]);
     }
 
+    #[inline(always)]
     fn remove(&mut self, us: u16, them: u16) {
         NNUE.psqt.remove(us, &mut self.0[0]);
         NNUE.psqt.remove(them, &mut self.0[1]);
     }
 
+    #[inline(always)]
     fn evaluate(&self, phase: usize) -> i32 {
         (self.0[0][phase] - self.0[1][phase]) / 32
     }
