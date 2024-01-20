@@ -21,7 +21,7 @@ pub enum Role {
 }
 
 impl Role {
-    const ROLES: [Self; 6] = [
+    pub const ALL: [Self; 6] = [
         Role::Pawn,
         Role::Knight,
         Role::Bishop,
@@ -36,17 +36,12 @@ impl Role {
     ///
     /// Panics if `i` is not in the range (0..=5).
     pub fn from_index(i: u8) -> Self {
-        Self::ROLES[i as usize]
+        Self::ALL[i as usize]
     }
 
     /// This role's index in the range (0..=5).
     pub fn index(&self) -> u8 {
         *self as _
-    }
-
-    /// Returns an iterator over [`Role`]s ordered by [index][`Role::index`].
-    pub fn iter() -> impl DoubleEndedIterator<Item = Self> + ExactSizeIterator {
-        Self::ROLES.into_iter()
     }
 }
 
@@ -102,23 +97,11 @@ mod tests {
     }
 
     #[proptest]
-    fn iter_returns_iterator_over_roles_in_order() {
+    fn all_contains_roles_in_order() {
         assert_eq!(
-            Role::iter().collect::<Buffer<_, 6>>(),
+            Role::ALL.into_iter().collect::<Buffer<_, 6>>(),
             (0..6).map(Role::from_index).collect()
         );
-    }
-    #[proptest]
-    fn iter_returns_double_ended_iterator() {
-        assert_eq!(
-            Role::iter().rev().collect::<Buffer<_, 6>>(),
-            (0..6).rev().map(Role::from_index).collect()
-        );
-    }
-
-    #[proptest]
-    fn iter_returns_iterator_of_exact_size() {
-        assert_eq!(Role::iter().len(), 6);
     }
 
     #[proptest]

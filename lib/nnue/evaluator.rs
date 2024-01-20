@@ -131,20 +131,20 @@ impl<T: Clone + Accumulator> Evaluator<T> {
         } else {
             let kings = [self.pos.king(turn), self.pos.king(!turn)];
 
-            let new = Piece(!turn, m.promotion().unwrap_or(role));
+            let new = Piece(m.promotion().unwrap_or(role), !turn);
             let fts = kings.map(|ks| Feature(ks, new, m.whither()));
             self.acc.add(fts[0].index(turn), fts[1].index(!turn));
 
-            let old = Piece(!turn, role);
+            let old = Piece(role, !turn);
             let fts = kings.map(|ks| Feature(ks, old, m.whence()));
             self.acc.remove(fts[0].index(turn), fts[1].index(!turn));
 
             if m.is_en_passant() {
                 let target = Square::new(m.whither().file(), m.whence().rank());
-                let fts = kings.map(|ks| Feature(ks, Piece(turn, Role::Pawn), target));
+                let fts = kings.map(|ks| Feature(ks, Piece(Role::Pawn, turn), target));
                 self.acc.remove(fts[0].index(turn), fts[1].index(!turn));
             } else if let Some(role) = capture {
-                let fts = kings.map(|ks| Feature(ks, Piece(turn, role), m.whither()));
+                let fts = kings.map(|ks| Feature(ks, Piece(role, turn), m.whither()));
                 self.acc.remove(fts[0].index(turn), fts[1].index(!turn));
             }
         }

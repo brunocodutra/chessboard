@@ -132,8 +132,10 @@ impl Position {
 
     /// An iterator over all pieces on the board.
     #[inline(always)]
-    pub fn iter(&self) -> impl ExactSizeIterator<Item = (Piece, Square)> + '_ {
-        self.occupied().into_iter().map(|s| (self[s].assume(), s))
+    pub fn iter(&self) -> impl Iterator<Item = (Piece, Square)> + '_ {
+        Piece::ALL
+            .into_iter()
+            .flat_map(|p| self.by_piece(p).into_iter().map(move |s| (p, s)))
     }
 
     /// [`Square`]s occupied.
@@ -156,7 +158,7 @@ impl Position {
 
     /// [`Square`]s occupied by a [`Piece`].
     #[inline(always)]
-    pub fn by_piece(&self, Piece(c, r): Piece) -> Bitboard {
+    pub fn by_piece(&self, Piece(r, c): Piece) -> Bitboard {
         self.board.colored_pieces(c.into(), r.into()).into()
     }
 
@@ -181,12 +183,12 @@ impl Position {
     /// The [`Piece`] on the given [`Square`], if any.
     #[inline(always)]
     pub fn piece_on(&self, s: Square) -> Option<Piece> {
-        Option::zip(self.color_on(s), self.role_on(s)).map(|(c, r)| Piece(c, r))
+        Option::zip(self.role_on(s), self.color_on(s)).map(|(r, c)| Piece(r, c))
     }
 
     /// Into where a [`Piece`] on this [`Square`] can attack.
     #[inline(always)]
-    pub fn attacks(&self, s: Square, Piece(c, r): Piece) -> Bitboard {
+    pub fn attacks(&self, s: Square, Piece(r, c): Piece) -> Bitboard {
         let blk = self.occupied().into();
 
         Bitboard::from(match r {
@@ -370,12 +372,12 @@ impl Position {
     pub fn exchange(&mut self, whither: Square) -> Result<Move, ImpossibleExchange> {
         let turn = self.turn();
         let capture = match self[whither] {
-            Some(Piece(c, r)) if c == !turn => Some(r),
+            Some(Piece(r, c)) if c == !turn => Some(r),
             _ => return Err(ImpossibleExchange(whither)),
         };
 
-        for role in Role::iter() {
-            let piece = Piece(turn, role);
+        for role in Role::ALL {
+            let piece = Piece(role, turn);
             for whence in self.by_piece(piece) & self.attackers(whither, piece) {
                 let ms = cc::PieceMoves {
                     piece: role.into(),
@@ -406,18 +408,18 @@ impl Index<Square> for Position {
     fn index(&self, s: Square) -> &Self::Output {
         use {Color::*, Role::*};
         match self.piece_on(s) {
-            Some(Piece(White, Pawn)) => &Some(Piece(White, Pawn)),
-            Some(Piece(White, Knight)) => &Some(Piece(White, Knight)),
-            Some(Piece(White, Bishop)) => &Some(Piece(White, Bishop)),
-            Some(Piece(White, Rook)) => &Some(Piece(White, Rook)),
-            Some(Piece(White, Queen)) => &Some(Piece(White, Queen)),
-            Some(Piece(White, King)) => &Some(Piece(White, King)),
-            Some(Piece(Black, Pawn)) => &Some(Piece(Black, Pawn)),
-            Some(Piece(Black, Knight)) => &Some(Piece(Black, Knight)),
-            Some(Piece(Black, Bishop)) => &Some(Piece(Black, Bishop)),
-            Some(Piece(Black, Rook)) => &Some(Piece(Black, Rook)),
-            Some(Piece(Black, Queen)) => &Some(Piece(Black, Queen)),
-            Some(Piece(Black, King)) => &Some(Piece(Black, King)),
+            Some(Piece(Pawn, White)) => &Some(Piece(Pawn, White)),
+            Some(Piece(Knight, White)) => &Some(Piece(Knight, White)),
+            Some(Piece(Bishop, White)) => &Some(Piece(Bishop, White)),
+            Some(Piece(Rook, White)) => &Some(Piece(Rook, White)),
+            Some(Piece(Queen, White)) => &Some(Piece(Queen, White)),
+            Some(Piece(King, White)) => &Some(Piece(King, White)),
+            Some(Piece(Pawn, Black)) => &Some(Piece(Pawn, Black)),
+            Some(Piece(Knight, Black)) => &Some(Piece(Knight, Black)),
+            Some(Piece(Bishop, Black)) => &Some(Piece(Bishop, Black)),
+            Some(Piece(Rook, Black)) => &Some(Piece(Rook, Black)),
+            Some(Piece(Queen, Black)) => &Some(Piece(Queen, Black)),
+            Some(Piece(King, Black)) => &Some(Piece(King, Black)),
             None => &None,
         }
     }
@@ -514,14 +516,14 @@ mod tests {
 
     #[proptest]
     fn king_returns_square_occupied_by_a_king(pos: Position, c: Color) {
-        assert_eq!(pos[pos.king(c)], Some(Piece(c, Role::King)));
+        assert_eq!(pos[pos.king(c)], Some(Piece(Role::King, c)));
     }
 
     #[proptest]
     fn piece_on_returns_piece_on_the_given_square(pos: Position, s: Square) {
         assert_eq!(
             pos.piece_on(s),
-            Option::zip(pos.color_on(s), pos.role_on(s)).map(|(c, r)| Piece(c, r))
+            Option::zip(pos.color_on(s), pos.role_on(s)).map(|(c, r)| Piece(r, c))
         );
     }
 
@@ -625,7 +627,7 @@ mod tests {
     ) {
         let mut p = pos.clone();
         p.play(m);
-        let pawn = Piece(pos.turn(), Role::Pawn);
+        let pawn = Piece(Role::Pawn, pos.turn());
         assert!(p.by_piece(pawn).len() < pos.by_piece(pawn).len());
         assert_eq!(p.by_color(pos.turn()).len(), pos.by_color(pos.turn()).len());
     }
@@ -637,7 +639,7 @@ mod tests {
         pos: Position,
         #[map(|s: Selector| s.select(#pos.moves().filter(Move::is_castling)))] m: Move,
     ) {
-        assert_eq!(pos[m.whence()], Some(Piece(pos.turn(), Role::King)));
+        assert_eq!(pos[m.whence()], Some(Piece(Role::King, pos.turn())));
         assert_eq!(m.whence().rank(), m.whither().rank());
         assert_eq!((m.whence().file() - m.whither().file()).abs(), 2);
     }

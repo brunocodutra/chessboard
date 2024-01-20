@@ -21,7 +21,7 @@ pub enum Square {
 
 impl Square {
     #[rustfmt::skip]
-    const SQUARES: [Self; 64] = [
+    pub const ALL: [Self; 64] = [
         Square::A1, Square::B1, Square::C1, Square::D1, Square::E1, Square::F1, Square::G1, Square::H1,
         Square::A2, Square::B2, Square::C2, Square::D2, Square::E2, Square::F2, Square::G2, Square::H2,
         Square::A3, Square::B3, Square::C3, Square::D3, Square::E3, Square::F3, Square::G3, Square::H3,
@@ -43,7 +43,7 @@ impl Square {
     ///
     /// Panics if `i` is not in the range (0..64).
     pub fn from_index(i: u8) -> Self {
-        Self::SQUARES[i as usize]
+        Self::ALL[i as usize]
     }
 
     /// This squares's index in the range (0..64).
@@ -51,11 +51,6 @@ impl Square {
     /// Squares are ordered from a1 = 0 to h8 = 63, files then ranks, so b1 = 2 and a2 = 8.
     pub fn index(&self) -> u8 {
         *self as _
-    }
-
-    /// Returns an iterator over [`Square`]s ordered by [index][`Square::index`].
-    pub fn iter() -> impl DoubleEndedIterator<Item = Self> + ExactSizeIterator {
-        Self::SQUARES.into_iter()
     }
 
     /// This square's [`File`].
@@ -158,24 +153,11 @@ mod tests {
     }
 
     #[proptest]
-    fn iter_returns_iterator_over_files_in_order() {
+    fn all_contains_files_in_order() {
         assert_eq!(
-            Square::iter().collect::<Buffer<_, 64>>(),
+            Square::ALL.into_iter().collect::<Buffer<_, 64>>(),
             (0..=63).map(Square::from_index).collect()
         );
-    }
-
-    #[proptest]
-    fn iter_returns_double_ended_iterator() {
-        assert_eq!(
-            Square::iter().rev().collect::<Buffer<_, 64>>(),
-            (0..=63).rev().map(Square::from_index).collect()
-        );
-    }
-
-    #[proptest]
-    fn iter_returns_iterator_of_exact_size() {
-        assert_eq!(Square::iter().len(), 64);
     }
 
     #[proptest]

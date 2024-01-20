@@ -3,7 +3,7 @@ use derive_more::Display;
 use std::ops::Not;
 
 /// The color of a chess [`Piece`][`crate::Piece`].
-#[derive(Debug, Display, Copy, Clone, Eq, PartialEq, Hash)]
+#[derive(Debug, Display, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
 #[cfg_attr(test, derive(test_strategy::Arbitrary))]
 #[repr(u8)]
 pub enum Color {
