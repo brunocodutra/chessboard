@@ -25,6 +25,7 @@ where
     T: Copy + AddAssign + SubAssign,
 {
     /// Refreshes accumulator.
+    #[inline(always)]
     pub fn refresh(&self, features: &[u16], accumulator: &mut [T; O]) {
         debug_assert!(features.len() <= 32);
         *accumulator = *self.bias;
@@ -34,6 +35,7 @@ where
     }
 
     /// Updates the accumulator by adding features.
+    #[inline(always)]
     pub fn add(&self, feature: u16, accumulator: &mut [T; O]) {
         let a = self.weight.get(feature as usize).assume();
         for (y, a) in accumulator.iter_mut().zip(a) {
@@ -42,6 +44,7 @@ where
     }
 
     /// Updates the accumulator by removing features.
+    #[inline(always)]
     pub fn remove(&self, feature: u16, accumulator: &mut [T; O]) {
         let a = self.weight.get(feature as usize).assume();
         for (y, a) in accumulator.iter_mut().zip(a) {
@@ -56,6 +59,7 @@ where
 {
     type Output = [T; O];
 
+    #[inline(always)]
     fn forward(&self, input: &[u16]) -> Self::Output {
         let mut accumulator = [T::default(); O];
         self.refresh(input, &mut accumulator);
