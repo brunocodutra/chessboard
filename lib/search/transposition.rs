@@ -103,17 +103,40 @@ impl Transposition {
     }
 }
 
-type Signature = Bits<u32, 27>;
-
-#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
-#[cfg_attr(test, derive(test_strategy::Arbitrary))]
-struct SignedTransposition(Transposition, Signature);
-
 /// The reason why decoding [`Transposition`] from binary failed.
 #[derive(Debug, Display, Clone, Eq, PartialEq, Error)]
 #[cfg_attr(test, derive(test_strategy::Arbitrary))]
 #[display("not a valid transposition")]
 pub struct DecodeTranspositionError;
+
+impl Binary for Transposition {
+    type Bits = Bits<u64, 37>;
+    type Error = DecodeTranspositionError;
+
+    fn encode(&self) -> Self::Bits {
+        let mut bits = Bits::default();
+        bits.push(self.depth.encode());
+        bits.push(self.kind.encode());
+        bits.push(self.score.encode());
+        bits.push(self.best.encode());
+        bits
+    }
+
+    fn decode(mut bits: Self::Bits) -> Result<Self, Self::Error> {
+        Ok(Transposition {
+            best: Move::decode(bits.pop()).map_err(|_| DecodeTranspositionError)?,
+            score: Score::decode(bits.pop()).map_err(|_| DecodeTranspositionError)?,
+            kind: TranspositionKind::decode(bits.pop()).map_err(|_| DecodeTranspositionError)?,
+            depth: Depth::decode(bits.pop()).map_err(|_| DecodeTranspositionError)?,
+        })
+    }
+}
+
+type Signature = Bits<u32, 27>;
+
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
+#[cfg_attr(test, derive(test_strategy::Arbitrary))]
+struct SignedTransposition(Signature, <Transposition as Binary>::Bits);
 
 impl Binary for SignedTransposition {
     type Bits = Bits<u64, 64>;
@@ -121,25 +144,13 @@ impl Binary for SignedTransposition {
 
     fn encode(&self) -> Self::Bits {
         let mut bits = Bits::default();
-        bits.push(self.0.depth.encode());
-        bits.push(self.0.kind.encode());
-        bits.push(self.0.score.encode());
-        bits.push(self.0.best.encode());
-        bits.push(self.1.encode());
+        bits.push(self.1);
+        bits.push(self.0);
         bits
     }
 
     fn decode(mut bits: Self::Bits) -> Result<Self, Self::Error> {
-        let sig = Signature::decode(bits.pop()).map_err(|_| DecodeTranspositionError)?;
-
-        let tpos = Transposition {
-            best: Move::decode(bits.pop()).map_err(|_| DecodeTranspositionError)?,
-            score: Score::decode(bits.pop()).map_err(|_| DecodeTranspositionError)?,
-            kind: TranspositionKind::decode(bits.pop()).map_err(|_| DecodeTranspositionError)?,
-            depth: Depth::decode(bits.pop()).map_err(|_| DecodeTranspositionError)?,
-        };
-
-        Ok(SignedTransposition(tpos, sig))
+        Ok(SignedTransposition(bits.pop(), bits.pop()))
     }
 }
 
@@ -155,7 +166,7 @@ pub struct TranspositionTable {
                 let key = pos.zobrist();
                 let idx = key.slice(..cache.len().trailing_zeros()).get() as usize;
                 let sig = key.slice(cache.len().trailing_zeros()..).pop();
-                *cache[idx].get_mut() = Some(SignedTransposition(t, sig)).encode().get();
+                *cache[idx].get_mut() = Some(SignedTransposition(sig, t.encode())).encode().get();
             }
 
             cache
@@ -203,7 +214,7 @@ impl TranspositionTable {
         let sig = self.signature_of(key);
         let bits = Bits::new(self.cache[self.index_of(key)].load(Ordering::Relaxed));
         match Binary::decode(bits).assume() {
-            Some(SignedTransposition(t, s)) if s == sig => Some(t),
+            Some(SignedTransposition(s, t)) if s == sig => Some(Binary::decode(t).assume()),
             _ => None,
         }
     }
@@ -214,7 +225,7 @@ impl TranspositionTable {
     pub fn set(&self, key: Zobrist, tpos: Transposition) {
         if self.capacity() > 0 {
             let sig = self.signature_of(key);
-            let bits = Some(SignedTransposition(tpos, sig)).encode();
+            let bits = Some(SignedTransposition(sig, tpos.encode())).encode();
             self.cache[self.index_of(key)].fetch_max(bits.get(), Ordering::Relaxed);
         }
     }
@@ -255,7 +266,17 @@ mod tests {
     }
 
     #[proptest]
-    fn decoding_encoded_transposition_is_an_identity(t: SignedTransposition) {
+    fn decoding_encoded_transposition_kind_is_an_identity(t: TranspositionKind) {
+        assert_eq!(Binary::decode(t.encode()), Ok(t));
+    }
+
+    #[proptest]
+    fn decoding_encoded_transposition_is_an_identity(t: Transposition) {
+        assert_eq!(Binary::decode(t.encode()), Ok(t));
+    }
+
+    #[proptest]
+    fn decoding_encoded_signed_transposition_is_an_identity(t: SignedTransposition) {
         assert_eq!(Binary::decode(t.encode()), Ok(t));
     }
 
@@ -295,7 +316,7 @@ mod tests {
         t: Transposition,
         k: Zobrist,
     ) {
-        let st = Some(SignedTransposition(t, !tt.signature_of(k)));
+        let st = Some(SignedTransposition(!tt.signature_of(k), t.encode()));
         *tt.cache[tt.index_of(k)].get_mut() = st.encode().get();
         assert_eq!(tt.get(k), None);
     }
@@ -306,7 +327,7 @@ mod tests {
         t: Transposition,
         k: Zobrist,
     ) {
-        let st = Some(SignedTransposition(t, tt.signature_of(k)));
+        let st = Some(SignedTransposition(tt.signature_of(k), t.encode()));
         *tt.cache[tt.index_of(k)].get_mut() = st.encode().get();
         assert_eq!(tt.get(k), Some(t));
     }
@@ -323,7 +344,7 @@ mod tests {
         #[filter(#t.depth() != #u.depth())] u: Transposition,
         k: Zobrist,
     ) {
-        let st = Some(SignedTransposition(t, tt.signature_of(k)));
+        let st = Some(SignedTransposition(tt.signature_of(k), t.encode()));
         *tt.cache[tt.index_of(k)].get_mut() = st.encode().get();
         tt.set(k, u);
 
@@ -341,7 +362,7 @@ mod tests {
         #[filter(#u.depth() > #t.depth())] u: Transposition,
         k: Zobrist,
     ) {
-        let st = Some(SignedTransposition(t, !tt.signature_of(k)));
+        let st = Some(SignedTransposition(!tt.signature_of(k), t.encode()));
         *tt.cache[tt.index_of(k)].get_mut() = st.encode().get();
         tt.set(k, u);
         assert_eq!(tt.get(k), Some(u));
