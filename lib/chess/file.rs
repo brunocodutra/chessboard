@@ -26,7 +26,7 @@ pub enum File {
 }
 
 impl File {
-    const FILES: [Self; 8] = [
+    pub const ALL: [Self; 8] = [
         File::A,
         File::B,
         File::C,
@@ -43,17 +43,12 @@ impl File {
     ///
     /// Panics if `i` is not in the range (0..=7).
     pub fn from_index(i: u8) -> Self {
-        Self::FILES[i as usize]
+        Self::ALL[i as usize]
     }
 
     /// This files's index in the range (0..=7).
     pub fn index(&self) -> u8 {
         *self as _
-    }
-
-    /// Returns an iterator over [`File`]s ordered by [index][`File::index`].
-    pub fn iter() -> impl DoubleEndedIterator<Item = Self> + ExactSizeIterator {
-        Self::FILES.into_iter()
     }
 
     /// Mirrors this file.
@@ -122,24 +117,11 @@ mod tests {
     }
 
     #[proptest]
-    fn iter_returns_iterator_over_files_in_order() {
+    fn all_contains_files_in_order() {
         assert_eq!(
-            File::iter().collect::<Buffer<_, 8>>(),
+            File::ALL.into_iter().collect::<Buffer<_, 8>>(),
             (0..=7).map(File::from_index).collect()
         );
-    }
-
-    #[proptest]
-    fn iter_returns_double_ended_iterator() {
-        assert_eq!(
-            File::iter().rev().collect::<Buffer<_, 8>>(),
-            (0..=7).rev().map(File::from_index).collect()
-        );
-    }
-
-    #[proptest]
-    fn iter_returns_iterator_of_exact_size() {
-        assert_eq!(File::iter().len(), 8);
     }
 
     #[proptest]

@@ -26,7 +26,7 @@ pub enum Rank {
 }
 
 impl Rank {
-    const FILES: [Self; 8] = [
+    pub const ALL: [Self; 8] = [
         Rank::First,
         Rank::Second,
         Rank::Third,
@@ -43,17 +43,12 @@ impl Rank {
     ///
     /// Panics if `i` is not in the range (0..=7).
     pub fn from_index(i: u8) -> Self {
-        Self::FILES[i as usize]
+        Self::ALL[i as usize]
     }
 
     /// This ranks's index in the range (0..=7).
     pub fn index(&self) -> u8 {
         *self as _
-    }
-
-    /// Returns an iterator over [`Rank`]s ordered by [index][`Rank::index`].
-    pub fn iter() -> impl DoubleEndedIterator<Item = Self> + ExactSizeIterator {
-        Self::FILES.into_iter()
     }
 
     /// Mirrors this rank.
@@ -122,24 +117,11 @@ mod tests {
     }
 
     #[proptest]
-    fn iter_returns_iterator_over_ranks_in_order() {
+    fn all_contains_ranks_in_order() {
         assert_eq!(
-            Rank::iter().collect::<Buffer<_, 8>>(),
+            Rank::ALL.into_iter().collect::<Buffer<_, 8>>(),
             (0..=7).map(Rank::from_index).collect()
         );
-    }
-
-    #[proptest]
-    fn iter_returns_double_ended_iterator() {
-        assert_eq!(
-            Rank::iter().rev().collect::<Buffer<_, 8>>(),
-            (0..=7).rev().map(Rank::from_index).collect()
-        );
-    }
-
-    #[proptest]
-    fn iter_returns_iterator_of_exact_size() {
-        assert_eq!(Rank::iter().len(), 8);
     }
 
     #[proptest]
