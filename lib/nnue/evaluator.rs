@@ -2,6 +2,7 @@ use crate::chess::{Color, ImpossibleExchange, Move, Piece, Position, Role, Squar
 use crate::nnue::{Accumulator, Feature, Material, Positional, Value};
 use crate::util::{Assume, Buffer};
 use derive_more::Deref;
+use std::ops::Range;
 
 fn perspective(pos: &Position, side: Color) -> Buffer<u16, 32> {
     let k = pos.king(side);
@@ -64,8 +65,8 @@ impl<T: Clone + Accumulator> Evaluator<T> {
     /// The Static Exchange Evaluation ([SEE]) algorithm.
     ///
     /// [SEE]: https://www.chessprogramming.org/Static_Exchange_Evaluation
-    pub fn see(&mut self, square: Square) -> Value {
-        let (mut alpha, mut beta) = (Value::LOWER, Value::UPPER);
+    pub fn see(&mut self, square: Square, bounds: Range<Value>) -> Value {
+        let (mut alpha, mut beta) = (bounds.start, bounds.end);
 
         loop {
             alpha = alpha.max(self.evaluate());
@@ -156,6 +157,17 @@ mod tests {
     use super::*;
     use proptest::sample::Selector;
     use test_strategy::proptest;
+
+    #[proptest]
+    fn see_returns_value_within_bounds(pos: Position, s: Square, r: Range<Value>) {
+        let (a, b) = (r.start, r.end);
+        assert!((a..=b).contains(&Evaluator::new(pos).see(s, r)));
+    }
+
+    #[proptest]
+    fn see_returns_beta_if_alpha_is_not_smaller(pos: Position, s: Square, r: Range<Value>) {
+        assert_eq!(Evaluator::new(pos).see(s, r.end..r.start), r.start);
+    }
 
     #[proptest]
     fn play_updates_evaluator(
