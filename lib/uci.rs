@@ -3,8 +3,9 @@ use crate::search::{Depth, Engine, HashSize, Limits, Options, Score, ThreadCount
 use crate::{nnue::Evaluator, util::Assume};
 use arrayvec::ArrayString;
 use derive_more::{Deref, Display};
+use std::fmt::Write as _;
 use std::io::{self, stdin, stdout, Write};
-use std::{fmt::Write as _, time::Duration};
+use std::time::{Duration, Instant};
 
 #[derive(Debug, Display, Default, Clone, Eq, PartialEq, Hash, Deref)]
 #[cfg_attr(test, derive(test_strategy::Arbitrary))]
@@ -85,6 +86,24 @@ impl Uci {
         Ok(())
     }
 
+    fn bench<W: Write>(&mut self, limits: Limits, out: &mut W) -> io::Result<()> {
+        let timer = Instant::now();
+        self.engine.search(&self.position, limits);
+        let elapsed = timer.elapsed();
+        write!(out, "info time {}", elapsed.as_millis())?;
+
+        match limits {
+            Limits::Depth(d) => writeln!(out, " depth {}", d.get())?,
+            Limits::Nodes(nodes) => {
+                let nps = nodes as f64 / elapsed.as_secs_f64();
+                writeln!(out, " nodes {nodes} nps {nps:.0}")?
+            }
+            _ => writeln!(out)?,
+        }
+
+        Ok(())
+    }
+
     /// Processes one [`UciMessage`].
     pub fn process<W: Write>(&mut self, msg: &str, out: &mut W) -> io::Result<bool> {
         let tokens: Vec<_> = msg.split_whitespace().collect();
@@ -158,8 +177,8 @@ impl Uci {
                 Ok(true)
             }
 
-            ["go", "nodes", depth] => {
-                match depth.parse::<u64>() {
+            ["go", "nodes", nodes] => {
+                match nodes.parse::<u64>() {
                     Ok(n) => self.go(n.into(), out)?,
                     Err(e) => eprintln!("{e}"),
                 }
@@ -178,6 +197,24 @@ impl Uci {
 
             ["go"] | ["go", "infinite"] => {
                 self.go(Limits::None, out)?;
+                Ok(true)
+            }
+
+            ["bench", "depth", depth] => {
+                match depth.parse::<u8>() {
+                    Ok(d) => self.bench(Depth::saturate(d).into(), out)?,
+                    Err(e) => eprintln!("{e}"),
+                }
+
+                Ok(true)
+            }
+
+            ["bench", "nodes", nodes] => {
+                match nodes.parse::<u64>() {
+                    Ok(n) => self.bench(n.into(), out)?,
+                    Err(e) => eprintln!("{e}"),
+                }
+
                 Ok(true)
             }
 
