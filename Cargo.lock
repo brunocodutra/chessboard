@@ -67,8 +67,8 @@ dependencies = [
  "byteorder",
  "cozy-chess",
  "criterion",
+ "ctor",
  "derive_more 1.0.0-beta.6",
- "lazy_static",
  "num-traits",
  "num_cpus",
  "proptest",
@@ -210,6 +210,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5a22b2d63d4d1dc0b7f1b6b2747dd0088008a9be28b6ddf0b1e7d335e3037294"
 dependencies = [
  "cfg-if",
+]
+
+[[package]]
+name = "ctor"
+version = "0.2.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "30d2b3721e861707777e3195b0158f950ae6dc4a27e4d02ff9f67e3eb3de199e"
+dependencies = [
+ "quote",
+ "syn 2.0.39",
 ]
 
 [[package]]

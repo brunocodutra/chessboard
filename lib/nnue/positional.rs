@@ -1,6 +1,6 @@
-use crate::nnue::{Accumulator, Layer, Nnue, NNUE};
+use crate::nnue::{Accumulator, Layer, Nnue, Transformer, NNUE};
 use crate::util::AlignTo64;
-use std::mem::transmute;
+use std::{mem::transmute, ops::Deref};
 
 /// An accumulator for the feature transformer.
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
@@ -10,7 +10,15 @@ pub struct Positional(
      AlignTo64<[[i16; Nnue::L1 / 2]; 2]>,
 );
 
+impl Positional {
+    #[inline(always)]
+    fn transformer(&self) -> impl Deref<Target = Transformer<i16, { Nnue::L0 }, { Nnue::L1 / 2 }>> {
+        unsafe { &NNUE.ft }
+    }
+}
+
 impl Default for Positional {
+    #[inline(always)]
     fn default() -> Self {
         Positional(AlignTo64([[0; Nnue::L1 / 2]; 2]))
     }
@@ -24,26 +32,28 @@ impl Accumulator for Positional {
 
     #[inline(always)]
     fn refresh(&mut self, us: &[u16], them: &[u16]) {
-        NNUE.ft.refresh(us, &mut self.0[0]);
-        NNUE.ft.refresh(them, &mut self.0[1]);
+        self.transformer().refresh(us, &mut self.0[0]);
+        self.transformer().refresh(them, &mut self.0[1]);
     }
 
     #[inline(always)]
     fn add(&mut self, us: u16, them: u16) {
-        NNUE.ft.add(us, &mut self.0[0]);
-        NNUE.ft.add(them, &mut self.0[1]);
+        self.transformer().add(us, &mut self.0[0]);
+        self.transformer().add(them, &mut self.0[1]);
     }
 
     #[inline(always)]
     fn remove(&mut self, us: u16, them: u16) {
-        NNUE.ft.remove(us, &mut self.0[0]);
-        NNUE.ft.remove(them, &mut self.0[1]);
+        self.transformer().remove(us, &mut self.0[0]);
+        self.transformer().remove(them, &mut self.0[1]);
     }
 
     #[inline(always)]
     fn evaluate(&self, phase: usize) -> i32 {
-        let l1: &AlignTo64<[i16; Nnue::L1]> = unsafe { transmute(&self.0) };
-        NNUE.output[phase].forward(l1) / 16
+        unsafe {
+            let l1: &AlignTo64<[i16; Nnue::L1]> = transmute(&self.0);
+            NNUE.output[phase].forward(l1) / 16
+        }
     }
 }
 
