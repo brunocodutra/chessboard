@@ -47,7 +47,7 @@ impl Piece {
 
     /// This piece's mirror of the same [`Role`] and opposite [`Color`].
     pub fn mirror(&self) -> Self {
-        Piece(self.role(), !self.color())
+        Piece(self.role(), self.color().mirror())
     }
 }
 
