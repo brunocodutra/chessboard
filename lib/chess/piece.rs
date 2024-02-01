@@ -3,37 +3,56 @@ use crate::chess::{Color, Role};
 /// A chess [piece][`Role`] of a certain [`Color`].
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
 #[cfg_attr(test, derive(test_strategy::Arbitrary))]
-pub struct Piece(pub Role, pub Color);
+#[repr(u8)]
+pub enum Piece {
+    WhitePawn,
+    BlackPawn,
+    WhiteKnight,
+    BlackKnight,
+    WhiteBishop,
+    BlackBishop,
+    WhiteRook,
+    BlackRook,
+    WhiteQueen,
+    BlackQueen,
+    WhiteKing,
+    BlackKing,
+}
 
 impl Piece {
     pub const ALL: [Self; 12] = [
-        Piece(Role::Pawn, Color::White),
-        Piece(Role::Pawn, Color::Black),
-        Piece(Role::Knight, Color::White),
-        Piece(Role::Knight, Color::Black),
-        Piece(Role::Bishop, Color::White),
-        Piece(Role::Bishop, Color::Black),
-        Piece(Role::Rook, Color::White),
-        Piece(Role::Rook, Color::Black),
-        Piece(Role::Queen, Color::White),
-        Piece(Role::Queen, Color::Black),
-        Piece(Role::King, Color::White),
-        Piece(Role::King, Color::Black),
+        Piece::WhitePawn,
+        Piece::BlackPawn,
+        Piece::WhiteKnight,
+        Piece::BlackKnight,
+        Piece::WhiteBishop,
+        Piece::BlackBishop,
+        Piece::WhiteRook,
+        Piece::BlackRook,
+        Piece::WhiteQueen,
+        Piece::BlackQueen,
+        Piece::WhiteKing,
+        Piece::BlackKing,
     ];
+
+    /// Constructs [`Piece`] from a pair of [`Color`] and [`Role`].
+    pub fn new(r: Role, c: Color) -> Self {
+        Self::from_index(r.index() * 2 + c.index())
+    }
 
     /// This piece's [`Role`].
     pub fn role(&self) -> Role {
-        self.0
+        Role::from_index(self.index() / 2)
     }
 
     /// This piece's [`Color`].
     pub fn color(&self) -> Color {
-        self.1
+        Color::from_index(self.index() % 2)
     }
 
     /// This piece's index in the range (0..12).
     pub fn index(&self) -> u8 {
-        self.color() as u8 + self.role() as u8 * 2
+        *self as _
     }
 
     /// Constructs [`Piece`] from index.
@@ -47,7 +66,7 @@ impl Piece {
 
     /// This piece's mirror of the same [`Role`] and opposite [`Color`].
     pub fn mirror(&self) -> Self {
-        Piece(self.role(), self.color().mirror())
+        Self::from_index(self.index() ^ Piece::BlackPawn.index())
     }
 }
 
@@ -59,12 +78,12 @@ mod tests {
 
     #[proptest]
     fn piece_has_a_color(r: Role, c: Color) {
-        assert_eq!(Piece(r, c).color(), c);
+        assert_eq!(Piece::new(r, c).color(), c);
     }
 
     #[proptest]
     fn piece_has_a_role(r: Role, c: Color) {
-        assert_eq!(Piece(r, c).role(), r);
+        assert_eq!(Piece::new(r, c).role(), r);
     }
 
     #[proptest]

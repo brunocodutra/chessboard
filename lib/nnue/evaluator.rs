@@ -136,16 +136,16 @@ impl<T: Clone + Accumulator> Evaluator<T> {
         } else {
             let kings = [self.pos.king(turn), self.pos.king(!turn)];
 
-            let new = Piece(m.promotion().unwrap_or(role), !turn);
+            let new = Piece::new(m.promotion().unwrap_or(role), !turn);
             let fts = kings.map(|ks| Feature(ks, new, m.whither()));
             self.acc.add(fts[0].index(turn), fts[1].index(!turn));
 
-            let old = Piece(role, !turn);
+            let old = Piece::new(role, !turn);
             let fts = kings.map(|ks| Feature(ks, old, m.whence()));
             self.acc.remove(fts[0].index(turn), fts[1].index(!turn));
 
             if let Some((r, s)) = capture {
-                let fts = kings.map(|ks| Feature(ks, Piece(r, turn), s));
+                let fts = kings.map(|ks| Feature(ks, Piece::new(r, turn), s));
                 self.acc.remove(fts[0].index(turn), fts[1].index(!turn));
             }
         }
