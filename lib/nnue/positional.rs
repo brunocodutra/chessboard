@@ -26,7 +26,7 @@ impl Default for Positional {
 
 impl Accumulator for Positional {
     #[inline(always)]
-    fn mirror(&mut self) {
+    fn flip(&mut self) {
         self.0.reverse()
     }
 
@@ -66,8 +66,8 @@ mod tests {
     #[proptest]
     fn double_mirror_is_idempotent(a: Positional) {
         let mut b = a.clone();
-        b.mirror();
-        b.mirror();
+        b.flip();
+        b.flip();
         assert_eq!(a, b);
     }
 

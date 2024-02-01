@@ -1,6 +1,7 @@
+use crate::util::Enum;
 use cozy_chess as cc;
 use derive_more::Display;
-use std::ops::Sub;
+use std::ops::{RangeInclusive, Sub};
 
 /// A row on the chess board.
 #[derive(Debug, Display, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
@@ -25,43 +26,21 @@ pub enum Rank {
     Eighth,
 }
 
-impl Rank {
-    pub const ALL: [Self; 8] = [
-        Rank::First,
-        Rank::Second,
-        Rank::Third,
-        Rank::Fourth,
-        Rank::Fifth,
-        Rank::Sixth,
-        Rank::Seventh,
-        Rank::Eighth,
-    ];
+unsafe impl Enum for Rank {
+    const RANGE: RangeInclusive<Self> = Rank::First..=Rank::Eighth;
 
-    /// Constructs [`Rank`] from index.
-    ///
-    /// # Panics
-    ///
-    /// Panics if `i` is not in the range (0..=7).
-    pub fn from_index(i: u8) -> Self {
-        Self::ALL[i as usize]
-    }
-
-    /// This ranks's index in the range (0..=7).
-    pub fn index(&self) -> u8 {
+    #[inline(always)]
+    fn repr(&self) -> u8 {
         *self as _
-    }
-
-    /// Mirrors this rank.
-    pub fn mirror(&self) -> Self {
-        Self::from_index(Rank::Eighth as u8 - *self as u8)
     }
 }
 
 impl Sub for Rank {
     type Output = i8;
 
+    #[inline(always)]
     fn sub(self, rhs: Self) -> Self::Output {
-        self.index() as i8 - rhs.index() as i8
+        self as i8 - rhs as i8
     }
 }
 
@@ -69,7 +48,7 @@ impl Sub for Rank {
 impl From<cc::Rank> for Rank {
     #[inline(always)]
     fn from(r: cc::Rank) -> Self {
-        Rank::from_index(r as _)
+        Rank::from_repr(r as _)
     }
 }
 
@@ -84,7 +63,6 @@ impl From<Rank> for cc::Rank {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::util::Buffer;
     use std::mem::size_of;
     use test_strategy::proptest;
 
@@ -94,44 +72,8 @@ mod tests {
     }
 
     #[proptest]
-    fn rank_has_an_index(r: Rank) {
-        assert_eq!(Rank::from_index(r.index()), r);
-    }
-
-    #[proptest]
-
-    fn from_index_constructs_rank_by_index(#[strategy(0u8..8)] i: u8) {
-        assert_eq!(Rank::from_index(i).index(), i);
-    }
-
-    #[proptest]
-    #[should_panic]
-
-    fn from_index_panics_if_index_out_of_range(#[strategy(8u8..)] i: u8) {
-        Rank::from_index(i);
-    }
-
-    #[proptest]
-    fn rank_is_ordered_by_index(a: Rank, b: Rank) {
-        assert_eq!(a < b, a.index() < b.index());
-    }
-
-    #[proptest]
-    fn all_contains_ranks_in_order() {
-        assert_eq!(
-            Rank::ALL.into_iter().collect::<Buffer<_, 8>>(),
-            (0..=7).map(Rank::from_index).collect()
-        );
-    }
-
-    #[proptest]
-    fn rank_has_a_mirror(r: Rank) {
-        assert_eq!(r.mirror().index(), 7 - r.index());
-    }
-
-    #[proptest]
     fn subtracting_ranks_gives_distance(a: Rank, b: Rank) {
-        assert_eq!(a - b, a.index() as i8 - b.index() as i8);
+        assert_eq!(a - b, a as i8 - b as i8);
     }
 
     #[proptest]

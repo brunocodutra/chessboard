@@ -1,4 +1,5 @@
 use crate::chess::{Color, Piece, Square};
+use crate::util::Enum;
 
 /// The HalfKAv2 feature.
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
@@ -6,19 +7,21 @@ use crate::chess::{Color, Piece, Square};
 pub struct Feature(pub Square, pub Piece, pub Square);
 
 impl Feature {
-    /// Mirrors this feature.
-    pub fn mirror(&self) -> Self {
-        Feature(self.0.mirror(), self.1.mirror(), self.2.mirror())
+    /// Flips this feature's perspective.
+    #[inline(always)]
+    pub fn flip(&self) -> Self {
+        Feature(self.0.flip(), self.1.flip(), self.2.flip())
     }
 
     /// Feature's index for the given perspective.
+    #[inline(always)]
     pub fn index(&self, side: Color) -> u16 {
         let Feature(ks, p, s) = match side {
             Color::White => *self,
-            Color::Black => self.mirror(),
+            Color::Black => self.flip(),
         };
 
-        s.index() as u16 + 64 * (p.index().min(10) as u16 + 11 * ks.index() as u16)
+        s as u16 + 64 * (p.repr().min(10) as u16 + 11 * ks as u16)
     }
 }
 
@@ -39,7 +42,7 @@ mod tests {
 
     #[proptest]
     fn feature_has_a_mirror(a: Feature) {
-        assert_ne!(a.mirror(), a);
-        assert_eq!(a.mirror().mirror(), a);
+        assert_ne!(a.flip(), a);
+        assert_eq!(a.flip().flip(), a);
     }
 }

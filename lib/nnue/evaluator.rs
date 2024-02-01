@@ -92,7 +92,7 @@ impl<T: Clone + Accumulator> Evaluator<T> {
     /// [null-move]: https://www.chessprogramming.org/Null_Move
     pub fn pass(&mut self) {
         self.pos.pass();
-        self.acc.mirror();
+        self.acc.flip();
     }
 
     /// Play a [`Move`].
@@ -105,7 +105,7 @@ impl<T: Clone + Accumulator> Evaluator<T> {
         };
 
         self.pos.play(m);
-        self.acc.mirror();
+        self.acc.flip();
         self.update(m, capture);
     }
 
@@ -115,7 +115,7 @@ impl<T: Clone + Accumulator> Evaluator<T> {
     fn exchange(&mut self, whither: Square) -> Result<Move, ImpossibleExchange> {
         let capture = self.role_on(whither).map(|r| (r, whither));
         let m = self.pos.exchange(whither)?;
-        self.acc.mirror();
+        self.acc.flip();
         self.update(m, capture);
         Ok(m)
     }

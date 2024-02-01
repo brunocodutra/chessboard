@@ -1,25 +1,25 @@
 /// Trait for transformer accumulators.
 pub trait Accumulator {
-    /// Mirrors the accumulator.
-    fn mirror(&mut self);
+    /// Flips this accumulator's perspective.
+    fn flip(&mut self);
 
-    /// Refreshes accumulator.
+    /// Refreshes this accumulator.
     fn refresh(&mut self, us: &[u16], them: &[u16]);
 
-    /// Updates the accumulator by adding features.
+    /// Updates this accumulator by adding features.
     fn add(&mut self, us: u16, them: u16);
 
-    /// Updates the accumulator by removing features.
+    /// Updates this accumulator by removing features.
     fn remove(&mut self, us: u16, them: u16);
 
-    /// Evaluates the accumulator.
+    /// Evaluates this accumulator.
     fn evaluate(&self, phase: usize) -> i32;
 }
 
 impl<T: Accumulator, U: Accumulator> Accumulator for (T, U) {
-    fn mirror(&mut self) {
-        self.0.mirror();
-        self.1.mirror();
+    fn flip(&mut self) {
+        self.0.flip();
+        self.1.flip();
     }
 
     fn refresh(&mut self, us: &[u16], them: &[u16]) {

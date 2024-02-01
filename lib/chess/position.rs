@@ -1,5 +1,5 @@
 use crate::chess::{Bitboard, Color, File, Move, Outcome, Piece, Rank, Role, Square};
-use crate::util::{Assume, Bits, Buffer};
+use crate::util::{Assume, Bits, Buffer, Enum};
 use cozy_chess as cc;
 use derive_more::{Debug, Display, Error};
 use std::hash::{Hash, Hasher};
@@ -134,9 +134,7 @@ impl Position {
     /// An iterator over all pieces on the board.
     #[inline(always)]
     pub fn iter(&self) -> impl Iterator<Item = (Piece, Square)> + '_ {
-        Piece::ALL
-            .into_iter()
-            .flat_map(|p| self.by_piece(p).into_iter().map(move |s| (p, s)))
+        Piece::iter().flat_map(|p| self.by_piece(p).into_iter().map(move |s| (p, s)))
     }
 
     /// [`Square`]s occupied.
@@ -207,7 +205,7 @@ impl Position {
     /// From where a [`Piece`] can attack into this [`Square`].
     #[inline(always)]
     pub fn attackers(&self, s: Square, p: Piece) -> Bitboard {
-        self.attacks(s, p.mirror())
+        self.attacks(s, p.flip())
     }
 
     /// How many other times this position has repeated.
@@ -384,7 +382,7 @@ impl Position {
             _ => return Err(ImpossibleExchange(whither)),
         };
 
-        for role in Role::ALL {
+        for role in Role::iter() {
             let piece = Piece::new(role, turn);
             for whence in self.by_piece(piece) & self.attackers(whither, piece) {
                 let ms = cc::PieceMoves {
