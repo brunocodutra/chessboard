@@ -1,7 +1,8 @@
 use crate::chess::{File, Rank};
-use crate::util::{Binary, Bits};
+use crate::util::{Binary, Bits, Enum};
 use cozy_chess as cc;
-use std::{convert::Infallible, fmt, ops::Sub};
+use std::ops::{RangeInclusive, Sub};
+use std::{convert::Infallible, fmt};
 
 /// A square on the chess board.
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
@@ -20,52 +21,37 @@ pub enum Square {
 }
 
 impl Square {
-    #[rustfmt::skip]
-    pub const ALL: [Self; 64] = [
-        Square::A1, Square::B1, Square::C1, Square::D1, Square::E1, Square::F1, Square::G1, Square::H1,
-        Square::A2, Square::B2, Square::C2, Square::D2, Square::E2, Square::F2, Square::G2, Square::H2,
-        Square::A3, Square::B3, Square::C3, Square::D3, Square::E3, Square::F3, Square::G3, Square::H3,
-        Square::A4, Square::B4, Square::C4, Square::D4, Square::E4, Square::F4, Square::G4, Square::H4,
-        Square::A5, Square::B5, Square::C5, Square::D5, Square::E5, Square::F5, Square::G5, Square::H5,
-        Square::A6, Square::B6, Square::C6, Square::D6, Square::E6, Square::F6, Square::G6, Square::H6,
-        Square::A7, Square::B7, Square::C7, Square::D7, Square::E7, Square::F7, Square::G7, Square::H7,
-        Square::A8, Square::B8, Square::C8, Square::D8, Square::E8, Square::F8, Square::G8, Square::H8,
-    ];
-
     /// Constructs [`Square`] from a pair of [`File`] and [`Rank`].
+    #[inline(always)]
     pub fn new(f: File, r: Rank) -> Self {
-        Self::from_index(f.index() + r.index() * 8)
-    }
-
-    /// Constructs [`Square`] from index.
-    ///
-    /// # Panics
-    ///
-    /// Panics if `i` is not in the range (0..64).
-    pub fn from_index(i: u8) -> Self {
-        Self::ALL[i as usize]
-    }
-
-    /// This squares's index in the range (0..64).
-    ///
-    /// Squares are ordered from a1 = 0 to h8 = 63, files then ranks, so b1 = 2 and a2 = 8.
-    pub fn index(&self) -> u8 {
-        *self as _
+        Self::from_repr(f.repr() + r.repr() * 8)
     }
 
     /// This square's [`File`].
+    #[inline(always)]
     pub fn file(&self) -> File {
-        File::from_index(self.index() % 8)
+        File::from_repr(self.repr() % 8)
     }
 
     /// This square's [`Rank`].
+    #[inline(always)]
     pub fn rank(&self) -> Rank {
-        Rank::from_index(self.index() / 8)
+        Rank::from_repr(self.repr() / 8)
     }
 
     /// Mirrors this square's [`Rank`].
-    pub fn mirror(&self) -> Self {
-        Self::from_index(self.index() ^ Square::A8.index())
+    #[inline(always)]
+    pub fn flip(&self) -> Self {
+        Self::from_repr(self.repr() ^ Square::A8.repr())
+    }
+}
+
+unsafe impl Enum for Square {
+    const RANGE: RangeInclusive<Self> = Square::A1..=Square::H8;
+
+    #[inline(always)]
+    fn repr(&self) -> u8 {
+        *self as _
     }
 }
 
@@ -84,15 +70,16 @@ impl Binary for Square {
     }
 
     fn decode(bits: Self::Bits) -> Result<Self, Self::Error> {
-        Ok(Square::from_index(bits.get()))
+        Ok(Square::from_repr(bits.get()))
     }
 }
 
 impl Sub for Square {
     type Output = i8;
 
+    #[inline(always)]
     fn sub(self, rhs: Self) -> Self::Output {
-        self.index() as i8 - rhs.index() as i8
+        self as i8 - rhs as i8
     }
 }
 
@@ -100,7 +87,7 @@ impl Sub for Square {
 impl From<cc::Square> for Square {
     #[inline(always)]
     fn from(s: cc::Square) -> Self {
-        Square::from_index(s as _)
+        Square::from_repr(s as _)
     }
 }
 
@@ -115,7 +102,6 @@ impl From<Square> for cc::Square {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::util::Buffer;
     use std::mem::size_of;
     use test_strategy::proptest;
 
@@ -130,37 +116,6 @@ mod tests {
     }
 
     #[proptest]
-    fn square_has_an_index(s: Square) {
-        assert_eq!(Square::from_index(s.index()), s);
-    }
-
-    #[proptest]
-
-    fn from_index_constructs_square_by_index(#[strategy(0u8..64)] i: u8) {
-        assert_eq!(Square::from_index(i).index(), i);
-    }
-
-    #[proptest]
-    #[should_panic]
-
-    fn from_index_panics_if_index_out_of_range(#[strategy(64u8..)] i: u8) {
-        Square::from_index(i);
-    }
-
-    #[proptest]
-    fn square_is_ordered_by_index(a: Square, b: Square) {
-        assert_eq!(a < b, a.index() < b.index());
-    }
-
-    #[proptest]
-    fn all_contains_files_in_order() {
-        assert_eq!(
-            Square::ALL.into_iter().collect::<Buffer<_, 64>>(),
-            (0..=63).map(Square::from_index).collect()
-        );
-    }
-
-    #[proptest]
     fn decoding_encoded_square_is_an_identity(s: Square) {
         assert_eq!(Square::decode(s.encode()), Ok(s));
     }
@@ -171,13 +126,13 @@ mod tests {
     }
 
     #[proptest]
-    fn square_has_a_mirror_on_the_same_file(s: Square) {
-        assert_eq!(s.mirror(), Square::new(s.file(), s.rank().mirror()));
+    fn flipping_square_mirrors_its_rank(s: Square) {
+        assert_eq!(s.flip(), Square::new(s.file(), s.rank().mirror()));
     }
 
     #[proptest]
     fn subtracting_squares_gives_distance(a: Square, b: Square) {
-        assert_eq!(a - b, a.index() as i8 - b.index() as i8);
+        assert_eq!(a - b, a as i8 - b as i8);
     }
 
     #[proptest]

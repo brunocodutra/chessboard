@@ -5,6 +5,7 @@ mod bits;
 mod bounds;
 mod buffer;
 mod counter;
+mod r#enum;
 mod saturating;
 mod timer;
 
@@ -15,5 +16,6 @@ pub use bits::*;
 pub use bounds::*;
 pub use buffer::*;
 pub use counter::*;
+pub use r#enum::*;
 pub use saturating::*;
 pub use timer::*;

@@ -1,5 +1,5 @@
 use crate::chess::{Role, Square};
-use crate::util::{Assume, Binary, Bits};
+use crate::util::{Assume, Binary, Bits, Enum};
 use derive_more::{Display, Error};
 use std::{fmt, num::NonZeroU16, ops::RangeBounds};
 
@@ -52,7 +52,7 @@ impl Move {
             bits.push(Bits::<u8, 1>::new(promotion.is_some() as _));
             bits.push(Bits::<u8, 1>::new(capture.is_some() as _));
             bits.push(Bits::<u8, 2>::new(
-                promotion.map_or(0, |r| r.index().clamp(1, 4) - 1),
+                promotion.map_or(0, |r| r.repr().clamp(1, 4) - 1),
             ));
         }
 
@@ -75,7 +75,7 @@ impl Move {
     #[inline(always)]
     pub fn promotion(&self) -> Option<Role> {
         if self.is_promotion() {
-            Some(Role::from_index(self.bits(..2).get() as u8 + 1))
+            Some(Role::from_repr(self.bits(..2).get() as u8 + 1))
         } else {
             None
         }

@@ -19,7 +19,7 @@ impl Material {
 
 impl Accumulator for Material {
     #[inline(always)]
-    fn mirror(&mut self) {
+    fn flip(&mut self) {
         self.0.reverse()
     }
 
@@ -56,15 +56,15 @@ mod tests {
     #[proptest]
     fn material_evaluation_is_symmetric(a: Material, #[strategy(..8usize)] phase: usize) {
         let mut mirrored = a.clone();
-        mirrored.mirror();
+        mirrored.flip();
         assert_eq!(a.evaluate(phase), -mirrored.evaluate(phase));
     }
 
     #[proptest]
     fn double_mirror_is_idempotent(a: Material) {
         let mut b = a.clone();
-        b.mirror();
-        b.mirror();
+        b.flip();
+        b.flip();
         assert_eq!(a, b);
     }
 
