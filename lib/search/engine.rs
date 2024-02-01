@@ -110,7 +110,7 @@ impl Engine {
         ply: Ply,
     ) -> Option<Depth> {
         let turn = pos.turn();
-        let pawn = Piece(Role::Pawn, turn);
+        let pawn = Piece::new(Role::Pawn, turn);
         if guess > beta && pos.by_color(turn).len() - pos.by_piece(pawn).len() > 1 {
             Some(depth - 2 - (depth - ply) / 4)
         } else {
