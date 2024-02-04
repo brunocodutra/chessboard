@@ -29,30 +29,30 @@ impl Move {
         let mut bits = Bits::<_, 16>::default();
         bits.push(whence.encode());
         bits.push(whither.encode());
-        bits.push(Bits::<u8, 4>::new(0b0011));
+        bits.push(Bits::<u8, 4>::new(0b0110));
         Move(NonZeroU16::new(bits.get()).assume())
+    }
+
+    /// Constructs a capture move.
+    #[inline(always)]
+    pub fn capture(whence: Square, whither: Square, promotion: Option<Role>) -> Self {
+        let bits = Self::regular(whence, whither, promotion).bits(..);
+        Move(NonZeroU16::new(bits.get() | 0b0000000000000100).assume())
     }
 
     /// Constructs a regular move.
     #[inline(always)]
-    pub fn regular(
-        whence: Square,
-        whither: Square,
-        promotion: Option<Role>,
-        capture: Option<Role>,
-    ) -> Self {
+    pub fn regular(whence: Square, whither: Square, promotion: Option<Role>) -> Self {
         let mut bits = Bits::<_, 16>::default();
         bits.push(whence.encode());
         bits.push(whither.encode());
 
-        if capture == Some(Role::Pawn) {
-            bits.push(Bits::<u8, 4>::new(0b0010))
-        } else {
-            bits.push(Bits::<u8, 1>::new(promotion.is_some() as _));
-            bits.push(Bits::<u8, 1>::new(capture.is_some() as _));
-            bits.push(Bits::<u8, 2>::new(
-                promotion.map_or(0, |r| r.repr().clamp(1, 4) - 1),
-            ));
+        match promotion {
+            None => bits.push(Bits::<u8, 4>::new(0b0000)),
+            Some(r) => {
+                bits.push(Bits::<u8, 2>::new(0b10));
+                bits.push(Bits::<u8, 2>::new(r.repr() - 1));
+            }
         }
 
         Move(NonZeroU16::new(bits.get()).assume())
@@ -80,12 +80,6 @@ impl Move {
         }
     }
 
-    /// Whether this is a promotion move.
-    #[inline(always)]
-    pub fn is_promotion(&self) -> bool {
-        self.bits(3..=3).get() != 0
-    }
-
     /// Whether this is a castling move.
     #[inline(always)]
     pub fn is_castling(&self) -> bool {
@@ -95,19 +89,25 @@ impl Move {
     /// Whether this is an en passant capture move.
     #[inline(always)]
     pub fn is_en_passant(&self) -> bool {
-        self.bits(..4).get() == 0b0011
+        self.bits(..4).get() == 0b0110
     }
 
     /// Whether this is a capture move.
     #[inline(always)]
     pub fn is_capture(&self) -> bool {
-        self.bits(2..=2).get() != 0 || (self.bits(1..=1).get() != 0 && !self.is_promotion())
+        self.bits(2..=2).get() != 0
+    }
+
+    /// Whether this is a promotion move.
+    #[inline(always)]
+    pub fn is_promotion(&self) -> bool {
+        self.bits(3..=3).get() != 0
     }
 
     /// Whether this move is neither a capture nor a promotion.
     #[inline(always)]
     pub fn is_quiet(&self) -> bool {
-        !(self.is_capture() || self.is_promotion())
+        self.bits(2..=3).get() == 0
     }
 }
 
@@ -156,8 +156,7 @@ impl Binary for Move {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::chess::Position;
-    use proptest::sample::Selector;
+    use proptest::sample::select;
     use std::mem::size_of;
     use test_strategy::proptest;
 
@@ -172,44 +171,89 @@ mod tests {
     }
 
     #[proptest]
-    fn move_can_be_constructed(
-        #[by_ref]
-        #[filter(#pos.outcome().is_none())]
-        pos: Position,
-        #[map(|s: Selector| s.select(#pos.moves()))] m: Move,
-    ) {
-        if m.is_castling() {
-            assert_eq!(Move::castling(m.whence(), m.whither()), m);
-        } else if m.is_en_passant() {
-            assert_eq!(Move::en_passant(m.whence(), m.whither()), m);
-        } else {
-            let c = pos.role_on(m.whither());
-            assert_eq!(Move::regular(m.whence(), m.whither(), m.promotion(), c), m);
-        }
+    fn castling_move_can_be_constructed(wc: Square, #[filter(#wc != #wt)] wt: Square) {
+        assert!(Move::castling(wc, wt).is_castling());
     }
 
     #[proptest]
-    fn castling_moves_are_never_captures(wc: Square, wt: Square) {
+    fn en_passant_move_can_be_constructed(wc: Square, #[filter(#wc != #wt)] wt: Square) {
+        assert!(Move::en_passant(wc, wt).is_en_passant());
+    }
+
+    #[proptest]
+    fn capture_move_can_be_constructed(
+        wc: Square,
+        #[filter(#wc != #wt)] wt: Square,
+        #[strategy(select(&[Role::Knight, Role::Bishop, Role::Rook, Role::Queen]))] p: Role,
+    ) {
+        assert!(Move::capture(wc, wt, Some(p)).is_capture());
+    }
+
+    #[proptest]
+    #[should_panic]
+    fn constructing_capture_move_fails_with_invalid_promotion(
+        wc: Square,
+        #[filter(#wc != #wt)] wt: Square,
+        #[strategy(select(&[Role::Pawn, Role::King]))] p: Role,
+    ) {
+        Move::capture(wc, wt, Some(p));
+    }
+
+    #[proptest]
+    fn quiet_move_can_be_constructed(wc: Square, #[filter(#wc != #wt)] wt: Square) {
+        assert!(Move::regular(wc, wt, None).is_quiet());
+    }
+
+    #[proptest]
+    fn promotion_move_can_be_constructed(
+        wc: Square,
+        #[filter(#wc != #wt)] wt: Square,
+        #[strategy(select(&[Role::Knight, Role::Bishop, Role::Rook, Role::Queen]))] p: Role,
+    ) {
+        assert!(Move::regular(wc, wt, Some(p)).is_promotion());
+    }
+
+    #[proptest]
+    #[should_panic]
+    fn constructing_promotion_move_fails_with_invalid_promotion(
+        wc: Square,
+        #[filter(#wc != #wt)] wt: Square,
+        #[strategy(select(&[Role::Pawn, Role::King]))] p: Role,
+    ) {
+        Move::regular(wc, wt, Some(p));
+    }
+
+    #[proptest]
+    fn castling_moves_are_never_captures(wc: Square, #[filter(#wc != #wt)] wt: Square) {
         assert!(!Move::castling(wc, wt).is_capture());
     }
 
     #[proptest]
-    fn castling_moves_are_never_promotions(wc: Square, wt: Square) {
+    fn castling_moves_are_never_promotions(wc: Square, #[filter(#wc != #wt)] wt: Square) {
         assert!(!Move::castling(wc, wt).is_promotion());
     }
 
     #[proptest]
-    fn en_passant_moves_are_always_captures(wc: Square, wt: Square) {
+    fn en_passant_moves_are_always_captures(wc: Square, #[filter(#wc != #wt)] wt: Square) {
         assert!(Move::en_passant(wc, wt).is_capture());
     }
 
     #[proptest]
-    fn promotions_are_never_quiet(wc: Square, wt: Square, p: Role, c: Option<Role>) {
-        assert!(!Move::regular(wc, wt, Some(p), c).is_quiet());
+    fn promotions_are_never_quiet(
+        wc: Square,
+        #[filter(#wc != #wt)] wt: Square,
+        #[strategy(select(&[Role::Knight, Role::Bishop, Role::Rook, Role::Queen]))] p: Role,
+    ) {
+        assert!(!Move::regular(wc, wt, Some(p)).is_quiet());
     }
 
     #[proptest]
-    fn captures_are_never_quiet(wc: Square, wt: Square, p: Option<Role>, c: Role) {
-        assert!(!Move::regular(wc, wt, p, Some(c)).is_quiet());
+    fn captures_are_never_quiet(
+        wc: Square,
+        #[filter(#wc != #wt)] wt: Square,
+        #[strategy(select(&[Role::Knight, Role::Bishop, Role::Rook, Role::Queen]))] p: Role,
+    ) {
+        assert!(!Move::capture(wc, wt, None).is_quiet());
+        assert!(!Move::capture(wc, wt, Some(p)).is_quiet());
     }
 }
