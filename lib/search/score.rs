@@ -1,6 +1,5 @@
 use crate::search::Ply;
 use crate::util::{Binary, Bits, Bounds, Saturating};
-use derive_more::{Display, Error};
 use std::fmt;
 
 pub struct ScoreBounds;
@@ -40,26 +39,17 @@ impl Score {
     }
 }
 
-/// The reason why decoding [`Score`] from binary failed.
-#[derive(Debug, Display, Clone, Eq, PartialEq, Error)]
-#[cfg_attr(test, derive(test_strategy::Arbitrary))]
-#[display("not a valid score")]
-pub struct DecodeScoreError;
-
 impl Binary for Score {
     type Bits = Bits<u16, 14>;
-    type Error = DecodeScoreError;
 
+    #[inline(always)]
     fn encode(&self) -> Self::Bits {
         Bits::new((self.get() - ScoreBounds::LOWER) as _)
     }
 
-    fn decode(bits: Self::Bits) -> Result<Self, Self::Error> {
-        if bits != !Bits::default() {
-            Ok(Self::LOWER + bits.get() as i16)
-        } else {
-            Err(DecodeScoreError)
-        }
+    #[inline(always)]
+    fn decode(bits: Self::Bits) -> Self {
+        Self::LOWER + bits.get() as i16
     }
 }
 
@@ -99,12 +89,6 @@ mod tests {
 
     #[proptest]
     fn decoding_encoded_score_is_an_identity(s: Score) {
-        assert_eq!(Binary::decode(s.encode()), Ok(s));
-    }
-
-    #[proptest]
-    fn decoding_value_fails_for_invalid_bits() {
-        let b = !<Score as Binary>::Bits::default();
-        assert_eq!(Score::decode(b), Err(DecodeScoreError));
+        assert_eq!(Score::decode(s.encode()), s);
     }
 }

@@ -1,7 +1,6 @@
 use crate::chess::{Move, Zobrist};
 use crate::search::{Depth, HashSize, Score};
-use crate::util::{Assume, Binary, Bits};
-use derive_more::{Display, Error};
+use crate::util::{Binary, Bits, Enum};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::{mem::size_of, ops::RangeInclusive};
 
@@ -13,33 +12,33 @@ use proptest::{collection::*, prelude::*};
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
 #[cfg_attr(test, derive(test_strategy::Arbitrary))]
+#[repr(u8)]
 enum TranspositionKind {
     Lower,
     Upper,
     Exact,
 }
 
-/// The reason why decoding [`Transposition`] [`Kind`] from binary failed.
-#[derive(Debug, Display, Clone, Eq, PartialEq, Error)]
-#[cfg_attr(test, derive(test_strategy::Arbitrary))]
-#[display("not a valid transposition kind")]
-struct DecodeTranspositionKindError;
+unsafe impl Enum for TranspositionKind {
+    const RANGE: RangeInclusive<Self> = TranspositionKind::Lower..=TranspositionKind::Exact;
+
+    #[inline(always)]
+    fn repr(&self) -> u8 {
+        *self as _
+    }
+}
 
 impl Binary for TranspositionKind {
     type Bits = Bits<u8, 2>;
-    type Error = DecodeTranspositionKindError;
 
+    #[inline(always)]
     fn encode(&self) -> Self::Bits {
-        Bits::<u8, 2>::new(*self as _)
+        Bits::new(*self as _)
     }
 
-    fn decode(mut bits: Self::Bits) -> Result<Self, Self::Error> {
-        match bits.pop::<u8, 2>().get() {
-            0 => Ok(TranspositionKind::Lower),
-            1 => Ok(TranspositionKind::Upper),
-            2 => Ok(TranspositionKind::Exact),
-            _ => Err(DecodeTranspositionKindError),
-        }
+    #[inline(always)]
+    fn decode(bits: Self::Bits) -> Self {
+        TranspositionKind::from_repr(bits.get())
     }
 }
 
@@ -103,15 +102,8 @@ impl Transposition {
     }
 }
 
-/// The reason why decoding [`Transposition`] from binary failed.
-#[derive(Debug, Display, Clone, Eq, PartialEq, Error)]
-#[cfg_attr(test, derive(test_strategy::Arbitrary))]
-#[display("not a valid transposition")]
-pub struct DecodeTranspositionError;
-
 impl Binary for Transposition {
     type Bits = Bits<u64, 37>;
-    type Error = DecodeTranspositionError;
 
     fn encode(&self) -> Self::Bits {
         let mut bits = Bits::default();
@@ -122,13 +114,13 @@ impl Binary for Transposition {
         bits
     }
 
-    fn decode(mut bits: Self::Bits) -> Result<Self, Self::Error> {
-        Ok(Transposition {
-            best: Move::decode(bits.pop()).map_err(|_| DecodeTranspositionError)?,
-            score: Score::decode(bits.pop()).map_err(|_| DecodeTranspositionError)?,
-            kind: TranspositionKind::decode(bits.pop()).map_err(|_| DecodeTranspositionError)?,
-            depth: Depth::decode(bits.pop()).map_err(|_| DecodeTranspositionError)?,
-        })
+    fn decode(mut bits: Self::Bits) -> Self {
+        Transposition {
+            best: Binary::decode(bits.pop()),
+            score: Binary::decode(bits.pop()),
+            kind: Binary::decode(bits.pop()),
+            depth: Binary::decode(bits.pop()),
+        }
     }
 }
 
@@ -140,7 +132,6 @@ struct SignedTransposition(Signature, <Transposition as Binary>::Bits);
 
 impl Binary for SignedTransposition {
     type Bits = Bits<u64, 64>;
-    type Error = DecodeTranspositionError;
 
     fn encode(&self) -> Self::Bits {
         let mut bits = Bits::default();
@@ -149,8 +140,8 @@ impl Binary for SignedTransposition {
         bits
     }
 
-    fn decode(mut bits: Self::Bits) -> Result<Self, Self::Error> {
-        Ok(SignedTransposition(bits.pop(), bits.pop()))
+    fn decode(mut bits: Self::Bits) -> Self {
+        SignedTransposition(bits.pop(), bits.pop())
     }
 }
 
@@ -213,8 +204,8 @@ impl TranspositionTable {
 
         let sig = self.signature_of(key);
         let bits = Bits::new(self.cache[self.index_of(key)].load(Ordering::Relaxed));
-        match Binary::decode(bits).assume() {
-            Some(SignedTransposition(s, t)) if s == sig => Some(Binary::decode(t).assume()),
+        match Binary::decode(bits) {
+            Some(SignedTransposition(s, t)) if s == sig => Some(Binary::decode(t)),
             _ => None,
         }
     }
@@ -267,17 +258,17 @@ mod tests {
 
     #[proptest]
     fn decoding_encoded_transposition_kind_is_an_identity(t: TranspositionKind) {
-        assert_eq!(Binary::decode(t.encode()), Ok(t));
+        assert_eq!(TranspositionKind::decode(t.encode()), t);
     }
 
     #[proptest]
     fn decoding_encoded_transposition_is_an_identity(t: Transposition) {
-        assert_eq!(Binary::decode(t.encode()), Ok(t));
+        assert_eq!(Transposition::decode(t.encode()), t);
     }
 
     #[proptest]
     fn decoding_encoded_signed_transposition_is_an_identity(t: SignedTransposition) {
-        assert_eq!(Binary::decode(t.encode()), Ok(t));
+        assert_eq!(SignedTransposition::decode(t.encode()), t);
     }
 
     #[proptest]

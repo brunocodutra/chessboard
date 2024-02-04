@@ -1,5 +1,4 @@
 use crate::util::{Binary, Bits, Bounds, Saturating};
-use std::convert::Infallible;
 
 pub struct DepthBounds;
 
@@ -20,14 +19,15 @@ pub type Depth = Saturating<DepthBounds>;
 
 impl Binary for Depth {
     type Bits = Bits<u8, 5>;
-    type Error = Infallible;
 
+    #[inline(always)]
     fn encode(&self) -> Self::Bits {
         Bits::new(self.get() as _)
     }
 
-    fn decode(bits: Self::Bits) -> Result<Self, Self::Error> {
-        Ok(Depth::new(bits.get() as _))
+    #[inline(always)]
+    fn decode(bits: Self::Bits) -> Self {
+        Depth::new(bits.get() as _)
     }
 }
 
@@ -38,6 +38,6 @@ mod tests {
 
     #[proptest]
     fn decoding_encoded_depth_is_an_identity(d: Depth) {
-        assert_eq!(Binary::decode(d.encode()), Ok(d));
+        assert_eq!(Depth::decode(d.encode()), d);
     }
 }

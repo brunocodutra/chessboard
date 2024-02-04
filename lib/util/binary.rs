@@ -1,32 +1,30 @@
 use crate::util::Bits;
 use num_traits::{PrimInt, Unsigned};
-use std::{convert::Infallible, fmt::Debug};
+use std::fmt::Debug;
 
 /// Trait for types that can be encoded to binary.
 pub trait Binary: Sized {
     /// A fixed width collection of bits.
     type Bits;
 
-    /// The reason why decoding failed.
-    type Error;
-
     /// Encodes `Self` to its binary representation.
     fn encode(&self) -> Self::Bits;
 
     /// Decodes `Self` from its binary representation.
-    fn decode(bits: Self::Bits) -> Result<Self, Self::Error>;
+    fn decode(bits: Self::Bits) -> Self;
 }
 
 impl<T: PrimInt + Unsigned, const W: u32> Binary for Bits<T, W> {
     type Bits = Self;
-    type Error = Infallible;
 
+    #[inline(always)]
     fn encode(&self) -> Self::Bits {
         *self
     }
 
-    fn decode(bits: Self::Bits) -> Result<Self, Self::Error> {
-        Ok(bits)
+    #[inline(always)]
+    fn decode(bits: Self::Bits) -> Self {
+        bits
     }
 }
 
@@ -36,8 +34,8 @@ where
     T::Bits: Default + Debug + Eq + PartialEq,
 {
     type Bits = T::Bits;
-    type Error = T::Error;
 
+    #[inline(always)]
     fn encode(&self) -> Self::Bits {
         match self {
             None => T::Bits::default(),
@@ -49,11 +47,12 @@ where
         }
     }
 
-    fn decode(bits: Self::Bits) -> Result<Self, Self::Error> {
+    #[inline(always)]
+    fn decode(bits: Self::Bits) -> Self {
         if bits == T::Bits::default() {
-            Ok(None)
+            None
         } else {
-            Ok(Some(T::decode(bits)?))
+            Some(T::decode(bits))
         }
     }
 }
@@ -70,14 +69,14 @@ mod tests {
 
     #[proptest]
     fn decoding_bits_is_an_identity(b: Bits<u8, 6>) {
-        assert_eq!(Binary::decode(b), Ok(b));
+        assert_eq!(Bits::decode(b), b);
     }
 
     #[proptest]
     fn decoding_encoded_optional_is_an_identity(
         #[filter(#o != Some(Bits::default()))] o: Option<Bits<u8, 6>>,
     ) {
-        assert_eq!(Binary::decode(o.encode()), Ok(o));
+        assert_eq!(Option::decode(o.encode()), o);
     }
 
     #[proptest]
