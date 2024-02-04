@@ -309,6 +309,7 @@ impl Position {
             let whence = ms.from.into();
             ms.into_iter().map(move |m| {
                 let whither = m.to.into();
+
                 match role {
                     Role::Pawn if self.en_passant() == Some(whither) => {
                         Move::en_passant(whence, whither)
@@ -324,7 +325,12 @@ impl Position {
 
                     _ => {
                         let promotion = m.promotion.map(|r| r.into());
-                        Move::regular(whence, whither, promotion, self.role_on(whither))
+
+                        if self.role_on(whither).is_some() {
+                            Move::capture(whence, whither, promotion)
+                        } else {
+                            Move::regular(whence, whither, promotion)
+                        }
                     }
                 }
             })
@@ -377,10 +383,9 @@ impl Position {
     #[inline(always)]
     pub fn exchange(&mut self, whither: Square) -> Result<Move, ImpossibleExchange> {
         let turn = self.turn();
-        let capture = match self[whither] {
-            Some(p) if p.color() == !turn => Some(p.role()),
-            _ => return Err(ImpossibleExchange(whither)),
-        };
+        if !self.by_color(!turn).contains(whither) {
+            return Err(ImpossibleExchange(whither));
+        }
 
         for role in Role::iter() {
             let piece = Piece::new(role, turn);
@@ -396,7 +401,7 @@ impl Position {
                         self.board.play_unchecked(m);
                         self.history = Default::default();
                         let promotion = m.promotion.map(Role::from);
-                        return Ok(Move::regular(whence, whither, promotion, capture));
+                        return Ok(Move::capture(whence, whither, promotion));
                     }
                 }
             }
