@@ -1,8 +1,8 @@
 use crate::chess::{File, Rank};
 use crate::util::{Binary, Bits, Enum};
 use cozy_chess as cc;
+use std::fmt;
 use std::ops::{RangeInclusive, Sub};
-use std::{convert::Infallible, fmt};
 
 /// A square on the chess board.
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
@@ -63,14 +63,15 @@ impl fmt::Display for Square {
 
 impl Binary for Square {
     type Bits = Bits<u8, 6>;
-    type Error = Infallible;
 
+    #[inline(always)]
     fn encode(&self) -> Self::Bits {
         Bits::new(*self as _)
     }
 
-    fn decode(bits: Self::Bits) -> Result<Self, Self::Error> {
-        Ok(Square::from_repr(bits.get()))
+    #[inline(always)]
+    fn decode(bits: Self::Bits) -> Self {
+        Square::from_repr(bits.get())
     }
 }
 
@@ -117,12 +118,7 @@ mod tests {
 
     #[proptest]
     fn decoding_encoded_square_is_an_identity(s: Square) {
-        assert_eq!(Square::decode(s.encode()), Ok(s));
-    }
-
-    #[proptest]
-    fn decoding_square_never_fails(r: <Square as Binary>::Bits) {
-        assert!(Square::decode(r).is_ok());
+        assert_eq!(Square::decode(s.encode()), s);
     }
 
     #[proptest]

@@ -1,6 +1,5 @@
 use crate::chess::{Role, Square};
 use crate::util::{Assume, Binary, Bits, Enum};
-use derive_more::{Display, Error};
 use std::{fmt, num::NonZeroU16, ops::RangeBounds};
 
 /// A chess move.
@@ -62,13 +61,13 @@ impl Move {
     /// The source [`Square`].
     #[inline(always)]
     pub fn whence(&self) -> Square {
-        Square::decode(self.bits(10..).pop()).assume()
+        Square::decode(self.bits(10..).pop())
     }
 
     /// The destination [`Square`].
     #[inline(always)]
     pub fn whither(&self) -> Square {
-        Square::decode(self.bits(4..).pop()).assume()
+        Square::decode(self.bits(4..).pop())
     }
 
     /// The promotion specifier.
@@ -140,22 +139,17 @@ impl fmt::Display for Move {
     }
 }
 
-// The reason why decoding [`Move`] from binary failed.
-#[derive(Debug, Display, Clone, Eq, PartialEq, Error)]
-#[cfg_attr(test, derive(test_strategy::Arbitrary))]
-#[display("not a valid move")]
-pub struct DecodeMoveError;
-
 impl Binary for Move {
     type Bits = Bits<u16, 16>;
-    type Error = DecodeMoveError;
 
+    #[inline(always)]
     fn encode(&self) -> Self::Bits {
         self.bits(..)
     }
 
-    fn decode(bits: Self::Bits) -> Result<Self, Self::Error> {
-        NonZeroU16::new(bits.get()).map_or(Err(DecodeMoveError), |n| Ok(Move(n)))
+    #[inline(always)]
+    fn decode(bits: Self::Bits) -> Self {
+        Move(NonZeroU16::new(bits.get()).assume())
     }
 }
 
@@ -174,12 +168,7 @@ mod tests {
 
     #[proptest]
     fn decoding_encoded_move_is_an_identity(m: Move) {
-        assert_eq!(Move::decode(m.encode()), Ok(m));
-    }
-
-    #[proptest]
-    fn decoding_move_fails_for_invalid_bits() {
-        assert_eq!(Move::decode(Bits::default()), Err(DecodeMoveError));
+        assert_eq!(Move::decode(m.encode()), m);
     }
 
     #[proptest]
