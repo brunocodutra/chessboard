@@ -27,7 +27,7 @@ pub struct ImpossibleExchange(#[error(not(source))] pub Square);
 #[display("{board}")]
 pub struct Position {
     board: cc::Board,
-    history: [Buffer<Bits<u16, 16>, 51>; 2],
+    history: [[Option<NonZeroU32>; 8]; 2],
 }
 
 impl Hash for Position {
@@ -55,7 +55,7 @@ impl Arbitrary for Position {
         (0..256, any::<Selector>())
             .prop_map(|(moves, selector)| {
                 let mut board = cc::Board::default();
-                let mut history = [Buffer::<_, 51>::new(), Buffer::<_, 51>::new()];
+                let mut history: [[_; 8]; 2] = Default::default();
 
                 for _ in 0..moves {
                     if board.halfmove_clock() >= 100 {
@@ -72,10 +72,11 @@ impl Arbitrary for Position {
                     match selector.try_select(moves.into_iter().flatten()) {
                         None => break,
                         Some(m) => {
-                            let zobrist = Zobrist::new(board.hash()).pop();
+                            let zobrist = Zobrist::new(board.hash());
                             board.play_unchecked(m);
                             if board.halfmove_clock() > 0 {
-                                history[turn as usize].push(zobrist);
+                                history[turn as usize].rotate_right(1);
+                                history[turn as usize][0] = NonZeroU32::new(zobrist.get() as _);
                             } else {
                                 history = Default::default();
                             }
@@ -210,9 +211,13 @@ impl Position {
     /// How many other times this position has repeated.
     #[inline(always)]
     pub fn repetitions(&self) -> usize {
-        let zobrist = self.zobrist().pop();
-        let history = &self.history[self.turn() as usize];
-        history.iter().filter(|z| **z == zobrist).count()
+        match NonZeroU32::new(self.zobrist().get() as _) {
+            None => 0,
+            hash => {
+                let history = self.history[self.turn() as usize];
+                history.iter().filter(|h| **h == hash).count()
+            }
+        }
     }
 
     /// Whether this position is a [check].
@@ -345,13 +350,14 @@ impl Position {
         };
 
         let turn = self.turn();
-        let zobrist = self.zobrist().pop();
+        let zobrist = self.zobrist();
 
         debug_assert!(self.board.is_legal(m), "`{m}` is illegal in `{self}`");
         self.board.play_unchecked(m);
 
         if self.halfmoves() > 0 {
-            self.history[turn as usize].push(zobrist);
+            self.history[turn as usize].rotate_right(1);
+            self.history[turn as usize][0] = NonZeroU32::new(zobrist.get() as _);
         } else {
             self.history = Default::default();
         }
@@ -680,10 +686,11 @@ mod tests {
     #[proptest]
     fn threefold_repetition_implies_draw(
         #[filter(#pos.outcome().is_none())] mut pos: Position,
-        z: Bits<u16, 16>,
+        z: NonZeroU32,
     ) {
-        let zobrist = pos.zobrist().pop();
-        pos.history[pos.turn() as usize] = [zobrist, z, zobrist, z].into_iter().collect();
+        let zobrist = NonZeroU32::new(pos.zobrist().get() as _);
+        let history = [zobrist, Some(z), zobrist, Some(z)];
+        pos.history[pos.turn() as usize][..4].clone_from_slice(&history);
         assert!(pos.is_draw_by_threefold_repetition());
         assert_eq!(pos.outcome(), Some(Outcome::DrawByThreefoldRepetition));
     }
