@@ -87,7 +87,7 @@ impl Uci {
 
     /// Processes one [`UciMessage`].
     pub fn process<W: Write>(&mut self, msg: &str, out: &mut W) -> io::Result<bool> {
-        let tokens: Vec<_> = msg.split_ascii_whitespace().collect();
+        let tokens: Vec<_> = msg.split_whitespace().collect();
 
         match &tokens[..] {
             [] => Ok(true),
@@ -283,7 +283,7 @@ impl Uci {
     pub fn run(&mut self) -> io::Result<()> {
         for request in stdin().lines() {
             let mut stdout = stdout().lock();
-            if !self.process(request?.trim(), &mut stdout)? {
+            if !self.process(&request?, &mut stdout)? {
                 break;
             };
 
@@ -499,7 +499,7 @@ mod tests {
     #[proptest]
     fn process_ignores_invalid_hash_size(
         mut uci: Uci,
-        #[filter(#s.parse::<HashSize>().is_err())] s: String,
+        #[filter(#s.trim().parse::<HashSize>().is_err())] s: String,
     ) {
         let mut out = vec![];
         let o = uci.options;
@@ -519,7 +519,7 @@ mod tests {
     #[proptest]
     fn process_ignores_invalid_thread_count(
         mut uci: Uci,
-        #[filter(#s.parse::<ThreadCount>().is_err())] s: String,
+        #[filter(#s.trim().parse::<ThreadCount>().is_err())] s: String,
     ) {
         let mut out = vec![];
         let o = uci.options;
