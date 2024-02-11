@@ -1,6 +1,5 @@
 use crate::chess::{Color, Role};
-use crate::util::Enum;
-use std::ops::RangeInclusive;
+use crate::util::Integer;
 
 /// A chess [piece][`Role`] of a certain [`Color`].
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
@@ -47,11 +46,14 @@ impl Piece {
     }
 }
 
-unsafe impl Enum for Piece {
-    const RANGE: RangeInclusive<Self> = Piece::WhitePawn..=Piece::BlackKing;
+unsafe impl Integer for Piece {
+    type Repr = u8;
+
+    const MIN: Self::Repr = Piece::WhitePawn as _;
+    const MAX: Self::Repr = Piece::BlackKing as _;
 
     #[inline(always)]
-    fn repr(&self) -> u8 {
+    fn repr(&self) -> Self::Repr {
         *self as _
     }
 }

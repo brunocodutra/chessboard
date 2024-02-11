@@ -1,5 +1,5 @@
 use crate::chess::{Color, Piece, Square};
-use crate::util::Enum;
+use crate::util::Integer;
 
 /// The HalfKAv2 feature.
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]

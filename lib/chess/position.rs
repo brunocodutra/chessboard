@@ -1,5 +1,5 @@
 use crate::chess::{Bitboard, Color, File, Move, Outcome, Piece, Rank, Role, Square};
-use crate::util::{Assume, Bits, Buffer, Enum};
+use crate::util::{Assume, Bits, Buffer, Integer};
 use cozy_chess as cc;
 use derive_more::{Debug, Display, Error};
 use std::hash::{Hash, Hasher};

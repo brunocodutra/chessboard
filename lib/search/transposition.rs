@@ -1,6 +1,6 @@
 use crate::chess::{Move, Zobrist};
 use crate::search::{Depth, HashSize, Score};
-use crate::util::{Binary, Bits, Enum};
+use crate::util::{Binary, Bits, Integer};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::{mem::size_of, ops::RangeInclusive};
 
@@ -19,11 +19,14 @@ enum TranspositionKind {
     Exact,
 }
 
-unsafe impl Enum for TranspositionKind {
-    const RANGE: RangeInclusive<Self> = TranspositionKind::Lower..=TranspositionKind::Exact;
+unsafe impl Integer for TranspositionKind {
+    type Repr = u8;
+
+    const MIN: Self::Repr = TranspositionKind::Lower as _;
+    const MAX: Self::Repr = TranspositionKind::Exact as _;
 
     #[inline(always)]
-    fn repr(&self) -> u8 {
+    fn repr(&self) -> Self::Repr {
         *self as _
     }
 }
@@ -80,8 +83,8 @@ impl Transposition {
     /// Bounds for the exact score.
     pub fn bounds(&self) -> RangeInclusive<Score> {
         match self.kind {
-            TranspositionKind::Lower => self.score..=Score::UPPER,
-            TranspositionKind::Upper => Score::LOWER..=self.score,
+            TranspositionKind::Lower => self.score..=Score::upper(),
+            TranspositionKind::Upper => Score::lower()..=self.score,
             TranspositionKind::Exact => self.score..=self.score,
         }
     }

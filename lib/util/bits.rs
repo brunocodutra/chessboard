@@ -30,13 +30,9 @@ pub struct Bits<T: PrimInt + Unsigned, const W: u32>(
 
 impl<T: 'static + Binary + PrimInt + Unsigned, const W: u32> Bits<T, W> {
     /// Constructs [`Bits`] from raw collection of bits.
-    ///
-    /// # Panics
-    ///
-    /// Panics if `b` is too wide.
     #[inline(always)]
     pub fn new(b: T) -> Self {
-        assert!(b <= ones(W));
+        debug_assert!(b <= ones(W));
         Bits(b)
     }
 
@@ -65,10 +61,6 @@ impl<T: 'static + Binary + PrimInt + Unsigned, const W: u32> Bits<T, W> {
     }
 
     /// Shifts bits into the collection.
-    ///
-    /// # Panics
-    ///
-    /// Panics on overflow.
     #[inline(always)]
     pub fn push<U: 'static + Binary + PrimInt + Unsigned + AsPrimitive<T>, const N: u32>(
         &mut self,
@@ -78,10 +70,6 @@ impl<T: 'static + Binary + PrimInt + Unsigned, const W: u32> Bits<T, W> {
     }
 
     /// Shifts bits out of the collection.
-    ///
-    /// # Panics
-    ///
-    /// Panics on underflow.
     #[inline(always)]
     pub fn pop<U: 'static + Binary + PrimInt + Unsigned, const N: u32>(&mut self) -> Bits<U, N>
     where

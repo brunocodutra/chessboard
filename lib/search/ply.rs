@@ -1,18 +1,26 @@
-use crate::util::{Bounds, Saturating};
+use crate::util::{Integer, Saturating};
 
-pub struct PlyBounds;
+#[derive(Debug, Default, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
+#[cfg_attr(test, derive(test_strategy::Arbitrary))]
+#[repr(transparent)]
+pub struct PlyRepr(#[cfg_attr(test, strategy(Self::RANGE))] <Self as Integer>::Repr);
 
-impl Bounds for PlyBounds {
-    type Integer = i8;
+unsafe impl Integer for PlyRepr {
+    type Repr = i8;
 
-    const LOWER: Self::Integer = -Self::UPPER;
+    const MIN: Self::Repr = -Self::MAX;
 
     #[cfg(not(test))]
-    const UPPER: Self::Integer = 127;
+    const MAX: Self::Repr = 127;
 
     #[cfg(test)]
-    const UPPER: Self::Integer = 3;
+    const MAX: Self::Repr = 3;
+
+    #[inline(always)]
+    fn repr(&self) -> Self::Repr {
+        self.0
+    }
 }
 
 /// The number of half-moves played.
-pub type Ply = Saturating<PlyBounds>;
+pub type Ply = Saturating<PlyRepr>;

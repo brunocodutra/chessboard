@@ -1,4 +1,4 @@
-use crate::search::Depth;
+use crate::{search::Depth, util::Integer};
 use derive_more::From;
 use std::time::Duration;
 
@@ -25,11 +25,11 @@ pub enum Limits {
 }
 
 impl Limits {
-    /// Maximum depth or [`Depth::UPPER`].
+    /// Maximum depth or [`Depth::MAX`].
     pub fn depth(&self) -> Depth {
         match self {
             Limits::Depth(d) => *d,
-            _ => Depth::UPPER,
+            _ => Depth::upper(),
         }
     }
 
@@ -80,10 +80,10 @@ mod tests {
 
     #[proptest]
     fn depth_returns_max_by_default(n: u64, t: Duration, i: Duration) {
-        assert_eq!(Limits::None.depth(), Depth::UPPER);
-        assert_eq!(Limits::Nodes(n).depth(), Depth::UPPER);
-        assert_eq!(Limits::Time(t).depth(), Depth::UPPER);
-        assert_eq!(Limits::Clock(t, i).depth(), Depth::UPPER);
+        assert_eq!(Limits::None.depth(), Depth::MAX);
+        assert_eq!(Limits::Nodes(n).depth(), Depth::MAX);
+        assert_eq!(Limits::Time(t).depth(), Depth::MAX);
+        assert_eq!(Limits::Clock(t, i).depth(), Depth::MAX);
     }
 
     #[proptest]

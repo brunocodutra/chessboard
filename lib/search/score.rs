@@ -1,27 +1,36 @@
 use crate::search::Ply;
-use crate::util::{Binary, Bits, Bounds, Saturating};
+use crate::util::{Binary, Bits, Integer, Saturating};
 use std::fmt;
 
-pub struct ScoreBounds;
+#[derive(Debug, Default, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
+#[cfg_attr(test, derive(test_strategy::Arbitrary))]
+#[repr(transparent)]
+pub struct ScoreRepr(#[cfg_attr(test, strategy(Self::RANGE))] <Self as Integer>::Repr);
 
-impl Bounds for ScoreBounds {
-    type Integer = i16;
-    const LOWER: Self::Integer = -Self::UPPER;
-    const UPPER: Self::Integer = 8191;
+unsafe impl Integer for ScoreRepr {
+    type Repr = i16;
+
+    const MIN: Self::Repr = -Self::MAX;
+    const MAX: Self::Repr = 8191;
+
+    #[inline(always)]
+    fn repr(&self) -> Self::Repr {
+        self.0
+    }
 }
 
 /// The minimax score.
-pub type Score = Saturating<ScoreBounds>;
+pub type Score = Saturating<ScoreRepr>;
 
 impl Score {
     /// Returns number of plies to mate, if one is in the horizon.
     ///
     /// Negative number of plies means the opponent is mating.
     pub fn mate(&self) -> Option<Ply> {
-        if *self <= Score::LOWER - Ply::LOWER {
-            Some((Score::LOWER - *self).cast())
-        } else if *self >= Score::UPPER - Ply::UPPER {
-            Some((Score::UPPER - *self).cast())
+        if *self <= Score::lower() - Ply::MIN {
+            Some((Score::lower() - *self).cast())
+        } else if *self >= Score::upper() - Ply::MAX {
+            Some((Score::upper() - *self).cast())
         } else {
             None
         }
@@ -29,10 +38,10 @@ impl Score {
 
     /// Normalizes mate scores relative to `ply`.
     pub fn normalize(&self, ply: Ply) -> Self {
-        if *self <= Score::LOWER - Ply::LOWER {
-            (*self + ply).min(Score::LOWER - Ply::LOWER)
-        } else if *self >= Score::UPPER - Ply::UPPER {
-            (*self - ply).max(Score::UPPER - Ply::UPPER)
+        if *self <= Score::lower() - Ply::MIN {
+            (*self + ply).min(Score::lower() - Ply::MIN)
+        } else if *self >= Score::upper() - Ply::MAX {
+            (*self - ply).max(Score::upper() - Ply::MAX)
         } else {
             *self
         }
@@ -44,12 +53,12 @@ impl Binary for Score {
 
     #[inline(always)]
     fn encode(&self) -> Self::Bits {
-        Bits::new((self.get() - ScoreBounds::LOWER) as _)
+        Bits::new((self.get() - Score::lower().get()) as _)
     }
 
     #[inline(always)]
     fn decode(bits: Self::Bits) -> Self {
-        Self::LOWER + bits.get() as i16
+        Self::lower() + bits.get() as i16
     }
 }
 
@@ -81,9 +90,9 @@ mod tests {
     #[proptest]
     fn mate_returns_plies_to_mate(p: Ply) {
         if p > 0 {
-            assert_eq!(Score::UPPER.normalize(p).mate(), Some(p));
+            assert_eq!(Score::upper().normalize(p).mate(), Some(p));
         } else {
-            assert_eq!(Score::LOWER.normalize(-p).mate(), Some(p));
+            assert_eq!(Score::lower().normalize(-p).mate(), Some(p));
         }
     }
 
