@@ -1,7 +1,6 @@
-use crate::util::Enum;
+use crate::util::Integer;
 use cozy_chess as cc;
 use derive_more::Display;
-use std::ops::RangeInclusive;
 
 /// The type of a chess [`Piece`][`crate::Piece`].
 #[derive(Debug, Display, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
@@ -22,11 +21,14 @@ pub enum Role {
     King,
 }
 
-unsafe impl Enum for Role {
-    const RANGE: RangeInclusive<Self> = Role::Pawn..=Role::King;
+unsafe impl Integer for Role {
+    type Repr = u8;
+
+    const MIN: Self::Repr = Role::Pawn as _;
+    const MAX: Self::Repr = Role::King as _;
 
     #[inline(always)]
-    fn repr(&self) -> u8 {
+    fn repr(&self) -> Self::Repr {
         *self as _
     }
 }

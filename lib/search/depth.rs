@@ -1,21 +1,29 @@
-use crate::util::{Binary, Bits, Bounds, Saturating};
+use crate::util::{Binary, Bits, Integer, Saturating};
 
-pub struct DepthBounds;
+#[derive(Debug, Default, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
+#[cfg_attr(test, derive(test_strategy::Arbitrary))]
+#[repr(transparent)]
+pub struct DepthRepr(#[cfg_attr(test, strategy(Self::RANGE))] <Self as Integer>::Repr);
 
-impl Bounds for DepthBounds {
-    type Integer = i8;
+unsafe impl Integer for DepthRepr {
+    type Repr = i8;
 
-    const LOWER: Self::Integer = 0;
+    const MIN: Self::Repr = 0;
 
     #[cfg(not(test))]
-    const UPPER: Self::Integer = 31;
+    const MAX: Self::Repr = 31;
 
     #[cfg(test)]
-    const UPPER: Self::Integer = 3;
+    const MAX: Self::Repr = 3;
+
+    #[inline(always)]
+    fn repr(&self) -> Self::Repr {
+        self.0
+    }
 }
 
 /// The search depth.
-pub type Depth = Saturating<DepthBounds>;
+pub type Depth = Saturating<DepthRepr>;
 
 impl Binary for Depth {
     type Bits = Bits<u8, 5>;

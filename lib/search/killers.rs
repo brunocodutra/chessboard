@@ -41,14 +41,14 @@ impl<const N: usize, const P: usize> Killers<N, P> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{search::PlyBounds, util::Bounds};
+    use crate::util::Integer;
     use proptest::sample::size_range;
     use std::collections::HashSet;
     use test_strategy::proptest;
 
     #[proptest]
     fn insert_avoids_duplicated_moves(#[filter(#p >= 0)] p: Ply, c: Color, m: Move) {
-        let mut ks = Killers::<2, { PlyBounds::UPPER as usize + 1 }>::default();
+        let mut ks = Killers::<2, { Ply::MAX as usize + 1 }>::default();
 
         ks.insert(p, c, m);
         ks.insert(p, c, m);
@@ -63,7 +63,7 @@ mod tests {
         #[any(size_range(2..10).lift())] ms: HashSet<Move>,
         #[filter(!#ms.contains(&#m))] m: Move,
     ) {
-        let mut ks = Killers::<1, { PlyBounds::UPPER as usize + 1 }>::default();
+        let mut ks = Killers::<1, { Ply::MAX as usize + 1 }>::default();
 
         for m in ms {
             ks.insert(p, c, m);
@@ -87,7 +87,7 @@ mod tests {
 
     #[proptest]
     fn contains_returns_true_only_if_inserted(#[filter(#p >= 0)] p: Ply, c: Color, m: Move) {
-        let mut ks = Killers::<2, { PlyBounds::UPPER as usize + 1 }>::default();
+        let mut ks = Killers::<2, { Ply::MAX as usize + 1 }>::default();
         assert!(!ks.contains(p, c, m));
         ks.insert(p, c, m);
         assert!(ks.contains(p, c, m));

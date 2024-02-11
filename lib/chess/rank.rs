@@ -1,7 +1,7 @@
-use crate::util::Enum;
+use crate::util::Integer;
 use cozy_chess as cc;
 use derive_more::Display;
-use std::ops::{RangeInclusive, Sub};
+use std::ops::Sub;
 
 /// A row on the chess board.
 #[derive(Debug, Display, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
@@ -26,11 +26,14 @@ pub enum Rank {
     Eighth,
 }
 
-unsafe impl Enum for Rank {
-    const RANGE: RangeInclusive<Self> = Rank::First..=Rank::Eighth;
+unsafe impl Integer for Rank {
+    type Repr = u8;
+
+    const MIN: Self::Repr = Rank::First as _;
+    const MAX: Self::Repr = Rank::Eighth as _;
 
     #[inline(always)]
-    fn repr(&self) -> u8 {
+    fn repr(&self) -> Self::Repr {
         *self as _
     }
 }

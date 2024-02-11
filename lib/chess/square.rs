@@ -1,8 +1,7 @@
 use crate::chess::{File, Rank};
-use crate::util::{Binary, Bits, Enum};
+use crate::util::{Binary, Bits, Integer};
 use cozy_chess as cc;
-use std::fmt;
-use std::ops::{RangeInclusive, Sub};
+use std::{fmt, ops::Sub};
 
 /// A square on the chess board.
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
@@ -46,11 +45,14 @@ impl Square {
     }
 }
 
-unsafe impl Enum for Square {
-    const RANGE: RangeInclusive<Self> = Square::A1..=Square::H8;
+unsafe impl Integer for Square {
+    type Repr = u8;
+
+    const MIN: Self::Repr = Square::A1 as _;
+    const MAX: Self::Repr = Square::H8 as _;
 
     #[inline(always)]
-    fn repr(&self) -> u8 {
+    fn repr(&self) -> Self::Repr {
         *self as _
     }
 }

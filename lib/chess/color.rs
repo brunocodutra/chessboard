@@ -1,7 +1,7 @@
-use crate::util::Enum;
+use crate::util::Integer;
 use cozy_chess as cc;
 use derive_more::Display;
-use std::ops::{Not, RangeInclusive};
+use std::ops::Not;
 
 /// The color of a chess [`Piece`][`crate::Piece`].
 #[derive(Debug, Display, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
@@ -14,11 +14,14 @@ pub enum Color {
     Black,
 }
 
-unsafe impl Enum for Color {
-    const RANGE: RangeInclusive<Self> = Color::White..=Color::Black;
+unsafe impl Integer for Color {
+    type Repr = u8;
+
+    const MIN: Self::Repr = Color::White as _;
+    const MAX: Self::Repr = Color::Black as _;
 
     #[inline(always)]
-    fn repr(&self) -> u8 {
+    fn repr(&self) -> Self::Repr {
         *self as _
     }
 }

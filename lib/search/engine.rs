@@ -1,8 +1,8 @@
 use crate::chess::{Move, Piece, Position, Role};
 use crate::nnue::{Evaluator, Value};
-use crate::search::{Depth, DepthBounds, Killers, Limits, Options, Ply, Pv, Score};
+use crate::search::{Depth, Killers, Limits, Options, Ply, Pv, Score};
 use crate::search::{Transposition, TranspositionTable};
-use crate::util::{Assume, Bounds, Buffer, Counter, Timer};
+use crate::util::{Assume, Buffer, Counter, Integer, Timer};
 use derive_more::{Display, Error};
 use rayon::{prelude::*, ThreadPool, ThreadPoolBuilder};
 use std::sync::atomic::{AtomicI16, Ordering};
@@ -44,7 +44,7 @@ impl Default for Engine {
 
 impl Engine {
     thread_local! {
-        static KILLERS: RefCell<Killers<2, { DepthBounds::UPPER as _ }>> = const {
+        static KILLERS: RefCell<Killers<2, { Depth::MAX as _ }>> = const {
             RefCell::new(Killers::new())
         };
     }
@@ -91,8 +91,8 @@ impl Engine {
     ///
     /// [mate distance pruning]: https://www.chessprogramming.org/Mate_Distance_Pruning
     fn mdp(&self, ply: Ply, bounds: &Range<Score>) -> (Score, Score) {
-        let lower = Score::LOWER.normalize(ply);
-        let upper = (Score::UPPER - 1).normalize(ply); // One can't mate in 0 plies!
+        let lower = Score::lower().normalize(ply);
+        let upper = (Score::upper() - 1).normalize(ply); // One can't mate in 0 plies!
         let alpha = bounds.start.clamp(lower, upper);
         let beta = bounds.end.clamp(lower, upper);
         (alpha, beta)
@@ -173,7 +173,7 @@ impl Engine {
 
         let in_check = match pos.outcome() {
             Some(o) if o.is_draw() => return Ok(Pv::new(Score::new(0), [])),
-            Some(_) => return Ok(Pv::new(Score::LOWER.normalize(ply), [])),
+            Some(_) => return Ok(Pv::new(Score::lower().normalize(ply), [])),
             None => pos.is_check(),
         };
 
@@ -212,7 +212,7 @@ impl Engine {
             }
         }
 
-        if ply >= Ply::UPPER {
+        if ply >= Ply::MAX {
             return Ok(Pv::new(score, []));
         } else if !is_pv && !in_check {
             if let Some(d) = self.nmp(pos, score, beta, depth, ply) {
@@ -230,7 +230,7 @@ impl Engine {
             if quiesce && m.is_quiet() {
                 None
             } else if Some(m) == tpos.map(|t| t.best()) {
-                Some((m, Value::UPPER))
+                Some((m, Value::upper()))
             } else if Self::KILLERS.with_borrow(|ks| ks.contains(ply, pos.turn(), m)) {
                 Some((m, Value::new(100)))
             } else if m.is_quiet() {
@@ -307,7 +307,7 @@ impl Engine {
                 pv.shift(m);
                 Ok(Some((pv, gain)))
             })
-            .chain([Ok(Some((best, Value::UPPER)))])
+            .chain([Ok(Some((best, Value::upper())))])
             .try_reduce(|| None, |a, b| Ok(max(a, b)))?
             .assume();
 
@@ -326,7 +326,7 @@ impl Engine {
 
         for d in 0..=1 {
             let depth = Depth::new(d);
-            let bounds = Score::LOWER..Score::UPPER;
+            let bounds = Score::lower()..Score::upper();
             let ctrl = Control::default();
             best = self.pvs(pos, bounds, depth, Ply::new(0), &ctrl).assume();
         }
@@ -337,8 +337,8 @@ impl Engine {
             }
 
             let mut w: i16 = 32;
-            let mut lower = (best.score() - w / 2).min(Score::UPPER - w);
-            let mut upper = (best.score() + w / 2).max(Score::LOWER + w);
+            let mut lower = (best.score() - w / 2).min(Score::upper() - w);
+            let mut upper = (best.score() + w / 2).max(Score::lower() + w);
 
             best = 'aw: loop {
                 let depth = Depth::new(d);
@@ -350,8 +350,8 @@ impl Engine {
                 w = w.saturating_mul(2);
 
                 match pv.score() {
-                    s if (-lower..Score::UPPER).contains(&-s) => lower = s - w / 2,
-                    s if (upper..Score::UPPER).contains(&s) => upper = s + w / 2,
+                    s if (-lower..Score::upper()).contains(&-s) => lower = s - w / 2,
+                    s if (upper..Score::upper()).contains(&s) => upper = s + w / 2,
                     _ => break 'aw pv,
                 }
 
@@ -395,11 +395,11 @@ mod tests {
     fn negamax(pos: &Evaluator, depth: Depth, ply: Ply) -> Score {
         let score = match pos.outcome() {
             Some(o) if o.is_draw() => return Score::new(0),
-            Some(_) => return Score::LOWER.normalize(ply),
+            Some(_) => return Score::lower().normalize(ply),
             None => pos.evaluate().cast(),
         };
 
-        if ply >= Ply::UPPER {
+        if ply >= Ply::MAX {
             return score;
         }
 
@@ -424,7 +424,7 @@ mod tests {
     #[proptest]
     #[should_panic]
     fn nw_panics_if_beta_is_too_small(e: Engine, pos: Evaluator, d: Depth, p: Ply) {
-        e.nw(&pos, Score::LOWER, d, p, &Control::default())?;
+        e.nw(&pos, Score::lower(), d, p, &Control::default())?;
     }
 
     #[proptest]
@@ -433,7 +433,7 @@ mod tests {
         #[filter(#e.tt.capacity() > 0)]
         e: Engine,
         #[filter(#pos.outcome().is_none())] pos: Evaluator,
-        #[filter((Value::LOWER..Value::UPPER).contains(&#b))] b: Score,
+        #[filter((Value::lower()..Value::upper()).contains(&#b))] b: Score,
         d: Depth,
         #[filter(#p >= 0)] p: Ply,
         #[filter(#s.mate().is_none() && #s >= #b)] s: Score,
@@ -451,7 +451,7 @@ mod tests {
         #[filter(#e.tt.capacity() > 0)]
         e: Engine,
         #[filter(#pos.outcome().is_none())] pos: Evaluator,
-        #[filter((Value::LOWER..Value::UPPER).contains(&#b))] b: Score,
+        #[filter((Value::lower()..Value::upper()).contains(&#b))] b: Score,
         d: Depth,
         #[filter(#p >= 0)] p: Ply,
         #[filter(#s.mate().is_none() && #s < #b)] s: Score,
@@ -469,7 +469,7 @@ mod tests {
         #[filter(#e.tt.capacity() > 0)]
         e: Engine,
         #[filter(#pos.outcome().is_none())] pos: Evaluator,
-        #[filter((Value::LOWER..Value::UPPER).contains(&#b))] b: Score,
+        #[filter((Value::lower()..Value::upper()).contains(&#b))] b: Score,
         d: Depth,
         #[filter(#p >= 0)] p: Ply,
         #[filter(#sc.mate().is_none())] sc: Score,
@@ -526,7 +526,7 @@ mod tests {
         d: Depth,
     ) {
         assert_eq!(
-            e.pvs(&pos, b, d, Ply::UPPER, &Control::default()),
+            e.pvs(&pos, b, d, Ply::upper(), &Control::default()),
             Ok(Pv::new(pos.evaluate().cast(), []))
         );
     }
@@ -553,14 +553,14 @@ mod tests {
     ) {
         assert_eq!(
             e.pvs(&pos, b, d, p, &Control::default()),
-            Ok(Pv::new(Score::LOWER.normalize(p), []))
+            Ok(Pv::new(Score::lower().normalize(p), []))
         );
     }
 
     #[proptest]
     fn pvs_finds_best_score(e: Engine, pos: Evaluator, d: Depth, #[filter(#p >= 0)] p: Ply) {
         let ctrl = Control::default();
-        let bounds = Score::LOWER..Score::UPPER;
+        let bounds = Score::lower()..Score::upper();
         assert_eq!(e.pvs(&pos, bounds, d, p, &ctrl)?, negamax(&pos, d, p));
     }
 
@@ -575,7 +575,7 @@ mod tests {
         let x = Engine::with_options(x);
         let y = Engine::with_options(y);
 
-        let bounds = Score::LOWER..Score::UPPER;
+        let bounds = Score::lower()..Score::upper();
         let ctrl = Control::default();
 
         assert_eq!(
@@ -591,7 +591,7 @@ mod tests {
         #[filter(#d > 1)] d: Depth,
     ) {
         let ctrl = Control::default();
-        let bounds = Score::LOWER..Score::UPPER;
+        let bounds = Score::lower()..Score::upper();
         let ply = Ply::new(0);
 
         assert_eq!(

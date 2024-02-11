@@ -1,5 +1,5 @@
 use crate::chess::{Role, Square};
-use crate::util::{Assume, Binary, Bits, Enum};
+use crate::util::{Assume, Binary, Bits, Integer};
 use std::{fmt, num::NonZeroU16, ops::RangeBounds};
 
 /// A chess move.

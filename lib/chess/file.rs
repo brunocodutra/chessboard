@@ -1,7 +1,7 @@
-use crate::util::Enum;
+use crate::util::Integer;
 use cozy_chess as cc;
 use derive_more::Display;
-use std::ops::{RangeInclusive, Sub};
+use std::ops::Sub;
 
 /// A column on the chess board.
 #[derive(Debug, Display, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
@@ -26,11 +26,14 @@ pub enum File {
     H,
 }
 
-unsafe impl Enum for File {
-    const RANGE: RangeInclusive<Self> = File::A..=File::H;
+unsafe impl Integer for File {
+    type Repr = u8;
+
+    const MIN: Self::Repr = File::A as _;
+    const MAX: Self::Repr = File::H as _;
 
     #[inline(always)]
-    fn repr(&self) -> u8 {
+    fn repr(&self) -> Self::Repr {
         *self as _
     }
 }
