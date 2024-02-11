@@ -1,7 +1,8 @@
-use crate::chess::{File, Mirror, Perspective, Rank};
+use crate::chess::{Bitboard, File, Mirror, ParseFileError, ParseRankError, Perspective, Rank};
 use crate::util::{Assume, Binary, Bits, Integer};
-use cozy_chess as cc;
-use std::{fmt, ops::Sub};
+use derive_more::{Display, Error, From};
+use std::ops::{Add, AddAssign, Sub, SubAssign};
+use std::{fmt, str::FromStr};
 
 /// A square on the chess board.
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
@@ -37,6 +38,12 @@ impl Square {
     pub const fn rank(&self) -> Rank {
         Rank::new(self.get() >> 3)
     }
+
+    /// Returns a [`Bitboard`] that only contains this square.
+    #[inline(always)]
+    pub const fn bitboard(self) -> Bitboard {
+        Bitboard::new(1 << self.get())
+    }
 }
 
 unsafe impl const Integer for Square {
@@ -61,12 +68,6 @@ impl const Perspective for Square {
     }
 }
 
-impl fmt::Display for Square {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}{}", self.file(), self.rank())
-    }
-}
-
 impl Binary for Square {
     type Bits = Bits<u8, 6>;
 
@@ -86,23 +87,65 @@ impl Sub for Square {
 
     #[inline(always)]
     fn sub(self, rhs: Self) -> Self::Output {
-        self as i8 - rhs as i8
+        self.get() - rhs.get()
     }
 }
 
-#[doc(hidden)]
-impl From<cc::Square> for Square {
+impl Sub<i8> for Square {
+    type Output = Self;
+
     #[inline(always)]
-    fn from(s: cc::Square) -> Self {
-        <Self as Integer>::new(s as _)
+    fn sub(self, rhs: i8) -> Self::Output {
+        <Self as Integer>::new(self.get() - rhs)
     }
 }
 
-#[doc(hidden)]
-impl From<Square> for cc::Square {
+impl Add<i8> for Square {
+    type Output = Self;
+
     #[inline(always)]
-    fn from(s: Square) -> Self {
-        cc::Square::index_const(s as _)
+    fn add(self, rhs: i8) -> Self::Output {
+        <Self as Integer>::new(self.get() + rhs)
+    }
+}
+
+impl SubAssign<i8> for Square {
+    #[inline(always)]
+    fn sub_assign(&mut self, rhs: i8) {
+        *self = *self - rhs
+    }
+}
+
+impl AddAssign<i8> for Square {
+    #[inline(always)]
+    fn add_assign(&mut self, rhs: i8) {
+        *self = *self + rhs
+    }
+}
+
+impl fmt::Display for Square {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        fmt::Display::fmt(&self.file(), f)?;
+        fmt::Display::fmt(&self.rank(), f)?;
+        Ok(())
+    }
+}
+
+/// The reason why parsing [`Square`] failed.
+#[derive(Debug, Display, Clone, Eq, PartialEq, Error, From)]
+pub enum ParseSquareError {
+    #[display("failed to parse square")]
+    InvalidFile(ParseFileError),
+    #[display("failed to parse square")]
+    InvalidRank(ParseRankError),
+}
+
+impl FromStr for Square {
+    type Err = ParseSquareError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let i = s.char_indices().nth(1).map_or_else(|| s.len(), |(i, _)| i);
+        Ok(Square::new(s[..i].parse()?, s[i..].parse()?))
     }
 }
 
@@ -118,35 +161,84 @@ mod tests {
     }
 
     #[proptest]
-    fn new_constructs_square_from_pair_of_file_and_rank(s: Square) {
-        assert_eq!(Square::new(s.file(), s.rank()), s);
+    fn new_constructs_square_from_pair_of_file_and_rank(sq: Square) {
+        assert_eq!(Square::new(sq.file(), sq.rank()), sq);
     }
 
     #[proptest]
-    fn decoding_encoded_square_is_an_identity(s: Square) {
-        assert_eq!(Square::decode(s.encode()), s);
+    fn square_has_an_equivalent_bitboard(sq: Square) {
+        assert_eq!(Vec::from_iter(sq.bitboard()), vec![sq]);
     }
 
     #[proptest]
-    fn mirroring_square_mirrors_its_file_and_rank(s: Square) {
+    fn decoding_encoded_square_is_an_identity(sq: Square) {
+        assert_eq!(Square::decode(sq.encode()), sq);
+    }
+
+    #[proptest]
+    fn mirroring_square_mirrors_its_file_and_rank(sq: Square) {
         assert_eq!(
-            s.mirror(),
-            Square::new(s.file().mirror(), s.rank().mirror())
+            sq.mirror(),
+            Square::new(sq.file().mirror(), sq.rank().mirror())
         );
     }
 
     #[proptest]
-    fn flipping_square_preserves_file_and_flips_rank(s: Square) {
-        assert_eq!(s.flip(), Square::new(s.file(), s.rank().flip()));
+    fn flipping_square_preserves_file_and_flips_rank(sq: Square) {
+        assert_eq!(sq.flip(), Square::new(sq.file(), sq.rank().flip()));
     }
 
     #[proptest]
     fn subtracting_squares_returns_distance(a: Square, b: Square) {
-        assert_eq!(a - b, a as i8 - b as i8);
+        assert_eq!(b + (a - b), a);
+        assert_eq!(a - (a - b), b);
     }
 
     #[proptest]
-    fn square_has_an_equivalent_cozy_chess_representation(s: Square) {
-        assert_eq!(Square::from(cc::Square::from(s)), s);
+    fn square_can_be_incremented(mut sq: Square, #[strategy(-#sq.get()..64 - #sq.get())] i: i8) {
+        assert_eq!(sq + i, {
+            sq += i;
+            sq
+        });
+    }
+
+    #[proptest]
+    fn square_can_be_decremented(mut sq: Square, #[strategy(#sq.get() - 63..=#sq.get())] i: i8) {
+        assert_eq!(sq - i, {
+            sq -= i;
+            sq
+        });
+    }
+
+    #[proptest]
+    fn parsing_printed_square_is_an_identity(sq: Square) {
+        assert_eq!(sq.to_string().parse(), Ok(sq));
+    }
+
+    #[proptest]
+    fn parsing_square_fails_if_file_invalid(
+        #[filter(!('a'..='h').contains(&#c))] c: char,
+        r: Rank,
+    ) {
+        assert_eq!(
+            [c.to_string(), r.to_string()].concat().parse::<Square>(),
+            Err(ParseSquareError::InvalidFile(ParseFileError))
+        );
+    }
+
+    #[proptest]
+    fn parsing_square_fails_if_rank_invalid(
+        f: File,
+        #[filter(!('1'..='8').contains(&#c))] c: char,
+    ) {
+        assert_eq!(
+            [f.to_string(), c.to_string()].concat().parse::<Square>(),
+            Err(ParseSquareError::InvalidRank(ParseRankError))
+        );
+    }
+
+    #[proptest]
+    fn parsing_square_fails_if_length_not_two(#[filter(#s.len() != 2)] s: String) {
+        assert_eq!(s.parse::<Square>().ok(), None);
     }
 }

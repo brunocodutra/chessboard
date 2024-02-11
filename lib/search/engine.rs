@@ -1,7 +1,6 @@
-use crate::chess::{Move, Piece, Position, Role};
+use crate::chess::{Move, Zobrist};
 use crate::nnue::{Evaluator, Value};
-use crate::search::{Depth, Killers, Limits, Options, Ply, Pv, Score};
-use crate::search::{Transposition, TranspositionTable};
+use crate::search::*;
 use crate::util::{Assume, Counter, Integer, Timer};
 use arrayvec::ArrayVec;
 use derive_more::{Display, Error};
@@ -67,9 +66,9 @@ impl Engine {
     }
 
     /// Records a `[Transposition`].
-    fn record(&self, pos: &Position, bounds: Range<Score>, depth: Depth, ply: Ply, pv: Pv) -> Pv {
+    fn record(&self, key: Zobrist, bounds: Range<Score>, depth: Depth, ply: Ply, pv: Pv) -> Pv {
         self.tt.set(
-            pos.zobrist(),
+            key,
             if pv.score() >= bounds.end {
                 Transposition::lower(depth - ply, pv.score().normalize(-ply), pv.best().assume())
             } else if pv.score() <= bounds.start {
@@ -98,15 +97,14 @@ impl Engine {
     /// [null move pruning]: https://www.chessprogramming.org/Null_Move_Pruning
     fn nmp(
         &self,
-        pos: &Position,
+        pos: &Evaluator,
         guess: Score,
         beta: Score,
         depth: Depth,
         ply: Ply,
     ) -> Option<Depth> {
         let turn = pos.turn();
-        let pawn = Piece::new(Role::Pawn, turn);
-        if guess > beta && pos.by_color(turn).len() - pos.by_piece(pawn).len() > 1 {
+        if guess > beta && pos.pieces(turn).len() > 1 {
             Some(depth - 2 - (depth - ply) / 4)
         } else {
             None
@@ -221,22 +219,25 @@ impl Engine {
             }
         }
 
-        let mut moves = ArrayVec::<_, 255>::from_iter(pos.moves().filter_map(|m| {
-            if quiesce && m.is_quiet() {
-                None
-            } else if Some(m) == tpos.map(|t| t.best()) {
-                Some((m, Value::upper()))
-            } else if Self::KILLERS.with_borrow(|ks| ks.contains(ply, pos.turn(), m)) {
-                Some((m, Value::new(100)))
-            } else if m.is_quiet() {
-                Some((m, Value::new(0)))
-            } else {
-                let mut next = pos.material();
-                let material = next.evaluate();
-                next.play(m);
-                Some((m, -next.evaluate() - material))
-            }
-        }));
+        let mut moves: ArrayVec<_, 255> = pos
+            .moves()
+            .filter(|ms| !quiesce || !ms.is_quiet())
+            .flatten()
+            .map(|m| {
+                if Some(m) == tpos.map(|t| t.best()) {
+                    (m, Value::upper())
+                } else if Self::KILLERS.with_borrow(|ks| ks.contains(ply, pos.turn(), m)) {
+                    (m, Value::new(100))
+                } else if m.is_quiet() {
+                    (m, Value::new(0))
+                } else {
+                    let mut next = pos.material();
+                    let material = next.evaluate();
+                    next.play(m);
+                    (m, -next.evaluate() - material)
+                }
+            })
+            .collect();
 
         moves.sort_unstable_by_key(|(_, gain)| *gain);
 
@@ -256,7 +257,7 @@ impl Engine {
         };
 
         if pv >= beta {
-            return Ok(self.record(pos, bounds, depth, ply, pv));
+            return Ok(self.record(pos.zobrist(), bounds, depth, ply, pv));
         }
 
         let cutoff = AtomicI16::new(pv.score().max(alpha).get());
@@ -303,7 +304,7 @@ impl Engine {
             .try_reduce(|| None, |a, b| Ok(max(a, b)))?
             .assume();
 
-        Ok(self.record(pos, bounds, depth, ply, pv))
+        Ok(self.record(pos.zobrist(), bounds, depth, ply, pv))
     }
 
     /// An implementation of [aspiration windows] with [iterative deepening].
@@ -352,7 +353,7 @@ impl Engine {
         pv
     }
 
-    fn time_to_search(&self, pos: &Position, limits: Limits) -> Range<Duration> {
+    fn time_to_search(&self, pos: &Evaluator, limits: Limits) -> Range<Duration> {
         let (clock, inc) = match limits {
             Limits::Clock(c, i) => (c, i),
             _ => return limits.time()..limits.time(),
@@ -366,12 +367,10 @@ impl Engine {
     }
 
     /// Searches for the [principal variation][`Pv`].
-    pub fn search(&mut self, pos: &Position, limits: Limits) -> Pv {
-        let depth = limits.depth();
-        let nodes = limits.nodes();
+    pub fn search(&mut self, pos: &Evaluator, limits: Limits) -> Pv {
         let time = self.time_to_search(pos, limits);
-        let pos = Evaluator::new(pos.clone());
-        self.executor.install(|| self.aw(&pos, depth, nodes, time))
+        let (depth, nodes) = (limits.depth(), limits.nodes());
+        self.executor.install(|| self.aw(pos, depth, nodes, time))
     }
 }
 
@@ -394,6 +393,7 @@ mod tests {
         }
 
         pos.moves()
+            .flatten()
             .filter(|m| ply < depth || pos.is_check() || !m.is_quiet())
             .map(|m| {
                 let mut next = pos.clone();
@@ -427,7 +427,7 @@ mod tests {
         d: Depth,
         #[filter(#p >= 0)] p: Ply,
         #[filter(#s.mate().is_none() && #s >= #b)] s: Score,
-        #[map(|s: Selector| s.select(#pos.moves()))] m: Move,
+        #[map(|s: Selector| s.select(#pos.moves().flatten()))] m: Move,
     ) {
         e.tt.set(pos.zobrist(), Transposition::lower(d, s, m));
 
@@ -445,7 +445,7 @@ mod tests {
         d: Depth,
         #[filter(#p >= 0)] p: Ply,
         #[filter(#s.mate().is_none() && #s < #b)] s: Score,
-        #[map(|s: Selector| s.select(#pos.moves()))] m: Move,
+        #[map(|s: Selector| s.select(#pos.moves().flatten()))] m: Move,
     ) {
         e.tt.set(pos.zobrist(), Transposition::upper(d, s, m));
 
@@ -463,7 +463,7 @@ mod tests {
         d: Depth,
         #[filter(#p >= 0)] p: Ply,
         #[filter(#sc.mate().is_none())] sc: Score,
-        #[map(|s: Selector| s.select(#pos.moves()))] m: Move,
+        #[map(|s: Selector| s.select(#pos.moves().flatten()))] m: Move,
     ) {
         e.tt.set(pos.zobrist(), Transposition::exact(d, sc, m));
 
@@ -580,7 +580,7 @@ mod tests {
     #[proptest]
     fn search_finds_the_principal_variation(
         mut e: Engine,
-        pos: Position,
+        pos: Evaluator,
         #[filter(#d > 1)] d: Depth,
     ) {
         let ctrl = Control::default();
@@ -589,12 +589,12 @@ mod tests {
 
         assert_eq!(
             e.search(&pos, Limits::Depth(d)).score(),
-            e.pvs(&Evaluator::new(pos), bounds, d, ply, &ctrl)?.score()
+            e.pvs(&pos, bounds, d, ply, &ctrl)?.score()
         );
     }
 
     #[proptest]
-    fn search_is_stable(mut e: Engine, pos: Position, d: Depth) {
+    fn search_is_stable(mut e: Engine, pos: Evaluator, d: Depth) {
         assert_eq!(
             e.search(&pos, Limits::Depth(d)).score(),
             e.search(&pos, Limits::Depth(d)).score()
@@ -604,7 +604,7 @@ mod tests {
     #[proptest]
     fn search_can_be_limited_by_time(
         mut e: Engine,
-        #[filter(#pos.outcome().is_none())] pos: Position,
+        #[filter(#pos.outcome().is_none())] pos: Evaluator,
         #[strategy(..10u8)] ms: u8,
     ) {
         let t = Instant::now();
@@ -615,11 +615,8 @@ mod tests {
     #[proptest]
     fn search_extends_time_to_find_some_pv(
         mut e: Engine,
-        #[filter(#pos.outcome().is_none())] pos: Position,
+        #[filter(#pos.outcome().is_none())] pos: Evaluator,
     ) {
-        assert!(e
-            .search(&pos, Limits::Time(Duration::ZERO))
-            .best()
-            .is_some());
+        assert_ne!(e.search(&pos, Limits::Time(Duration::ZERO)).best(), None);
     }
 }

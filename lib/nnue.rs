@@ -72,4 +72,16 @@ impl Nnue {
 
         Ok(())
     }
+
+    fn ft() -> &'static Transformer<i16, { Self::L0 }, { Self::L1 / 2 }> {
+        unsafe { &NNUE.ft }
+    }
+
+    fn psqt() -> &'static Transformer<i32, { Self::L0 }, { Self::PHASES }> {
+        unsafe { &NNUE.psqt }
+    }
+
+    fn output(phase: usize) -> &'static Output<{ Nnue::L1 }> {
+        unsafe { &NNUE.output[phase] }
+    }
 }

@@ -1,7 +1,7 @@
-use crate::{chess::Mirror, util::Integer};
-use cozy_chess as cc;
-use derive_more::Display;
-use std::ops::Sub;
+use crate::chess::{Bitboard, Mirror};
+use crate::util::Integer;
+use derive_more::{Display, Error};
+use std::{ops::Sub, str::FromStr};
 
 /// A column on the chess board.
 #[derive(Debug, Display, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
@@ -26,6 +26,14 @@ pub enum File {
     H,
 }
 
+impl File {
+    /// Returns a [`Bitboard`] that only contains this file.
+    #[inline(always)]
+    pub const fn bitboard(self) -> Bitboard {
+        Bitboard::new(0x0101010101010101 << self.get())
+    }
+}
+
 unsafe impl const Integer for File {
     type Repr = i8;
     const MIN: Self::Repr = File::A as _;
@@ -48,25 +56,37 @@ impl Sub for File {
     }
 }
 
-#[doc(hidden)]
-impl From<cc::File> for File {
-    #[inline(always)]
-    fn from(f: cc::File) -> Self {
-        Self::new(f as _)
-    }
-}
+/// The reason why parsing [`File`] failed.
+#[derive(Debug, Display, Clone, Eq, PartialEq, Error)]
+#[display(
+    "failed to parse file, expected letter in the range `({}..={})`",
+    File::A,
+    File::H
+)]
+pub struct ParseFileError;
 
-#[doc(hidden)]
-impl From<File> for cc::File {
-    #[inline(always)]
-    fn from(f: File) -> Self {
-        cc::File::index_const(f as _)
+impl FromStr for File {
+    type Err = ParseFileError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "a" => Ok(File::A),
+            "b" => Ok(File::B),
+            "c" => Ok(File::C),
+            "d" => Ok(File::D),
+            "e" => Ok(File::E),
+            "f" => Ok(File::F),
+            "g" => Ok(File::G),
+            "h" => Ok(File::H),
+            _ => Err(ParseFileError),
+        }
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::chess::{Rank, Square};
     use std::mem::size_of;
     use test_strategy::proptest;
 
@@ -86,7 +106,27 @@ mod tests {
     }
 
     #[proptest]
-    fn file_has_an_equivalent_cozy_chess_representation(f: File) {
-        assert_eq!(File::from(cc::File::from(f)), f);
+    fn file_has_an_equivalent_bitboard(f: File) {
+        assert_eq!(
+            Vec::from_iter(f.bitboard()),
+            Vec::from_iter(Rank::iter().map(|r| Square::new(f, r)))
+        );
+    }
+
+    #[proptest]
+    fn parsing_printed_file_is_an_identity(f: File) {
+        assert_eq!(f.to_string().parse(), Ok(f));
+    }
+
+    #[proptest]
+    fn parsing_file_fails_if_not_lower_case_letter_between_a_and_h(
+        #[filter(!('a'..='h').contains(&#c))] c: char,
+    ) {
+        assert_eq!(c.to_string().parse::<File>(), Err(ParseFileError));
+    }
+
+    #[proptest]
+    fn parsing_file_fails_if_length_not_one(#[filter(#s.len() != 1)] s: String) {
+        assert_eq!(s.parse::<File>(), Err(ParseFileError));
     }
 }

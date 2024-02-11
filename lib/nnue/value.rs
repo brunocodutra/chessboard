@@ -18,6 +18,17 @@ pub type Value = Saturating<ValueRepr>;
 impl const Perspective for Value {
     #[inline(always)]
     fn flip(&self) -> Self {
-        Self::new(-self.get())
+        -*self
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use test_strategy::proptest;
+
+    #[proptest]
+    fn flipping_value_produces_its_negative(v: Value) {
+        assert_eq!(v.flip(), -v);
     }
 }

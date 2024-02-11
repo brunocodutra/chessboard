@@ -1,44 +1,195 @@
 use crate::chess::*;
-use crate::util::{Assume, Bits, Integer};
-use arrayvec::ArrayVec;
-use cozy_chess as cc;
-use derive_more::{Debug, Display, Error};
+use crate::util::{Assume, Integer};
+use arrayvec::{ArrayVec, CapacityError};
+use derive_more::{Debug, Display, Error, From};
 use std::hash::{Hash, Hasher};
-use std::{num::NonZeroU32, ops::Index, str::FromStr};
+use std::{fmt, num::NonZeroU32, str::FromStr};
 
 #[cfg(test)]
 use proptest::{prelude::*, sample::*};
 
-/// A type representing a [`Position`]'s [zobrist hash].
-///
-/// [zobrist hash]: https://www.chessprogramming.org/Zobrist_Hashing
-pub type Zobrist = Bits<u64, 64>;
+struct Evasions;
 
-/// Represents an impossible exchange on a given [`Square`] in a given [`Position`].
-#[derive(Debug, Display, Clone, Eq, PartialEq, Error)]
-#[cfg_attr(test, derive(test_strategy::Arbitrary))]
-#[display("no possible exchange on square `{_0}`")]
-pub struct ImpossibleExchange(#[error(not(source))] pub Square);
+impl Evasions {
+    #[inline(always)]
+    fn generate<const N: usize>(
+        pos: &Position,
+        buffer: &mut ArrayVec<MoveSet, N>,
+    ) -> Result<(), CapacityError<MoveSet>> {
+        let turn = pos.turn();
+        let ours = pos.material(turn);
+        let theirs = pos.material(!turn);
+        let occupied = pos.occupied();
+        let king = pos.king(turn);
+
+        let checks = pos.checkers().iter().fold(Bitboard::empty(), |bb, sq| {
+            Bitboard::segment(king, sq).union(bb)
+        });
+
+        let candidates = match pos.checkers().len() {
+            1 => ours & !pos.pinned(),
+            _ => king.bitboard(),
+        };
+
+        if let Some(ep) = pos.en_passant() {
+            let pawn = Piece::new(Role::Pawn, !turn);
+            let target = Square::new(ep.file(), Rank::Fifth.perspective(turn));
+            for wc in ours & pos.board.by_role(Role::Pawn) & pawn.targets(ep) {
+                let blockers = occupied.with(ep).without(wc).without(target);
+                if !pos.is_threatened(king, !turn, blockers) {
+                    buffer.try_push(MoveSet::en_passant(wc, ep.bitboard()))?;
+                }
+            }
+        }
+
+        for role in Role::iter() {
+            let piece = Piece::new(role, turn);
+            for wc in candidates & pos.board.by_role(role) {
+                let mut moves = piece.moves(wc, ours, theirs);
+
+                if role != Role::King {
+                    moves &= checks | pos.checkers();
+                } else {
+                    moves &= !checks;
+                    for wt in moves {
+                        if pos.is_threatened(wt, !turn, occupied.without(king)) {
+                            moves ^= wt.bitboard();
+                        }
+                    }
+                }
+
+                let captures = moves & theirs;
+                if !captures.is_empty() {
+                    buffer.try_push(MoveSet::capture(piece, wc, captures))?;
+                }
+
+                let regulars = moves & !theirs;
+                if !regulars.is_empty() {
+                    buffer.try_push(MoveSet::regular(piece, wc, regulars))?;
+                }
+            }
+        }
+
+        Ok(())
+    }
+}
+
+struct Moves;
+
+impl Moves {
+    #[inline(always)]
+    fn generate<const N: usize>(
+        pos: &Position,
+        buffer: &mut ArrayVec<MoveSet, N>,
+    ) -> Result<(), CapacityError<MoveSet>> {
+        let turn = pos.turn();
+        let ours = pos.material(turn);
+        let theirs = pos.material(!turn);
+        let occupied = pos.occupied();
+        let king = pos.king(turn);
+
+        if let Some(ep) = pos.en_passant() {
+            let pawn = Piece::new(Role::Pawn, !turn);
+            let target = Square::new(ep.file(), Rank::Fifth.perspective(turn));
+            for wc in ours & pos.board.by_role(Role::Pawn) & pawn.targets(ep) {
+                let blockers = occupied.with(ep).without(wc).without(target);
+                if !pos.is_threatened(king, !turn, blockers) {
+                    buffer.try_push(MoveSet::en_passant(wc, ep.bitboard()))?;
+                }
+            }
+        }
+
+        for role in Role::iter() {
+            let piece = Piece::new(role, turn);
+            for wc in ours & pos.board.by_role(role) {
+                let mut moves = piece.moves(wc, ours, theirs);
+
+                if pos.pinned().contains(wc) {
+                    moves &= Bitboard::line(wc, king);
+                } else if role == Role::King {
+                    for wt in moves {
+                        if pos.is_threatened(wt, !turn, occupied.without(king)) {
+                            moves ^= wt.bitboard();
+                        }
+                    }
+                }
+
+                let captures = moves & theirs;
+                if !captures.is_empty() {
+                    buffer.try_push(MoveSet::capture(piece, wc, captures))?;
+                }
+
+                let regulars = moves & !theirs;
+                if !regulars.is_empty() {
+                    buffer.try_push(MoveSet::regular(piece, wc, regulars))?;
+                }
+            }
+        }
+
+        let mut moves = Bitboard::empty();
+        if let Some(c) = pos.castles().long(turn) {
+            let b = Square::new(File::B, c.rank());
+            let path = c.bitboard().with(Square::new(File::D, c.rank()));
+            if occupied & path.with(b) == Bitboard::empty() {
+                let blockers = occupied.without(king);
+                if !path.iter().any(|sq| pos.is_threatened(sq, !turn, blockers)) {
+                    moves |= c.bitboard();
+                }
+            }
+        }
+
+        if let Some(g) = pos.castles().short(turn) {
+            let path = g.bitboard().with(Square::new(File::F, g.rank()));
+            if occupied & path == Bitboard::empty() {
+                let blockers = occupied.without(king);
+                if !path.iter().any(|sq| pos.is_threatened(sq, !turn, blockers)) {
+                    moves |= g.bitboard();
+                }
+            }
+        }
+
+        if !moves.is_empty() {
+            buffer.try_push(MoveSet::castling(king, moves))?;
+        }
+
+        Ok(())
+    }
+}
 
 /// The current position on the board board.
 ///
 /// This type guarantees that it only holds valid positions.
-#[derive(Debug, Display, Default, Clone)]
+#[derive(Debug, Copy, Clone, Eq)]
 #[debug("Position({self})")]
-#[display("{board}")]
 pub struct Position {
-    board: cc::Board,
+    board: Board,
+    zobrist: Zobrist,
+    checkers: Bitboard,
+    pinned: Bitboard,
     history: [[Option<NonZeroU32>; 8]; 2],
+}
+
+impl Default for Position {
+    #[inline(always)]
+    fn default() -> Self {
+        let board = Board::default();
+
+        Self {
+            board,
+            zobrist: board.zobrist(),
+            checkers: Default::default(),
+            pinned: Default::default(),
+            history: Default::default(),
+        }
+    }
 }
 
 impl Hash for Position {
     #[inline(always)]
     fn hash<H: Hasher>(&self, state: &mut H) {
-        self.zobrist().hash(state)
+        self.board.hash(state);
     }
 }
-
-impl Eq for Position {}
 
 impl PartialEq for Position {
     #[inline(always)]
@@ -55,38 +206,17 @@ impl Arbitrary for Position {
     fn arbitrary_with(_: Self::Parameters) -> Self::Strategy {
         (0..256, any::<Selector>())
             .prop_map(|(moves, selector)| {
-                let mut board = cc::Board::default();
-                let mut history: [[_; 8]; 2] = Default::default();
+                let mut pos = Position::default();
 
                 for _ in 0..moves {
-                    if board.halfmove_clock() >= 100 {
+                    if pos.outcome().is_none() {
+                        pos.play(selector.select(pos.moves().flatten()));
+                    } else {
                         break;
-                    }
-
-                    let turn = board.side_to_move();
-                    let mut moves = ArrayVec::<_, 18>::new();
-                    board.generate_moves(|ms| {
-                        moves.push(ms);
-                        false
-                    });
-
-                    match selector.try_select(moves.into_iter().flatten()) {
-                        None => break,
-                        Some(m) => {
-                            let zobrist = Zobrist::new(board.hash());
-                            board.play_unchecked(m);
-                            if board.halfmove_clock() > 0 {
-                                let entries = history[turn as usize].len();
-                                history[turn as usize].copy_within(..entries - 1, 1);
-                                history[turn as usize][0] = NonZeroU32::new(zobrist.cast());
-                            } else {
-                                history = Default::default();
-                            }
-                        }
                     }
                 }
 
-                Position { board, history }
+                pos
             })
             .no_shrink()
             .boxed()
@@ -97,7 +227,7 @@ impl Position {
     /// The side to move.
     #[inline(always)]
     pub fn turn(&self) -> Color {
-        self.board.side_to_move().into()
+        self.board.turn
     }
 
     /// The number of halfmoves since the last capture or pawn advance.
@@ -105,7 +235,7 @@ impl Position {
     /// It resets to 0 whenever a piece is captured or a pawn is moved.
     #[inline(always)]
     pub fn halfmoves(&self) -> u8 {
-        self.board.halfmove_clock()
+        self.board.halfmoves
     }
 
     /// The current move number since the start of the game.
@@ -113,15 +243,55 @@ impl Position {
     /// It starts at 1, and is incremented after every move by black.
     #[inline(always)]
     pub fn fullmoves(&self) -> NonZeroU32 {
-        self.board.fullmove_number().convert().assume()
+        self.board.fullmoves.convert().assume()
     }
 
     /// The en passant square.
     #[inline(always)]
     pub fn en_passant(&self) -> Option<Square> {
-        self.board
-            .en_passant()
-            .map(|f| Square::new(f.into(), Rank::Sixth).perspective(self.turn()))
+        self.board.en_passant
+    }
+
+    /// The castle rights.
+    #[inline(always)]
+    pub fn castles(&self) -> Castles {
+        self.board.castles
+    }
+
+    /// [`Square`]s occupied.
+    #[inline(always)]
+    pub fn occupied(&self) -> Bitboard {
+        self.material(Color::White) ^ self.material(Color::Black)
+    }
+
+    /// [`Square`]s occupied by pieces of a [`Color`].
+    #[inline(always)]
+    pub fn material(&self, side: Color) -> Bitboard {
+        self.board.by_color(side)
+    }
+
+    /// [`Square`]s occupied by pawns of a [`Color`].
+    #[inline(always)]
+    pub fn pawns(&self, side: Color) -> Bitboard {
+        self.board.by_piece(Piece::new(Role::Pawn, side))
+    }
+
+    /// [`Square`]s occupied by pieces other than pawns of a [`Color`].
+    #[inline(always)]
+    pub fn pieces(&self, side: Color) -> Bitboard {
+        self.material(side) ^ self.pawns(side)
+    }
+
+    /// [`Square`] occupied by a the king of a [`Color`].
+    #[inline(always)]
+    pub fn king(&self, side: Color) -> Square {
+        self.board.king(side).assume()
+    }
+
+    /// An iterator over all pieces on the board.
+    #[inline(always)]
+    pub fn iter(&self) -> impl Iterator<Item = (Piece, Square)> + '_ {
+        self.board.iter()
     }
 
     /// This position's [zobrist hash].
@@ -129,84 +299,19 @@ impl Position {
     /// [zobrist hash]: https://www.chessprogramming.org/Zobrist_Hashing
     #[inline(always)]
     pub fn zobrist(&self) -> Zobrist {
-        Bits::new(self.board.hash())
+        self.zobrist
     }
 
-    /// An iterator over all pieces on the board.
+    /// [`Square`]s occupied by pieces giving check.
     #[inline(always)]
-    pub fn iter(&self) -> impl Iterator<Item = (Piece, Square)> + '_ {
-        Piece::iter().flat_map(|p| self.by_piece(p).into_iter().map(move |s| (p, s)))
+    pub fn checkers(&self) -> Bitboard {
+        self.checkers
     }
 
-    /// [`Square`]s occupied.
+    /// [`Square`]s occupied by pieces pinned.
     #[inline(always)]
-    pub fn occupied(&self) -> Bitboard {
-        self.board.occupied().into()
-    }
-
-    /// [`Square`]s occupied by a [`Color`].
-    #[inline(always)]
-    pub fn by_color(&self, c: Color) -> Bitboard {
-        self.board.colors(c.into()).into()
-    }
-
-    /// [`Square`]s occupied by a [`Role`].
-    #[inline(always)]
-    pub fn by_role(&self, r: Role) -> Bitboard {
-        self.board.pieces(r.into()).into()
-    }
-
-    /// [`Square`]s occupied by a [`Piece`].
-    #[inline(always)]
-    pub fn by_piece(&self, p: Piece) -> Bitboard {
-        self.board
-            .colored_pieces(p.color().into(), p.role().into())
-            .into()
-    }
-
-    /// [`Square`] occupied by a the king of the given color.
-    #[inline(always)]
-    pub fn king(&self, side: Color) -> Square {
-        self.board.king(side.into()).into()
-    }
-
-    /// The [`Role`] of the piece on the given [`Square`], if any.
-    #[inline(always)]
-    pub fn role_on(&self, s: Square) -> Option<Role> {
-        self.board.piece_on(s.into()).map(Role::from)
-    }
-
-    /// The [`Color`] of the piece on the given [`Square`], if any.
-    #[inline(always)]
-    pub fn color_on(&self, s: Square) -> Option<Color> {
-        self.board.color_on(s.into()).map(Color::from)
-    }
-
-    /// The [`Piece`] on the given [`Square`], if any.
-    #[inline(always)]
-    pub fn piece_on(&self, s: Square) -> Option<Piece> {
-        Option::zip(self.role_on(s), self.color_on(s)).map(|(r, c)| Piece::new(r, c))
-    }
-
-    /// Into where a [`Piece`] on this [`Square`] can attack.
-    #[inline(always)]
-    pub fn attacks(&self, s: Square, p: Piece) -> Bitboard {
-        let blk = self.occupied().into();
-
-        Bitboard::from(match p.role() {
-            Role::Pawn => cc::get_pawn_attacks(s.into(), p.color().into()),
-            Role::Knight => cc::get_knight_moves(s.into()),
-            Role::Bishop => cc::get_bishop_moves(s.into(), blk),
-            Role::Rook => cc::get_rook_moves(s.into(), blk),
-            Role::Queen => cc::get_bishop_moves(s.into(), blk) | cc::get_rook_moves(s.into(), blk),
-            Role::King => cc::get_king_moves(s.into()),
-        })
-    }
-
-    /// From where a [`Piece`] can attack into this [`Square`].
-    #[inline(always)]
-    pub fn attackers(&self, s: Square, p: Piece) -> Bitboard {
-        self.attacks(s, p.flip())
+    pub fn pinned(&self) -> Bitboard {
+        self.pinned
     }
 
     /// How many other times this position has repeated.
@@ -221,12 +326,29 @@ impl Position {
         }
     }
 
+    /// Whether a [`Square`] is threatened by a piece of a [`Color`].
+    #[inline(always)]
+    pub fn is_threatened(&self, sq: Square, side: Color, occupied: Bitboard) -> bool {
+        for role in Role::iter() {
+            let piece = Piece::new(role, side);
+            for wc in occupied & self.board.by_piece(piece) & piece.flip().targets(sq) {
+                if matches!(role, Role::Pawn | Role::Knight | Role::King)
+                    || Bitboard::segment(sq, wc).intersection(occupied).is_empty()
+                {
+                    return true;
+                }
+            }
+        }
+
+        false
+    }
+
     /// Whether this position is a [check].
     ///
     /// [check]: https://www.chessprogramming.org/Check
     #[inline(always)]
     pub fn is_check(&self) -> bool {
-        !self.board.checkers().is_empty()
+        !self.checkers().is_empty()
     }
 
     /// Whether this position is a [checkmate].
@@ -234,7 +356,7 @@ impl Position {
     /// [checkmate]: https://www.chessprogramming.org/Checkmate
     #[inline(always)]
     pub fn is_checkmate(&self) -> bool {
-        self.is_check() & !self.board.generate_moves(|_| true)
+        self.is_check() && Evasions::generate(self, &mut ArrayVec::<_, 0>::new()).is_ok()
     }
 
     /// Whether this position is a [stalemate].
@@ -242,7 +364,7 @@ impl Position {
     /// [stalemate]: https://www.chessprogramming.org/Stalemate
     #[inline(always)]
     pub fn is_stalemate(&self) -> bool {
-        !self.is_check() & !self.board.generate_moves(|_| true)
+        !self.is_check() && Moves::generate(self, &mut ArrayVec::<_, 0>::new()).is_ok()
     }
 
     /// Whether the game is a draw by [Threefold repetition].
@@ -266,14 +388,15 @@ impl Position {
     /// [insufficient material]: https://www.chessprogramming.org/Material#InsufficientMaterial
     #[inline(always)]
     pub fn is_material_insufficient(&self) -> bool {
+        use Role::*;
         match self.occupied().len() {
             2 => true,
-            3 => !self.by_role(Role::Bishop).is_empty() || !self.by_role(Role::Knight).is_empty(),
+            3 => !self.board.by_role(Bishop).is_empty() || !self.board.by_role(Knight).is_empty(),
             _ => {
-                let bishops = self.by_role(Role::Bishop);
-                bishops | self.by_role(Role::King) == self.occupied()
-                    && (bishops & Bitboard::light() == Bitboard::empty()
-                        || bishops & Bitboard::dark() == Bitboard::empty())
+                let bishops = self.board.by_role(Bishop);
+                bishops | self.board.by_role(King) == self.occupied()
+                    && (Bitboard::light().intersection(bishops).is_empty()
+                        || Bitboard::dark().intersection(bishops).is_empty())
             }
         }
     }
@@ -296,79 +419,161 @@ impl Position {
         }
     }
 
-    /// An iterator over the legal [`Move`]s that can be played from a subset of squares in this position.
+    /// An iterator over the legal moves that can be played in this position.
     #[inline(always)]
-    pub fn moves(&self) -> impl Iterator<Item = Move> + '_ {
-        let mut moves = ArrayVec::<_, 18>::new();
-        self.board.generate_moves(|ms| {
-            moves.push(ms);
-            false
-        });
+    pub fn moves(&self) -> impl Iterator<Item = MoveSet> {
+        let mut moves = ArrayVec::<_, 35>::new();
 
-        moves.into_iter().flat_map(move |ms| {
-            let role = ms.piece.into();
-            let whence = ms.from.into();
-            ms.into_iter().map(move |m| {
-                let whither = m.to.into();
+        if self.is_check() {
+            Evasions::generate(self, &mut moves).assume()
+        } else {
+            Moves::generate(self, &mut moves).assume()
+        }
 
-                match role {
-                    Role::Pawn if self.en_passant() == Some(whither) => {
-                        Move::en_passant(whence, whither)
-                    }
+        moves.into_iter()
+    }
 
-                    Role::King if whither.file() - whence.file() > 1 => {
-                        Move::castling(whence, Square::new(File::G, whither.rank()))
-                    }
+    /// Finds the least valued captor of the piece on a square.
+    #[inline(always)]
+    pub fn exchange(&self, sq: Square) -> Option<Move> {
+        use Role::*;
 
-                    Role::King if whence.file() - whither.file() > 1 => {
-                        Move::castling(whence, Square::new(File::C, whither.rank()))
-                    }
+        let turn = self.turn();
+        let king = self.king(turn);
+        let occupied = self.occupied();
 
-                    _ => {
-                        let promotion = m.promotion.map(|r| r.into());
+        if !self.material(!turn).contains(sq) {
+            return None;
+        } else if !self.is_check() || self.checkers() == sq.bitboard() {
+            let unpinned = self.material(turn) & (!self.pinned() | Bitboard::segment(sq, king));
 
-                        if self.role_on(whither).is_some() {
-                            Move::capture(whence, whither, promotion)
-                        } else {
-                            Move::regular(whence, whither, promotion)
+            for role in [Pawn, Knight, Bishop, Rook, Queen] {
+                let candidates = unpinned & self.board.by_role(role);
+                if !candidates.is_empty() {
+                    let piece = Piece::new(role, turn);
+                    for wc in candidates & piece.flip().targets(sq) {
+                        if matches!(role, Pawn | Knight)
+                            || Bitboard::segment(sq, wc).intersection(occupied).is_empty()
+                        {
+                            let moves = MoveSet::capture(piece, wc, sq.bitboard());
+                            return moves.into_iter().next();
                         }
                     }
                 }
-            })
-        })
+            }
+        }
+
+        if Piece::new(King, turn).targets(king).contains(sq)
+            && !self.is_threatened(sq, !turn, occupied.without(king))
+        {
+            return Some(Move::capture(king, sq, None));
+        }
+
+        None
     }
 
     /// Play a [`Move`].
     #[inline(always)]
-    pub fn play(&mut self, m: Move) {
-        let from = m.whence();
-        let to = if !m.is_castling() {
-            m.whither()
-        } else if from < m.whither() {
-            Square::new(File::H, m.whither().rank())
-        } else {
-            Square::new(File::A, m.whither().rank())
-        };
+    pub fn play(&mut self, m: Move) -> (Role, Option<(Role, Square)>) {
+        debug_assert!(self.moves().flatten().any(|n| m == n));
 
-        let m = cc::Move {
-            from: from.into(),
-            to: to.into(),
-            promotion: m.promotion().map(Role::into),
-        };
+        use {Role::*, Square::*};
 
+        let wc = m.whence();
+        let wt = m.whither();
         let turn = self.turn();
-        let zobrist = self.zobrist();
+        let role = self.board.role_on(wc).assume();
+        let capture = if m.is_en_passant() {
+            Some((Pawn, Square::new(wt.file(), wc.rank())))
+        } else if m.is_capture() {
+            self.board.role_on(wt).map(|r| (r, wt))
+        } else {
+            None
+        };
 
-        debug_assert!(self.board.is_legal(m), "`{m}` is illegal in `{self}`");
-        self.board.play_unchecked(m);
+        if turn == Color::Black {
+            self.board.fullmoves += 1;
+        }
 
-        if self.halfmoves() > 0 {
+        if role == Pawn || capture.is_some() {
+            self.board.halfmoves = 0;
+            self.history = Default::default();
+        } else {
+            self.board.halfmoves += 1;
             let entries = self.history[turn as usize].len();
             self.history[turn as usize].copy_within(..entries - 1, 1);
-            self.history[turn as usize][0] = NonZeroU32::new(zobrist.cast());
-        } else {
-            self.history = Default::default();
+            self.history[turn as usize][0] = NonZeroU32::new(self.zobrist().cast());
         }
+
+        self.board.turn = !self.board.turn;
+        self.zobrist ^= ZobristNumbers::turn();
+
+        if let Some(ep) = self.board.en_passant.take() {
+            self.zobrist ^= ZobristNumbers::en_passant(ep.file());
+        }
+
+        if let Some((victim, target)) = capture {
+            self.board.toggle(Piece::new(victim, !turn), target);
+            self.zobrist ^= ZobristNumbers::psq(!turn, victim, target);
+        }
+
+        self.board.toggle(Piece::new(role, turn), wc);
+        self.board.toggle(Piece::new(role, turn), wt);
+
+        self.zobrist ^= ZobristNumbers::psq(turn, role, wc);
+        self.zobrist ^= ZobristNumbers::psq(turn, role, wt);
+
+        if let Some(promotion) = m.promotion() {
+            self.board.toggle(Piece::new(Pawn, turn), wt);
+            self.board.toggle(Piece::new(promotion, turn), wt);
+            self.zobrist ^= ZobristNumbers::psq(turn, Pawn, wt);
+            self.zobrist ^= ZobristNumbers::psq(turn, promotion, wt);
+        } else if role == Pawn && (wt - wc).abs() == 16 {
+            self.board.en_passant = Some(Square::new(wc.file(), Rank::Third.perspective(turn)));
+            self.zobrist ^= ZobristNumbers::en_passant(wc.file());
+        } else if m.is_castling() {
+            let (wc, wt) = if wt > wc {
+                (H1.perspective(turn), F1.perspective(turn))
+            } else {
+                (A1.perspective(turn), D1.perspective(turn))
+            };
+
+            self.board.toggle(Piece::new(Rook, turn), wc);
+            self.board.toggle(Piece::new(Rook, turn), wt);
+            self.zobrist ^= ZobristNumbers::psq(turn, Rook, wc);
+            self.zobrist ^= ZobristNumbers::psq(turn, Rook, wt);
+        }
+
+        let disrupted = Castles::from(wc) | Castles::from(wt);
+        if self.castles() & disrupted != Castles::none() {
+            self.zobrist ^= ZobristNumbers::castling(self.castles());
+            self.board.castles &= !disrupted;
+            self.zobrist ^= ZobristNumbers::castling(self.castles());
+        }
+
+        let king = self.king(!turn);
+        let ours = self.material(turn);
+        let occupied = self.occupied();
+
+        self.pinned = Bitboard::empty();
+        self.checkers = match m.promotion().unwrap_or(role) {
+            r @ Pawn | r @ Knight if Piece::new(r, !turn).targets(king).contains(wt) => wt.into(),
+            _ => Bitboard::empty(),
+        };
+
+        for role in [Queen, Rook, Bishop] {
+            let slider = Piece::new(role, !turn);
+            for wc in ours & self.board.by_role(role) & slider.targets(king) {
+                let blockers = occupied & Bitboard::segment(king, wc);
+                match blockers.len() {
+                    0 => self.checkers |= wc.bitboard(),
+                    1 => self.pinned |= blockers,
+                    _ => {}
+                }
+            }
+        }
+
+        (role, capture)
     }
 
     /// Play a [null-move].
@@ -376,109 +581,93 @@ impl Position {
     /// [null-move]: https://www.chessprogramming.org/Null_Move
     #[inline(always)]
     pub fn pass(&mut self) {
-        debug_assert!(!self.is_check(), "null move is illegal in `{self}`");
-        self.board = self.board.null_move().assume();
-        self.history = Default::default();
-    }
+        debug_assert!(!self.is_check());
 
-    /// Exchange a piece on [`Square`] by the attacker of least value.
-    #[inline(always)]
-    pub fn exchange(&mut self, whither: Square) -> Result<Move, ImpossibleExchange> {
         let turn = self.turn();
-        if !self.by_color(!turn).contains(whither) {
-            return Err(ImpossibleExchange(whither));
+        if turn == Color::Black {
+            self.board.fullmoves += 1;
         }
 
-        for role in Role::iter() {
-            let piece = Piece::new(role, turn);
-            for whence in self.by_piece(piece) & self.attackers(whither, piece) {
-                let ms = cc::PieceMoves {
-                    piece: role.into(),
-                    from: whence.into(),
-                    to: cc::Square::from(whither).into(),
-                };
+        self.board.halfmoves += 1;
+        let entries = self.history[turn as usize].len();
+        self.history[turn as usize].copy_within(..entries - 1, 1);
+        self.history[turn as usize][0] = NonZeroU32::new(self.zobrist.cast());
 
-                if let Some(m) = ms.into_iter().max_by_key(|m| m.promotion) {
-                    if self.board.is_legal(m) {
-                        self.board.play_unchecked(m);
-                        self.history = Default::default();
-                        let promotion = m.promotion.map(Role::from);
-                        return Ok(Move::capture(whence, whither, promotion));
-                    }
+        self.board.turn = !self.board.turn;
+        self.zobrist ^= ZobristNumbers::turn();
+        if let Some(ep) = self.board.en_passant.take() {
+            self.zobrist ^= ZobristNumbers::en_passant(ep.file());
+        }
+
+        let king = self.king(!turn);
+        let ours = self.material(turn);
+        let occupied = self.occupied();
+
+        self.pinned = Bitboard::empty();
+        for role in [Role::Queen, Role::Rook, Role::Bishop] {
+            let slider = Piece::new(role, !turn);
+            for wc in ours & self.board.by_role(role) & slider.targets(king) {
+                let blockers = occupied & Bitboard::segment(king, wc);
+                if blockers.len() == 1 {
+                    self.pinned |= blockers;
                 }
             }
         }
-
-        Err(ImpossibleExchange(whither))
     }
 }
 
-/// Retrieves the [`Piece`] at a given [`Square`], if any.
-impl Index<Square> for Position {
-    type Output = Option<Piece>;
-
+impl Display for Position {
     #[inline(always)]
-    fn index(&self, s: Square) -> &Self::Output {
-        match self.piece_on(s) {
-            Some(Piece::WhitePawn) => &Some(Piece::WhitePawn),
-            Some(Piece::WhiteKnight) => &Some(Piece::WhiteKnight),
-            Some(Piece::WhiteBishop) => &Some(Piece::WhiteBishop),
-            Some(Piece::WhiteRook) => &Some(Piece::WhiteRook),
-            Some(Piece::WhiteQueen) => &Some(Piece::WhiteQueen),
-            Some(Piece::WhiteKing) => &Some(Piece::WhiteKing),
-            Some(Piece::BlackPawn) => &Some(Piece::BlackPawn),
-            Some(Piece::BlackKnight) => &Some(Piece::BlackKnight),
-            Some(Piece::BlackBishop) => &Some(Piece::BlackBishop),
-            Some(Piece::BlackRook) => &Some(Piece::BlackRook),
-            Some(Piece::BlackQueen) => &Some(Piece::BlackQueen),
-            Some(Piece::BlackKing) => &Some(Piece::BlackKing),
-            None => &None,
-        }
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        fmt::Display::fmt(&self.board, f)
     }
 }
 
 /// The reason why parsing the FEN string failed.
-#[derive(Debug, Display, Clone, Eq, PartialEq, Error)]
+#[derive(Debug, Display, Clone, Eq, PartialEq, Error, From)]
 pub enum ParsePositionError {
-    #[display("failed to parse piece placement")]
-    InvalidPlacement,
-    #[display("failed to parse side to move")]
-    InvalidSideToMove,
-    #[display("failed to parse castling rights")]
-    InvalidCastlingRights,
-    #[display("failed to parse en passant square")]
-    InvalidEnPassantSquare,
-    #[display("failed to parse halfmove clock")]
-    InvalidHalfmoveClock,
-    #[display("failed to parse fullmove number")]
-    InvalidFullmoveNumber,
-    #[display("unspecified syntax error")]
-    InvalidSyntax,
-}
-
-#[doc(hidden)]
-impl From<cc::FenParseError> for ParsePositionError {
-    fn from(e: cc::FenParseError) -> Self {
-        use ParsePositionError::*;
-        match e {
-            cc::FenParseError::InvalidBoard => InvalidPlacement,
-            cc::FenParseError::InvalidSideToMove => InvalidSideToMove,
-            cc::FenParseError::InvalidCastlingRights => InvalidCastlingRights,
-            cc::FenParseError::InvalidEnPassant => InvalidEnPassantSquare,
-            cc::FenParseError::InvalidHalfMoveClock => InvalidHalfmoveClock,
-            cc::FenParseError::InvalidFullmoveNumber => InvalidFullmoveNumber,
-            cc::FenParseError::MissingField => InvalidSyntax,
-            cc::FenParseError::TooManyFields => InvalidSyntax,
-        }
-    }
+    #[display("failed to parse position")]
+    InvalidFen(ParseFenError),
+    #[display("illegal position")]
+    IllegalPosition,
 }
 
 impl FromStr for Position {
     type Err = ParsePositionError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
+        use {ParsePositionError::*, Role::*};
+
+        let board: Board = s.parse()?;
+        let king = board.king(board.turn).ok_or(IllegalPosition)?;
+        let ours = board.by_color(board.turn);
+        let theirs = board.by_color(!board.turn);
+        let occupied = theirs ^ ours;
+
+        let mut checkers = Bitboard::empty();
+        for role in [Pawn, Knight] {
+            let stepper = Piece::new(role, board.turn);
+            checkers |= theirs & board.by_role(role) & stepper.targets(king);
+        }
+
+        let mut pinned = Bitboard::empty();
+        for role in [Queen, Rook, Bishop] {
+            let slider = Piece::new(role, board.turn);
+            for wc in theirs & board.by_role(role) & slider.targets(king) {
+                let blockers = occupied & Bitboard::segment(king, wc);
+                match blockers.len() {
+                    0 => checkers |= wc.bitboard(),
+                    1 => pinned |= blockers,
+                    _ => {}
+                }
+            }
+        }
+
         Ok(Position {
-            board: s.parse()?,
+            board,
+            checkers,
+            pinned,
+            zobrist: board.zobrist(),
             history: Default::default(),
         })
     }
@@ -487,71 +676,52 @@ impl FromStr for Position {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::{cmp::Reverse, fmt::Debug};
+    use std::{cmp::Reverse, fmt::Debug, hash::DefaultHasher};
     use test_strategy::proptest;
 
     #[proptest]
-    fn iter_returns_pieces_and_squares(pos: Position) {
-        for (p, s) in pos.iter() {
-            assert_eq!(pos[s], Some(p));
-        }
+    fn position_compares_by_board(a: Position, b: Position) {
+        assert_eq!(a == b, a.board == b.board);
+    }
+
+    #[proptest]
+    fn hash_is_consistent(a: Position, b: Position) {
+        let mut hasher = DefaultHasher::default();
+        a.hash(&mut hasher);
+        let x = hasher.finish();
+
+        let mut hasher = DefaultHasher::default();
+        b.hash(&mut hasher);
+        let y = hasher.finish();
+
+        assert!(x != y || a == b);
     }
 
     #[proptest]
     fn occupied_returns_non_empty_squares(pos: Position) {
-        for s in pos.occupied() {
-            assert_ne!(pos[s], None);
+        for sq in pos.occupied() {
+            assert_ne!(pos.board[sq], None);
         }
     }
 
     #[proptest]
-    fn by_color_returns_squares_occupied_by_pieces_of_a_color(pos: Position, c: Color) {
-        for s in pos.by_color(c) {
-            assert_eq!(pos[s].map(|p| p.color()), Some(c));
-        }
-    }
-
-    #[proptest]
-    fn by_color_returns_squares_occupied_by_pieces_of_a_role(pos: Position, r: Role) {
-        for s in pos.by_role(r) {
-            assert_eq!(pos[s].map(|p| p.role()), Some(r));
-        }
-    }
-
-    #[proptest]
-    fn by_piece_returns_squares_occupied_by_a_piece(pos: Position, p: Piece) {
-        for s in pos.by_piece(p) {
-            assert_eq!(pos[s], Some(p));
-        }
+    fn material_is_either_pawn_or_piece(pos: Position, c: Color) {
+        assert_eq!(pos.material(c), pos.pawns(c) ^ pos.pieces(c));
     }
 
     #[proptest]
     fn king_returns_square_occupied_by_a_king(pos: Position, c: Color) {
-        assert_eq!(pos[pos.king(c)], Some(Piece::new(Role::King, c)));
+        assert_eq!(pos.board[pos.king(c)], Some(Piece::new(Role::King, c)));
     }
 
     #[proptest]
-    fn piece_on_returns_piece_on_the_given_square(pos: Position, s: Square) {
-        assert_eq!(
-            pos.piece_on(s),
-            Option::zip(pos.color_on(s), pos.role_on(s)).map(|(c, r)| Piece::new(r, c))
-        );
+    fn iter_returns_pieces_and_squares(pos: Position) {
+        assert_eq!(Vec::from_iter(pos.iter()), Vec::from_iter(pos.board.iter()));
     }
 
     #[proptest]
-    fn attacks_returns_squares_attacked_by_a_piece(pos: Position) {
-        for (p, s) in pos.iter() {
-            for whither in pos.attacks(s, p) {
-                assert!(pos.attackers(whither, p).contains(s))
-            }
-        }
-    }
-
-    #[proptest]
-    fn attackers_returns_squares_from_where_a_piece_can_attack(pos: Position, s: Square, p: Piece) {
-        for whence in pos.attackers(s, p) {
-            assert!(pos.attacks(whence, p).contains(s))
-        }
+    fn zobrist_hashes_the_board(pos: Position) {
+        assert_eq!(pos.zobrist(), pos.board.zobrist());
     }
 
     #[proptest]
@@ -583,74 +753,63 @@ mod tests {
     fn moves_returns_legal_moves_from_this_position(
         #[filter(#pos.outcome().is_none())] pos: Position,
     ) {
-        for m in pos.moves() {
+        for m in pos.moves().flatten() {
             pos.clone().play(m);
         }
     }
 
     #[proptest]
-    fn exchange_finds_attacker_of_least_value(
-        #[by_ref]
-        #[filter(#pos.moves().filter(|m| m.is_capture() && !m.is_en_passant()).next().is_some())]
-        pos: Position,
-        #[map(|s: Selector| s.select(#pos.moves().filter(|m| m.is_capture() && !m.is_en_passant())).whither())]
-        s: Square,
+    fn exchange_finds_captor_of_least_value(
+        #[filter(#pos.outcome().is_none())] pos: Position,
+        #[map(|s: Selector| s.select(#pos.material(!#pos.turn())))] sq: Square,
     ) {
-        let m = pos.clone().exchange(s)?;
-
-        let lva = pos
-            .moves()
-            .filter(|m| m.whither() == s)
-            .filter(Move::is_capture)
-            .min_by_key(|m| (pos.role_on(m.whence()), Reverse(m.promotion())))
-            .unwrap();
-
-        assert_eq!(m.promotion(), lva.promotion());
-        assert_eq!(pos.role_on(m.whence()), pos.role_on(lva.whence()));
-    }
-
-    #[proptest]
-    fn exchange_fails_if_not_a_regular_capture(
-        mut pos: Position,
-        #[filter(#pos.color_on(#s) != Some(!#pos.turn()))] s: Square,
-    ) {
-        assert_eq!(pos.exchange(s), Err(ImpossibleExchange(s)));
+        assert_eq!(
+            pos.exchange(sq)
+                .map(|m| (pos.board.role_on(m.whence()), m.promotion(),)),
+            pos.moves()
+                .filter(|m| m.whither().contains(sq))
+                .flatten()
+                .map(|m| (pos.board.role_on(m.whence()), m.promotion()))
+                .min_by_key(|&(r, p)| (r, Reverse(p)))
+        );
     }
 
     #[proptest]
     fn captures_reduce_material(
-        #[by_ref]
-        #[filter(#pos.moves().filter(Move::is_capture).next().is_some())]
-        pos: Position,
-        #[map(|s: Selector| s.select(#pos.moves().filter(Move::is_capture)))] m: Move,
+        #[filter(#pos.moves().any(|ms| ms.is_capture()))] mut pos: Position,
+        #[map(|s: Selector| s.select(#pos.moves().filter(MoveSet::is_capture).flatten()))] m: Move,
     ) {
-        let mut p = pos.clone();
-        p.play(m);
-        assert!(p.by_color(p.turn()).len() < pos.by_color(p.turn()).len());
+        let prev = pos;
+        pos.play(m);
+        assert!(pos.material(pos.turn()).len() < prev.material(pos.turn()).len());
     }
 
     #[proptest]
     fn promotions_exchange_pawns(
-        #[by_ref]
-        #[filter(#pos.moves().filter(Move::is_promotion).next().is_some())]
-        pos: Position,
-        #[map(|s: Selector| s.select(#pos.moves().filter(Move::is_promotion)))] m: Move,
+        #[filter(#pos.moves().any(|ms| ms.is_promotion()))] mut pos: Position,
+        #[map(|s: Selector| s.select(#pos.moves().filter(MoveSet::is_promotion).flatten()))]
+        m: Move,
     ) {
-        let mut p = pos.clone();
-        p.play(m);
-        let pawn = Piece::new(Role::Pawn, pos.turn());
-        assert!(p.by_piece(pawn).len() < pos.by_piece(pawn).len());
-        assert_eq!(p.by_color(pos.turn()).len(), pos.by_color(pos.turn()).len());
+        let prev = pos;
+        pos.play(m);
+        let pawn = Piece::new(Role::Pawn, prev.turn());
+        assert!(pos.board.by_piece(pawn).len() < prev.board.by_piece(pawn).len());
+
+        assert_eq!(
+            pos.material(prev.turn()).len(),
+            prev.material(prev.turn()).len()
+        );
     }
 
     #[proptest]
     fn castles_move_the_king_by_two_files(
-        #[by_ref]
-        #[filter(#pos.moves().filter(Move::is_castling).next().is_some())]
-        pos: Position,
-        #[map(|s: Selector| s.select(#pos.moves().filter(Move::is_castling)))] m: Move,
+        #[filter(#pos.moves().any(|ms| ms.is_castling()))] pos: Position,
+        #[map(|s: Selector| s.select(#pos.moves().filter(MoveSet::is_castling).flatten()))] m: Move,
     ) {
-        assert_eq!(pos[m.whence()], Some(Piece::new(Role::King, pos.turn())));
+        assert_eq!(
+            pos.board[m.whence()],
+            Some(Piece::new(Role::King, pos.turn()))
+        );
         assert_eq!(m.whence().rank(), m.whither().rank());
         assert_eq!((m.whence().file() - m.whither().file()).abs(), 2);
     }
@@ -658,28 +817,82 @@ mod tests {
     #[proptest]
     fn legal_move_updates_position(
         #[filter(#pos.outcome().is_none())] mut pos: Position,
-        #[map(|s: Selector| s.select(#pos.moves()))] m: Move,
+        #[map(|s: Selector| s.select(#pos.moves().flatten()))] m: Move,
     ) {
-        let prev = pos.clone();
+        let prev = pos;
         pos.play(m);
+
         assert_ne!(pos, prev);
+        assert_ne!(pos.turn(), prev.turn());
+
+        assert_eq!(pos.board[m.whence()], None);
+        assert_eq!(
+            pos.board[m.whither()],
+            m.promotion()
+                .map(|r| Piece::new(r, prev.turn()))
+                .or_else(|| prev.board[m.whence()])
+        );
+
+        assert_eq!(
+            pos.occupied(),
+            Role::iter().fold(Bitboard::empty(), |bb, r| bb | pos.board.by_role(r))
+        );
+
+        assert_eq!(
+            pos.material(Color::White) & pos.material(Color::Black),
+            Bitboard::empty()
+        );
+
+        for r in Role::iter() {
+            for sq in Role::iter() {
+                if r != sq {
+                    assert_eq!(
+                        pos.board.by_role(r) & pos.board.by_role(sq),
+                        Bitboard::empty()
+                    );
+                }
+            }
+        }
+
+        assert_eq!(
+            pos.material(prev.turn()).len(),
+            prev.material(prev.turn()).len()
+        );
+
+        assert_eq!(
+            pos.material(pos.turn()).len(),
+            prev.material(pos.turn()).len() - m.is_capture() as usize
+        );
+
+        if let Some(ep) = pos.en_passant() {
+            assert_eq!(ep.rank(), Rank::Sixth.perspective(pos.turn()));
+        }
     }
 
     #[proptest]
     #[should_panic]
     fn play_panics_if_move_illegal(
-        #[by_ref] mut pos: Position,
-        #[filter(!#pos.moves().any(|m| (m.whence(), m.whither()) == (#m.whence(), #m.whither())))]
-        m: Move,
+        mut pos: Position,
+        #[filter(!#pos.moves().flatten().any(|m| #m == m))] m: Move,
     ) {
         pos.play(m);
     }
 
     #[proptest]
     fn pass_updates_position(#[filter(!#pos.is_check())] mut pos: Position) {
-        let before = pos.clone();
+        let prev = pos;
         pos.pass();
-        assert_ne!(pos, before);
+        assert_ne!(pos, prev);
+    }
+
+    #[proptest]
+    fn pass_reverts_itself(#[filter(!#pos.is_check() )] mut pos: Position) {
+        let prev = pos;
+        pos.pass();
+        pos.pass();
+        assert_eq!(Vec::from_iter(pos.iter()), Vec::from_iter(prev.iter()));
+        assert_eq!(pos.checkers(), prev.checkers());
+        assert_eq!(pos.pinned(), prev.pinned());
     }
 
     #[proptest]
@@ -694,15 +907,12 @@ mod tests {
         z: NonZeroU32,
     ) {
         let zobrist = NonZeroU32::new(pos.zobrist().cast());
+        prop_assume!(zobrist.is_some());
+
         let history = [zobrist, Some(z), zobrist, Some(z)];
         pos.history[pos.turn() as usize][..4].clone_from_slice(&history);
         assert!(pos.is_draw_by_threefold_repetition());
         assert_eq!(pos.outcome(), Some(Outcome::DrawByThreefoldRepetition));
-    }
-
-    #[proptest]
-    fn position_can_be_indexed_by_square(pos: Position, s: Square) {
-        assert_eq!(pos[s], pos.piece_on(s));
     }
 
     #[proptest]
@@ -711,14 +921,18 @@ mod tests {
     }
 
     #[proptest]
-    fn parsing_position_fails_for_invalid_fen(
-        pos: Position,
-        #[strategy(..=#pos.to_string().len())] n: usize,
-        #[strategy("[^[:ascii:]]+")] r: String,
-    ) {
-        assert!([&pos.to_string()[..n], &r]
-            .concat()
-            .parse::<Position>()
-            .is_err());
+    fn parsing_position_fails_for_invalid_board(#[filter(#s.parse::<Board>().is_err())] s: String) {
+        assert_eq!(
+            s.parse::<Position>().err(),
+            s.parse::<Board>().err().map(ParsePositionError::InvalidFen)
+        );
+    }
+
+    #[proptest]
+    fn parsing_position_fails_for_illegal_board(#[filter(#b.king(#b.turn).is_none())] b: Board) {
+        assert_eq!(
+            b.to_string().parse::<Position>(),
+            Err(ParsePositionError::IllegalPosition)
+        );
     }
 }

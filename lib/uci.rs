@@ -1,4 +1,4 @@
-use crate::chess::{Color, Move, Perspective, Position};
+use crate::chess::{Color, Move, Perspective};
 use crate::nnue::Evaluator;
 use crate::search::{Engine, HashSize, Limits, Options, Score, ThreadCount};
 use crate::util::{Assume, Integer};
@@ -36,7 +36,7 @@ impl PartialEq<&str> for UciMove {
 pub struct Uci {
     engine: Engine,
     options: Options,
-    position: Position,
+    position: Evaluator,
     moves: Vec<UciMove>,
 }
 
@@ -45,7 +45,7 @@ impl Default for Uci {
         Self {
             engine: Engine::default(),
             options: Options::default(),
-            position: Position::default(),
+            position: Evaluator::default(),
             moves: Vec::with_capacity(128),
         }
     }
@@ -57,7 +57,8 @@ impl Uci {
             return eprintln!("invalid move `{uci}`");
         };
 
-        let Some(m) = self.position.moves().find(|&m| UciMove::from(m) == uci) else {
+        let mut moves = self.position.moves().flatten();
+        let Some(m) = moves.find(|&m| UciMove::from(m) == uci) else {
             return eprintln!("illegal move `{uci}` in position `{}`", self.position);
         };
 
@@ -107,7 +108,7 @@ impl Uci {
             [] => Ok(true),
 
             ["position", "startpos", "moves", m, n] => {
-                self.position = Position::default();
+                self.position = Evaluator::default();
                 self.play(m);
                 self.play(n);
                 Ok(true)
@@ -121,14 +122,14 @@ impl Uci {
 
             ["position", "startpos", "moves", moves @ ..] => {
                 self.moves.clear();
-                self.position = Position::default();
+                self.position = Evaluator::default();
                 moves.iter().for_each(|&m| self.play(m));
                 Ok(true)
             }
 
             ["position", "startpos"] => {
                 self.moves.clear();
-                self.position = Position::default();
+                self.position = Evaluator::default();
                 Ok(true)
             }
 
@@ -214,8 +215,8 @@ impl Uci {
             }
 
             ["eval"] => {
+                let pos = &self.position;
                 let turn = self.position.turn();
-                let pos = Evaluator::new(self.position.clone());
                 let material: Score = pos.material().evaluate().perspective(turn).saturate();
                 let positional: Score = pos.positional().evaluate().perspective(turn).saturate();
                 let evaluation: Score = pos.evaluate().perspective(turn).saturate();
@@ -255,7 +256,7 @@ impl Uci {
 
             ["ucinewgame"] => {
                 self.engine = Engine::with_options(self.options);
-                self.position = Position::default();
+                self.position = Evaluator::default();
                 self.moves.clear();
                 Ok(true)
             }
@@ -329,8 +330,8 @@ mod tests {
 
     #[proptest]
     fn play_updates_position(
-        #[filter(#pos.outcome().is_none())] mut pos: Position,
-        #[map(|s: Selector| s.select(#pos.moves()))] m: Move,
+        #[filter(#pos.outcome().is_none())] mut pos: Evaluator,
+        #[map(|sq: Selector| sq.select(#pos.moves().flatten()))] m: Move,
     ) {
         let mut uci = Uci {
             position: pos.clone(),
@@ -345,8 +346,8 @@ mod tests {
     #[proptest]
     fn play_updates_move_history(
         ms: Vec<UciMove>,
-        #[filter(#pos.outcome().is_none())] pos: Position,
-        #[map(|s: Selector| s.select(#pos.moves()))] m: Move,
+        #[filter(#pos.outcome().is_none())] pos: Evaluator,
+        #[map(|sq: Selector| sq.select(#pos.moves().flatten()))] m: Move,
     ) {
         let mut uci = Uci {
             moves: ms.clone(),
@@ -361,8 +362,8 @@ mod tests {
     #[proptest]
     fn play_ignores_illegal_move(
         ms: Vec<UciMove>,
-        #[by_ref] pos: Position,
-        #[filter(!#pos.moves().any(|m| (m.whence(), m.whither()) == (#m.whence(), #m.whither())))]
+        pos: Evaluator,
+        #[filter(!#pos.moves().flatten().any(|m| (m.whence(), m.whither()) == (#m.whence(), #m.whither())))]
         m: Move,
     ) {
         let mut uci = Uci {
@@ -379,7 +380,7 @@ mod tests {
     #[proptest]
     fn play_ignores_invalid_move(
         ms: Vec<UciMove>,
-        pos: Position,
+        pos: Evaluator,
         #[filter(!(4..5).contains(&#m.len()) || !#m.is_ascii())] m: String,
     ) {
         let mut uci = Uci {
@@ -397,16 +398,16 @@ mod tests {
     fn process_handles_position_with_startpos(mut uci: Uci) {
         let mut out = vec![];
         assert!(uci.process("position startpos", &mut out)?);
-        assert_eq!(uci.position, Position::default());
+        assert_eq!(uci.position, Evaluator::default());
         assert!(uci.moves.is_empty());
         assert!(out.is_empty());
     }
 
     #[proptest]
-    fn process_handles_position_with_fen(mut uci: Uci, pos: Position) {
+    fn process_handles_position_with_fen(mut uci: Uci, pos: Evaluator) {
         let mut out = vec![];
         assert!(uci.process(&format!("position fen {pos}"), &mut out)?);
-        assert_eq!(uci.position, pos);
+        assert_eq!(uci.position.to_string(), pos.to_string());
         assert!(uci.moves.is_empty());
         assert!(out.is_empty());
     }
@@ -414,7 +415,7 @@ mod tests {
     #[proptest]
     fn process_ignores_invalid_fen(
         mut uci: Uci,
-        #[filter(#s.parse::<Position>().is_err())] s: String,
+        #[filter(#s.parse::<Evaluator>().is_err())] s: String,
     ) {
         let mut out = vec![];
         let pos = uci.position.clone();
@@ -429,12 +430,12 @@ mod tests {
     fn process_handles_position_with_moves(#[strategy(..=4usize)] n: usize, selector: Selector) {
         let mut out = vec![];
         let mut uci = Uci::default();
-        let mut pos = Position::default();
+        let mut pos = Evaluator::default();
         let mut moves = vec![];
         let mut msg = "position startpos moves".to_string();
 
         for _ in 0..n {
-            let m = selector.select(pos.moves());
+            let m = selector.select(pos.moves().flatten());
             write!(msg, " {m}")?;
             moves.push(UciMove::from(m));
             pos.play(m);
@@ -487,7 +488,7 @@ mod tests {
     #[proptest]
     fn process_handles_eval(mut uci: Uci) {
         let mut out = vec![];
-        let pos = Evaluator::new(uci.position.clone());
+        let pos = uci.position.clone();
         let value = match pos.turn() {
             Color::White => pos.evaluate(),
             Color::Black => -pos.evaluate(),
@@ -508,7 +509,7 @@ mod tests {
     fn process_handles_new_game(mut uci: Uci) {
         let mut out = vec![];
         assert!(uci.process("ucinewgame", &mut out)?);
-        assert_eq!(uci.position, Position::default());
+        assert_eq!(uci.position, Evaluator::default());
         assert!(uci.moves.is_empty());
         assert!(out.is_empty());
     }

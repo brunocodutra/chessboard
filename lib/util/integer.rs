@@ -322,7 +322,7 @@ mod tests {
         assert!(Digit::in_range(d.get()));
     }
 
-    #[proptest]
+    #[test]
     fn integer_can_be_iterated_in_order() {
         assert_eq!(
             Vec::from_iter(Digit::iter()),

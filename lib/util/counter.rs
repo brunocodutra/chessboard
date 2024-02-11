@@ -2,9 +2,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 
 /// A counter towards a limit.
 #[derive(Debug)]
-#[cfg_attr(test, derive(test_strategy::Arbitrary))]
 pub struct Counter {
-    #[cfg_attr(test, map(AtomicU64::new))]
     remaining: AtomicU64,
 }
 
@@ -35,7 +33,7 @@ mod tests {
         assert_eq!(counter.count(), Some(c - 1));
     }
 
-    #[proptest]
+    #[test]
     fn counter_overflows_once_limit_is_reached() {
         let counter = Counter::new(0);
         assert_eq!(counter.count(), None);

@@ -1,8 +1,7 @@
-use crate::chess::{Mirror, Perspective};
+use crate::chess::{Bitboard, Mirror, Perspective};
 use crate::util::Integer;
-use cozy_chess as cc;
-use derive_more::Display;
-use std::ops::Sub;
+use derive_more::{Display, Error};
+use std::{ops::Sub, str::FromStr};
 
 /// A row on the chess board.
 #[derive(Debug, Display, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
@@ -25,6 +24,14 @@ pub enum Rank {
     Seventh,
     #[display("8")]
     Eighth,
+}
+
+impl Rank {
+    /// Returns a [`Bitboard`] that only contains this rank.
+    #[inline(always)]
+    pub const fn bitboard(self) -> Bitboard {
+        Bitboard::new(0x000000000000FF << (self.get() * 8))
+    }
 }
 
 unsafe impl const Integer for Rank {
@@ -57,25 +64,37 @@ impl Sub for Rank {
     }
 }
 
-#[doc(hidden)]
-impl From<cc::Rank> for Rank {
-    #[inline(always)]
-    fn from(r: cc::Rank) -> Self {
-        Self::new(r as _)
-    }
-}
+/// The reason why parsing [`Rank`] failed.
+#[derive(Debug, Display, Clone, Eq, PartialEq, Error)]
+#[display(
+    "failed to parse rank, expected digit in the range `({}..={})`",
+    Rank::First,
+    Rank::Eighth
+)]
+pub struct ParseRankError;
 
-#[doc(hidden)]
-impl From<Rank> for cc::Rank {
-    #[inline(always)]
-    fn from(r: Rank) -> Self {
-        cc::Rank::index_const(r as _)
+impl FromStr for Rank {
+    type Err = ParseRankError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "1" => Ok(Rank::First),
+            "2" => Ok(Rank::Second),
+            "3" => Ok(Rank::Third),
+            "4" => Ok(Rank::Fourth),
+            "5" => Ok(Rank::Fifth),
+            "6" => Ok(Rank::Sixth),
+            "7" => Ok(Rank::Seventh),
+            "8" => Ok(Rank::Eighth),
+            _ => Err(ParseRankError),
+        }
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::chess::{File, Square};
     use std::mem::size_of;
     use test_strategy::proptest;
 
@@ -100,7 +119,27 @@ mod tests {
     }
 
     #[proptest]
-    fn rank_has_an_equivalent_cozy_chess_representation(r: Rank) {
-        assert_eq!(Rank::from(cc::Rank::from(r)), r);
+    fn rank_has_an_equivalent_bitboard(r: Rank) {
+        assert_eq!(
+            Vec::from_iter(r.bitboard()),
+            Vec::from_iter(File::iter().map(|f| Square::new(f, r)))
+        );
+    }
+
+    #[proptest]
+    fn parsing_printed_rank_is_an_identity(r: Rank) {
+        assert_eq!(r.to_string().parse(), Ok(r));
+    }
+
+    #[proptest]
+    fn parsing_rank_fails_if_not_digit_between_1_and_8(
+        #[filter(!('1'..='8').contains(&#c))] c: char,
+    ) {
+        assert_eq!(c.to_string().parse::<Rank>(), Err(ParseRankError));
+    }
+
+    #[proptest]
+    fn parsing_rank_fails_if_length_not_one(#[filter(#s.len() != 1)] s: String) {
+        assert_eq!(s.parse::<Rank>(), Err(ParseRankError));
     }
 }

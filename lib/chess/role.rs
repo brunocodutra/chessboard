@@ -1,6 +1,6 @@
 use crate::util::Integer;
-use cozy_chess as cc;
-use derive_more::Display;
+use derive_more::{Display, Error};
+use std::str::FromStr;
 
 /// The type of a chess [`Piece`][`crate::Piece`].
 #[derive(Debug, Display, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
@@ -27,19 +27,32 @@ unsafe impl const Integer for Role {
     const MAX: Self::Repr = Role::King as _;
 }
 
-#[doc(hidden)]
-impl From<Role> for cc::Piece {
-    #[inline(always)]
-    fn from(r: Role) -> Self {
-        cc::Piece::index_const(r as _)
-    }
-}
+/// The reason why parsing the piece.
+#[derive(Debug, Display, Clone, Eq, PartialEq, Error)]
+#[display(
+    "failed to parse piece, expected one of `[{}{}{}{}{}{}]`",
+    Role::Pawn,
+    Role::Knight,
+    Role::Bishop,
+    Role::Rook,
+    Role::Queen,
+    Role::King
+)]
+pub struct ParseRoleError;
 
-#[doc(hidden)]
-impl From<cc::Piece> for Role {
-    #[inline(always)]
-    fn from(r: cc::Piece) -> Self {
-        Self::new(r as _)
+impl FromStr for Role {
+    type Err = ParseRoleError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "p" => Ok(Role::Pawn),
+            "n" => Ok(Role::Knight),
+            "b" => Ok(Role::Bishop),
+            "r" => Ok(Role::Rook),
+            "q" => Ok(Role::Queen),
+            "k" => Ok(Role::King),
+            _ => Err(ParseRoleError),
+        }
     }
 }
 
@@ -55,7 +68,19 @@ mod tests {
     }
 
     #[proptest]
-    fn role_has_an_equivalent_cozy_chess_representation(r: Role) {
-        assert_eq!(Role::from(cc::Piece::from(r)), r);
+    fn parsing_printed_role_is_an_identity(r: Role) {
+        assert_eq!(r.to_string().parse(), Ok(r));
+    }
+
+    #[proptest]
+    fn parsing_role_fails_if_not_one_of_lowercase_pnbrqk(
+        #[filter(!['p', 'n', 'b', 'r', 'q', 'k'].contains(&#c))] c: char,
+    ) {
+        assert_eq!(c.to_string().parse::<Role>(), Err(ParseRoleError));
+    }
+
+    #[proptest]
+    fn parsing_role_fails_if_length_not_one(#[filter(#s.len() != 1)] s: String) {
+        assert_eq!(s.parse::<Role>(), Err(ParseRoleError));
     }
 }
