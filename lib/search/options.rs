@@ -43,7 +43,7 @@ impl<I: Integer<Repr = usize>> PartialOrd<I> for HashSize {
 /// The reason why parsing the hash size failed.
 #[derive(Debug, Display, Clone, Eq, PartialEq, Error)]
 #[display(
-    "expected integer in the range `({}..={})`",
+    "failed to parse hash size, expected integer in the range `({}..={})`",
     HashSize::lower(),
     HashSize::upper()
 )]
@@ -101,7 +101,7 @@ impl<I: Integer<Repr = usize>> PartialOrd<I> for ThreadCount {
 /// The reason why parsing the thread count failed.
 #[derive(Debug, Display, Clone, Eq, PartialEq, Error)]
 #[display(
-    "expected integer in the range `({}..={})`",
+    "failed to parse thread count, expected integer in the range `({}..={})`",
     ThreadCount::lower(),
     ThreadCount::upper()
 )]

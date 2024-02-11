@@ -45,7 +45,7 @@ impl Score {
 impl const Perspective for Score {
     #[inline(always)]
     fn flip(&self) -> Self {
-        Self::new(-self.get())
+        -*self
     }
 }
 
@@ -98,7 +98,32 @@ mod tests {
     }
 
     #[proptest]
+    fn flipping_score_produces_its_negative(s: Score) {
+        assert_eq!(s.flip(), -s);
+    }
+
+    #[proptest]
     fn decoding_encoded_score_is_an_identity(s: Score) {
         assert_eq!(Score::decode(s.encode()), s);
+    }
+
+    #[proptest]
+    fn printing_score_displays_sign(s: Score) {
+        assert!(s.to_string().starts_with(if s < 0 { "-" } else { "+" }));
+    }
+
+    #[proptest]
+    fn printing_mate_score_displays_moves_to_mate(p: Ply) {
+        if p > 0 {
+            assert!(Score::upper()
+                .normalize(p)
+                .to_string()
+                .ends_with(&format!("#{}", (p.get() + 1) / 2)));
+        } else {
+            assert!(Score::lower()
+                .normalize(-p)
+                .to_string()
+                .ends_with(&format!("#{}", (1 - p.get()) / 2)));
+        };
     }
 }

@@ -1,6 +1,5 @@
-use crate::nnue::{Accumulator, Nnue, Transformer, NNUE};
+use crate::nnue::{Accumulator, Nnue};
 use crate::util::AlignTo64;
-use std::ops::Deref;
 
 /// An accumulator for the psqt transformer.
 #[derive(Debug, Default, Clone, Eq, PartialEq, Hash)]
@@ -10,13 +9,6 @@ pub struct Material(
      AlignTo64<[[i32; Nnue::PHASES]; 2]>,
 );
 
-impl Material {
-    #[inline(always)]
-    fn transformer(&self) -> impl Deref<Target = Transformer<i32, { Nnue::L0 }, { Nnue::PHASES }>> {
-        unsafe { &NNUE.psqt }
-    }
-}
-
 impl Accumulator for Material {
     #[inline(always)]
     fn flip(&mut self) {
@@ -25,20 +17,20 @@ impl Accumulator for Material {
 
     #[inline(always)]
     fn refresh(&mut self, us: &[u16], them: &[u16]) {
-        self.transformer().refresh(us, &mut self.0[0]);
-        self.transformer().refresh(them, &mut self.0[1]);
+        Nnue::psqt().refresh(us, &mut self.0[0]);
+        Nnue::psqt().refresh(them, &mut self.0[1]);
     }
 
     #[inline(always)]
     fn add(&mut self, us: u16, them: u16) {
-        self.transformer().add(us, &mut self.0[0]);
-        self.transformer().add(them, &mut self.0[1]);
+        Nnue::psqt().add(us, &mut self.0[0]);
+        Nnue::psqt().add(them, &mut self.0[1]);
     }
 
     #[inline(always)]
     fn remove(&mut self, us: u16, them: u16) {
-        self.transformer().remove(us, &mut self.0[0]);
-        self.transformer().remove(them, &mut self.0[1]);
+        Nnue::psqt().remove(us, &mut self.0[0]);
+        Nnue::psqt().remove(them, &mut self.0[1]);
     }
 
     #[inline(always)]

@@ -1,9 +1,9 @@
-use crate::chess::{Color, ImpossibleExchange, Move, Piece, Position, Role, Square};
+use crate::chess::{Color, Move, ParsePositionError, Piece, Position, Role, Square};
 use crate::nnue::{Accumulator, Feature, Material, Positional, Value};
-use crate::util::{Assume, Integer};
+use crate::util::Integer;
 use arrayvec::ArrayVec;
-use derive_more::Deref;
-use std::ops::Range;
+use derive_more::{Debug, Deref, Display};
+use std::{ops::Range, str::FromStr};
 
 fn perspective(pos: &Position, side: Color) -> ArrayVec<u16, 32> {
     let k = pos.king(side);
@@ -11,8 +11,10 @@ fn perspective(pos: &Position, side: Color) -> ArrayVec<u16, 32> {
 }
 
 /// An incrementally evaluated [`Position`].
-#[derive(Debug, Clone, Eq, PartialEq, Hash, Deref)]
+#[derive(Debug, Display, Clone, Eq, PartialEq, Hash, Deref)]
 #[cfg_attr(test, derive(test_strategy::Arbitrary))]
+#[debug("Evaluator({self})")]
+#[display("{pos}")]
 pub struct Evaluator<T: Clone + Accumulator = (Material, Positional)> {
     #[deref]
     pos: Position,
@@ -24,6 +26,20 @@ pub struct Evaluator<T: Clone + Accumulator = (Material, Positional)> {
         acc
     }))]
     acc: T,
+}
+
+impl Default for Evaluator {
+    fn default() -> Self {
+        Self::new(Position::default())
+    }
+}
+
+impl FromStr for Evaluator {
+    type Err = ParsePositionError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Ok(Self::new(s.parse()?))
+    }
 }
 
 impl Evaluator {
@@ -42,7 +58,7 @@ impl Evaluator {
     /// The [`Position`]'s material evaluator.
     pub fn material(&self) -> Evaluator<Material> {
         Evaluator {
-            pos: self.pos.clone(),
+            pos: self.pos,
             acc: self.acc.0.clone(),
         }
     }
@@ -50,7 +66,7 @@ impl Evaluator {
     /// The [`Position`]'s positional evaluator.
     pub fn positional(&self) -> Evaluator<Positional> {
         Evaluator {
-            pos: self.pos.clone(),
+            pos: self.pos,
             acc: self.acc.1.clone(),
         }
     }
@@ -66,7 +82,7 @@ impl<T: Clone + Accumulator> Evaluator<T> {
     /// The Static Exchange Evaluation ([SEE]) algorithm.
     ///
     /// [SEE]: https://www.chessprogramming.org/Static_Exchange_Evaluation
-    pub fn see(&mut self, square: Square, bounds: Range<Value>) -> Value {
+    pub fn see(&mut self, sq: Square, bounds: Range<Value>) -> Value {
         let (mut alpha, mut beta) = (bounds.start, bounds.end);
 
         loop {
@@ -74,17 +90,25 @@ impl<T: Clone + Accumulator> Evaluator<T> {
 
             if alpha >= beta {
                 break beta;
-            } else if self.exchange(square).is_err() {
-                break alpha;
             }
+
+            let Some(m) = self.exchange(sq) else {
+                break alpha;
+            };
+
+            self.play(m);
 
             beta = beta.min(-self.evaluate());
 
             if alpha >= beta {
                 break alpha;
-            } else if self.exchange(square).is_err() {
-                break beta;
             }
+
+            let Some(m) = self.exchange(sq) else {
+                break beta;
+            };
+
+            self.play(m);
         }
     }
 
@@ -98,38 +122,10 @@ impl<T: Clone + Accumulator> Evaluator<T> {
 
     /// Play a [`Move`].
     pub fn play(&mut self, m: Move) {
-        let capture = if m.is_en_passant() {
-            let target = Square::new(m.whither().file(), m.whence().rank());
-            Some((Role::Pawn, target))
-        } else {
-            self.role_on(m.whither()).map(|r| (r, m.whither()))
-        };
-
-        self.pos.play(m);
-        self.acc.flip();
-        self.update(m, capture);
-    }
-
-    /// Exchange a piece on [`Square`] by the attacker of least value.
-    ///
-    /// This may lead to invalid positions.
-    fn exchange(&mut self, whither: Square) -> Result<Move, ImpossibleExchange> {
-        let capture = self.role_on(whither).map(|r| (r, whither));
-        let m = self.pos.exchange(whither)?;
-        self.acc.flip();
-        self.update(m, capture);
-        Ok(m)
-    }
-
-    fn update(&mut self, m: Move, capture: Option<(Role, Square)>) {
+        let (role, capture) = self.pos.play(m);
         let turn = self.turn();
 
-        let role = if m.is_promotion() {
-            Role::Pawn
-        } else {
-            self.role_on(m.whither()).assume()
-        };
-
+        self.acc.flip();
         if role == Role::King {
             let us = perspective(&self.pos, turn);
             let them = perspective(&self.pos, !turn);
@@ -145,8 +141,8 @@ impl<T: Clone + Accumulator> Evaluator<T> {
             let fts = kings.map(|ks| Feature(ks, old, m.whence()));
             self.acc.remove(fts[0].index(turn), fts[1].index(!turn));
 
-            if let Some((r, s)) = capture {
-                let fts = kings.map(|ks| Feature(ks, Piece::new(r, turn), s));
+            if let Some((v, s)) = capture {
+                let fts = kings.map(|ks| Feature(ks, Piece::new(v, turn), s));
                 self.acc.remove(fts[0].index(turn), fts[1].index(!turn));
             }
         }
@@ -157,49 +153,41 @@ impl<T: Clone + Accumulator> Evaluator<T> {
 mod tests {
     use super::*;
     use proptest::sample::Selector;
+    use std::fmt::Debug;
     use test_strategy::proptest;
 
     #[proptest]
-    fn see_returns_value_within_bounds(pos: Position, s: Square, r: Range<Value>) {
+    fn see_returns_value_within_bounds(pos: Position, sq: Square, r: Range<Value>) {
         let (a, b) = (r.start, r.end);
-        assert!((a..=b).contains(&Evaluator::new(pos).see(s, r)));
+        assert!((a..=b).contains(&Evaluator::new(pos).see(sq, r)));
     }
 
     #[proptest]
-    fn see_returns_beta_if_alpha_is_not_smaller(pos: Position, s: Square, r: Range<Value>) {
-        assert_eq!(Evaluator::new(pos).see(s, r.end..r.start), r.start);
+    fn see_returns_beta_if_alpha_is_not_smaller(pos: Position, sq: Square, r: Range<Value>) {
+        assert_eq!(Evaluator::new(pos).see(sq, r.end..r.start), r.start);
     }
 
     #[proptest]
     fn play_updates_evaluator(
-        #[filter(#a.outcome().is_none())] mut a: Evaluator,
-        #[map(|s: Selector| s.select(#a.moves()))] m: Move,
+        #[filter(#e.outcome().is_none())] mut e: Evaluator,
+        #[map(|sq: Selector| sq.select(#e.moves().flatten()))] m: Move,
     ) {
-        let mut b = a.pos.clone();
-        a.play(m);
-        b.play(m);
-        assert_eq!(a, Evaluator::new(b));
+        let mut pos = e.pos;
+        e.play(m);
+        pos.play(m);
+        assert_eq!(e, Evaluator::new(pos));
     }
 
     #[proptest]
-    fn pass_updates_evaluator(#[filter(!#a.is_check())] mut a: Evaluator) {
-        let mut b = a.pos.clone();
-        a.pass();
-        b.pass();
-        assert_eq!(a, Evaluator::new(b));
+    fn pass_updates_evaluator(#[filter(!#e.is_check())] mut e: Evaluator) {
+        let mut pos = e.pos;
+        e.pass();
+        pos.pass();
+        assert_eq!(e, Evaluator::new(pos));
     }
 
     #[proptest]
-    fn exchange_updates_evaluator(
-        #[by_ref]
-        #[filter(#a.moves().filter(|m| m.is_capture() && !m.is_en_passant()).next().is_some())]
-        mut a: Evaluator,
-        #[map(|s: Selector| s.select(#a.moves().filter(|m| m.is_capture() && !m.is_en_passant())).whither())]
-        s: Square,
-    ) {
-        let mut b = a.pos.clone();
-        a.exchange(s)?;
-        b.exchange(s)?;
-        assert_eq!(a, Evaluator::new(b));
+    fn parsing_printed_evaluator_is_an_identity(e: Evaluator) {
+        assert_eq!(e.to_string().parse(), Ok(e));
     }
 }

@@ -2,7 +2,6 @@ use std::time::{Duration, Instant};
 
 /// Tracks time towards a deadline.
 #[derive(Debug)]
-#[cfg_attr(test, derive(test_strategy::Arbitrary))]
 pub struct Timer {
     deadline: Option<Instant>,
 }
@@ -28,21 +27,20 @@ impl Timer {
 mod tests {
     use super::*;
     use std::thread::sleep;
-    use test_strategy::proptest;
 
-    #[proptest]
+    #[test]
     fn timer_measures_time_remaining() {
         let timer = Timer::new(Duration::from_secs(1));
         assert!(timer.remaining().is_some());
     }
 
-    #[proptest]
+    #[test]
     fn timer_does_not_elapse_before_duration_expires() {
         let timer = Timer::new(Duration::MAX);
         assert_eq!(timer.remaining(), Some(Duration::MAX));
     }
 
-    #[proptest]
+    #[test]
     fn timer_elapses_once_duration_expires() {
         let timer = Timer::new(Duration::ZERO);
         sleep(Duration::from_millis(1));
