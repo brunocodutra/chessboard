@@ -1,4 +1,4 @@
-use crate::util::Integer;
+use crate::{chess::Mirror, util::Integer};
 use cozy_chess as cc;
 use derive_more::Display;
 use std::ops::Not;
@@ -14,16 +14,10 @@ pub enum Color {
     Black,
 }
 
-unsafe impl Integer for Color {
+unsafe impl const Integer for Color {
     type Repr = u8;
-
     const MIN: Self::Repr = Color::White as _;
     const MAX: Self::Repr = Color::Black as _;
-
-    #[inline(always)]
-    fn repr(&self) -> Self::Repr {
-        *self as _
-    }
 }
 
 impl Not for Color {

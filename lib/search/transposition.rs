@@ -19,16 +19,10 @@ enum TranspositionKind {
     Exact,
 }
 
-unsafe impl Integer for TranspositionKind {
+unsafe impl const Integer for TranspositionKind {
     type Repr = u8;
-
     const MIN: Self::Repr = TranspositionKind::Lower as _;
     const MAX: Self::Repr = TranspositionKind::Exact as _;
-
-    #[inline(always)]
-    fn repr(&self) -> Self::Repr {
-        *self as _
-    }
 }
 
 impl Binary for TranspositionKind {
@@ -281,7 +275,7 @@ mod tests {
 
     #[proptest]
     fn table_size_is_exact_if_input_is_power_of_two(
-        #[strategy(TranspositionTable::WIDTH.trailing_zeros()..=HashSize::max().get().trailing_zeros())]
+        #[strategy(TranspositionTable::WIDTH.trailing_zeros()..=HashSize::upper().trailing_zeros())]
         bits: u32,
     ) {
         let s = HashSize::new(1 << bits);

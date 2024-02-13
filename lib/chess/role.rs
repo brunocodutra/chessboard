@@ -21,16 +21,10 @@ pub enum Role {
     King,
 }
 
-unsafe impl Integer for Role {
+unsafe impl const Integer for Role {
     type Repr = u8;
-
     const MIN: Self::Repr = Role::Pawn as _;
     const MAX: Self::Repr = Role::King as _;
-
-    #[inline(always)]
-    fn repr(&self) -> Self::Repr {
-        *self as _
-    }
 }
 
 #[doc(hidden)]

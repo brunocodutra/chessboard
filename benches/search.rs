@@ -1,15 +1,18 @@
 use criterion::{criterion_group, criterion_main, BatchSize, Criterion, Throughput};
 use lib::chess::Position;
 use lib::search::{Depth, Engine, Options, ThreadCount};
-use std::num::NonZeroUsize;
+use std::thread::available_parallelism;
 
 fn bench(c: &mut Criterion) {
     let positions: Vec<Position> = FENS.iter().map(|p| p.parse().unwrap()).collect();
-    let options = match NonZeroUsize::new(num_cpus::get() / 2) {
-        None => Options::default(),
-        Some(threads) => Options {
-            threads: ThreadCount::new(threads),
-            ..Options::default()
+    let options = match available_parallelism() {
+        Err(_) => Options::default(),
+        Ok(cores) => match cores.get() / 2 {
+            0 => Options::default(),
+            threads => Options {
+                threads: ThreadCount::new(threads),
+                ..Options::default()
+            },
         },
     };
 

@@ -1,19 +1,33 @@
-use crate::util::Assume;
-use derive_more::{Debug, Display, Error, Shl, Shr};
-use rayon::max_num_threads;
-use std::{cmp::Ordering, num::NonZeroUsize, str::FromStr};
-
-#[cfg(test)]
-use proptest::prelude::*;
+use crate::util::Integer;
+use derive_more::{Debug, Deref, Display, Error, Shl, Shr};
+use std::{cmp::Ordering, str::FromStr};
 
 /// The hash size in bytes.
-#[derive(Debug, Display, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Shl, Shr)]
+#[derive(Debug, Display, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Deref, Shl, Shr)]
 #[cfg_attr(test, derive(test_strategy::Arbitrary))]
 #[debug("HashSize({_0})")]
 #[display("{}", self.get() >> 20)]
+#[repr(transparent)]
 pub struct HashSize(#[cfg_attr(test, strategy(..=Self::MAX))] usize);
 
 impl HashSize {
+    /// Constructs hash size.
+    pub fn new(size: usize) -> Self {
+        debug_assert!((Self::MIN..=Self::MAX).contains(&size));
+        Self::from_repr(size)
+    }
+
+    /// Returns the raw hash size.
+    pub fn get(&self) -> usize {
+        self.repr()
+    }
+}
+
+unsafe impl const Integer for HashSize {
+    type Repr = usize;
+
+    const MIN: Self::Repr = 0;
+
     #[cfg(not(test))]
     const MAX: usize = match 1usize.checked_shl(45) {
         Some(h) => h,
@@ -22,31 +36,6 @@ impl HashSize {
 
     #[cfg(test)]
     const MAX: usize = 16 << 20;
-
-    /// The minimum allowed hash size.
-    pub fn min() -> Self {
-        HashSize(0)
-    }
-
-    /// The maximum allowed hash size.
-    pub fn max() -> Self {
-        HashSize(Self::MAX)
-    }
-
-    /// Constructs hash size.
-    ///
-    /// # Panics
-    ///
-    /// Panics if size is out of bounds.
-    pub fn new(size: usize) -> Self {
-        assert!((Self::min()..=Self::max()).contains(&size));
-        HashSize(size)
-    }
-
-    /// Returns the raw hash size.
-    pub fn get(&self) -> usize {
-        self.0
-    }
 }
 
 impl Default for HashSize {
@@ -82,8 +71,8 @@ impl PartialOrd<HashSize> for usize {
 #[derive(Debug, Display, Clone, Eq, PartialEq, Error)]
 #[display(
     "expected integer in the range `({}..={})`",
-    HashSize::min(),
-    HashSize::max()
+    HashSize::lower(),
+    HashSize::upper()
 )]
 pub struct ParseHashSizeError;
 
@@ -92,74 +81,64 @@ impl FromStr for HashSize {
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s.parse::<usize>().ok().and_then(|h| h.checked_shl(20)) {
-            Some(h) if (HashSize::min()..=HashSize::max()).contains(&h) => Ok(HashSize::new(h)),
+            Some(h) if (HashSize::MIN..=HashSize::MAX).contains(&h) => Ok(HashSize::new(h)),
             _ => Err(ParseHashSizeError),
         }
     }
 }
 
 /// The thread count.
-#[derive(Debug, Display, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
+#[derive(Debug, Display, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Deref)]
 #[cfg_attr(test, derive(test_strategy::Arbitrary))]
 #[debug("ThreadCount({_0})")]
 #[display("{_0}")]
-pub struct ThreadCount(
-    #[cfg_attr(test, strategy((1..=4usize).prop_filter_map("zero", NonZeroUsize::new)))]
-    NonZeroUsize,
-);
+#[repr(transparent)]
+pub struct ThreadCount(#[cfg_attr(test, strategy((1..=4usize)))] usize);
 
 impl ThreadCount {
-    /// The minimum allowed thread count.
-    pub fn min() -> Self {
-        ThreadCount(NonZeroUsize::MIN)
-    }
-
-    /// The maximum allowed thread count.
-    pub fn max() -> Self {
-        ThreadCount(NonZeroUsize::new(max_num_threads()).assume())
-    }
-
     /// Constructs hash size.
-    ///
-    /// # Panics
-    ///
-    /// Panics if count is out of bounds.
-    pub fn new(count: NonZeroUsize) -> Self {
-        assert!((Self::min()..=Self::max()).contains(&count));
-        ThreadCount(count)
+    pub fn new(count: usize) -> Self {
+        debug_assert!((Self::MIN..=Self::MAX).contains(&count));
+        Self::from_repr(count)
     }
 
     /// Returns the raw thread count.
     pub fn get(&self) -> usize {
-        self.0.get()
+        self.repr()
     }
+}
+
+unsafe impl const Integer for ThreadCount {
+    type Repr = usize;
+    const MIN: Self::Repr = 1;
+    const MAX: Self::Repr = 1 << 16;
 }
 
 impl Default for ThreadCount {
     fn default() -> Self {
-        ThreadCount::new(NonZeroUsize::new(1).assume())
+        Self::new(1)
     }
 }
 
-impl PartialEq<NonZeroUsize> for ThreadCount {
-    fn eq(&self, other: &NonZeroUsize) -> bool {
+impl PartialEq<usize> for ThreadCount {
+    fn eq(&self, other: &usize) -> bool {
         self.0.eq(other)
     }
 }
 
-impl PartialOrd<NonZeroUsize> for ThreadCount {
-    fn partial_cmp(&self, other: &NonZeroUsize) -> Option<Ordering> {
+impl PartialOrd<usize> for ThreadCount {
+    fn partial_cmp(&self, other: &usize) -> Option<Ordering> {
         self.0.partial_cmp(other)
     }
 }
 
-impl PartialEq<ThreadCount> for NonZeroUsize {
+impl PartialEq<ThreadCount> for usize {
     fn eq(&self, other: &ThreadCount) -> bool {
         self.eq(&other.0)
     }
 }
 
-impl PartialOrd<ThreadCount> for NonZeroUsize {
+impl PartialOrd<ThreadCount> for usize {
     fn partial_cmp(&self, other: &ThreadCount) -> Option<Ordering> {
         self.partial_cmp(&other.0)
     }
@@ -169,8 +148,8 @@ impl PartialOrd<ThreadCount> for NonZeroUsize {
 #[derive(Debug, Display, Clone, Eq, PartialEq, Error)]
 #[display(
     "expected integer in the range `({}..={})`",
-    ThreadCount::min(),
-    ThreadCount::max()
+    ThreadCount::lower(),
+    ThreadCount::upper()
 )]
 pub struct ParseThreadCountError;
 
@@ -178,11 +157,8 @@ impl FromStr for ThreadCount {
     type Err = ParseThreadCountError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s.parse::<NonZeroUsize>() {
-            Ok(t) if (ThreadCount::min()..=ThreadCount::max()).contains(&t) => {
-                Ok(ThreadCount::new(t))
-            }
-
+        match s.parse::<usize>() {
+            Ok(t) if (ThreadCount::MIN..=ThreadCount::MAX).contains(&t) => Ok(ThreadCount::new(t)),
             _ => Err(ParseThreadCountError),
         }
     }
@@ -209,12 +185,14 @@ mod tests {
 
     #[proptest]
     fn hash_size_is_smaller_than_max(h: HashSize) {
-        assert!(HashSize::default() <= HashSize::max());
-        assert!(h <= HashSize::max());
+        assert!(HashSize::default() <= HashSize::MAX);
+        assert!(h <= HashSize::MAX);
     }
 
     #[proptest]
-    fn hash_size_constructs_if_size_not_too_large(#[strategy(..=HashSize::MAX)] n: usize) {
+    fn hash_size_constructs_if_size_not_too_large(
+        #[strategy(HashSize::MIN..=HashSize::MAX)] n: usize,
+    ) {
         assert_eq!(HashSize::new(n), n);
     }
 
@@ -243,24 +221,20 @@ mod tests {
 
     #[proptest]
     fn thread_count_is_smaller_than_max(t: ThreadCount) {
-        assert!(ThreadCount::default() <= ThreadCount::max());
-        assert!(t <= ThreadCount::max());
+        assert!(ThreadCount::default() <= ThreadCount::MAX);
+        assert!(t <= ThreadCount::MAX);
     }
 
     #[proptest]
     fn thread_count_constructs_if_count_not_too_large(
-        #[strategy((..=max_num_threads()).prop_filter_map("zero", NonZeroUsize::new))]
-        n: NonZeroUsize,
+        #[strategy((ThreadCount::MIN..=ThreadCount::MAX))] n: usize,
     ) {
         assert_eq!(ThreadCount::new(n), n);
     }
 
     #[proptest]
     #[should_panic]
-    fn thread_count_panics_if_count_too_large(
-        #[strategy((max_num_threads() + 1..).prop_filter_map("zero", NonZeroUsize::new))]
-        n: NonZeroUsize,
-    ) {
+    fn thread_count_panics_if_count_too_large(#[strategy((ThreadCount::MAX + 1..))] n: usize) {
         ThreadCount::new(n);
     }
 
@@ -271,7 +245,7 @@ mod tests {
 
     #[proptest]
     fn parsing_thread_count_fails_for_numbers_too_large(
-        #[strategy(max_num_threads() + 1..)] n: usize,
+        #[strategy(ThreadCount::MAX + 1..)] n: usize,
     ) {
         assert_eq!(
             n.to_string().parse::<ThreadCount>(),
@@ -281,7 +255,7 @@ mod tests {
 
     #[proptest]
     fn parsing_thread_count_fails_for_invalid_number(
-        #[filter(#s.parse::<NonZeroUsize>().is_err())] s: String,
+        #[filter(#s.parse::<usize>().is_err())] s: String,
     ) {
         assert_eq!(
             s.to_string().parse::<ThreadCount>(),

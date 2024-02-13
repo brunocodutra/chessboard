@@ -26,16 +26,10 @@ pub enum Rank {
     Eighth,
 }
 
-unsafe impl Integer for Rank {
+unsafe impl const Integer for Rank {
     type Repr = u8;
-
     const MIN: Self::Repr = Rank::First as _;
     const MAX: Self::Repr = Rank::Eighth as _;
-
-    #[inline(always)]
-    fn repr(&self) -> Self::Repr {
-        *self as _
-    }
 }
 
 impl Sub for Rank {

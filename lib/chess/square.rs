@@ -22,39 +22,33 @@ pub enum Square {
 impl Square {
     /// Constructs [`Square`] from a pair of [`File`] and [`Rank`].
     #[inline(always)]
-    pub fn new(f: File, r: Rank) -> Self {
+    pub const fn new(f: File, r: Rank) -> Self {
         Self::from_repr(f.repr() + r.repr() * 8)
     }
 
     /// This square's [`File`].
     #[inline(always)]
-    pub fn file(&self) -> File {
+    pub const fn file(&self) -> File {
         File::from_repr(self.repr() % 8)
     }
 
     /// This square's [`Rank`].
     #[inline(always)]
-    pub fn rank(&self) -> Rank {
+    pub const fn rank(&self) -> Rank {
         Rank::from_repr(self.repr() / 8)
     }
 
     /// Mirrors this square's [`Rank`].
     #[inline(always)]
-    pub fn flip(&self) -> Self {
+    pub const fn flip(&self) -> Self {
         Self::from_repr(self.repr() ^ Square::A8.repr())
     }
 }
 
-unsafe impl Integer for Square {
+unsafe impl const Integer for Square {
     type Repr = u8;
-
     const MIN: Self::Repr = Square::A1 as _;
     const MAX: Self::Repr = Square::H8 as _;
-
-    #[inline(always)]
-    fn repr(&self) -> Self::Repr {
-        *self as _
-    }
 }
 
 impl fmt::Display for Square {
@@ -105,6 +99,7 @@ impl From<Square> for cc::Square {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::chess::Mirror;
     use std::mem::size_of;
     use test_strategy::proptest;
 

@@ -1,4 +1,10 @@
-#![feature(array_chunks, stdarch_x86_mm_shuffle)]
+#![feature(
+    array_chunks,
+    const_refs_to_cell,
+    const_trait_impl,
+    effects,
+    stdarch_x86_mm_shuffle
+)]
 
 /// Chess domain types.
 pub mod chess;
