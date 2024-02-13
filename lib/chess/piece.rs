@@ -23,39 +23,33 @@ pub enum Piece {
 impl Piece {
     /// Constructs [`Piece`] from a pair of [`Color`] and [`Role`].
     #[inline(always)]
-    pub fn new(r: Role, c: Color) -> Self {
+    pub const fn new(r: Role, c: Color) -> Self {
         Self::from_repr(r.repr() * 2 + c.repr())
     }
 
     /// This piece's [`Role`].
     #[inline(always)]
-    pub fn role(&self) -> Role {
+    pub const fn role(&self) -> Role {
         Role::from_repr(self.repr() / 2)
     }
 
     /// This piece's [`Color`].
     #[inline(always)]
-    pub fn color(&self) -> Color {
+    pub const fn color(&self) -> Color {
         Color::from_repr(self.repr() % 2)
     }
 
     /// Mirrors this piece's [`Color`].
     #[inline(always)]
-    pub fn flip(&self) -> Self {
+    pub const fn flip(&self) -> Self {
         Self::from_repr(self.repr() ^ Piece::BlackPawn.repr())
     }
 }
 
-unsafe impl Integer for Piece {
+unsafe impl const Integer for Piece {
     type Repr = u8;
-
     const MIN: Self::Repr = Piece::WhitePawn as _;
     const MAX: Self::Repr = Piece::BlackKing as _;
-
-    #[inline(always)]
-    fn repr(&self) -> Self::Repr {
-        *self as _
-    }
 }
 
 #[cfg(test)]

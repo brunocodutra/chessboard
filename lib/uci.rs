@@ -1,6 +1,7 @@
 use crate::chess::{Color, Move, Position};
+use crate::nnue::Evaluator;
 use crate::search::{Depth, Engine, HashSize, Limits, Options, Score, ThreadCount};
-use crate::{nnue::Evaluator, util::Assume};
+use crate::util::{Assume, Integer};
 use arrayvec::ArrayString;
 use derive_more::{Deref, Display};
 use std::fmt::Write as _;
@@ -250,16 +251,16 @@ impl Uci {
                     out,
                     "option name Hash type spin default {} min {} max {}",
                     HashSize::default(),
-                    HashSize::min(),
-                    HashSize::max()
+                    HashSize::lower(),
+                    HashSize::upper()
                 )?;
 
                 writeln!(
                     out,
                     "option name Threads type spin default {} min {} max {}",
                     ThreadCount::default(),
-                    ThreadCount::min(),
-                    ThreadCount::max()
+                    ThreadCount::lower(),
+                    ThreadCount::upper()
                 )?;
 
                 writeln!(out, "uciok")?;
@@ -279,7 +280,8 @@ impl Uci {
                 Ok(true)
             }
 
-            ["setoption", "name", "Hash", "value", hash] => {
+            ["setoption", "name", "hash", "value", hash]
+            | ["setoption", "name", "Hash", "value", hash] => {
                 match hash.parse::<HashSize>() {
                     Err(e) => eprintln!("{e}"),
                     Ok(h) => {
@@ -293,7 +295,8 @@ impl Uci {
                 Ok(true)
             }
 
-            ["setoption", "name", "Threads", "value", threads] => {
+            ["setoption", "name", "threads", "value", threads]
+            | ["setoption", "name", "Threads", "value", threads] => {
                 match threads.parse::<ThreadCount>() {
                     Err(e) => eprintln!("{e}"),
                     Ok(t) => {

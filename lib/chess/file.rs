@@ -26,16 +26,10 @@ pub enum File {
     H,
 }
 
-unsafe impl Integer for File {
+unsafe impl const Integer for File {
     type Repr = u8;
-
     const MIN: Self::Repr = File::A as _;
     const MAX: Self::Repr = File::H as _;
-
-    #[inline(always)]
-    fn repr(&self) -> Self::Repr {
-        *self as _
-    }
 }
 
 impl Sub for File {

@@ -1,6 +1,7 @@
 mod bitboard;
 mod color;
 mod file;
+mod mirror;
 mod r#move;
 mod outcome;
 mod piece;
@@ -12,6 +13,7 @@ mod square;
 pub use bitboard::*;
 pub use color::*;
 pub use file::*;
+pub use mirror::*;
 pub use outcome::*;
 pub use piece::*;
 pub use position::*;

@@ -93,6 +93,7 @@ impl<T: Integer> Saturating<T> {
     /// Constructs `Self` from the raw integer.
     #[inline(always)]
     pub fn new(i: T::Repr) -> Self {
+        debug_assert!((Self::MIN..=Self::MAX).contains(&i));
         Self::from_repr(i)
     }
 
@@ -117,16 +118,10 @@ impl<T: Integer> Saturating<T> {
     }
 }
 
-unsafe impl<T: Integer> Integer for Saturating<T> {
+unsafe impl<T: Integer> const Integer for Saturating<T> {
     type Repr = T::Repr;
-
     const MIN: Self::Repr = T::MIN;
     const MAX: Self::Repr = T::MAX;
-
-    #[inline(always)]
-    fn repr(&self) -> Self::Repr {
-        self.0.repr()
-    }
 }
 
 impl<T: Integer> Eq for Saturating<T> where Self: PartialEq<Self> {}
@@ -335,22 +330,18 @@ mod tests {
 
     #[derive(Debug, Default, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
     #[cfg_attr(test, derive(test_strategy::Arbitrary))]
-    struct Asymmetric(#[cfg_attr(test, strategy(Self::RANGE))] <Self as Integer>::Repr);
+    #[repr(transparent)]
+    struct Asymmetric(#[cfg_attr(test, strategy(Self::MIN..=Self::MAX))] <Self as Integer>::Repr);
 
     unsafe impl Integer for Asymmetric {
         type Repr = i8;
 
         const MIN: Self::Repr = -89;
         const MAX: Self::Repr = 111;
-
-        #[inline(always)]
-        fn repr(&self) -> Self::Repr {
-            self.0
-        }
     }
 
     #[proptest]
-    fn new_accepts_integers_within_bounds(#[strategy(Asymmetric::RANGE)] i: i8) {
+    fn new_accepts_integers_within_bounds(#[strategy(Asymmetric::MIN..=Asymmetric::MAX)] i: i8) {
         assert_eq!(Saturating::<Asymmetric>::new(i).get(), i);
     }
 
@@ -372,7 +363,9 @@ mod tests {
     }
 
     #[proptest]
-    fn saturate_preserves_integers_within_bounds(#[strategy(Asymmetric::RANGE)] i: i8) {
+    fn saturate_preserves_integers_within_bounds(
+        #[strategy(Asymmetric::MIN..=Asymmetric::MAX)] i: i8,
+    ) {
         assert_eq!(
             Saturating::<Asymmetric>::saturate(i),
             Saturating::<Asymmetric>::new(i)

@@ -3,9 +3,9 @@ use crate::util::{Binary, Bits, Integer, Saturating};
 #[derive(Debug, Default, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
 #[cfg_attr(test, derive(test_strategy::Arbitrary))]
 #[repr(transparent)]
-pub struct DepthRepr(#[cfg_attr(test, strategy(Self::RANGE))] <Self as Integer>::Repr);
+pub struct DepthRepr(#[cfg_attr(test, strategy(Self::MIN..=Self::MAX))] <Self as Integer>::Repr);
 
-unsafe impl Integer for DepthRepr {
+unsafe impl const Integer for DepthRepr {
     type Repr = i8;
 
     const MIN: Self::Repr = 0;
@@ -15,11 +15,6 @@ unsafe impl Integer for DepthRepr {
 
     #[cfg(test)]
     const MAX: Self::Repr = 3;
-
-    #[inline(always)]
-    fn repr(&self) -> Self::Repr {
-        self.0
-    }
 }
 
 /// The search depth.

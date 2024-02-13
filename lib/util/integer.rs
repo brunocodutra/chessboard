@@ -1,15 +1,14 @@
-use crate::util::Assume;
 use num_traits::PrimInt;
-use std::ops::RangeInclusive;
-use std::{iter::FusedIterator, mem::transmute};
+use std::{iter::Map, mem::transmute_copy, ops::RangeInclusive};
 
-/// Trait for types that can be represented by a contiguous range of integers.
+/// Trait for types that can be represented by a contiguous range of primitive integers.
 ///
 /// # Safety
 ///
-/// Must only be implemented for types that can be transmuted from [`Integer::Repr`].
+/// Must only be implemented for types that can be safely transmuted to and from [`Integer::Repr`].
+#[const_trait]
 pub unsafe trait Integer: Copy {
-    /// The equivalent integer type.
+    /// The equivalent primitive integer type.
     type Repr: PrimInt;
 
     /// The minimum repr.
@@ -17,28 +16,6 @@ pub unsafe trait Integer: Copy {
 
     /// The maximum repr.
     const MAX: Self::Repr;
-
-    /// The repr range.
-    const RANGE: RangeInclusive<Self::Repr> = Self::MIN..=Self::MAX;
-
-    /// Casts to [`Integer::Repr`].
-    fn repr(&self) -> Self::Repr;
-
-    /// Casts from [`Integer::Repr`], or returns `None` if out of range.
-    #[inline(always)]
-    fn try_from_repr(i: Self::Repr) -> Option<Self> {
-        if Self::RANGE.contains(&i) {
-            Some(unsafe { *transmute::<_, &Self>(&i) })
-        } else {
-            None
-        }
-    }
-
-    /// Casts from [`Integer::Repr`].
-    #[inline(always)]
-    fn from_repr(i: Self::Repr) -> Self {
-        Self::try_from_repr(i).assume()
-    }
 
     /// The minimum value.
     #[inline(always)]
@@ -52,20 +29,25 @@ pub unsafe trait Integer: Copy {
         Self::from_repr(Self::MAX)
     }
 
-    /// An iterator over all values in the range [`Integer::MIN`]..=[`Integer::MAX`].
-    #[inline(always)]
-    fn iter() -> impl DoubleEndedIterator<Item = Self> + ExactSizeIterator + FusedIterator
-    where
-        RangeInclusive<Self::Repr>:
-            DoubleEndedIterator<Item = Self::Repr> + ExactSizeIterator + FusedIterator,
-    {
-        Self::RANGE.map(Self::from_repr)
+    /// Casts to [`Integer::Repr`].
+    fn repr(&self) -> Self::Repr {
+        unsafe { transmute_copy(self) }
     }
 
-    /// This value's mirror.
+    /// Casts from [`Integer::Repr`].
     #[inline(always)]
-    fn mirror(&self) -> Self {
-        Self::from_repr(Self::MAX - self.repr() + Self::MIN)
+    fn from_repr(i: Self::Repr) -> Self {
+        unsafe { transmute_copy(&i) }
+    }
+
+    /// An iterator over all values in the range [`Integer::MIN`]..=[`Integer::MAX`].
+    #[inline(always)]
+    #[allow(clippy::type_complexity)]
+    fn iter() -> Map<RangeInclusive<Self::Repr>, fn(Self::Repr) -> Self>
+    where
+        RangeInclusive<Self::Repr>: Iterator<Item = Self::Repr>,
+    {
+        (Self::MIN..=Self::MAX).map(Self::from_repr)
     }
 }
 
@@ -88,15 +70,10 @@ mod tests {
         Nine,
     }
 
-    unsafe impl Integer for Digit {
+    unsafe impl const Integer for Digit {
         type Repr = u16;
-
         const MIN: Self::Repr = Digit::One as _;
         const MAX: Self::Repr = Digit::Nine as _;
-
-        fn repr(&self) -> Self::Repr {
-            *self as _
-        }
     }
 
     #[proptest]
@@ -111,13 +88,6 @@ mod tests {
     }
 
     #[proptest]
-    #[should_panic]
-
-    fn from_repr_panics_if_integer_out_of_range(#[filter(!(1u16..10).contains(&#i))] i: u16) {
-        Digit::from_repr(i);
-    }
-
-    #[proptest]
     fn is_ordered_by_repr(a: Digit, b: Digit) {
         assert_eq!(a < b, a.repr() < b.repr());
     }
@@ -125,7 +95,7 @@ mod tests {
     #[proptest]
     fn can_be_iterated_in_order() {
         assert_eq!(
-            Digit::iter().collect::<Vec<_>>(),
+            Vec::from_iter(Digit::iter()),
             vec![
                 Digit::One,
                 Digit::Two,
@@ -138,10 +108,5 @@ mod tests {
                 Digit::Nine,
             ],
         );
-    }
-
-    #[proptest]
-    fn has_a_mirror(d: Digit) {
-        assert_ne!(Some(d.mirror()), Digit::iter().rev().nth(d as _));
     }
 }
