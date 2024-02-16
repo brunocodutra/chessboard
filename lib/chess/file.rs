@@ -1,4 +1,4 @@
-use crate::util::Integer;
+use crate::{chess::Mirror, util::Integer};
 use cozy_chess as cc;
 use derive_more::Display;
 use std::ops::Sub;
@@ -30,6 +30,13 @@ unsafe impl const Integer for File {
     type Repr = u8;
     const MIN: Self::Repr = File::A as _;
     const MAX: Self::Repr = File::H as _;
+}
+
+impl const Mirror for File {
+    #[inline(always)]
+    fn mirror(&self) -> Self {
+        File::from_repr(Self::MAX - self.repr())
+    }
 }
 
 impl Sub for File {
@@ -69,7 +76,12 @@ mod tests {
     }
 
     #[proptest]
-    fn subtracting_files_gives_distance(a: File, b: File) {
+    fn mirroring_file_returns_complement(f: File) {
+        assert_eq!(f.mirror().repr(), File::MAX - f.repr());
+    }
+
+    #[proptest]
+    fn subtracting_files_returns_distance(a: File, b: File) {
         assert_eq!(a - b, a as i8 - b as i8);
     }
 

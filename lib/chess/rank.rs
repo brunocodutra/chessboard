@@ -1,4 +1,4 @@
-use crate::util::Integer;
+use crate::{chess::Mirror, util::Integer};
 use cozy_chess as cc;
 use derive_more::Display;
 use std::ops::Sub;
@@ -30,6 +30,13 @@ unsafe impl const Integer for Rank {
     type Repr = u8;
     const MIN: Self::Repr = Rank::First as _;
     const MAX: Self::Repr = Rank::Eighth as _;
+}
+
+impl const Mirror for Rank {
+    #[inline(always)]
+    fn mirror(&self) -> Self {
+        Rank::from_repr(self.repr() ^ Self::Eighth.repr())
+    }
 }
 
 impl Sub for Rank {
@@ -69,7 +76,12 @@ mod tests {
     }
 
     #[proptest]
-    fn subtracting_ranks_gives_distance(a: Rank, b: Rank) {
+    fn mirroring_rank_returns_complement(r: Rank) {
+        assert_eq!(r.mirror().repr(), Rank::MAX - r.repr());
+    }
+
+    #[proptest]
+    fn subtracting_ranks_returns_distance(a: Rank, b: Rank) {
         assert_eq!(a - b, a as i8 - b as i8);
     }
 

@@ -1,4 +1,4 @@
-use crate::chess::{File, Rank};
+use crate::chess::{File, Mirror, Rank};
 use crate::util::{Binary, Bits, Integer};
 use cozy_chess as cc;
 use std::{fmt, ops::Sub};
@@ -51,6 +51,14 @@ unsafe impl const Integer for Square {
     const MAX: Self::Repr = Square::H8 as _;
 }
 
+impl const Mirror for Square {
+    /// Mirrors this square's [`File`] and [`Rank`].
+    #[inline(always)]
+    fn mirror(&self) -> Self {
+        Square::from_repr(self.repr() ^ Square::H8.repr())
+    }
+}
+
 impl fmt::Display for Square {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}{}", self.file(), self.rank())
@@ -99,7 +107,6 @@ impl From<Square> for cc::Square {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::chess::Mirror;
     use std::mem::size_of;
     use test_strategy::proptest;
 
@@ -119,12 +126,20 @@ mod tests {
     }
 
     #[proptest]
+    fn mirroring_square_mirrors_its_file_and_rank(s: Square) {
+        assert_eq!(
+            s.mirror(),
+            Square::new(s.file().mirror(), s.rank().mirror())
+        );
+    }
+
+    #[proptest]
     fn flipping_square_mirrors_its_rank(s: Square) {
         assert_eq!(s.flip(), Square::new(s.file(), s.rank().mirror()));
     }
 
     #[proptest]
-    fn subtracting_squares_gives_distance(a: Square, b: Square) {
+    fn subtracting_squares_returns_distance(a: Square, b: Square) {
         assert_eq!(a - b, a as i8 - b as i8);
     }
 
