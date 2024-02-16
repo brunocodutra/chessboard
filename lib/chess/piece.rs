@@ -1,4 +1,4 @@
-use crate::chess::{Color, Role};
+use crate::chess::{Color, Perspective, Role};
 use crate::util::Integer;
 
 /// A chess [piece][`Role`] of a certain [`Color`].
@@ -38,18 +38,20 @@ impl Piece {
     pub const fn color(&self) -> Color {
         Color::from_repr(self.repr() % 2)
     }
-
-    /// Mirrors this piece's [`Color`].
-    #[inline(always)]
-    pub const fn flip(&self) -> Self {
-        Self::from_repr(self.repr() ^ Piece::BlackPawn.repr())
-    }
 }
 
 unsafe impl const Integer for Piece {
     type Repr = u8;
     const MIN: Self::Repr = Piece::WhitePawn as _;
     const MAX: Self::Repr = Piece::BlackKing as _;
+}
+
+impl const Perspective for Piece {
+    /// Mirrors this piece's [`Color`].
+    #[inline(always)]
+    fn flip(&self) -> Self {
+        Self::from_repr(self.repr() ^ Piece::BlackPawn.repr())
+    }
 }
 
 #[cfg(test)]
@@ -74,7 +76,7 @@ mod tests {
     }
 
     #[proptest]
-    fn piece_has_a_mirror_of_the_same_role_and_opposite_color(p: Piece) {
+    fn flipping_piece_preserves_role_and_mirrors_color(p: Piece) {
         assert_eq!(p.flip().role(), p.role());
         assert_eq!(p.flip().color(), !p.color());
     }

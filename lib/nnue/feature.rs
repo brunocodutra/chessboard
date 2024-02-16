@@ -1,4 +1,4 @@
-use crate::chess::{Color, Piece, Square};
+use crate::chess::{Color, Perspective, Piece, Square};
 use crate::util::Integer;
 
 /// The HalfKAv2 feature.
@@ -7,21 +7,18 @@ use crate::util::Integer;
 pub struct Feature(pub Square, pub Piece, pub Square);
 
 impl Feature {
-    /// Flips this feature's perspective.
-    #[inline(always)]
-    pub fn flip(&self) -> Self {
-        Feature(self.0.flip(), self.1.flip(), self.2.flip())
-    }
-
     /// Feature's index for the given perspective.
     #[inline(always)]
     pub fn index(&self, side: Color) -> u16 {
-        let Feature(ks, p, s) = match side {
-            Color::White => *self,
-            Color::Black => self.flip(),
-        };
-
+        let Feature(ks, p, s) = self.perspective(side);
         s as u16 + 64 * (p.repr().min(10) as u16 + 11 * ks as u16)
+    }
+}
+
+impl const Perspective for Feature {
+    #[inline(always)]
+    fn flip(&self) -> Self {
+        Feature(self.0.flip(), self.1.flip(), self.2.flip())
     }
 }
 

@@ -1,4 +1,5 @@
-use crate::{chess::Mirror, util::Integer};
+use crate::chess::{Mirror, Perspective};
+use crate::util::Integer;
 use cozy_chess as cc;
 use derive_more::Display;
 use std::ops::Sub;
@@ -36,6 +37,14 @@ impl const Mirror for Rank {
     #[inline(always)]
     fn mirror(&self) -> Self {
         Rank::from_repr(self.repr() ^ Self::Eighth.repr())
+    }
+}
+
+impl const Perspective for Rank {
+    /// Mirrors this rank.
+    #[inline(always)]
+    fn flip(&self) -> Self {
+        self.mirror()
     }
 }
 
@@ -83,6 +92,11 @@ mod tests {
     #[proptest]
     fn subtracting_ranks_returns_distance(a: Rank, b: Rank) {
         assert_eq!(a - b, a as i8 - b as i8);
+    }
+
+    #[proptest]
+    fn flipping_rank_produces_its_mirror(r: Rank) {
+        assert_eq!(r.flip(), r.mirror());
     }
 
     #[proptest]

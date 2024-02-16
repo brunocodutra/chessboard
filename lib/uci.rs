@@ -1,4 +1,4 @@
-use crate::chess::{Color, Move, Position};
+use crate::chess::{Color, Move, Perspective, Position};
 use crate::nnue::Evaluator;
 use crate::search::{Depth, Engine, HashSize, Limits, Options, Score, ThreadCount};
 use crate::util::{Assume, Integer};
@@ -220,24 +220,15 @@ impl Uci {
             }
 
             ["eval"] => {
+                let turn = self.position.turn();
                 let pos = Evaluator::new(self.position.clone());
-                let [material, positional, value]: [Score; 3] = match pos.turn() {
-                    Color::White => [
-                        pos.material().evaluate().cast(),
-                        pos.positional().evaluate().cast(),
-                        pos.evaluate().cast(),
-                    ],
-
-                    Color::Black => [
-                        -pos.material().evaluate().cast(),
-                        -pos.positional().evaluate().cast(),
-                        -pos.evaluate().cast(),
-                    ],
-                };
+                let material: Score = pos.material().evaluate().perspective(turn).cast();
+                let positional: Score = pos.positional().evaluate().perspective(turn).cast();
+                let evaluation: Score = pos.evaluate().perspective(turn).cast();
 
                 writeln!(
                     out,
-                    "info material {material} positional {positional} value {value}"
+                    "info material {material} positional {positional} value {evaluation}"
                 )?;
 
                 Ok(true)

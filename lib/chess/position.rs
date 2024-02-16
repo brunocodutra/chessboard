@@ -1,4 +1,4 @@
-use crate::chess::{Bitboard, Color, File, Move, Outcome, Piece, Rank, Role, Square};
+use crate::chess::*;
 use crate::util::{Assume, Bits, Buffer, Integer};
 use cozy_chess as cc;
 use derive_more::{Debug, Display, Error};
@@ -117,10 +117,9 @@ impl Position {
     /// The en passant square.
     #[inline(always)]
     pub fn en_passant(&self) -> Option<Square> {
-        self.board.en_passant().map(|f| match self.turn() {
-            Color::White => Square::new(f.into(), Rank::Sixth),
-            Color::Black => Square::new(f.into(), Rank::Third),
-        })
+        self.board
+            .en_passant()
+            .map(|f| Square::new(f.into(), Rank::Sixth).perspective(self.turn()))
     }
 
     /// This position's [zobrist hash].
