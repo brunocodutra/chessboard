@@ -20,6 +20,16 @@ unsafe impl const Integer for Color {
     const MAX: Self::Repr = Color::Black as _;
 }
 
+impl const Mirror for Color {
+    #[inline(always)]
+    fn mirror(&self) -> Self {
+        match *self {
+            Color::White => Color::Black,
+            Color::Black => Color::White,
+        }
+    }
+}
+
 impl Not for Color {
     type Output = Self;
 
