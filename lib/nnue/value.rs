@@ -1,3 +1,4 @@
+use crate::chess::Perspective;
 use crate::util::{Integer, Saturating};
 
 #[derive(Debug, Default, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
@@ -13,3 +14,10 @@ unsafe impl const Integer for ValueRepr {
 
 /// A position's static evaluation.
 pub type Value = Saturating<ValueRepr>;
+
+impl const Perspective for Value {
+    #[inline(always)]
+    fn flip(&self) -> Self {
+        Saturating::from_repr(-self.repr())
+    }
+}

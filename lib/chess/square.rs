@@ -1,4 +1,4 @@
-use crate::chess::{File, Mirror, Rank};
+use crate::chess::{File, Mirror, Perspective, Rank};
 use crate::util::{Binary, Bits, Integer};
 use cozy_chess as cc;
 use std::{fmt, ops::Sub};
@@ -37,12 +37,6 @@ impl Square {
     pub const fn rank(&self) -> Rank {
         Rank::from_repr(self.repr() / 8)
     }
-
-    /// Mirrors this square's [`Rank`].
-    #[inline(always)]
-    pub const fn flip(&self) -> Self {
-        Self::from_repr(self.repr() ^ Square::A8.repr())
-    }
 }
 
 unsafe impl const Integer for Square {
@@ -56,6 +50,14 @@ impl const Mirror for Square {
     #[inline(always)]
     fn mirror(&self) -> Self {
         Square::from_repr(self.repr() ^ Square::H8.repr())
+    }
+}
+
+impl const Perspective for Square {
+    /// Flips this square's [`Rank`].
+    #[inline(always)]
+    fn flip(&self) -> Self {
+        Self::from_repr(self.repr() ^ Square::A8.repr())
     }
 }
 
@@ -134,8 +136,8 @@ mod tests {
     }
 
     #[proptest]
-    fn flipping_square_mirrors_its_rank(s: Square) {
-        assert_eq!(s.flip(), Square::new(s.file(), s.rank().mirror()));
+    fn flipping_square_preserves_file_and_flips_rank(s: Square) {
+        assert_eq!(s.flip(), Square::new(s.file(), s.rank().flip()));
     }
 
     #[proptest]

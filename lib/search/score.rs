@@ -1,5 +1,5 @@
-use crate::search::Ply;
 use crate::util::{Binary, Bits, Integer, Saturating};
+use crate::{chess::Perspective, search::Ply};
 use std::fmt;
 
 #[derive(Debug, Default, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
@@ -39,6 +39,13 @@ impl Score {
         } else {
             *self
         }
+    }
+}
+
+impl const Perspective for Score {
+    #[inline(always)]
+    fn flip(&self) -> Self {
+        Saturating::from_repr(-self.repr())
     }
 }
 
