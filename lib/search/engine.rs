@@ -389,7 +389,7 @@ impl Engine {
 mod tests {
     use super::*;
     use proptest::{prop_assume, sample::Selector};
-    use std::time::{Duration, Instant};
+    use std::time::Instant;
     use test_strategy::proptest;
 
     fn negamax(pos: &Evaluator, depth: Depth, ply: Ply) -> Score {

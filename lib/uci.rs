@@ -334,7 +334,6 @@ impl Uci {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::chess::Move;
     use proptest::sample::Selector;
     use std::str;
     use test_strategy::proptest;

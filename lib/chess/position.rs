@@ -485,7 +485,6 @@ impl FromStr for Position {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use proptest::sample::Selector;
     use std::{cmp::Reverse, fmt::Debug};
     use test_strategy::proptest;
 
