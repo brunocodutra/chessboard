@@ -70,7 +70,6 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::nnue::Layer;
     use proptest::sample::size_range;
     use test_strategy::proptest;
 
