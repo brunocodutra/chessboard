@@ -33,13 +33,6 @@ impl Move {
         Move(NonZeroU16::new(bits.get()).assume())
     }
 
-    /// Constructs a capture move.
-    #[inline(always)]
-    pub fn capture(whence: Square, whither: Square, promotion: Option<Role>) -> Self {
-        let bits = Self::regular(whence, whither, promotion).bits(..);
-        Move(NonZeroU16::new(bits.get() | 0b0000000000000100).assume())
-    }
-
     /// Constructs a regular move.
     #[inline(always)]
     pub fn regular(whence: Square, whither: Square, promotion: Option<Role>) -> Self {
@@ -56,6 +49,14 @@ impl Move {
         }
 
         Move(NonZeroU16::new(bits.get()).assume())
+    }
+
+    /// Constructs a capture move.
+    #[inline(always)]
+    pub fn capture(whence: Square, whither: Square, promotion: Option<Role>) -> Self {
+        let mut m = Self::regular(whence, whither, promotion);
+        m.0 |= 0b100;
+        m
     }
 
     /// The source [`Square`].
@@ -83,31 +84,31 @@ impl Move {
     /// Whether this is a castling move.
     #[inline(always)]
     pub fn is_castling(&self) -> bool {
-        self.bits(..4).get() == 0b0001
+        self.bits(..4) == Bits::new(0b0001)
     }
 
     /// Whether this is an en passant capture move.
     #[inline(always)]
     pub fn is_en_passant(&self) -> bool {
-        self.bits(..4).get() == 0b0110
+        self.bits(..4) == Bits::new(0b0110)
     }
 
     /// Whether this is a capture move.
     #[inline(always)]
     pub fn is_capture(&self) -> bool {
-        self.bits(2..=2).get() != 0
+        self.bits(2..=2) != Bits::new(0)
     }
 
     /// Whether this is a promotion move.
     #[inline(always)]
     pub fn is_promotion(&self) -> bool {
-        self.bits(3..=3).get() != 0
+        self.bits(3..=3) != Bits::new(0)
     }
 
     /// Whether this move is neither a capture nor a promotion.
     #[inline(always)]
     pub fn is_quiet(&self) -> bool {
-        self.bits(2..=3).get() == 0
+        self.bits(2..=3) == Bits::new(0)
     }
 }
 
@@ -234,8 +235,23 @@ mod tests {
     }
 
     #[proptest]
+    fn castling_moves_are_always_quiet(wc: Square, #[filter(#wc != #wt)] wt: Square) {
+        assert!(Move::castling(wc, wt).is_quiet());
+    }
+
+    #[proptest]
     fn en_passant_moves_are_always_captures(wc: Square, #[filter(#wc != #wt)] wt: Square) {
         assert!(Move::en_passant(wc, wt).is_capture());
+    }
+
+    #[proptest]
+    fn en_passant_moves_are_never_promotions(wc: Square, #[filter(#wc != #wt)] wt: Square) {
+        assert!(!Move::en_passant(wc, wt).is_promotion());
+    }
+
+    #[proptest]
+    fn en_passant_moves_are_never_quiet(wc: Square, #[filter(#wc != #wt)] wt: Square) {
+        assert!(!Move::en_passant(wc, wt).is_quiet());
     }
 
     #[proptest]
