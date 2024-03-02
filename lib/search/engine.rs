@@ -44,7 +44,7 @@ impl Default for Engine {
 
 impl Engine {
     thread_local! {
-        static KILLERS: RefCell<Killers<2, { Depth::MAX as _ }>> = const {
+        static KILLERS: RefCell<Killers<{ Depth::MAX as _ }>> = const {
             RefCell::new(Killers::new())
         };
     }
