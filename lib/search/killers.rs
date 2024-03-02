@@ -24,7 +24,7 @@ impl<const N: usize, const P: usize> Killers<N, P> {
     pub fn insert(&mut self, ply: Ply, side: Color, m: Move) {
         if let Some(ks) = self.0.get_mut(ply.get() as usize) {
             if !ks[side as usize].contains(&Some(m)) {
-                ks[side as usize].rotate_right(1);
+                ks[side as usize].copy_within(..N - 1, 1);
                 ks[side as usize][0] = Some(m);
             }
         }

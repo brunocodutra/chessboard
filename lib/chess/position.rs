@@ -75,7 +75,8 @@ impl Arbitrary for Position {
                             let zobrist = Zobrist::new(board.hash());
                             board.play_unchecked(m);
                             if board.halfmove_clock() > 0 {
-                                history[turn as usize].rotate_right(1);
+                                let entries = history[turn as usize].len();
+                                history[turn as usize].copy_within(..entries - 1, 1);
                                 history[turn as usize][0] = NonZeroU32::new(zobrist.get() as _);
                             } else {
                                 history = Default::default();
@@ -361,7 +362,8 @@ impl Position {
         self.board.play_unchecked(m);
 
         if self.halfmoves() > 0 {
-            self.history[turn as usize].rotate_right(1);
+            let entries = self.history[turn as usize].len();
+            self.history[turn as usize].copy_within(..entries - 1, 1);
             self.history[turn as usize][0] = NonZeroU32::new(zobrist.get() as _);
         } else {
             self.history = Default::default();
