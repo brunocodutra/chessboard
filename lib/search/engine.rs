@@ -2,7 +2,8 @@ use crate::chess::{Move, Piece, Position, Role};
 use crate::nnue::{Evaluator, Value};
 use crate::search::{Depth, Killers, Limits, Options, Ply, Pv, Score};
 use crate::search::{Transposition, TranspositionTable};
-use crate::util::{Assume, Buffer, Counter, Integer, Timer};
+use crate::util::{Assume, Counter, Integer, Timer};
+use arrayvec::ArrayVec;
 use derive_more::{Display, Error};
 use rayon::{prelude::*, ThreadPool, ThreadPoolBuilder};
 use std::sync::atomic::{AtomicI16, Ordering};
@@ -66,25 +67,19 @@ impl Engine {
     }
 
     /// Records a `[Transposition`].
-    fn record(
-        &self,
-        pos: &Position,
-        bounds: Range<Score>,
-        depth: Depth,
-        ply: Ply,
-        score: Score,
-        best: Move,
-    ) {
+    fn record(&self, pos: &Position, bounds: Range<Score>, depth: Depth, ply: Ply, pv: Pv) -> Pv {
         self.tt.set(
             pos.zobrist(),
-            if score >= bounds.end {
-                Transposition::lower(depth - ply, score.normalize(-ply), best)
-            } else if score <= bounds.start {
-                Transposition::upper(depth - ply, score.normalize(-ply), best)
+            if pv.score() >= bounds.end {
+                Transposition::lower(depth - ply, pv.score().normalize(-ply), pv.best().assume())
+            } else if pv.score() <= bounds.start {
+                Transposition::upper(depth - ply, pv.score().normalize(-ply), pv.best().assume())
             } else {
-                Transposition::exact(depth - ply, score.normalize(-ply), best)
+                Transposition::exact(depth - ply, pv.score().normalize(-ply), pv.best().assume())
             },
         );
+
+        pv
     }
 
     /// An implementation of [mate distance pruning].
@@ -172,8 +167,8 @@ impl Engine {
         timer.remaining().ok_or(Interrupted)?;
 
         let in_check = match pos.outcome() {
-            Some(o) if o.is_draw() => return Ok(Pv::new(Score::new(0), [])),
-            Some(_) => return Ok(Pv::new(Score::lower().normalize(ply), [])),
+            Some(o) if o.is_draw() => return Ok(Pv::new(Score::new(0), None)),
+            Some(_) => return Ok(Pv::new(Score::lower().normalize(ply), None)),
             None => pos.is_check(),
         };
 
@@ -202,18 +197,18 @@ impl Engine {
         };
 
         if alpha >= beta {
-            return Ok(Pv::new(alpha, []));
+            return Ok(Pv::new(alpha, None));
         } else if let Some(t) = tpos {
             if !is_pv && t.depth() >= depth - ply {
                 let (lower, upper) = t.bounds().into_inner();
                 if lower == upper || upper <= alpha || lower >= beta {
-                    return Ok(Pv::new(score, [t.best()]));
+                    return Ok(Pv::new(score, Some(t.best())));
                 }
             }
         }
 
         if ply >= Ply::MAX {
-            return Ok(Pv::new(score, []));
+            return Ok(Pv::new(score, None));
         } else if !is_pv && !in_check {
             if let Some(d) = self.nmp(pos, score, beta, depth, ply) {
                 let mut next = pos.clone();
@@ -221,12 +216,12 @@ impl Engine {
                 if d <= ply || -self.nw(&next, -beta + 1, d, ply + 1, ctrl)? >= beta {
                     #[cfg(not(test))]
                     // The null move pruning heuristic is not exact.
-                    return Ok(Pv::new(score, []));
+                    return Ok(Pv::new(score, None));
                 }
             }
         }
 
-        let mut moves = Buffer::<_, 256>::from_iter(pos.moves().filter_map(|m| {
+        let mut moves = ArrayVec::<_, 255>::from_iter(pos.moves().filter_map(|m| {
             if quiesce && m.is_quiet() {
                 None
             } else if Some(m) == tpos.map(|t| t.best()) {
@@ -245,13 +240,12 @@ impl Engine {
 
         moves.sort_unstable_by_key(|(_, gain)| *gain);
 
-        let best = match moves.pop() {
-            None => return Ok(Pv::new(score, [])),
+        let pv = match moves.pop() {
+            None => return Ok(Pv::new(score, None)),
             Some((m, _)) => {
                 let mut next = pos.clone();
                 next.play(m);
-                let mut pv = -self.pvs(&next, -beta..-alpha, depth, ply + 1, ctrl)?;
-                pv.shift(m);
+                let pv = m >> -self.pvs(&next, -beta..-alpha, depth, ply + 1, ctrl)?;
 
                 if pv >= beta && m.is_quiet() {
                     Self::KILLERS.with_borrow_mut(|ks| ks.insert(ply, pos.turn(), m));
@@ -261,14 +255,13 @@ impl Engine {
             }
         };
 
-        if best >= beta {
-            self.record(pos, bounds, depth, ply, best.score(), best[0]);
-            return Ok(best);
+        if pv >= beta {
+            return Ok(self.record(pos, bounds, depth, ply, pv));
         }
 
-        let cutoff = AtomicI16::new(best.score().max(alpha).get());
+        let cutoff = AtomicI16::new(pv.score().max(alpha).get());
 
-        let (best, _) = moves
+        let (pv, _) = moves
             .into_par_iter()
             .rev()
             .map(|&(m, gain)| {
@@ -291,9 +284,9 @@ impl Engine {
                     }
                 }
 
-                let mut pv = match -self.nw(&next, -alpha, depth, ply + 1, ctrl)? {
-                    pv if pv <= alpha || pv >= beta => pv,
-                    _ => -self.pvs(&next, -beta..-alpha, depth, ply + 1, ctrl)?,
+                let pv = match -self.nw(&next, -alpha, depth, ply + 1, ctrl)? {
+                    pv if pv <= alpha || pv >= beta => m >> pv,
+                    _ => m >> -self.pvs(&next, -beta..-alpha, depth, ply + 1, ctrl)?,
                 };
 
                 if pv >= beta && m.is_quiet() {
@@ -304,16 +297,13 @@ impl Engine {
                     cutoff.fetch_max(pv.score().get(), Ordering::Relaxed);
                 }
 
-                pv.shift(m);
                 Ok(Some((pv, gain)))
             })
-            .chain([Ok(Some((best, Value::upper())))])
+            .chain([Ok(Some((pv, Value::upper())))])
             .try_reduce(|| None, |a, b| Ok(max(a, b)))?
             .assume();
 
-        self.record(pos, bounds, depth, ply, best.score(), best[0]);
-
-        Ok(best)
+        Ok(self.record(pos, bounds, depth, ply, pv))
     }
 
     /// An implementation of [aspiration windows] with [iterative deepening].
@@ -322,13 +312,13 @@ impl Engine {
     /// [iterative deepening]: https://www.chessprogramming.org/Iterative_Deepening
     fn aw(&self, pos: &Evaluator, depth: Depth, nodes: u64, time: Range<Duration>) -> Pv {
         let ref ctrl @ Control(_, ref timer) = Control(Counter::new(nodes), Timer::new(time.end));
-        let mut best = Pv::new(Score::new(0), []);
+        let mut pv = Pv::new(Score::new(0), None);
 
         for d in 0..=1 {
             let depth = Depth::new(d);
             let bounds = Score::lower()..Score::upper();
             let ctrl = Control::default();
-            best = self.pvs(pos, bounds, depth, Ply::new(0), &ctrl).assume();
+            pv = self.pvs(pos, bounds, depth, Ply::new(0), &ctrl).assume();
         }
 
         'id: for d in 2..=depth.get() {
@@ -337,29 +327,29 @@ impl Engine {
             }
 
             let mut w: i16 = 32;
-            let mut lower = (best.score() - w / 2).min(Score::upper() - w);
-            let mut upper = (best.score() + w / 2).max(Score::lower() + w);
+            let mut lower = (pv.score() - w / 2).min(Score::upper() - w);
+            let mut upper = (pv.score() + w / 2).max(Score::lower() + w);
 
-            best = 'aw: loop {
+            pv = 'aw: loop {
                 let depth = Depth::new(d);
-                let pv = match self.pvs(pos, lower..upper, depth, Ply::new(0), ctrl) {
+                let partial = match self.pvs(pos, lower..upper, depth, Ply::new(0), ctrl) {
                     Err(_) => break 'id,
                     Ok(pv) => pv,
                 };
 
                 w = w.saturating_mul(2);
 
-                match pv.score() {
+                match partial.score() {
                     s if (-lower..Score::upper()).contains(&-s) => lower = s - w / 2,
                     s if (upper..Score::upper()).contains(&s) => upper = s + w / 2,
-                    _ => break 'aw pv,
+                    _ => break 'aw partial,
                 }
 
-                best = best.max(pv);
+                pv = pv.max(partial);
             };
         }
 
-        best
+        pv
     }
 
     fn time_to_search(&self, pos: &Position, limits: Limits) -> Range<Duration> {
@@ -442,7 +432,7 @@ mod tests {
         e.tt.set(pos.zobrist(), Transposition::lower(d, s, m));
 
         let ctrl = Control::default();
-        assert_eq!(e.nw(&pos, b, d, p, &ctrl), Ok(Pv::new(s, [m])));
+        assert_eq!(e.nw(&pos, b, d, p, &ctrl), Ok(Pv::new(s, Some(m))));
     }
 
     #[proptest]
@@ -460,7 +450,7 @@ mod tests {
         e.tt.set(pos.zobrist(), Transposition::upper(d, s, m));
 
         let ctrl = Control::default();
-        assert_eq!(e.nw(&pos, b, d, p, &ctrl), Ok(Pv::new(s, [m])));
+        assert_eq!(e.nw(&pos, b, d, p, &ctrl), Ok(Pv::new(s, Some(m))));
     }
 
     #[proptest]
@@ -478,7 +468,7 @@ mod tests {
         e.tt.set(pos.zobrist(), Transposition::exact(d, sc, m));
 
         let ctrl = Control::default();
-        assert_eq!(e.nw(&pos, b, d, p, &ctrl), Ok(Pv::new(sc, [m])));
+        assert_eq!(e.nw(&pos, b, d, p, &ctrl), Ok(Pv::new(sc, Some(m))));
     }
 
     #[proptest]
@@ -527,7 +517,7 @@ mod tests {
     ) {
         assert_eq!(
             e.pvs(&pos, b, d, Ply::upper(), &Control::default()),
-            Ok(Pv::new(pos.evaluate().cast(), []))
+            Ok(Pv::new(pos.evaluate().cast(), None))
         );
     }
 
@@ -540,7 +530,10 @@ mod tests {
         p: Ply,
     ) {
         let ctrl = Control::default();
-        assert_eq!(e.pvs(&pos, b, d, p, &ctrl), Ok(Pv::new(Score::new(0), [])));
+        assert_eq!(
+            e.pvs(&pos, b, d, p, &ctrl),
+            Ok(Pv::new(Score::new(0), None))
+        );
     }
 
     #[proptest]
@@ -553,7 +546,7 @@ mod tests {
     ) {
         assert_eq!(
             e.pvs(&pos, b, d, p, &Control::default()),
-            Ok(Pv::new(Score::lower().normalize(p), []))
+            Ok(Pv::new(Score::lower().normalize(p), None))
         );
     }
 
@@ -624,6 +617,9 @@ mod tests {
         mut e: Engine,
         #[filter(#pos.outcome().is_none())] pos: Position,
     ) {
-        assert!(!e.search(&pos, Limits::Time(Duration::ZERO)).is_empty());
+        assert!(e
+            .search(&pos, Limits::Time(Duration::ZERO))
+            .best()
+            .is_some());
     }
 }

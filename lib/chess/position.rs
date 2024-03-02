@@ -1,5 +1,6 @@
 use crate::chess::*;
-use crate::util::{Assume, Bits, Buffer, Integer};
+use crate::util::{Assume, Bits, Integer};
+use arrayvec::ArrayVec;
 use cozy_chess as cc;
 use derive_more::{Debug, Display, Error};
 use std::hash::{Hash, Hasher};
@@ -63,7 +64,7 @@ impl Arbitrary for Position {
                     }
 
                     let turn = board.side_to_move();
-                    let mut moves = Buffer::<_, 18>::new();
+                    let mut moves = ArrayVec::<_, 18>::new();
                     board.generate_moves(|ms| {
                         moves.push(ms);
                         false
@@ -298,7 +299,7 @@ impl Position {
     /// An iterator over the legal [`Move`]s that can be played from a subset of squares in this position.
     #[inline(always)]
     pub fn moves(&self) -> impl Iterator<Item = Move> + '_ {
-        let mut moves = Buffer::<_, 18>::new();
+        let mut moves = ArrayVec::<_, 18>::new();
         self.board.generate_moves(|ms| {
             moves.push(ms);
             false
