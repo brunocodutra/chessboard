@@ -67,7 +67,7 @@ impl Uci {
 
     fn go<W: Write>(&mut self, limits: Limits, out: &mut W) -> io::Result<()> {
         let pv = self.engine.search(&self.position, limits);
-        let best = *pv.first().expect("the engine failed to find a move");
+        let best = pv.best().expect("the engine failed to find a move");
 
         match pv.score().mate() {
             Some(p) if p > 0 => write!(out, "info score mate {}", (p + 1).get() / 2),
@@ -75,13 +75,7 @@ impl Uci {
             None => write!(out, "info score cp {}", pv.score().get()),
         }?;
 
-        write!(out, " pv")?;
-
-        for m in pv {
-            write!(out, " {m}")?;
-        }
-
-        writeln!(out)?;
+        writeln!(out, " pv {best}")?;
         writeln!(out, "bestmove {best}")?;
 
         Ok(())

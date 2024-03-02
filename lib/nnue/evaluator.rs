@@ -1,12 +1,13 @@
 use crate::chess::{Color, ImpossibleExchange, Move, Piece, Position, Role, Square};
 use crate::nnue::{Accumulator, Feature, Material, Positional, Value};
-use crate::util::{Assume, Buffer};
+use crate::util::Assume;
+use arrayvec::ArrayVec;
 use derive_more::Deref;
 use std::ops::Range;
 
-fn perspective(pos: &Position, side: Color) -> Buffer<u16, 32> {
+fn perspective(pos: &Position, side: Color) -> ArrayVec<u16, 32> {
     let k = pos.king(side);
-    Buffer::from_iter(pos.iter().map(|(p, s)| Feature(k, p, s).index(side)))
+    ArrayVec::from_iter(pos.iter().map(|(p, s)| Feature(k, p, s).index(side)))
 }
 
 /// An incrementally evaluated [`Position`].
