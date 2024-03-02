@@ -54,12 +54,12 @@ impl Binary for Score {
 
     #[inline(always)]
     fn encode(&self) -> Self::Bits {
-        Bits::new((self.get() - Score::lower().get()) as _)
+        Bits::new((self.repr() as u16) << 2 >> 2)
     }
 
     #[inline(always)]
     fn decode(bits: Self::Bits) -> Self {
-        Self::lower() + bits.get() as i16
+        Self::from_repr((bits.get() as i16) << 2 >> 2)
     }
 }
 

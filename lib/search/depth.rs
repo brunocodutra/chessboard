@@ -25,12 +25,12 @@ impl Binary for Depth {
 
     #[inline(always)]
     fn encode(&self) -> Self::Bits {
-        Bits::new(self.get() as _)
+        Bits::new(self.repr() as _)
     }
 
     #[inline(always)]
     fn decode(bits: Self::Bits) -> Self {
-        Depth::new(bits.get() as _)
+        Self::from_repr(bits.get() as _)
     }
 }
 

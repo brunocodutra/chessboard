@@ -72,12 +72,12 @@ impl Binary for Square {
 
     #[inline(always)]
     fn encode(&self) -> Self::Bits {
-        Bits::new(*self as _)
+        Bits::new(self.repr())
     }
 
     #[inline(always)]
     fn decode(bits: Self::Bits) -> Self {
-        Square::from_repr(bits.get())
+        Self::from_repr(bits.get())
     }
 }
 
