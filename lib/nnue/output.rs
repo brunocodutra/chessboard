@@ -17,9 +17,6 @@ impl<const N: usize> Output<N> {
         #[cfg(target_arch = "x86_64")]
         use std::arch::x86_64::*;
 
-        #[cfg(target_arch = "x86")]
-        use std::arch::x86::*;
-
         debug_assert!(N % 32 == 0);
         let a = self.weight.array_chunks::<32>();
         let x = input.array_chunks::<32>();
@@ -55,9 +52,6 @@ impl<const N: usize> Output<N> {
     pub unsafe fn sse(&self, input: &AlignTo64<[i16; N]>) -> i32 {
         #[cfg(target_arch = "x86_64")]
         use std::arch::x86_64::*;
-
-        #[cfg(target_arch = "x86")]
-        use std::arch::x86::*;
 
         debug_assert!(N % 16 == 0);
         let a = self.weight.array_chunks::<16>();
