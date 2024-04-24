@@ -52,11 +52,15 @@ impl Nnue {
     fn load<T: Read>(&mut self, mut reader: T) -> io::Result<()> {
         reader.read_i16_into::<LittleEndian>(&mut *self.ft.bias)?;
         reader.read_i16_into::<LittleEndian>(unsafe {
-            transmute::<_, &mut [_; Self::L0 * Self::L1 / 2]>(&mut *self.ft.weight)
+            transmute::<&mut [[_; Self::L1 / 2]; Self::L0], &mut [_; Self::L0 * Self::L1 / 2]>(
+                &mut *self.ft.weight,
+            )
         })?;
 
         reader.read_i32_into::<LittleEndian>(unsafe {
-            transmute::<_, &mut [_; Self::L0 * Self::PHASES]>(&mut *self.psqt.weight)
+            transmute::<&mut [[_; Self::PHASES]; Self::L0], &mut [_; Self::L0 * Self::PHASES]>(
+                &mut *self.psqt.weight,
+            )
         })?;
 
         for nn in &mut self.output {
