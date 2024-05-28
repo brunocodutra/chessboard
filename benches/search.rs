@@ -1,7 +1,23 @@
-use criterion::{criterion_group, criterion_main, BatchSize, Criterion, Throughput};
-use lib::chess::Position;
+use criterion::{criterion_group, criterion_main, Criterion, SamplingMode, Throughput};
 use lib::search::{Depth, Engine, Options, ThreadCount};
+use lib::{chess::Position, search::Limits};
 use std::thread::available_parallelism;
+use std::time::{Duration, Instant};
+
+fn bencher(reps: u64, positions: &[Position], options: Options, limits: Limits) -> Duration {
+    let mut time = Duration::ZERO;
+
+    for pos in positions {
+        for _ in 0..reps {
+            let mut e = Engine::with_options(options);
+            let timer = Instant::now();
+            e.search(pos, limits);
+            time += timer.elapsed();
+        }
+    }
+
+    time
+}
 
 fn bench(c: &mut Criterion) {
     let positions: Vec<Position> = FENS.iter().map(|p| p.parse().unwrap()).collect();
@@ -17,31 +33,18 @@ fn bench(c: &mut Criterion) {
     };
 
     let depth = Depth::new(7);
-    c.benchmark_group("search").bench_function("ttd", |b| {
-        b.iter_batched_ref(
-            || Engine::with_options(options),
-            |e| {
-                for pos in &positions {
-                    e.search(pos, depth.into());
-                }
-            },
-            BatchSize::SmallInput,
-        );
-    });
+    c.benchmark_group("search")
+        .sampling_mode(SamplingMode::Flat)
+        .bench_function("ttd", |b| {
+            b.iter_custom(|i| bencher(i, &positions, options, depth.into()))
+        });
 
     let nodes = 10000;
     c.benchmark_group("search")
+        .sampling_mode(SamplingMode::Flat)
         .throughput(Throughput::Elements(nodes * positions.len() as u64))
         .bench_function("nps", |b| {
-            b.iter_batched_ref(
-                || Engine::with_options(options),
-                |e| {
-                    for pos in &positions {
-                        e.search(pos, nodes.into());
-                    }
-                },
-                BatchSize::SmallInput,
-            );
+            b.iter_custom(|i| bencher(i, &positions, options, nodes.into()))
         });
 }
 
