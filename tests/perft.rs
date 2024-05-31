@@ -18,7 +18,7 @@ fn perft(pos: &Position, depth: u8) -> usize {
     }
 }
 
-#[cfg(not(tarpaulin))]
+#[cfg(not(coverage))]
 #[proptest(cases = 1)]
 fn perft_expands_expected_number_of_nodes() {
     // https://www.chessprogramming.org/Perft_Results#Initial_Position

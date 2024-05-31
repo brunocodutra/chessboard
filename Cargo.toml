@@ -10,7 +10,7 @@ readme = "README.md"
 keywords = ["chess"]
 
 [lints.rust]
-unexpected_cfgs = { level = "warn", check-cfg = ['cfg(tarpaulin)'] }
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(coverage)'] }
 
 [dependencies]
 arrayvec = { version = "0.7.3", default-features = false, features = ["std"] }
