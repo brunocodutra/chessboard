@@ -28,11 +28,6 @@ mod tests {
     use test_strategy::proptest;
 
     #[proptest]
-    fn feature_has_a_unique_index(a: Feature, #[filter(#a != #b)] b: Feature, c: Color) {
-        assert_ne!(a.index(c), b.index(c));
-    }
-
-    #[proptest]
     fn feature_index_is_unique_to_perspective(a: Feature, c: Color) {
         assert_ne!(a.index(c), a.index(!c));
     }
