@@ -1,6 +1,7 @@
-use std::fmt::Debug;
+use std::marker::Destruct;
 
 /// A trait for types that can be assumed to be another type.
+#[const_trait]
 pub trait Assume {
     /// The type of the assumed value.
     type Assumed;
@@ -9,36 +10,40 @@ pub trait Assume {
     fn assume(self) -> Self::Assumed;
 }
 
-impl<T> Assume for Option<T> {
+impl<T: ~const Destruct> const Assume for Option<T> {
     type Assumed = T;
 
     #[inline]
     #[track_caller]
     fn assume(self) -> Self::Assumed {
-        #[cfg(not(test))]
-        unsafe {
-            // Definitely not safe, but we'll assume unit tests will catch everything.
-            self.unwrap_unchecked()
-        }
+        match self {
+            Some(v) => v,
 
-        #[cfg(test)]
-        self.unwrap()
+            #[cfg(not(debug_assertions))]
+            // Definitely not safe, but we'll assume unit tests will catch everything.
+            _ => unsafe { std::hint::unreachable_unchecked() },
+
+            #[cfg(debug_assertions)]
+            _ => unreachable!(),
+        }
     }
 }
 
-impl<T, E: Debug> Assume for Result<T, E> {
+impl<T: ~const Destruct, E: ~const Destruct> const Assume for Result<T, E> {
     type Assumed = T;
 
     #[inline]
     #[track_caller]
     fn assume(self) -> Self::Assumed {
-        #[cfg(not(test))]
-        unsafe {
-            // Definitely not safe, but we'll assume unit tests will catch everything.
-            self.unwrap_unchecked()
-        }
+        match self {
+            Ok(v) => v,
 
-        #[cfg(test)]
-        self.unwrap()
+            #[cfg(not(debug_assertions))]
+            // Definitely not safe, but we'll assume unit tests will catch everything.
+            _ => unsafe { std::hint::unreachable_unchecked() },
+
+            #[cfg(debug_assertions)]
+            _ => unreachable!(),
+        }
     }
 }
