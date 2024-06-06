@@ -178,7 +178,7 @@ impl Engine {
 
         let score = match tpos {
             Some(t) => t.score().normalize(ply),
-            _ => pos.evaluate().cast(),
+            _ => pos.evaluate().saturate(),
         };
 
         let depth = match tpos {
@@ -275,7 +275,7 @@ impl Engine {
                 next.play(m);
 
                 if gain < 100 && !in_check && !next.is_check() {
-                    if let Some(d) = self.lmp(&next, m, alpha.cast(), depth, ply) {
+                    if let Some(d) = self.lmp(&next, m, alpha.saturate(), depth, ply) {
                         if d <= ply || -self.nw(&next, -alpha, d, ply + 1, ctrl)? <= alpha {
                             #[cfg(not(test))]
                             // The late move pruning heuristic is not exact.
@@ -386,7 +386,7 @@ mod tests {
         let score = match pos.outcome() {
             Some(o) if o.is_draw() => return Score::new(0),
             Some(_) => return Score::lower().normalize(ply),
-            None => pos.evaluate().cast(),
+            None => pos.evaluate().saturate(),
         };
 
         if ply >= Ply::MAX {
@@ -517,7 +517,7 @@ mod tests {
     ) {
         assert_eq!(
             e.pvs(&pos, b, d, Ply::upper(), &Control::default()),
-            Ok(Pv::new(pos.evaluate().cast(), None))
+            Ok(Pv::new(pos.evaluate().saturate(), None))
         );
     }
 

@@ -1,6 +1,6 @@
 use crate::chess::{Move, Zobrist};
 use crate::search::{Depth, HashSize, Score};
-use crate::util::{Binary, Bits, Integer};
+use crate::util::{Assume, Binary, Bits, Integer};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::{mem::size_of, ops::RangeInclusive};
 
@@ -30,12 +30,12 @@ impl Binary for TranspositionKind {
 
     #[inline(always)]
     fn encode(&self) -> Self::Bits {
-        Bits::new(*self as _)
+        self.convert().assume()
     }
 
     #[inline(always)]
     fn decode(bits: Self::Bits) -> Self {
-        TranspositionKind::from_repr(bits.get())
+        bits.convert().assume()
     }
 }
 
@@ -152,7 +152,7 @@ pub struct TranspositionTable {
 
             for (pos, t) in ts {
                 let key = pos.zobrist();
-                let idx = key.slice(..cache.len().trailing_zeros()).get() as usize;
+                let idx = key.slice(..cache.len().trailing_zeros()).cast::<usize>();
                 let sig = key.slice(cache.len().trailing_zeros()..).pop();
                 *cache[idx].get_mut() = Some(SignedTransposition(sig, t.encode())).encode().get();
             }
@@ -190,7 +190,7 @@ impl TranspositionTable {
     }
 
     fn index_of(&self, key: Zobrist) -> usize {
-        key.slice(..self.capacity().trailing_zeros()).get() as _
+        key.slice(..self.capacity().trailing_zeros()).cast()
     }
 
     /// Loads the [`Transposition`] from the slot associated with `key`.

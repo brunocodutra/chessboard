@@ -1,5 +1,5 @@
 use crate::chess::{Color, Move};
-use crate::search::Ply;
+use crate::{search::Ply, util::Integer};
 
 /// A set of [killer moves] indexed by [`Ply`] and side to move.
 ///
@@ -18,7 +18,7 @@ impl<const P: usize> Killers<P> {
     /// Adds a killer move to the set at a given ply for a given side to move.
     #[inline(always)]
     pub fn insert(&mut self, ply: Ply, side: Color, m: Move) {
-        if let Some(ks) = self.0.get_mut(ply.get() as usize) {
+        if let Some(ks) = self.0.get_mut(ply.cast::<usize>()) {
             let [first, last] = &mut ks[side as usize];
             if *first != Some(m) {
                 *last = *first;
@@ -31,7 +31,7 @@ impl<const P: usize> Killers<P> {
     #[inline(always)]
     pub fn contains(&self, ply: Ply, side: Color, m: Move) -> bool {
         self.0
-            .get(ply.get() as usize)
+            .get(ply.cast::<usize>())
             .is_some_and(|ks| ks[side as usize].contains(&Some(m)))
     }
 }

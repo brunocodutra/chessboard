@@ -1,124 +1,14 @@
-use crate::util::{Assume, Integer};
-use num_traits::{cast, clamp, AsPrimitive, PrimInt, Signed};
-use std::cmp::Ordering;
-use std::hash::{Hash, Hasher};
+use crate::util::{Integer, Signed};
 use std::ops::{Add, Div, Mul, Neg, Sub};
-
-trait Larger {
-    type Integer: PrimInt + Signed;
-}
-
-impl<T: PrimInt + Signed> Larger for (T, T) {
-    type Integer = T;
-}
-
-impl Larger for (i8, i16) {
-    type Integer = i16;
-}
-
-impl Larger for (i16, i8) {
-    type Integer = i16;
-}
-
-impl Larger for (i8, i32) {
-    type Integer = i32;
-}
-
-impl Larger for (i32, i8) {
-    type Integer = i32;
-}
-
-impl Larger for (i8, i64) {
-    type Integer = i64;
-}
-
-impl Larger for (i64, i8) {
-    type Integer = i64;
-}
-
-impl Larger for (i16, i32) {
-    type Integer = i32;
-}
-
-impl Larger for (i32, i16) {
-    type Integer = i32;
-}
-
-impl Larger for (i16, i64) {
-    type Integer = i64;
-}
-
-impl Larger for (i64, i16) {
-    type Integer = i64;
-}
-
-impl Larger for (i32, i64) {
-    type Integer = i64;
-}
-
-impl Larger for (i64, i32) {
-    type Integer = i64;
-}
-
-trait NextLarger {
-    type Integer: PrimInt + Signed;
-}
-
-impl<I, J, K: NextLarger> NextLarger for (I, J)
-where
-    Self: Larger<Integer = K>,
-{
-    type Integer = K::Integer;
-}
-
-impl NextLarger for i8 {
-    type Integer = i16;
-}
-
-impl NextLarger for i16 {
-    type Integer = i32;
-}
-
-impl NextLarger for i32 {
-    type Integer = i64;
-}
+use std::{cmp::Ordering, mem::size_of};
 
 /// A saturating bounded integer.
-#[derive(Debug, Default, Copy, Clone)]
+#[derive(Debug, Default, Copy, Clone, Hash)]
 #[cfg_attr(test, derive(test_strategy::Arbitrary))]
 #[repr(transparent)]
-pub struct Saturating<T: Integer>(T);
+pub struct Saturating<T>(T);
 
-impl<T: Integer> Saturating<T> {
-    /// Constructs `Self` from the raw integer.
-    #[inline(always)]
-    pub fn new(i: T::Repr) -> Self {
-        debug_assert!((Self::MIN..=Self::MAX).contains(&i));
-        Self::from_repr(i)
-    }
-
-    /// Returns the raw integer.
-    #[inline(always)]
-    pub fn get(&self) -> T::Repr {
-        self.repr()
-    }
-
-    /// Constructs `Self` from a raw integer through saturation.
-    #[inline(always)]
-    pub fn saturate<I: PrimInt>(i: I) -> Self {
-        let min = cast(T::MIN).unwrap_or_else(I::min_value);
-        let max = cast(T::MAX).unwrap_or_else(I::max_value);
-        Saturating::new(cast(clamp(i, min, max)).assume())
-    }
-
-    /// Lossy conversion between saturating integers.
-    #[inline(always)]
-    pub fn cast<U: Integer>(&self) -> Saturating<U> {
-        Saturating::saturate(self.get())
-    }
-}
-
-unsafe impl<T: Integer> const Integer for Saturating<T> {
+unsafe impl<T: ~const Integer> const Integer for Saturating<T> {
     type Repr = T::Repr;
     const MIN: Self::Repr = T::MIN;
     const MAX: Self::Repr = T::MAX;
@@ -126,19 +16,27 @@ unsafe impl<T: Integer> const Integer for Saturating<T> {
 
 impl<T: Integer> Eq for Saturating<T> where Self: PartialEq<Self> {}
 
-impl<T: Integer, U: Integer> PartialEq<Saturating<U>> for Saturating<T>
+impl<T, U, I, J> PartialEq<U> for Saturating<T>
 where
-    Self: PartialEq<U::Repr>,
+    T: Integer<Repr = I>,
+    U: Integer<Repr = J>,
+    I: Signed,
+    J: Signed,
 {
     #[inline(always)]
-    fn eq(&self, other: &Saturating<U>) -> bool {
-        self.eq(&other.get())
+    fn eq(&self, other: &U) -> bool {
+        if size_of::<I>() <= size_of::<J>() {
+            J::eq(&self.cast(), &other.cast())
+        } else {
+            I::eq(&self.cast(), &other.cast())
+        }
     }
 }
 
-impl<T: Integer> Ord for Saturating<T>
+impl<T, I> Ord for Saturating<T>
 where
-    Self: PartialEq<Self> + PartialOrd,
+    T: Integer<Repr = I>,
+    I: Signed + Ord,
 {
     #[inline(always)]
     fn cmp(&self, other: &Self) -> Ordering {
@@ -146,180 +44,127 @@ where
     }
 }
 
-impl<T: Integer, U: Integer> PartialOrd<Saturating<U>> for Saturating<T>
+impl<T, U, I, J> PartialOrd<U> for Saturating<T>
 where
-    Self: PartialOrd<U::Repr>,
+    T: Integer<Repr = I>,
+    U: Integer<Repr = J>,
+    I: Signed,
+    J: Signed,
 {
     #[inline(always)]
-    fn partial_cmp(&self, other: &Saturating<U>) -> Option<Ordering> {
-        self.partial_cmp(&other.get())
+    fn partial_cmp(&self, other: &U) -> Option<Ordering> {
+        if size_of::<I>() <= size_of::<J>() {
+            J::partial_cmp(&self.cast(), &other.cast())
+        } else {
+            I::partial_cmp(&self.cast(), &other.cast())
+        }
     }
 }
 
-impl<T: Integer<Repr = I>, I: Hash> Hash for Saturating<T> {
-    #[inline(always)]
-    fn hash<H: Hasher>(&self, state: &mut H) {
-        self.get().hash(state)
-    }
-}
-
-impl<T: Integer<Repr = I>, U: Integer<Repr = J>, I, J, K> Add<Saturating<U>> for Saturating<T>
+impl<T, I, J> Neg for Saturating<T>
 where
-    I: AsPrimitive<K>,
-    J: AsPrimitive<K>,
-    K: 'static + PrimInt + Signed,
-    (I, J): NextLarger<Integer = K>,
-{
-    type Output = Self;
-
-    #[inline(always)]
-    fn add(self, rhs: Saturating<U>) -> Self::Output {
-        self + rhs.get()
-    }
-}
-
-impl<T: Integer<Repr = I>, U: Integer<Repr = J>, I, J, K> Sub<Saturating<U>> for Saturating<T>
-where
-    I: AsPrimitive<K>,
-    J: AsPrimitive<K>,
-    K: 'static + PrimInt + Signed,
-    (I, J): NextLarger<Integer = K>,
-{
-    type Output = Self;
-
-    #[inline(always)]
-    fn sub(self, rhs: Saturating<U>) -> Self::Output {
-        self - rhs.get()
-    }
-}
-
-impl<T: Integer<Repr = I>, U: Integer<Repr = J>, I, J, K> Mul<Saturating<U>> for Saturating<T>
-where
-    I: AsPrimitive<K>,
-    J: AsPrimitive<K>,
-    K: 'static + PrimInt + Signed,
-    (I, J): NextLarger<Integer = K>,
-{
-    type Output = Self;
-
-    #[inline(always)]
-    fn mul(self, rhs: Saturating<U>) -> Self::Output {
-        self * rhs.get()
-    }
-}
-
-impl<T: Integer<Repr = I>, U: Integer<Repr = J>, I, J, K> Div<Saturating<U>> for Saturating<T>
-where
-    I: AsPrimitive<K>,
-    J: AsPrimitive<K>,
-    K: 'static + PrimInt + Signed,
-    (I, J): NextLarger<Integer = K>,
-{
-    type Output = Self;
-
-    #[inline(always)]
-    fn div(self, rhs: Saturating<U>) -> Self::Output {
-        self / rhs.get()
-    }
-}
-
-impl<T: Integer<Repr = I>, I, J, K> PartialEq<J> for Saturating<T>
-where
-    I: AsPrimitive<K>,
-    J: AsPrimitive<K>,
-    K: 'static + PrimInt,
-    (I, J): Larger<Integer = K>,
-{
-    #[inline(always)]
-    fn eq(&self, other: &J) -> bool {
-        K::eq(&self.get().as_(), &other.as_())
-    }
-}
-
-impl<T: Integer<Repr = I>, I, J, K> PartialOrd<J> for Saturating<T>
-where
-    I: AsPrimitive<K>,
-    J: AsPrimitive<K>,
-    K: 'static + PrimInt,
-    (I, J): Larger<Integer = K>,
-{
-    #[inline(always)]
-    fn partial_cmp(&self, other: &J) -> Option<Ordering> {
-        K::partial_cmp(&self.get().as_(), &other.as_())
-    }
-}
-
-impl<T: Integer<Repr = I>, I, J> Neg for Saturating<T>
-where
-    I: AsPrimitive<J> + NextLarger<Integer = J>,
-    J: 'static + PrimInt + Signed,
+    T: Integer<Repr = I>,
+    I: Widen<Wider = J>,
+    J: Signed + Neg<Output = J>,
 {
     type Output = Self;
 
     #[inline(always)]
     fn neg(self) -> Self::Output {
-        Saturating::saturate(J::neg(self.get().as_()))
+        J::neg(self.cast()).saturate()
     }
 }
 
-impl<T: Integer<Repr = I>, I, J, K> Add<J> for Saturating<T>
+impl<T, U, I, J> Add<U> for Saturating<T>
 where
-    I: AsPrimitive<K>,
-    J: AsPrimitive<K>,
-    K: 'static + PrimInt + Signed,
-    (I, J): NextLarger<Integer = K>,
+    T: Integer<Repr = I>,
+    U: Integer<Repr = J>,
+    I: Widen,
+    J: Widen,
 {
     type Output = Self;
 
     #[inline(always)]
-    fn add(self, rhs: J) -> Self::Output {
-        Saturating::saturate(K::add(self.get().as_(), rhs.as_()))
+    fn add(self, rhs: U) -> Self::Output {
+        if size_of::<I::Wider>() <= size_of::<J::Wider>() {
+            J::Wider::add(self.cast(), rhs.cast()).saturate()
+        } else {
+            I::Wider::add(self.cast(), rhs.cast()).saturate()
+        }
     }
 }
 
-impl<T: Integer<Repr = I>, I, J, K> Sub<J> for Saturating<T>
+impl<T, U, I, J> Sub<U> for Saturating<T>
 where
-    I: AsPrimitive<K>,
-    J: AsPrimitive<K>,
-    K: 'static + PrimInt + Signed,
-    (I, J): NextLarger<Integer = K>,
+    T: Integer<Repr = I>,
+    U: Integer<Repr = J>,
+    I: Widen,
+    J: Widen,
 {
     type Output = Self;
 
     #[inline(always)]
-    fn sub(self, rhs: J) -> Self::Output {
-        Saturating::saturate(K::sub(self.get().as_(), rhs.as_()))
+    fn sub(self, rhs: U) -> Self::Output {
+        if size_of::<I::Wider>() <= size_of::<J::Wider>() {
+            J::Wider::sub(self.cast(), rhs.cast()).saturate()
+        } else {
+            I::Wider::sub(self.cast(), rhs.cast()).saturate()
+        }
     }
 }
 
-impl<T: Integer<Repr = I>, I, J, K> Mul<J> for Saturating<T>
+impl<T, U, I, J> Mul<U> for Saturating<T>
 where
-    I: AsPrimitive<K>,
-    J: AsPrimitive<K>,
-    K: 'static + PrimInt + Signed,
-    (I, J): NextLarger<Integer = K>,
+    T: Integer<Repr = I>,
+    U: Integer<Repr = J>,
+    I: Widen,
+    J: Widen,
 {
     type Output = Self;
 
     #[inline(always)]
-    fn mul(self, rhs: J) -> Self::Output {
-        Saturating::saturate(K::mul(self.get().as_(), rhs.as_()))
+    fn mul(self, rhs: U) -> Self::Output {
+        if size_of::<I::Wider>() <= size_of::<J::Wider>() {
+            J::Wider::mul(self.cast(), rhs.cast()).saturate()
+        } else {
+            I::Wider::mul(self.cast(), rhs.cast()).saturate()
+        }
     }
 }
 
-impl<T: Integer<Repr = I>, I, J, K> Div<J> for Saturating<T>
+impl<T, U, I, J> Div<U> for Saturating<T>
 where
-    I: AsPrimitive<K>,
-    J: AsPrimitive<K>,
-    K: 'static + PrimInt + Signed,
-    (I, J): NextLarger<Integer = K>,
+    T: Integer<Repr = I>,
+    U: Integer<Repr = J>,
+    I: Widen,
+    J: Widen,
 {
     type Output = Self;
 
     #[inline(always)]
-    fn div(self, rhs: J) -> Self::Output {
-        Saturating::saturate(K::div(self.get().as_(), rhs.as_()))
+    fn div(self, rhs: U) -> Self::Output {
+        if size_of::<I::Wider>() <= size_of::<J::Wider>() {
+            J::Wider::div(self.cast(), rhs.cast()).saturate()
+        } else {
+            I::Wider::div(self.cast(), rhs.cast()).saturate()
+        }
     }
+}
+
+trait Widen: Signed {
+    type Wider: Signed;
+}
+
+impl Widen for i8 {
+    type Wider = i16;
+}
+
+impl Widen for i16 {
+    type Wider = i32;
+}
+
+impl Widen for i32 {
+    type Wider = i64;
 }
 
 #[cfg(test)]
@@ -334,96 +179,58 @@ mod tests {
     struct Asymmetric(#[cfg_attr(test, strategy(Self::MIN..=Self::MAX))] <Self as Integer>::Repr);
 
     unsafe impl Integer for Asymmetric {
-        type Repr = i8;
-
+        type Repr = i16;
         const MIN: Self::Repr = -89;
-        const MAX: Self::Repr = 111;
+        const MAX: Self::Repr = 131;
     }
 
     #[proptest]
-    fn new_accepts_integers_within_bounds(#[strategy(Asymmetric::MIN..=Asymmetric::MAX)] i: i8) {
-        assert_eq!(Saturating::<Asymmetric>::new(i).get(), i);
-    }
-
-    #[proptest]
-    #[should_panic]
-    fn new_panics_if_integer_greater_than_max(#[strategy(Asymmetric::MAX + 1..)] i: i8) {
-        Saturating::<Asymmetric>::new(i);
-    }
-
-    #[proptest]
-    #[should_panic]
-    fn new_panics_if_integer_smaller_than_min(#[strategy(..Asymmetric::MIN)] i: i8) {
-        Saturating::<Asymmetric>::new(i);
-    }
-
-    #[proptest]
-    fn get_returns_raw_integer(s: Saturating<Asymmetric>) {
-        assert_eq!(s.get(), s.repr());
-    }
-
-    #[proptest]
-    fn saturate_preserves_integers_within_bounds(
-        #[strategy(Asymmetric::MIN..=Asymmetric::MAX)] i: i8,
-    ) {
-        assert_eq!(
-            Saturating::<Asymmetric>::saturate(i),
-            Saturating::<Asymmetric>::new(i)
-        );
-    }
-
-    #[proptest]
-    fn saturate_caps_if_greater_than_max(#[strategy(Asymmetric::MAX + 1..)] i: i8) {
-        assert_eq!(
-            Saturating::<Asymmetric>::saturate(i),
-            Saturating::<Asymmetric>::MAX
-        );
-    }
-
-    #[proptest]
-    fn saturate_caps_if_smaller_than_min(#[strategy(..Asymmetric::MIN)] i: i8) {
-        assert_eq!(
-            Saturating::<Asymmetric>::saturate(i),
-            Saturating::<Asymmetric>::MIN
-        );
+    fn comparison_coerces(a: Saturating<Asymmetric>, b: i8) {
+        assert_eq!(a == b, a.get() == b.into());
+        assert_eq!(a <= b, a.get() <= b.into());
     }
 
     #[proptest]
     fn negation_saturates(s: Saturating<Asymmetric>) {
-        let r = Saturating::<Asymmetric>::saturate(s.get().saturating_neg());
-
-        assert_eq!(-s, r);
+        assert_eq!(-s, s.get().saturating_neg().saturate::<Asymmetric>());
     }
 
     #[proptest]
-    fn addition_saturates(a: Saturating<Asymmetric>, b: Saturating<Asymmetric>) {
-        let r = Saturating::<Asymmetric>::saturate(i8::saturating_add(a.get(), b.get()));
-
+    fn addition_saturates(a: Saturating<Asymmetric>, b: Saturating<i8>) {
+        let r: Asymmetric = i16::saturating_add(a.cast(), b.cast()).saturate();
         assert_eq!(a + b, r);
-        assert_eq!(a + b.get(), r);
+
+        let r: i8 = i16::saturating_add(b.cast(), a.cast()).saturate();
+        assert_eq!(b + a, r);
     }
 
     #[proptest]
-    fn subtraction_saturates(a: Saturating<Asymmetric>, b: Saturating<Asymmetric>) {
-        let r = Saturating::<Asymmetric>::saturate(i8::saturating_sub(a.get(), b.get()));
-
+    fn subtraction_saturates(a: Saturating<Asymmetric>, b: Saturating<i8>) {
+        let r: Asymmetric = i16::saturating_sub(a.cast(), b.cast()).saturate();
         assert_eq!(a - b, r);
-        assert_eq!(a - b.get(), r);
+
+        let r: i8 = i16::saturating_sub(b.cast(), a.cast()).saturate();
+        assert_eq!(b - a, r);
     }
 
     #[proptest]
-    fn multiplication_saturates(a: Saturating<Asymmetric>, b: Saturating<Asymmetric>) {
-        let r = Saturating::<Asymmetric>::saturate(i8::saturating_mul(a.get(), b.get()));
-
+    fn multiplication_saturates(a: Saturating<Asymmetric>, b: Saturating<i8>) {
+        let r: Asymmetric = i16::saturating_mul(a.cast(), b.cast()).saturate();
         assert_eq!(a * b, r);
-        assert_eq!(a * b.get(), r);
+
+        let r: i8 = i16::saturating_mul(b.cast(), a.cast()).saturate();
+        assert_eq!(b * a, r);
     }
 
     #[proptest]
-    fn division_saturates(a: Saturating<Asymmetric>, #[filter(#b != 0)] b: Saturating<Asymmetric>) {
-        let r = Saturating::<Asymmetric>::saturate(i8::saturating_div(a.get(), b.get()));
-
+    fn division_saturates(
+        #[filter(#a != 0)] a: Saturating<Asymmetric>,
+        #[filter(#b != 0)] b: Saturating<i8>,
+    ) {
+        let r: Asymmetric = i16::saturating_div(a.cast(), b.cast()).saturate();
         assert_eq!(a / b, r);
-        assert_eq!(a / b.get(), r);
+
+        let r: i8 = i16::saturating_div(b.cast(), a.cast()).saturate();
+        assert_eq!(b / a, r);
     }
 }

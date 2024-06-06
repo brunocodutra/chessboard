@@ -1,6 +1,6 @@
 use crate::chess::{Color, ImpossibleExchange, Move, Piece, Position, Role, Square};
 use crate::nnue::{Accumulator, Feature, Material, Positional, Value};
-use crate::util::Assume;
+use crate::util::{Assume, Integer};
 use arrayvec::ArrayVec;
 use derive_more::Deref;
 use std::ops::Range;
@@ -60,7 +60,7 @@ impl<T: Clone + Accumulator> Evaluator<T> {
     /// The [`Position`]'s evaluation.
     pub fn evaluate(&self) -> Value {
         let phase = (self.occupied().len() - 1) / 4;
-        Value::saturate(self.acc.evaluate(phase))
+        self.acc.evaluate(phase).saturate()
     }
 
     /// The Static Exchange Evaluation ([SEE]) algorithm.

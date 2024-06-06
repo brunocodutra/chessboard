@@ -3,25 +3,12 @@ use derive_more::{Debug, Deref, Display, Error, Shl, Shr};
 use std::{cmp::Ordering, str::FromStr};
 
 /// The hash size in bytes.
-#[derive(Debug, Display, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Deref, Shl, Shr)]
+#[derive(Debug, Display, Copy, Clone, Eq, Ord, Hash, Deref, Shl, Shr)]
 #[cfg_attr(test, derive(test_strategy::Arbitrary))]
 #[debug("HashSize({_0})")]
 #[display("{}", self.get() >> 20)]
 #[repr(transparent)]
-pub struct HashSize(#[cfg_attr(test, strategy(..=Self::MAX))] usize);
-
-impl HashSize {
-    /// Constructs hash size.
-    pub fn new(size: usize) -> Self {
-        debug_assert!((Self::MIN..=Self::MAX).contains(&size));
-        Self::from_repr(size)
-    }
-
-    /// Returns the raw hash size.
-    pub fn get(&self) -> usize {
-        self.repr()
-    }
-}
+pub struct HashSize(#[cfg_attr(test, strategy(Self::MIN..=Self::MAX))] usize);
 
 unsafe impl const Integer for HashSize {
     type Repr = usize;
@@ -29,10 +16,7 @@ unsafe impl const Integer for HashSize {
     const MIN: Self::Repr = 0;
 
     #[cfg(not(test))]
-    const MAX: usize = match 1usize.checked_shl(45) {
-        Some(h) => h,
-        None => usize::MAX,
-    };
+    const MAX: usize = 1 << 45;
 
     #[cfg(test)]
     const MAX: usize = 16 << 20;
@@ -44,29 +28,18 @@ impl Default for HashSize {
     }
 }
 
-impl PartialEq<usize> for HashSize {
-    fn eq(&self, other: &usize) -> bool {
-        self.0.eq(other)
+impl<I: Integer<Repr = usize>> PartialEq<I> for HashSize {
+    fn eq(&self, other: &I) -> bool {
+        self.get().eq(&other.get())
     }
 }
 
-impl PartialOrd<usize> for HashSize {
-    fn partial_cmp(&self, other: &usize) -> Option<Ordering> {
-        self.0.partial_cmp(other)
+impl<I: Integer<Repr = usize>> PartialOrd<I> for HashSize {
+    fn partial_cmp(&self, other: &I) -> Option<Ordering> {
+        self.get().partial_cmp(&other.get())
     }
 }
 
-impl PartialEq<HashSize> for usize {
-    fn eq(&self, other: &HashSize) -> bool {
-        self.eq(&other.0)
-    }
-}
-
-impl PartialOrd<HashSize> for usize {
-    fn partial_cmp(&self, other: &HashSize) -> Option<Ordering> {
-        self.partial_cmp(&other.0)
-    }
-}
 /// The reason why parsing the hash size failed.
 #[derive(Debug, Display, Clone, Eq, PartialEq, Error)]
 #[display(
@@ -80,38 +53,31 @@ impl FromStr for HashSize {
     type Err = ParseHashSizeError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s.parse::<usize>().ok().and_then(|h| h.checked_shl(20)) {
-            Some(h) if (HashSize::MIN..=HashSize::MAX).contains(&h) => Ok(HashSize::new(h)),
-            _ => Err(ParseHashSizeError),
-        }
+        s.parse::<usize>()
+            .ok()
+            .and_then(|h| h.checked_shl(20))
+            .and_then(usize::convert)
+            .ok_or(ParseHashSizeError)
     }
 }
 
 /// The thread count.
-#[derive(Debug, Display, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Deref)]
+#[derive(Debug, Display, Copy, Clone, Eq, Ord, Hash, Deref)]
 #[cfg_attr(test, derive(test_strategy::Arbitrary))]
 #[debug("ThreadCount({_0})")]
 #[display("{_0}")]
 #[repr(transparent)]
-pub struct ThreadCount(#[cfg_attr(test, strategy((1..=4usize)))] usize);
-
-impl ThreadCount {
-    /// Constructs hash size.
-    pub fn new(count: usize) -> Self {
-        debug_assert!((Self::MIN..=Self::MAX).contains(&count));
-        Self::from_repr(count)
-    }
-
-    /// Returns the raw thread count.
-    pub fn get(&self) -> usize {
-        self.repr()
-    }
-}
+pub struct ThreadCount(#[cfg_attr(test, strategy(Self::MIN..=Self::MAX))] usize);
 
 unsafe impl const Integer for ThreadCount {
     type Repr = usize;
     const MIN: Self::Repr = 1;
+
+    #[cfg(not(test))]
     const MAX: Self::Repr = 1 << 16;
+
+    #[cfg(test)]
+    const MAX: Self::Repr = 4;
 }
 
 impl Default for ThreadCount {
@@ -120,27 +86,15 @@ impl Default for ThreadCount {
     }
 }
 
-impl PartialEq<usize> for ThreadCount {
-    fn eq(&self, other: &usize) -> bool {
-        self.0.eq(other)
+impl<I: Integer<Repr = usize>> PartialEq<I> for ThreadCount {
+    fn eq(&self, other: &I) -> bool {
+        self.get().eq(&other.get())
     }
 }
 
-impl PartialOrd<usize> for ThreadCount {
-    fn partial_cmp(&self, other: &usize) -> Option<Ordering> {
-        self.0.partial_cmp(other)
-    }
-}
-
-impl PartialEq<ThreadCount> for usize {
-    fn eq(&self, other: &ThreadCount) -> bool {
-        self.eq(&other.0)
-    }
-}
-
-impl PartialOrd<ThreadCount> for usize {
-    fn partial_cmp(&self, other: &ThreadCount) -> Option<Ordering> {
-        self.partial_cmp(&other.0)
+impl<I: Integer<Repr = usize>> PartialOrd<I> for ThreadCount {
+    fn partial_cmp(&self, other: &I) -> Option<Ordering> {
+        self.get().partial_cmp(&other.get())
     }
 }
 
@@ -157,10 +111,10 @@ impl FromStr for ThreadCount {
     type Err = ParseThreadCountError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s.parse::<usize>() {
-            Ok(t) if (ThreadCount::MIN..=ThreadCount::MAX).contains(&t) => Ok(ThreadCount::new(t)),
-            _ => Err(ParseThreadCountError),
-        }
+        s.parse::<usize>()
+            .ok()
+            .and_then(Integer::convert)
+            .ok_or(ParseThreadCountError)
     }
 }
 

@@ -1,6 +1,6 @@
-use derive_more::{Debug, Display};
-use num_traits::{AsPrimitive, PrimInt, Unsigned};
-use std::fmt::Binary;
+use crate::util::{Integer, Primitive, Unsigned};
+use derive_more::{Debug, *};
+use std::mem::transmute_copy;
 use std::ops::{Bound, Not, RangeBounds};
 
 #[cfg(test)]
@@ -9,39 +9,36 @@ use proptest::prelude::*;
 #[cfg(test)]
 use std::ops::RangeInclusive;
 
-#[inline(always)]
-fn ones<T: PrimInt + Unsigned>(n: u32) -> T {
-    match n {
-        0 => T::zero(),
-        n => T::max_value() >> (T::zero().trailing_zeros() - n) as _,
-    }
-}
-
 /// A fixed width collection of bits.
-#[derive(Debug, Display, Copy, Clone, Eq, PartialEq, Hash)]
+#[derive(
+    Debug,
+    Display,
+    Copy,
+    Clone,
+    Eq,
+    PartialEq,
+    Hash,
+    BitAnd,
+    BitAndAssign,
+    BitOr,
+    BitOrAssign,
+    BitXor,
+    BitXorAssign,
+)]
 #[cfg_attr(test, derive(test_strategy::Arbitrary))]
-#[cfg_attr(test, arbitrary(bound(T: 'static + Debug + Binary, RangeInclusive<T>: Strategy<Value = T>)))]
+#[cfg_attr(test, arbitrary(bound(T: 'static + Debug + Unsigned, Self: Debug, RangeInclusive<T>: Strategy<Value = T>)))]
 #[debug("Bits({_0:b})")]
 #[display("{_0:b}")]
 #[repr(transparent)]
-pub struct Bits<T: PrimInt + Unsigned, const W: u32>(
-    #[cfg_attr(test, strategy(T::zero()..=ones(W)))] T,
-);
+pub struct Bits<T, const W: u32>(#[cfg_attr(test, strategy(T::zero()..=T::ones(W)))] T);
 
-impl<T: 'static + Binary + PrimInt + Unsigned, const W: u32> Bits<T, W> {
-    /// Constructs [`Bits`] from raw collection of bits.
-    #[inline(always)]
-    pub fn new(b: T) -> Self {
-        debug_assert!(b <= ones(W));
-        Bits(b)
-    }
+unsafe impl<T: Unsigned + ~const Primitive, const W: u32> const Integer for Bits<T, W> {
+    type Repr = T;
+    const MIN: Self::Repr = unsafe { transmute_copy(&u128::ones(0)) };
+    const MAX: Self::Repr = unsafe { transmute_copy(&u128::ones(W)) };
+}
 
-    /// Returns raw collection of bits.
-    #[inline(always)]
-    pub fn get(&self) -> T {
-        self.0
-    }
-
+impl<T: Unsigned, const W: u32> Bits<T, W> {
     /// Returns a slice of bits.
     #[inline(always)]
     pub fn slice<R: RangeBounds<u32>>(&self, r: R) -> Self {
@@ -57,43 +54,37 @@ impl<T: 'static + Binary + PrimInt + Unsigned, const W: u32> Bits<T, W> {
             Bound::Unbounded => W,
         };
 
-        Bits::new((self.get() & ones(b)) >> a as _)
+        Bits::new((self.get() & T::ones(b)) >> a.cast())
     }
 
     /// Shifts bits into the collection.
     #[inline(always)]
-    pub fn push<U: 'static + Binary + PrimInt + Unsigned + AsPrimitive<T>, const N: u32>(
-        &mut self,
-        bits: Bits<U, N>,
-    ) {
-        *self = Bits::new((self.get() << N as _) & ones(W) | bits.get().as_());
+    pub fn push<U: Unsigned, const N: u32>(&mut self, bits: Bits<U, N>) {
+        *self = Bits::new((self.get() << N.cast()) & T::ones(W) ^ bits.cast());
     }
 
     /// Shifts bits out of the collection.
     #[inline(always)]
-    pub fn pop<U: 'static + Binary + PrimInt + Unsigned, const N: u32>(&mut self) -> Bits<U, N>
-    where
-        T: AsPrimitive<U>,
-    {
-        let bits = Bits::new(self.get().as_() & ones(N));
-        *self = Bits::new(self.get() >> N as _);
+    pub fn pop<U: Unsigned, const N: u32>(&mut self) -> Bits<U, N> {
+        let bits = Bits::new(self.cast::<U>() & U::ones(N));
+        *self = Bits::new(self.get() >> N.cast());
         bits
     }
 }
 
-impl<T: 'static + Binary + PrimInt + Unsigned, const W: u32> Default for Bits<T, W> {
+impl<T: Unsigned, const W: u32> Default for Bits<T, W> {
     #[inline(always)]
     fn default() -> Self {
         Bits::new(T::zero())
     }
 }
 
-impl<T: 'static + Binary + PrimInt + Unsigned, const W: u32> Not for Bits<T, W> {
+impl<T: Unsigned, const W: u32> Not for Bits<T, W> {
     type Output = Self;
 
     #[inline(always)]
     fn not(self) -> Self::Output {
-        Bits::new(!self.get() & ones(W))
+        self ^ Bits::new(T::ones(W))
     }
 }
 
@@ -104,19 +95,13 @@ mod tests {
     use test_strategy::proptest;
 
     #[proptest]
-    #[should_panic]
-    fn panics_if_type_is_not_wide_enough() {
-        Bits::<u8, 11>::default();
-    }
-
-    #[proptest]
     fn can_be_constructed_from_raw_collection_of_bits(n: u8) {
         assert_eq!(Bits::<_, 8>::new(n), Bits(n));
     }
 
     #[proptest]
     #[should_panic]
-    fn constructor_panics_if_value_is_too_wide(#[strategy(ones::<u8>(6)..)] n: u8) {
+    fn constructor_panics_if_value_is_too_wide(#[strategy(u8::ones(6)..)] n: u8) {
         Bits::<_, 5>::new(n);
     }
 
@@ -182,6 +167,6 @@ mod tests {
     #[proptest]
     fn not_inverts_bits(b: Bits<u8, 5>) {
         assert_ne!((!b).get(), !b.get());
-        assert_eq!((!b).get(), !b.get() & ones::<u8>(5));
+        assert_eq!((!b).get(), !b.get() & u8::ones(5));
     }
 }

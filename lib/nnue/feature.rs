@@ -11,7 +11,7 @@ impl Feature {
     #[inline(always)]
     pub fn index(&self, side: Color) -> u16 {
         let Feature(ks, p, s) = self.perspective(side);
-        s as u16 + 64 * (p.repr().min(10) as u16 + 11 * ks as u16)
+        s as u16 + 64 * (p.get().min(10) as u16 + 11 * ks as u16)
     }
 }
 

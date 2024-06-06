@@ -1,6 +1,6 @@
 use crate::chess::{Color, Move, Perspective, Position};
 use crate::nnue::Evaluator;
-use crate::search::{Depth, Engine, HashSize, Limits, Options, Score, ThreadCount};
+use crate::search::{Engine, HashSize, Limits, Options, Score, ThreadCount};
 use crate::util::{Assume, Integer};
 use arrayvec::ArrayString;
 use derive_more::{Deref, Display};
@@ -165,7 +165,7 @@ impl Uci {
 
             ["go", "depth", depth] => {
                 match depth.parse::<u8>() {
-                    Ok(d) => self.go(Depth::saturate(d).into(), out)?,
+                    Ok(d) => self.go(Limits::Depth(d.saturate()), out)?,
                     Err(e) => eprintln!("{e}"),
                 }
 
@@ -197,7 +197,7 @@ impl Uci {
 
             ["bench", "depth", depth] => {
                 match depth.parse::<u8>() {
-                    Ok(d) => self.bench(Depth::saturate(d).into(), out)?,
+                    Ok(d) => self.bench(Limits::Depth(d.saturate()), out)?,
                     Err(e) => eprintln!("{e}"),
                 }
 
@@ -216,9 +216,9 @@ impl Uci {
             ["eval"] => {
                 let turn = self.position.turn();
                 let pos = Evaluator::new(self.position.clone());
-                let material: Score = pos.material().evaluate().perspective(turn).cast();
-                let positional: Score = pos.positional().evaluate().perspective(turn).cast();
-                let evaluation: Score = pos.evaluate().perspective(turn).cast();
+                let material: Score = pos.material().evaluate().perspective(turn).saturate();
+                let positional: Score = pos.positional().evaluate().perspective(turn).saturate();
+                let evaluation: Score = pos.evaluate().perspective(turn).saturate();
 
                 writeln!(
                     out,
@@ -322,6 +322,7 @@ impl Uci {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::search::Depth;
     use proptest::sample::Selector;
     use std::str;
     use test_strategy::proptest;

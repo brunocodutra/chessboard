@@ -67,7 +67,7 @@ mod tests {
     use std::mem::size_of;
     use test_strategy::proptest;
 
-    #[proptest]
+    #[test]
     fn color_guarantees_zero_value_optimization() {
         assert_eq!(size_of::<Option<Color>>(), size_of::<Color>());
     }

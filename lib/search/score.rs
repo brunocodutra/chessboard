@@ -22,9 +22,9 @@ impl Score {
     /// Negative number of plies means the opponent is mating.
     pub fn mate(&self) -> Option<Ply> {
         if *self <= Score::lower() - Ply::MIN {
-            Some((Score::lower() - *self).cast())
+            Some((Score::lower() - *self).saturate())
         } else if *self >= Score::upper() - Ply::MAX {
-            Some((Score::upper() - *self).cast())
+            Some((Score::upper() - *self).saturate())
         } else {
             None
         }
@@ -45,7 +45,7 @@ impl Score {
 impl const Perspective for Score {
     #[inline(always)]
     fn flip(&self) -> Self {
-        Saturating::from_repr(-self.repr())
+        Self::new(-self.get())
     }
 }
 
@@ -54,12 +54,12 @@ impl Binary for Score {
 
     #[inline(always)]
     fn encode(&self) -> Self::Bits {
-        Bits::new((self.get() - Score::lower().get()) as _)
+        Bits::new((self.get() - Self::lower().get()).cast())
     }
 
     #[inline(always)]
     fn decode(bits: Self::Bits) -> Self {
-        Self::lower() + bits.get() as i16
+        Self::lower() + bits.cast::<i16>()
     }
 }
 

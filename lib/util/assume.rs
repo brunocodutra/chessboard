@@ -47,3 +47,21 @@ impl<T: ~const Destruct, E: ~const Destruct> const Assume for Result<T, E> {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use test_strategy::proptest;
+
+    #[test]
+    #[should_panic]
+    fn assuming_none_panics() {
+        None.assume()
+    }
+
+    #[proptest]
+    #[should_panic]
+    fn assuming_err_panics(i: i8) {
+        Err(i).assume()
+    }
+}

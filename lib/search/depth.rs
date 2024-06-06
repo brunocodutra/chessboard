@@ -1,4 +1,4 @@
-use crate::util::{Binary, Bits, Integer, Saturating};
+use crate::util::{Assume, Binary, Bits, Integer, Saturating};
 
 #[derive(Debug, Default, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
 #[cfg_attr(test, derive(test_strategy::Arbitrary))]
@@ -25,12 +25,12 @@ impl Binary for Depth {
 
     #[inline(always)]
     fn encode(&self) -> Self::Bits {
-        Bits::new(self.get() as _)
+        self.convert().assume()
     }
 
     #[inline(always)]
     fn decode(bits: Self::Bits) -> Self {
-        Depth::new(bits.get() as _)
+        bits.convert().assume()
     }
 }
 
