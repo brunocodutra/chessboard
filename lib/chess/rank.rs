@@ -7,7 +7,7 @@ use std::ops::Sub;
 /// A row on the chess board.
 #[derive(Debug, Display, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
 #[cfg_attr(test, derive(test_strategy::Arbitrary))]
-#[repr(u8)]
+#[repr(i8)]
 pub enum Rank {
     #[display("1")]
     First,
@@ -28,7 +28,7 @@ pub enum Rank {
 }
 
 unsafe impl const Integer for Rank {
-    type Repr = u8;
+    type Repr = i8;
     const MIN: Self::Repr = Rank::First as _;
     const MAX: Self::Repr = Rank::Eighth as _;
 }
@@ -36,7 +36,7 @@ unsafe impl const Integer for Rank {
 impl const Mirror for Rank {
     #[inline(always)]
     fn mirror(&self) -> Self {
-        Rank::from_repr(self.repr() ^ Self::Eighth.repr())
+        Self::new(self.get() ^ Self::Eighth.get())
     }
 }
 
@@ -53,7 +53,7 @@ impl Sub for Rank {
 
     #[inline(always)]
     fn sub(self, rhs: Self) -> Self::Output {
-        self as i8 - rhs as i8
+        self.get() - rhs.get()
     }
 }
 
@@ -61,7 +61,7 @@ impl Sub for Rank {
 impl From<cc::Rank> for Rank {
     #[inline(always)]
     fn from(r: cc::Rank) -> Self {
-        Rank::from_repr(r as _)
+        Self::new(r as _)
     }
 }
 
@@ -79,19 +79,19 @@ mod tests {
     use std::mem::size_of;
     use test_strategy::proptest;
 
-    #[proptest]
+    #[test]
     fn rank_guarantees_zero_value_optimization() {
         assert_eq!(size_of::<Option<Rank>>(), size_of::<Rank>());
     }
 
     #[proptest]
     fn mirroring_rank_returns_complement(r: Rank) {
-        assert_eq!(r.mirror().repr(), Rank::MAX - r.repr());
+        assert_eq!(r.mirror().get(), Rank::MAX - r.get());
     }
 
     #[proptest]
     fn subtracting_ranks_returns_distance(a: Rank, b: Rank) {
-        assert_eq!(a - b, a as i8 - b as i8);
+        assert_eq!(a - b, a.get() - b.get());
     }
 
     #[proptest]

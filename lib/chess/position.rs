@@ -78,7 +78,7 @@ impl Arbitrary for Position {
                             if board.halfmove_clock() > 0 {
                                 let entries = history[turn as usize].len();
                                 history[turn as usize].copy_within(..entries - 1, 1);
-                                history[turn as usize][0] = NonZeroU32::new(zobrist.get() as _);
+                                history[turn as usize][0] = NonZeroU32::new(zobrist.cast());
                             } else {
                                 history = Default::default();
                             }
@@ -113,7 +113,7 @@ impl Position {
     /// It starts at 1, and is incremented after every move by black.
     #[inline(always)]
     pub fn fullmoves(&self) -> NonZeroU32 {
-        NonZeroU32::new(self.board.fullmove_number() as _).assume()
+        self.board.fullmove_number().convert().assume()
     }
 
     /// The en passant square.
@@ -212,7 +212,7 @@ impl Position {
     /// How many other times this position has repeated.
     #[inline(always)]
     pub fn repetitions(&self) -> usize {
-        match NonZeroU32::new(self.zobrist().get() as _) {
+        match NonZeroU32::new(self.zobrist().cast()) {
             None => 0,
             hash => {
                 let history = self.history[self.turn() as usize];
@@ -365,7 +365,7 @@ impl Position {
         if self.halfmoves() > 0 {
             let entries = self.history[turn as usize].len();
             self.history[turn as usize].copy_within(..entries - 1, 1);
-            self.history[turn as usize][0] = NonZeroU32::new(zobrist.get() as _);
+            self.history[turn as usize][0] = NonZeroU32::new(zobrist.cast());
         } else {
             self.history = Default::default();
         }
@@ -693,7 +693,7 @@ mod tests {
         #[filter(#pos.outcome().is_none())] mut pos: Position,
         z: NonZeroU32,
     ) {
-        let zobrist = NonZeroU32::new(pos.zobrist().get() as _);
+        let zobrist = NonZeroU32::new(pos.zobrist().cast());
         let history = [zobrist, Some(z), zobrist, Some(z)];
         pos.history[pos.turn() as usize][..4].clone_from_slice(&history);
         assert!(pos.is_draw_by_threefold_repetition());

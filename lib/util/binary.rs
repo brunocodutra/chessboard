@@ -1,5 +1,4 @@
-use crate::util::Bits;
-use num_traits::{PrimInt, Unsigned};
+use crate::util::{Bits, Unsigned};
 use std::fmt::Debug;
 
 /// Trait for types that can be encoded to binary.
@@ -14,7 +13,7 @@ pub trait Binary: Sized {
     fn decode(bits: Self::Bits) -> Self;
 }
 
-impl<T: PrimInt + Unsigned, const W: u32> Binary for Bits<T, W> {
+impl<T: Unsigned, const W: u32> Binary for Bits<T, W> {
     type Bits = Self;
 
     #[inline(always)]

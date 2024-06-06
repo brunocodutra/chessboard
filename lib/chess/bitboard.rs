@@ -113,17 +113,17 @@ mod tests {
     use std::fmt::Debug;
     use test_strategy::proptest;
 
-    #[proptest]
+    #[test]
     fn empty_constructs_board_with_no_squares() {
         assert_eq!(Bitboard::empty().into_iter().count(), 0);
     }
 
-    #[proptest]
+    #[test]
     fn full_constructs_board_with_all_squares() {
         assert_eq!(Bitboard::full().into_iter().count(), 64);
     }
 
-    #[proptest]
+    #[test]
     fn light_and_dark_bitboards_are_complementary() {
         assert_eq!(Bitboard::light() | Bitboard::dark(), Bitboard::full());
         assert_eq!(Bitboard::light() & Bitboard::dark(), Bitboard::empty());

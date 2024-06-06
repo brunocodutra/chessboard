@@ -10,33 +10,33 @@ pub struct Move(NonZeroU16);
 impl Move {
     #[inline(always)]
     fn bits<R: RangeBounds<u32>>(&self, r: R) -> Bits<u16, 16> {
-        Bits::new(self.0.get()).slice(r)
+        self.encode().slice(r)
     }
 
     /// Constructs a castling move.
     #[inline(always)]
     pub fn castling(whence: Square, whither: Square) -> Self {
-        let mut bits = Bits::<_, 16>::default();
+        let mut bits = Bits::<u16, 16>::default();
         bits.push(whence.encode());
         bits.push(whither.encode());
         bits.push(Bits::<u8, 4>::new(0b0001));
-        Move(NonZeroU16::new(bits.get()).assume())
+        Move(bits.convert().assume())
     }
 
     /// Constructs an en passant move.
     #[inline(always)]
     pub fn en_passant(whence: Square, whither: Square) -> Self {
-        let mut bits = Bits::<_, 16>::default();
+        let mut bits = Bits::<u16, 16>::default();
         bits.push(whence.encode());
         bits.push(whither.encode());
         bits.push(Bits::<u8, 4>::new(0b0110));
-        Move(NonZeroU16::new(bits.get()).assume())
+        Move(bits.convert().assume())
     }
 
     /// Constructs a regular move.
     #[inline(always)]
     pub fn regular(whence: Square, whither: Square, promotion: Option<Role>) -> Self {
-        let mut bits = Bits::<_, 16>::default();
+        let mut bits = Bits::<u16, 16>::default();
         bits.push(whence.encode());
         bits.push(whither.encode());
 
@@ -44,11 +44,11 @@ impl Move {
             None => bits.push(Bits::<u8, 4>::new(0b0000)),
             Some(r) => {
                 bits.push(Bits::<u8, 2>::new(0b10));
-                bits.push(Bits::<u8, 2>::new(r.repr() - 1));
+                bits.push(Bits::<u8, 2>::new(r.get() - 1));
             }
         }
 
-        Move(NonZeroU16::new(bits.get()).assume())
+        Move(bits.convert().assume())
     }
 
     /// Constructs a capture move.
@@ -75,7 +75,7 @@ impl Move {
     #[inline(always)]
     pub fn promotion(&self) -> Option<Role> {
         if self.is_promotion() {
-            Some(Role::from_repr(self.bits(..2).get() as u8 + 1))
+            Some(Role::new(self.bits(..2).cast::<u8>() + 1))
         } else {
             None
         }
@@ -145,12 +145,12 @@ impl Binary for Move {
 
     #[inline(always)]
     fn encode(&self) -> Self::Bits {
-        self.bits(..)
+        self.0.convert().assume()
     }
 
     #[inline(always)]
     fn decode(bits: Self::Bits) -> Self {
-        Move(NonZeroU16::new(bits.get()).assume())
+        Move(bits.convert().assume())
     }
 }
 
@@ -161,7 +161,7 @@ mod tests {
     use std::mem::size_of;
     use test_strategy::proptest;
 
-    #[proptest]
+    #[test]
     fn move_guarantees_zero_value_optimization() {
         assert_eq!(size_of::<Option<Move>>(), size_of::<Move>());
     }
@@ -192,7 +192,7 @@ mod tests {
 
     #[proptest]
     #[should_panic]
-    fn constructing_capture_move_fails_with_invalid_promotion(
+    fn constructing_capture_move_panics_with_invalid_promotion(
         wc: Square,
         #[filter(#wc != #wt)] wt: Square,
         #[strategy(select(&[Role::Pawn, Role::King]))] p: Role,
@@ -216,7 +216,7 @@ mod tests {
 
     #[proptest]
     #[should_panic]
-    fn constructing_promotion_move_fails_with_invalid_promotion(
+    fn constructing_promotion_move_panics_with_invalid_promotion(
         wc: Square,
         #[filter(#wc != #wt)] wt: Square,
         #[strategy(select(&[Role::Pawn, Role::King]))] p: Role,

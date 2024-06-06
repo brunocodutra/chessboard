@@ -39,7 +39,7 @@ impl From<Role> for cc::Piece {
 impl From<cc::Piece> for Role {
     #[inline(always)]
     fn from(r: cc::Piece) -> Self {
-        Role::from_repr(r as _)
+        Self::new(r as _)
     }
 }
 
@@ -49,7 +49,7 @@ mod tests {
     use std::mem::size_of;
     use test_strategy::proptest;
 
-    #[proptest]
+    #[test]
     fn role_guarantees_zero_value_optimization() {
         assert_eq!(size_of::<Option<Role>>(), size_of::<Role>());
     }

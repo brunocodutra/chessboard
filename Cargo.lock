@@ -69,7 +69,6 @@ dependencies = [
  "criterion",
  "ctor",
  "derive_more",
- "num-traits",
  "proptest",
  "rayon",
  "ruzstd",

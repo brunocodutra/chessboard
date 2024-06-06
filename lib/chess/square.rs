@@ -1,12 +1,12 @@
 use crate::chess::{File, Mirror, Perspective, Rank};
-use crate::util::{Binary, Bits, Integer};
+use crate::util::{Assume, Binary, Bits, Integer};
 use cozy_chess as cc;
 use std::{fmt, ops::Sub};
 
 /// A square on the chess board.
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
 #[cfg_attr(test, derive(test_strategy::Arbitrary))]
-#[repr(u8)]
+#[repr(i8)]
 #[rustfmt::skip]
 pub enum Square {
     A1, B1, C1, D1, E1, F1, G1, H1,
@@ -23,24 +23,24 @@ impl Square {
     /// Constructs [`Square`] from a pair of [`File`] and [`Rank`].
     #[inline(always)]
     pub const fn new(f: File, r: Rank) -> Self {
-        Self::from_repr(f.repr() + r.repr() * 8)
+        <Self as Integer>::new(f.get() | r.get() << 3)
     }
 
     /// This square's [`File`].
     #[inline(always)]
     pub const fn file(&self) -> File {
-        File::from_repr(self.repr() % 8)
+        File::new(self.get() & 0b111)
     }
 
     /// This square's [`Rank`].
     #[inline(always)]
     pub const fn rank(&self) -> Rank {
-        Rank::from_repr(self.repr() / 8)
+        Rank::new(self.get() >> 3)
     }
 }
 
 unsafe impl const Integer for Square {
-    type Repr = u8;
+    type Repr = i8;
     const MIN: Self::Repr = Square::A1 as _;
     const MAX: Self::Repr = Square::H8 as _;
 }
@@ -49,7 +49,7 @@ impl const Mirror for Square {
     /// Mirrors this square's [`File`] and [`Rank`].
     #[inline(always)]
     fn mirror(&self) -> Self {
-        Square::from_repr(self.repr() ^ Square::H8.repr())
+        <Self as Integer>::new(self.get() ^ Square::H8.get())
     }
 }
 
@@ -57,7 +57,7 @@ impl const Perspective for Square {
     /// Flips this square's [`Rank`].
     #[inline(always)]
     fn flip(&self) -> Self {
-        Self::from_repr(self.repr() ^ Square::A8.repr())
+        <Self as Integer>::new(self.get() ^ Square::A8.get())
     }
 }
 
@@ -72,12 +72,12 @@ impl Binary for Square {
 
     #[inline(always)]
     fn encode(&self) -> Self::Bits {
-        Bits::new(*self as _)
+        self.convert().assume()
     }
 
     #[inline(always)]
     fn decode(bits: Self::Bits) -> Self {
-        Square::from_repr(bits.get())
+        bits.convert().assume()
     }
 }
 
@@ -94,7 +94,7 @@ impl Sub for Square {
 impl From<cc::Square> for Square {
     #[inline(always)]
     fn from(s: cc::Square) -> Self {
-        Square::from_repr(s as _)
+        <Self as Integer>::new(s as _)
     }
 }
 
@@ -112,7 +112,7 @@ mod tests {
     use std::mem::size_of;
     use test_strategy::proptest;
 
-    #[proptest]
+    #[test]
     fn square_guarantees_zero_value_optimization() {
         assert_eq!(size_of::<Option<Square>>(), size_of::<Square>());
     }

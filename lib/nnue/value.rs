@@ -18,6 +18,6 @@ pub type Value = Saturating<ValueRepr>;
 impl const Perspective for Value {
     #[inline(always)]
     fn flip(&self) -> Self {
-        Saturating::from_repr(-self.repr())
+        Self::new(-self.get())
     }
 }

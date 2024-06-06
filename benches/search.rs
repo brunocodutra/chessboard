@@ -1,6 +1,6 @@
 use criterion::{criterion_group, criterion_main, Criterion, SamplingMode, Throughput};
-use lib::search::{Depth, Engine, Options, ThreadCount};
-use lib::{chess::Position, search::Limits};
+use lib::search::{Depth, Engine, Limits, Options, ThreadCount};
+use lib::{chess::Position, util::Integer};
 use std::thread::available_parallelism;
 use std::time::{Duration, Instant};
 
