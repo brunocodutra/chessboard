@@ -1,7 +1,6 @@
-use crate::chess::{Move, Zobrist};
 use crate::nnue::{Evaluator, Value};
-use crate::search::*;
 use crate::util::{Assume, Counter, Integer, Timer};
+use crate::{chess::Move, search::*};
 use arrayvec::ArrayVec;
 use derive_more::{Display, Error};
 use rayon::{prelude::*, ThreadPool, ThreadPoolBuilder};
@@ -66,15 +65,20 @@ impl Engine {
     }
 
     /// Records a `[Transposition`].
-    fn record(&self, key: Zobrist, bounds: Range<Score>, depth: Depth, ply: Ply, pv: Pv) -> Pv {
+    fn record(&self, pos: &Evaluator, bounds: Range<Score>, depth: Depth, ply: Ply, pv: Pv) -> Pv {
+        let m = pv.best().assume();
+        if pv >= bounds.end && m.is_quiet() {
+            Self::KILLERS.with_borrow_mut(|ks| ks.insert(ply, pos.turn(), m));
+        }
+
         self.tt.set(
-            key,
+            pos.zobrist(),
             if pv.score() >= bounds.end {
-                Transposition::lower(depth - ply, pv.score().normalize(-ply), pv.best().assume())
+                Transposition::lower(depth - ply, pv.score().normalize(-ply), m)
             } else if pv.score() <= bounds.start {
-                Transposition::upper(depth - ply, pv.score().normalize(-ply), pv.best().assume())
+                Transposition::upper(depth - ply, pv.score().normalize(-ply), m)
             } else {
-                Transposition::exact(depth - ply, pv.score().normalize(-ply), pv.best().assume())
+                Transposition::exact(depth - ply, pv.score().normalize(-ply), m)
             },
         );
 
@@ -246,18 +250,12 @@ impl Engine {
             Some((m, _)) => {
                 let mut next = pos.clone();
                 next.play(m);
-                let pv = m >> -self.pvs(&next, -beta..-alpha, depth, ply + 1, ctrl)?;
-
-                if pv >= beta && m.is_quiet() {
-                    Self::KILLERS.with_borrow_mut(|ks| ks.insert(ply, pos.turn(), m));
-                }
-
-                pv
+                m >> -self.pvs(&next, -beta..-alpha, depth, ply + 1, ctrl)?
             }
         };
 
         if pv >= beta {
-            return Ok(self.record(pos.zobrist(), bounds, depth, ply, pv));
+            return Ok(self.record(pos, bounds, depth, ply, pv));
         }
 
         let cutoff = AtomicI16::new(pv.score().max(alpha).get());
@@ -290,10 +288,6 @@ impl Engine {
                     _ => m >> -self.pvs(&next, -beta..-alpha, depth, ply + 1, ctrl)?,
                 };
 
-                if pv >= beta && m.is_quiet() {
-                    Self::KILLERS.with_borrow_mut(|ks| ks.insert(ply, pos.turn(), m));
-                }
-
                 if pv > alpha {
                     cutoff.fetch_max(pv.score().get(), Ordering::Relaxed);
                 }
@@ -304,7 +298,7 @@ impl Engine {
             .try_reduce(|| None, |a, b| Ok(max(a, b)))?
             .assume();
 
-        Ok(self.record(pos.zobrist(), bounds, depth, ply, pv))
+        Ok(self.record(pos, bounds, depth, ply, pv))
     }
 
     /// An implementation of [aspiration windows] with [iterative deepening].
