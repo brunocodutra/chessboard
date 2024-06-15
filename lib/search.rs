@@ -1,4 +1,5 @@
 mod depth;
+mod driver;
 mod engine;
 mod killers;
 mod limits;
@@ -9,6 +10,7 @@ mod score;
 mod transposition;
 
 pub use depth::*;
+pub use driver::*;
 pub use engine::*;
 pub use killers::*;
 pub use limits::*;

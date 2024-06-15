@@ -275,7 +275,7 @@ mod tests {
 
     #[proptest]
     fn table_size_is_exact_if_input_is_power_of_two(
-        #[strategy(TranspositionTable::WIDTH.trailing_zeros()..=HashSize::upper().trailing_zeros())]
+        #[strategy(TranspositionTable::WIDTH.trailing_zeros()..=HashSize::MAX.trailing_zeros())]
         bits: u32,
     ) {
         let s = HashSize::new(1 << bits);
