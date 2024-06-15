@@ -1,9 +1,9 @@
 use crate::util::Integer;
-use derive_more::{Debug, Deref, Display, Error, Shl, Shr};
+use derive_more::{Debug, Display, Error, Shl, Shr};
 use std::{cmp::Ordering, str::FromStr};
 
 /// The hash size in bytes.
-#[derive(Debug, Display, Copy, Clone, Eq, Ord, Hash, Deref, Shl, Shr)]
+#[derive(Debug, Display, Copy, Clone, Eq, Ord, Hash, Shl, Shr)]
 #[cfg_attr(test, derive(test_strategy::Arbitrary))]
 #[debug("HashSize({_0})")]
 #[display("{}", self.get() >> 20)]
@@ -62,7 +62,7 @@ impl FromStr for HashSize {
 }
 
 /// The thread count.
-#[derive(Debug, Display, Copy, Clone, Eq, Ord, Hash, Deref)]
+#[derive(Debug, Display, Copy, Clone, Eq, Ord, Hash)]
 #[cfg_attr(test, derive(test_strategy::Arbitrary))]
 #[debug("ThreadCount({_0})")]
 #[display("{_0}")]
@@ -71,6 +71,7 @@ pub struct ThreadCount(#[cfg_attr(test, strategy(Self::MIN..=Self::MAX))] usize)
 
 unsafe impl const Integer for ThreadCount {
     type Repr = usize;
+
     const MIN: Self::Repr = 1;
 
     #[cfg(not(test))]

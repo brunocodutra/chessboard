@@ -66,6 +66,7 @@ dependencies = [
  "arrayvec",
  "byteorder",
  "criterion",
+ "criterion-macro",
  "ctor",
  "derive_more",
  "proptest",
@@ -151,6 +152,16 @@ dependencies = [
  "serde_json",
  "tinytemplate",
  "walkdir",
+]
+
+[[package]]
+name = "criterion-macro"
+version = "0.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "288a8f36b28a19d7dbd572c76006c0a0eba1f3bf912a254dda211c6f665e7ffc"
+dependencies = [
+ "proc-macro2",
+ "quote",
 ]
 
 [[package]]

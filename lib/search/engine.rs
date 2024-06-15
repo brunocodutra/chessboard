@@ -2,18 +2,10 @@ use crate::nnue::{Evaluator, Value};
 use crate::util::{Assume, Counter, Integer, Timer};
 use crate::{chess::Move, search::*};
 use arrayvec::ArrayVec;
-use derive_more::{Display, Error};
-use rayon::{prelude::*, ThreadPool, ThreadPoolBuilder};
-use std::sync::atomic::{AtomicI16, Ordering};
-use std::{cell::RefCell, cmp::max, ops::Range, time::Duration};
+use std::{cell::RefCell, ops::Range, time::Duration};
 
 #[cfg(test)]
 use crate::search::{HashSize, ThreadCount};
-
-/// Indicates the search was interrupted upon reaching the configured limit.
-#[derive(Debug, Display, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Error)]
-#[display("the search was interrupted")]
-struct Interrupted;
 
 /// The search control.
 #[derive(Debug)]
@@ -29,8 +21,8 @@ impl Default for Control {
 #[derive(Debug)]
 #[cfg_attr(test, derive(test_strategy::Arbitrary))]
 pub struct Engine {
-    #[cfg_attr(test, map(|c: ThreadCount| ThreadPoolBuilder::new().num_threads(c.get()).build().unwrap()))]
-    executor: ThreadPool,
+    #[cfg_attr(test, map(|c: ThreadCount| Driver::new(c)))]
+    driver: Driver,
     #[cfg_attr(test, map(|s: HashSize| TranspositionTable::new(s)))]
     tt: TranspositionTable,
 }
@@ -56,11 +48,8 @@ impl Engine {
     /// Initializes the engine with the given [`Options`].
     pub fn with_options(options: Options) -> Self {
         Engine {
+            driver: Driver::new(options.threads),
             tt: TranspositionTable::new(options.hash),
-            executor: ThreadPoolBuilder::new()
-                .num_threads(options.threads.get())
-                .build()
-                .expect("failed to initialize thread pool"),
         }
     }
 
@@ -254,49 +243,36 @@ impl Engine {
             }
         };
 
-        if pv >= beta {
+        if pv >= beta || moves.is_empty() {
             return Ok(self.record(pos, bounds, depth, ply, pv));
         }
 
-        let cutoff = AtomicI16::new(pv.score().max(alpha).get());
+        let pv = self.driver.drive(pv, &moves, |&best, &(m, gain)| {
+            let alpha = match best.score() {
+                s if s >= beta => return Err(ControlFlow::Break),
+                s => s.max(alpha),
+            };
 
-        let (pv, _) = moves
-            .into_par_iter()
-            .rev()
-            .map(|&(m, gain)| {
-                let alpha = Score::new(cutoff.load(Ordering::Relaxed));
+            let mut next = pos.clone();
+            next.play(m);
 
-                if alpha >= beta {
-                    return Ok(None);
-                }
-
-                let mut next = pos.clone();
-                next.play(m);
-
-                if gain < 100 && !in_check && !next.is_check() {
-                    if let Some(d) = self.lmp(&next, m, alpha.saturate(), depth, ply) {
-                        if d <= ply || -self.nw(&next, -alpha, d, ply + 1, ctrl)? <= alpha {
-                            #[cfg(not(test))]
-                            // The late move pruning heuristic is not exact.
-                            return Ok(None);
-                        }
+            if gain < 100 && !in_check && !next.is_check() {
+                if let Some(d) = self.lmp(&next, m, alpha.saturate(), depth, ply) {
+                    if d <= ply || -self.nw(&next, -alpha, d, ply + 1, ctrl)? <= alpha {
+                        #[cfg(not(test))]
+                        // The late move pruning heuristic is not exact.
+                        return Ok(best);
                     }
                 }
+            }
 
-                let pv = match -self.nw(&next, -alpha, depth, ply + 1, ctrl)? {
-                    pv if pv <= alpha || pv >= beta => m >> pv,
-                    _ => m >> -self.pvs(&next, -beta..-alpha, depth, ply + 1, ctrl)?,
-                };
+            let pv = match -self.nw(&next, -alpha, depth, ply + 1, ctrl)? {
+                pv if pv <= alpha || pv >= beta => m >> pv,
+                _ => m >> -self.pvs(&next, -beta..-alpha, depth, ply + 1, ctrl)?,
+            };
 
-                if pv > alpha {
-                    cutoff.fetch_max(pv.score().get(), Ordering::Relaxed);
-                }
-
-                Ok(Some((pv, gain)))
-            })
-            .chain([Ok(Some((pv, Value::upper())))])
-            .try_reduce(|| None, |a, b| Ok(max(a, b)))?
-            .assume();
+            Ok(pv)
+        })?;
 
         Ok(self.record(pos, bounds, depth, ply, pv))
     }
@@ -364,7 +340,7 @@ impl Engine {
     pub fn search(&mut self, pos: &Evaluator, limits: Limits) -> Pv {
         let time = self.time_to_search(pos, limits);
         let (depth, nodes) = (limits.depth(), limits.nodes());
-        self.executor.install(|| self.aw(pos, depth, nodes, time))
+        self.aw(pos, depth, nodes, time)
     }
 }
 

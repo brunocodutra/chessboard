@@ -17,6 +17,8 @@ use std::ops::RangeInclusive;
     Clone,
     Eq,
     PartialEq,
+    Ord,
+    PartialOrd,
     Hash,
     BitAnd,
     BitAndAssign,
