@@ -97,7 +97,7 @@ impl Engine {
         ply: Ply,
     ) -> Option<Depth> {
         let turn = pos.turn();
-        if guess > beta && pos.pieces(turn).len() > 1 {
+        if guess >= beta && pos.pieces(turn).len() > 1 {
             Some(depth - 2 - (depth - ply) / 4)
         } else {
             None
