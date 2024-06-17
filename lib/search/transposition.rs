@@ -102,6 +102,7 @@ impl Transposition {
 impl Binary for Transposition {
     type Bits = Bits<u64, 37>;
 
+    #[inline(always)]
     fn encode(&self) -> Self::Bits {
         let mut bits = Bits::default();
         bits.push(self.depth.encode());
@@ -111,6 +112,7 @@ impl Binary for Transposition {
         bits
     }
 
+    #[inline(always)]
     fn decode(mut bits: Self::Bits) -> Self {
         Transposition {
             best: Binary::decode(bits.pop()),
@@ -130,6 +132,7 @@ struct SignedTransposition(Signature, <Transposition as Binary>::Bits);
 impl Binary for SignedTransposition {
     type Bits = Bits<u64, 64>;
 
+    #[inline(always)]
     fn encode(&self) -> Self::Bits {
         let mut bits = Bits::default();
         bits.push(self.1);
@@ -137,6 +140,7 @@ impl Binary for SignedTransposition {
         bits
     }
 
+    #[inline(always)]
     fn decode(mut bits: Self::Bits) -> Self {
         SignedTransposition(bits.pop(), bits.pop())
     }
@@ -214,7 +218,7 @@ impl TranspositionTable {
         if self.capacity() > 0 {
             let sig = self.signature_of(key);
             let bits = Some(SignedTransposition(sig, tpos.encode())).encode();
-            self.cache[self.index_of(key)].fetch_max(bits.get(), Ordering::Relaxed);
+            self.cache[self.index_of(key)].store(bits.get(), Ordering::Relaxed);
         }
     }
 }
@@ -326,31 +330,14 @@ mod tests {
     }
 
     #[proptest]
-    fn set_keeps_transposition_with_greater_depth(
+    fn set_replaces_transposition_if_one_exists(
         #[by_ref] mut tt: TranspositionTable,
+        s: Signature,
         t: Transposition,
-        #[filter(#t.depth() != #u.depth())] u: Transposition,
+        u: Transposition,
         k: Zobrist,
     ) {
-        let st = Some(SignedTransposition(tt.signature_of(k), t.encode()));
-        *tt.cache[tt.index_of(k)].get_mut() = st.encode().get();
-        tt.set(k, u);
-
-        if t.depth() > u.depth() {
-            assert_eq!(tt.get(k), Some(t));
-        } else {
-            assert_eq!(tt.get(k), Some(u));
-        }
-    }
-
-    #[proptest]
-    fn set_ignores_the_signature_mismatch(
-        #[by_ref] mut tt: TranspositionTable,
-        t: Transposition,
-        #[filter(#u.depth() > #t.depth())] u: Transposition,
-        k: Zobrist,
-    ) {
-        let st = Some(SignedTransposition(!tt.signature_of(k), t.encode()));
+        let st = Some(SignedTransposition(s, t.encode()));
         *tt.cache[tt.index_of(k)].get_mut() = st.encode().get();
         tt.set(k, u);
         assert_eq!(tt.get(k), Some(u));
@@ -362,7 +349,7 @@ mod tests {
         t: Transposition,
         k: Zobrist,
     ) {
-        *tt.cache[tt.index_of(k)].get_mut() = 0;
+        *tt.cache[tt.index_of(k)].get_mut() = None::<SignedTransposition>.encode().get();
         tt.set(k, t);
         assert_eq!(tt.get(k), Some(t));
     }
