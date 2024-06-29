@@ -6,9 +6,8 @@ use std::mem::{transmute, MaybeUninit};
 mod accumulator;
 mod evaluator;
 mod feature;
-mod layer;
+mod hidden;
 mod material;
-mod output;
 mod positional;
 mod transformer;
 mod value;
@@ -16,9 +15,8 @@ mod value;
 pub use accumulator::*;
 pub use evaluator::*;
 pub use feature::*;
-pub use layer::*;
+pub use hidden::*;
 pub use material::*;
-pub use output::*;
 pub use positional::*;
 pub use transformer::*;
 pub use value::*;
@@ -30,7 +28,7 @@ pub use value::*;
 struct Nnue {
     ft: Transformer<i16, { Self::L0 }, { Self::L1 / 2 }>,
     psqt: Transformer<i32, { Self::L0 }, { Self::PHASES }>,
-    output: [Output<{ Nnue::L1 }>; Self::PHASES],
+    hidden: [Hidden<{ Nnue::L1 }>; Self::PHASES],
 }
 
 static mut NNUE: Nnue = unsafe { MaybeUninit::zeroed().assume_init() };
@@ -63,9 +61,9 @@ impl Nnue {
             )
         })?;
 
-        for nn in &mut self.output {
-            nn.bias = reader.read_i32::<LittleEndian>()?;
-            reader.read_i8_into(&mut *nn.weight)?;
+        for hidden in &mut self.hidden {
+            hidden.bias = reader.read_i32::<LittleEndian>()?;
+            reader.read_i8_into(&mut *hidden.weight)?;
         }
 
         debug_assert!(reader.read_u8().is_err());
@@ -81,7 +79,7 @@ impl Nnue {
         unsafe { &NNUE.psqt }
     }
 
-    fn output(phase: usize) -> &'static Output<{ Nnue::L1 }> {
-        unsafe { &NNUE.output[phase] }
+    fn hidden(phase: usize) -> &'static Hidden<{ Nnue::L1 }> {
+        unsafe { &NNUE.hidden[phase] }
     }
 }

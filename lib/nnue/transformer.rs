@@ -1,4 +1,3 @@
-use crate::nnue::Layer;
 use crate::util::{AlignTo64, Assume};
 use derive_more::Constructor;
 use std::ops::{AddAssign, SubAssign};
@@ -53,20 +52,6 @@ where
     }
 }
 
-impl<T, const I: usize, const O: usize> Layer<[u16]> for Transformer<T, I, O>
-where
-    T: Default + Copy + AddAssign + SubAssign,
-{
-    type Output = [T; O];
-
-    #[inline(always)]
-    fn forward(&self, input: &[u16]) -> Self::Output {
-        let mut accumulator = [T::default(); O];
-        self.refresh(input, &mut accumulator);
-        accumulator
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -78,8 +63,11 @@ mod tests {
         t: Transformer<i16, 3, 2>,
         #[strategy([..3u16, ..3, ..3])] i: [u16; 3],
     ) {
+        let mut acc = [0; 2];
+        t.refresh(&i, &mut acc);
+
         assert_eq!(
-            t.forward(&i),
+            acc,
             [
                 t.bias[0]
                     + t.weight[i[0] as usize][0]
@@ -99,7 +87,7 @@ mod tests {
         t: Transformer<i16, 3, 2>,
         #[any(size_range(33..=99).lift())] i: Vec<u16>,
     ) {
-        t.forward(&i);
+        t.refresh(&i, &mut [0; 2]);
     }
 
     #[proptest]

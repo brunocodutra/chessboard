@@ -1,4 +1,4 @@
-use crate::nnue::{Accumulator, Layer, Nnue};
+use crate::nnue::{Accumulator, Nnue};
 use crate::util::AlignTo64;
 use std::mem::transmute;
 
@@ -44,7 +44,7 @@ impl Accumulator for Positional {
     #[inline(always)]
     fn evaluate(&self, phase: usize) -> i32 {
         let l1: &AlignTo64<[i16; Nnue::L1]> = unsafe { transmute(&self.0) };
-        Nnue::output(phase).forward(l1) / 16
+        Nnue::hidden(phase).forward(l1) / 16
     }
 }
 
