@@ -20,8 +20,8 @@ pub struct Evaluator<T: Clone + Accumulator = (Material, Positional)> {
     pos: Position,
     #[cfg_attr(test, map(|mut acc: T| {
         acc.refresh(
-            &perspective(&#pos, #pos.turn()),
-            &perspective(&#pos, !#pos.turn()),
+            &perspective(&#pos, Color::White),
+            &perspective(&#pos, Color::Black),
         );
         acc
     }))]
@@ -46,12 +46,9 @@ impl Evaluator {
     /// Constructs the evaluator from a [`Position`].
     pub fn new(pos: Position) -> Self {
         let mut acc = <(Material, Positional)>::default();
-
-        acc.refresh(
-            &perspective(&pos, pos.turn()),
-            &perspective(&pos, !pos.turn()),
-        );
-
+        let white = perspective(&pos, Color::White);
+        let black = perspective(&pos, Color::Black);
+        acc.refresh(&white, &black);
         Evaluator { pos, acc }
     }
 
@@ -76,7 +73,7 @@ impl<T: Clone + Accumulator> Evaluator<T> {
     /// The [`Position`]'s evaluation.
     pub fn evaluate(&self) -> Value {
         let phase = (self.occupied().len() - 1) / 4;
-        self.acc.evaluate(phase).saturate()
+        self.acc.evaluate(self.turn(), phase).saturate()
     }
 
     /// The Static Exchange Evaluation ([SEE]) algorithm.
@@ -117,7 +114,6 @@ impl<T: Clone + Accumulator> Evaluator<T> {
     /// [null-move]: https://www.chessprogramming.org/Null_Move
     pub fn pass(&mut self) {
         self.pos.pass();
-        self.acc.flip();
     }
 
     /// Play a [`Move`].
@@ -125,25 +121,25 @@ impl<T: Clone + Accumulator> Evaluator<T> {
         let (role, capture) = self.pos.play(m);
         let turn = self.turn();
 
-        self.acc.flip();
+        use Color::*;
         if role == Role::King {
-            let us = perspective(&self.pos, turn);
-            let them = perspective(&self.pos, !turn);
-            self.acc.refresh(&us, &them);
+            let white = perspective(&self.pos, White);
+            let black = perspective(&self.pos, Black);
+            self.acc.refresh(&white, &black);
         } else {
-            let kings = [self.pos.king(turn), self.pos.king(!turn)];
+            let kings = [self.pos.king(White), self.pos.king(Black)];
 
             let new = Piece::new(m.promotion().unwrap_or(role), !turn);
             let fts = kings.map(|ks| Feature(ks, new, m.whither()));
-            self.acc.add(fts[0].index(turn), fts[1].index(!turn));
+            self.acc.add(fts[0].index(White), fts[1].index(Black));
 
             let old = Piece::new(role, !turn);
             let fts = kings.map(|ks| Feature(ks, old, m.whence()));
-            self.acc.remove(fts[0].index(turn), fts[1].index(!turn));
+            self.acc.remove(fts[0].index(White), fts[1].index(Black));
 
             if let Some((v, s)) = capture {
                 let fts = kings.map(|ks| Feature(ks, Piece::new(v, turn), s));
-                self.acc.remove(fts[0].index(turn), fts[1].index(!turn));
+                self.acc.remove(fts[0].index(White), fts[1].index(Black));
             }
         }
     }

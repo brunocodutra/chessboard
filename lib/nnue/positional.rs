@@ -1,50 +1,44 @@
+use crate::chess::{Color, Mirror};
 use crate::nnue::{Accumulator, Nnue};
 use crate::util::AlignTo64;
-use std::mem::transmute;
 
 /// An accumulator for the feature transformer.
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
 #[cfg_attr(test, derive(test_strategy::Arbitrary))]
 pub struct Positional(
-    #[cfg_attr(test, map(|vs: [[i8; { Nnue::L1 / 2 }]; 2]| AlignTo64(vs.map(|v| v.map(i16::from)))))]
-     AlignTo64<[[i16; Nnue::L1 / 2]; 2]>,
+    #[cfg_attr(test, map(|vs: [[i8; { Nnue::L1 }]; 2]| AlignTo64(vs.map(|v| v.map(i16::from)))))]
+    AlignTo64<[[i16; Nnue::L1]; 2]>,
 );
 
 impl Default for Positional {
     #[inline(always)]
     fn default() -> Self {
-        Positional(AlignTo64([[0; Nnue::L1 / 2]; 2]))
+        Positional(AlignTo64([[0; Nnue::L1]; 2]))
     }
 }
 
 impl Accumulator for Positional {
     #[inline(always)]
-    fn flip(&mut self) {
-        self.0.reverse()
+    fn refresh(&mut self, white: &[u16], black: &[u16]) {
+        Nnue::ft().refresh(white, &mut self.0[0]);
+        Nnue::ft().refresh(black, &mut self.0[1]);
     }
 
     #[inline(always)]
-    fn refresh(&mut self, us: &[u16], them: &[u16]) {
-        Nnue::ft().refresh(us, &mut self.0[0]);
-        Nnue::ft().refresh(them, &mut self.0[1]);
+    fn add(&mut self, white: u16, black: u16) {
+        Nnue::ft().add(white, &mut self.0[0]);
+        Nnue::ft().add(black, &mut self.0[1]);
     }
 
     #[inline(always)]
-    fn add(&mut self, us: u16, them: u16) {
-        Nnue::ft().add(us, &mut self.0[0]);
-        Nnue::ft().add(them, &mut self.0[1]);
+    fn remove(&mut self, white: u16, black: u16) {
+        Nnue::ft().remove(white, &mut self.0[0]);
+        Nnue::ft().remove(black, &mut self.0[1]);
     }
 
     #[inline(always)]
-    fn remove(&mut self, us: u16, them: u16) {
-        Nnue::ft().remove(us, &mut self.0[0]);
-        Nnue::ft().remove(them, &mut self.0[1]);
-    }
-
-    #[inline(always)]
-    fn evaluate(&self, phase: usize) -> i32 {
-        let l1: &AlignTo64<[i16; Nnue::L1]> = unsafe { transmute(&self.0) };
-        Nnue::hidden(phase).forward(l1) / 16
+    fn evaluate(&self, turn: Color, phase: usize) -> i32 {
+        Nnue::hidden(phase).forward([&self.0[turn as usize], &self.0[turn.mirror() as usize]]) / 16
     }
 }
 
@@ -53,14 +47,6 @@ mod tests {
     use super::*;
     use crate::{chess::Color, nnue::Feature};
     use test_strategy::proptest;
-
-    #[proptest]
-    fn double_mirror_is_idempotent(a: Positional) {
-        let mut b = a.clone();
-        b.flip();
-        b.flip();
-        assert_eq!(a, b);
-    }
 
     #[proptest]
     fn refresh_resets_accumulator(mut a: Positional, mut b: Positional, f: Feature, c: Color) {
