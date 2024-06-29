@@ -1,16 +1,16 @@
-use crate::{nnue::Layer, util::AlignTo64};
+use crate::util::AlignTo64;
 use derive_more::Constructor;
 
-/// The output layer.
+/// The hidden layer.
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash, Constructor)]
 #[cfg_attr(test, derive(test_strategy::Arbitrary))]
-pub struct Output<const N: usize> {
+pub struct Hidden<const N: usize> {
     #[cfg_attr(test, map(|b: i8| i32::from(b)))]
     pub(super) bias: i32,
     pub(super) weight: AlignTo64<[i8; N]>,
 }
 
-impl<const N: usize> Output<N> {
+impl<const N: usize> Hidden<N> {
     #[doc(hidden)]
     #[cfg(target_feature = "avx2")]
     pub unsafe fn avx2(&self, input: &AlignTo64<[i16; N]>) -> i32 {
@@ -90,10 +90,9 @@ impl<const N: usize> Output<N> {
     }
 }
 
-impl<const N: usize> Layer<AlignTo64<[i16; N]>> for Output<N> {
-    type Output = i32;
-
-    fn forward(&self, input: &AlignTo64<[i16; N]>) -> Self::Output {
+impl<const N: usize> Hidden<N> {
+    /// Transforms the accumulator.
+    pub fn forward(&self, input: &AlignTo64<[i16; N]>) -> i32 {
         #[cfg(target_feature = "avx2")]
         unsafe {
             self.avx2(input)
@@ -118,18 +117,18 @@ mod tests {
 
     #[cfg(target_feature = "avx2")]
     #[proptest]
-    fn output_uses_avx(o: Output<64>, i: AlignTo64<[i16; 64]>) {
+    fn uses_avx(o: Hidden<64>, i: AlignTo64<[i16; 64]>) {
         assert_eq!(unsafe { o.avx2(&i) }, o.scalar(&i));
     }
 
     #[cfg(all(target_feature = "sse4.1", target_feature = "ssse3"))]
     #[proptest]
-    fn output_uses_sse(o: Output<64>, i: AlignTo64<[i16; 64]>) {
+    fn uses_sse(o: Hidden<64>, i: AlignTo64<[i16; 64]>) {
         assert_eq!(unsafe { o.sse(&i) }, o.scalar(&i));
     }
 
     #[proptest]
-    fn output_clips_and_multiplies_by_weight_and_adds_bias(o: Output<64>, i: AlignTo64<[i16; 64]>) {
+    fn clips_and_multiplies_by_weight_and_adds_bias(o: Hidden<64>, i: AlignTo64<[i16; 64]>) {
         assert_eq!(
             o.forward(&i),
             o.bias
