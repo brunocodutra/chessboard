@@ -1,3 +1,4 @@
+use crate::chess::{Color, Mirror};
 use crate::nnue::{Accumulator, Nnue};
 use crate::util::AlignTo64;
 
@@ -11,53 +12,38 @@ pub struct Material(
 
 impl Accumulator for Material {
     #[inline(always)]
-    fn flip(&mut self) {
-        self.0.reverse()
+    fn refresh(&mut self, white: &[u16], black: &[u16]) {
+        Nnue::psqt().refresh(white, &mut self.0[0]);
+        Nnue::psqt().refresh(black, &mut self.0[1]);
     }
 
     #[inline(always)]
-    fn refresh(&mut self, us: &[u16], them: &[u16]) {
-        Nnue::psqt().refresh(us, &mut self.0[0]);
-        Nnue::psqt().refresh(them, &mut self.0[1]);
+    fn add(&mut self, white: u16, black: u16) {
+        Nnue::psqt().add(white, &mut self.0[0]);
+        Nnue::psqt().add(black, &mut self.0[1]);
     }
 
     #[inline(always)]
-    fn add(&mut self, us: u16, them: u16) {
-        Nnue::psqt().add(us, &mut self.0[0]);
-        Nnue::psqt().add(them, &mut self.0[1]);
+    fn remove(&mut self, white: u16, black: u16) {
+        Nnue::psqt().remove(white, &mut self.0[0]);
+        Nnue::psqt().remove(black, &mut self.0[1]);
     }
 
     #[inline(always)]
-    fn remove(&mut self, us: u16, them: u16) {
-        Nnue::psqt().remove(us, &mut self.0[0]);
-        Nnue::psqt().remove(them, &mut self.0[1]);
-    }
-
-    #[inline(always)]
-    fn evaluate(&self, phase: usize) -> i32 {
-        (self.0[0][phase] - self.0[1][phase]) / 32
+    fn evaluate(&self, turn: Color, phase: usize) -> i32 {
+        (self.0[turn as usize][phase] - self.0[turn.mirror() as usize][phase]) / 32
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{chess::Color, nnue::Feature};
+    use crate::nnue::Feature;
     use test_strategy::proptest;
 
     #[proptest]
-    fn material_evaluation_is_symmetric(a: Material, #[strategy(..8usize)] phase: usize) {
-        let mut mirrored = a.clone();
-        mirrored.flip();
-        assert_eq!(a.evaluate(phase), -mirrored.evaluate(phase));
-    }
-
-    #[proptest]
-    fn double_mirror_is_idempotent(a: Material) {
-        let mut b = a.clone();
-        b.flip();
-        b.flip();
-        assert_eq!(a, b);
+    fn material_evaluation_is_symmetric(a: Material, c: Color, #[strategy(..8usize)] p: usize) {
+        assert_eq!(a.evaluate(c, p), -a.evaluate(!c, p));
     }
 
     #[proptest]

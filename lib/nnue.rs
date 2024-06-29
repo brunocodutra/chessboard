@@ -26,7 +26,7 @@ pub use value::*;
 /// [NNUE]: https://www.chessprogramming.org/NNUE
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
 struct Nnue {
-    ft: Transformer<i16, { Self::L0 }, { Self::L1 / 2 }>,
+    ft: Transformer<i16, { Self::L0 }, { Self::L1 }>,
     psqt: Transformer<i32, { Self::L0 }, { Self::PHASES }>,
     hidden: [Hidden<{ Nnue::L1 }>; Self::PHASES],
 }
@@ -45,12 +45,12 @@ unsafe fn init() {
 impl Nnue {
     const PHASES: usize = 8;
     const L0: usize = 64 * 64 * 11;
-    const L1: usize = 1024;
+    const L1: usize = 512;
 
     fn load<T: Read>(&mut self, mut reader: T) -> io::Result<()> {
         reader.read_i16_into::<LittleEndian>(&mut *self.ft.bias)?;
         reader.read_i16_into::<LittleEndian>(unsafe {
-            transmute::<&mut [[_; Self::L1 / 2]; Self::L0], &mut [_; Self::L0 * Self::L1 / 2]>(
+            transmute::<&mut [[_; Self::L1]; Self::L0], &mut [_; Self::L0 * Self::L1]>(
                 &mut *self.ft.weight,
             )
         })?;
@@ -61,9 +61,11 @@ impl Nnue {
             )
         })?;
 
-        for hidden in &mut self.hidden {
-            hidden.bias = reader.read_i32::<LittleEndian>()?;
-            reader.read_i8_into(&mut *hidden.weight)?;
+        for Hidden { bias, weight } in &mut self.hidden {
+            *bias = reader.read_i32::<LittleEndian>()?;
+            reader.read_i8_into(unsafe {
+                transmute::<&mut [[_; Self::L1]; 2], &mut [_; Self::L1 * 2]>(weight)
+            })?;
         }
 
         debug_assert!(reader.read_u8().is_err());
@@ -71,7 +73,7 @@ impl Nnue {
         Ok(())
     }
 
-    fn ft() -> &'static Transformer<i16, { Self::L0 }, { Self::L1 / 2 }> {
+    fn ft() -> &'static Transformer<i16, { Self::L0 }, { Self::L1 }> {
         unsafe { &NNUE.ft }
     }
 
