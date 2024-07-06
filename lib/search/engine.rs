@@ -301,24 +301,35 @@ impl Engine {
                 break 'id;
             }
 
-            let depth = Depth::new(d);
-            let mut window = Score::new(32);
-            let mut lower = (pv.score() - window / 2).min(Score::upper() - window);
-            let mut upper = (pv.score() + window / 2).max(Score::lower() + window);
+            let mut delta: i16 = 24;
+            let mut depth = Depth::new(d);
+            let (mut lower, mut upper) = match d {
+                ..=4 => (Score::lower(), Score::upper()),
+                _ => (pv.score() - delta, pv.score() + delta),
+            };
 
             pv = 'aw: loop {
                 let Ok(partial) = self.pvs(pos, lower..upper, depth, Ply::new(0), ctrl) else {
                     break 'id;
                 };
 
-                window = window * 2;
+                delta = delta.saturating_mul(2);
+
                 match partial.score() {
-                    s if (-lower..Score::upper()).contains(&-s) => lower = s - window / 2,
-                    s if (upper..Score::upper()).contains(&s) => upper = s + window / 2,
+                    score if (-lower..Score::upper()).contains(&-score) => {
+                        depth = Depth::new(d);
+                        upper = lower / 2 + upper / 2;
+                        lower = score - delta;
+                    }
+
+                    score if (upper..Score::upper()).contains(&score) => {
+                        depth = depth - 1;
+                        upper = score + delta;
+                        pv = partial;
+                    }
+
                     _ => break 'aw partial,
                 }
-
-                pv = pv.max(partial);
             };
         }
 
