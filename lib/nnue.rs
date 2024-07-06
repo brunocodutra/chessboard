@@ -26,9 +26,9 @@ pub use value::*;
 /// [NNUE]: https://www.chessprogramming.org/NNUE
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
 struct Nnue {
-    ft: Transformer<i16, { Self::L0 }, { Self::L1 }>,
-    psqt: Transformer<i32, { Self::L0 }, { Self::PHASES }>,
-    hidden: [Hidden<{ Nnue::L1 }>; Self::PHASES],
+    ft: Transformer<i16, { Positional::LEN }>,
+    psqt: Transformer<i32, { Material::LEN }>,
+    hidden: [Hidden<{ Positional::LEN }>; Material::LEN],
 }
 
 static mut NNUE: Nnue = unsafe { MaybeUninit::zeroed().assume_init() };
@@ -43,28 +43,26 @@ unsafe fn init() {
 }
 
 impl Nnue {
-    const PHASES: usize = 8;
-    const L0: usize = 64 * 64 * 11;
-    const L1: usize = 512;
-
     fn load<T: Read>(&mut self, mut reader: T) -> io::Result<()> {
         reader.read_i16_into::<LittleEndian>(&mut *self.ft.bias)?;
         reader.read_i16_into::<LittleEndian>(unsafe {
-            transmute::<&mut [[_; Self::L1]; Self::L0], &mut [_; Self::L0 * Self::L1]>(
-                &mut *self.ft.weight,
-            )
+            transmute::<
+                &mut [[_; Positional::LEN]; Feature::LEN],
+                &mut [_; Feature::LEN * Positional::LEN],
+            >(&mut *self.ft.weight)
         })?;
 
         reader.read_i32_into::<LittleEndian>(unsafe {
-            transmute::<&mut [[_; Self::PHASES]; Self::L0], &mut [_; Self::L0 * Self::PHASES]>(
-                &mut *self.psqt.weight,
-            )
+            transmute::<
+                &mut [[_; Material::LEN]; Feature::LEN],
+                &mut [_; Feature::LEN * Material::LEN],
+            >(&mut *self.psqt.weight)
         })?;
 
         for Hidden { bias, weight } in &mut self.hidden {
             *bias = reader.read_i32::<LittleEndian>()?;
             reader.read_i8_into(unsafe {
-                transmute::<&mut [[_; Self::L1]; 2], &mut [_; Self::L1 * 2]>(weight)
+                transmute::<&mut [[_; Positional::LEN]; 2], &mut [_; Positional::LEN * 2]>(weight)
             })?;
         }
 
@@ -73,15 +71,16 @@ impl Nnue {
         Ok(())
     }
 
-    fn ft() -> &'static Transformer<i16, { Self::L0 }, { Self::L1 }> {
-        unsafe { &NNUE.ft }
-    }
-
-    fn psqt() -> &'static Transformer<i32, { Self::L0 }, { Self::PHASES }> {
+    fn psqt() -> &'static Transformer<i32, { Material::LEN }> {
         unsafe { &NNUE.psqt }
     }
 
-    fn hidden(phase: usize) -> &'static Hidden<{ Nnue::L1 }> {
-        unsafe { &NNUE.hidden[phase] }
+    fn ft() -> &'static Transformer<i16, { Positional::LEN }> {
+        unsafe { &NNUE.ft }
+    }
+
+    fn hidden(phase: usize) -> &'static Hidden<{ Positional::LEN }> {
+        debug_assert!(phase < Positional::LEN);
+        unsafe { NNUE.hidden.get_unchecked(phase) }
     }
 }

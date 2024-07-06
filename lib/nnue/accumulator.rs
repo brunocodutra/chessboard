@@ -1,32 +1,29 @@
-use crate::chess::Color;
+use crate::{chess::Color, nnue::Feature};
 
 /// Trait for transformer accumulators.
-pub trait Accumulator {
-    /// Refreshes this accumulator.
-    fn refresh(&mut self, white: &[u16], black: &[u16]);
+pub trait Accumulator: Default {
+    /// The accumulator length.
+    const LEN: usize;
 
     /// Updates this accumulator by adding features.
-    fn add(&mut self, white: u16, black: u16);
+    fn add(&mut self, white: Feature, black: Feature);
 
     /// Updates this accumulator by removing features.
-    fn remove(&mut self, white: u16, black: u16);
+    fn remove(&mut self, white: Feature, black: Feature);
 
     /// Evaluates this accumulator.
     fn evaluate(&self, turn: Color, phase: usize) -> i32;
 }
 
 impl<T: Accumulator, U: Accumulator> Accumulator for (T, U) {
-    fn refresh(&mut self, white: &[u16], black: &[u16]) {
-        self.0.refresh(white, black);
-        self.1.refresh(white, black);
-    }
+    const LEN: usize = T::LEN + U::LEN;
 
-    fn add(&mut self, white: u16, black: u16) {
+    fn add(&mut self, white: Feature, black: Feature) {
         self.0.add(white, black);
         self.1.add(white, black);
     }
 
-    fn remove(&mut self, white: u16, black: u16) {
+    fn remove(&mut self, white: Feature, black: Feature) {
         self.0.remove(white, black);
         self.1.remove(white, black);
     }

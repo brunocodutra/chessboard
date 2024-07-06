@@ -1,42 +1,60 @@
-use crate::util::{AlignTo64, Assume};
+use crate::nnue::Feature;
+use crate::util::{AlignTo64, Assume, Integer};
 use derive_more::Constructor;
 use std::ops::{AddAssign, SubAssign};
 
 #[cfg(test)]
-use proptest::prelude::*;
+use proptest::{prelude::*, sample::Index};
 
 #[cfg(test)]
-use std::fmt::Debug;
+use std::ops::Range;
 
 /// A feature transformer.
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash, Constructor)]
-#[cfg_attr(test, derive(test_strategy::Arbitrary))]
-#[cfg_attr(test, arbitrary(bound(T: 'static + Debug + Arbitrary + From<i8>)))]
-pub struct Transformer<T, const I: usize, const O: usize> {
-    #[cfg_attr(test, map(|b: [i8; O]| AlignTo64(b.map(T::from))))]
-    pub(super) bias: AlignTo64<[T; O]>,
-    #[cfg_attr(test, map(|w:[ [i8; O]; I]| AlignTo64(w.map(|v| v.map(T::from)))))]
-    pub(super) weight: AlignTo64<[[T; O]; I]>,
+pub struct Transformer<T, const N: usize> {
+    pub(super) bias: AlignTo64<[T; N]>,
+    pub(super) weight: AlignTo64<[[T; N]; Feature::LEN]>,
 }
 
-impl<T, const I: usize, const O: usize> Transformer<T, I, O>
+#[cfg(test)]
+impl<const N: usize> Arbitrary for Box<Transformer<i16, N>> {
+    type Parameters = Range<i16>;
+    type Strategy = BoxedStrategy<Self>;
+
+    fn arbitrary_with(Range { start, end }: Self::Parameters) -> Self::Strategy {
+        (any::<Index>())
+            .prop_map(move |rng| {
+                let mut transformer = unsafe { Self::new_zeroed().assume_init() };
+
+                for v in transformer.bias.iter_mut() {
+                    *v = rng.index((end - start) as _) as i16 + start
+                }
+
+                for v in &mut transformer.weight.iter_mut().flatten() {
+                    *v = rng.index((end - start) as _) as i16 + start
+                }
+
+                transformer
+            })
+            .no_shrink()
+            .boxed()
+    }
+}
+
+impl<T, const N: usize> Transformer<T, N>
 where
     T: Copy + AddAssign + SubAssign,
 {
-    /// Refreshes accumulator.
+    /// A fresh accumulator.
     #[inline(always)]
-    pub fn refresh(&self, features: &[u16], accumulator: &mut [T; O]) {
-        debug_assert!(features.len() <= 32);
-        *accumulator = *self.bias;
-        for i in features {
-            self.add(*i, accumulator)
-        }
+    pub fn fresh(&self) -> [T; N] {
+        *self.bias
     }
 
     /// Updates the accumulator by adding features.
     #[inline(always)]
-    pub fn add(&self, feature: u16, accumulator: &mut [T; O]) {
-        let a = self.weight.get(feature as usize).assume();
+    pub fn add(&self, feature: Feature, accumulator: &mut [T; N]) {
+        let a = self.weight.get(feature.cast::<usize>()).assume();
         for (y, a) in accumulator.iter_mut().zip(a) {
             *y += *a
         }
@@ -44,8 +62,8 @@ where
 
     /// Updates the accumulator by removing features.
     #[inline(always)]
-    pub fn remove(&self, feature: u16, accumulator: &mut [T; O]) {
-        let a = self.weight.get(feature as usize).assume();
+    pub fn remove(&self, feature: Feature, accumulator: &mut [T; N]) {
+        let a = self.weight.get(feature.cast::<usize>()).assume();
         for (y, a) in accumulator.iter_mut().zip(a) {
             *y -= *a
         }
@@ -55,73 +73,48 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use proptest::sample::size_range;
+    use proptest::array::uniform3;
     use test_strategy::proptest;
 
     #[proptest]
-    fn transformer_selects_weight_matrix_and_adds_bias(
-        t: Transformer<i16, 3, 2>,
-        #[strategy([..3u16, ..3, ..3])] i: [u16; 3],
-    ) {
-        let mut acc = [0; 2];
-        t.refresh(&i, &mut acc);
-
-        assert_eq!(
-            acc,
-            [
-                t.bias[0]
-                    + t.weight[i[0] as usize][0]
-                    + t.weight[i[1] as usize][0]
-                    + t.weight[i[2] as usize][0],
-                t.bias[1]
-                    + t.weight[i[0] as usize][1]
-                    + t.weight[i[1] as usize][1]
-                    + t.weight[i[2] as usize][1],
-            ]
-        );
-    }
-
-    #[proptest]
-    #[should_panic]
-    fn transformer_panics_if_too_many_inputs(
-        t: Transformer<i16, 3, 2>,
-        #[any(size_range(33..=99).lift())] i: Vec<u16>,
-    ) {
-        t.refresh(&i, &mut [0; 2]);
+    fn fresh_accumulator_equals_bias(#[any(-128i16..128)] t: Box<Transformer<i16, 2>>) {
+        assert_eq!(t.fresh(), *t.bias);
     }
 
     #[proptest]
     fn add_updates_accumulator(
-        t: Transformer<i16, 3, 2>,
-        #[map(|v: [i8; 2]| v.map(i16::from))] prev: [i16; 2],
-        #[strategy(..3u16)] f: u16,
+        #[any(-128i16..128)] t: Box<Transformer<i16, 3>>,
+        ft: Feature,
+        #[strategy(uniform3(-128..128i16))] prev: [i16; 3],
     ) {
         let mut new = prev;
-        t.add(f, &mut new);
+        t.add(ft, &mut new);
 
         assert_eq!(
             new,
             [
-                prev[0] + t.weight[f as usize][0],
-                prev[1] + t.weight[f as usize][1]
+                prev[0] + t.weight[ft.cast::<usize>()][0],
+                prev[1] + t.weight[ft.cast::<usize>()][1],
+                prev[2] + t.weight[ft.cast::<usize>()][2],
             ]
         );
     }
 
     #[proptest]
     fn remove_updates_accumulator(
-        t: Transformer<i16, 3, 2>,
-        #[map(|v: [i8; 2]| v.map(i16::from))] prev: [i16; 2],
-        #[strategy(..3u16)] f: u16,
+        #[any(-128..128i16)] t: Box<Transformer<i16, 3>>,
+        ft: Feature,
+        #[strategy(uniform3(-128..128i16))] prev: [i16; 3],
     ) {
         let mut new = prev;
-        t.remove(f, &mut new);
+        t.remove(ft, &mut new);
 
         assert_eq!(
             new,
             [
-                prev[0] - t.weight[f as usize][0],
-                prev[1] - t.weight[f as usize][1]
+                prev[0] - t.weight[ft.cast::<usize>()][0],
+                prev[1] - t.weight[ft.cast::<usize>()][1],
+                prev[2] - t.weight[ft.cast::<usize>()][2],
             ]
         );
     }
