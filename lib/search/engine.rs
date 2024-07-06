@@ -174,12 +174,17 @@ impl Engine {
 
         let depth = match tpos {
             #[cfg(not(test))]
+            // Extensions are not exact.
+            Some(_) if in_check => depth + 1,
+
+            #[cfg(not(test))]
             // Reductions are not exact.
-            None => depth - 1,
+            None if !in_check => depth - 1,
+
             _ => depth,
         };
 
-        let quiesce = ply >= depth && !in_check;
+        let quiesce = ply >= depth;
         let alpha = match quiesce {
             #[cfg(not(test))]
             // The stand pat heuristic is not exact.
@@ -377,7 +382,7 @@ mod tests {
 
         pos.moves()
             .flatten()
-            .filter(|m| ply < depth || pos.is_check() || !m.is_quiet())
+            .filter(|m| ply < depth || !m.is_quiet())
             .map(|m| {
                 let mut next = pos.clone();
                 next.play(m);
