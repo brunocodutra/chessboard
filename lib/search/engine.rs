@@ -281,38 +281,40 @@ impl Engine {
     ///
     /// [aspiration windows]: https://www.chessprogramming.org/Aspiration_Windows
     /// [iterative deepening]: https://www.chessprogramming.org/Iterative_Deepening
-    fn aw(&self, pos: &Evaluator, depth: Depth, nodes: u64, time: Range<Duration>) -> Pv {
+    fn aw(&self, pos: &Evaluator, limit: Depth, nodes: u64, time: Range<Duration>) -> Pv {
         let ref ctrl @ Control(_, ref timer) = Control(Counter::new(nodes), Timer::new(time.end));
         let mut pv = Pv::new(Score::new(0), None);
+        let mut depth = Depth::new(0);
 
-        for d in 0..=1 {
-            let depth = Depth::new(d);
-            let bounds = Score::lower()..Score::upper();
+        while depth < Depth::upper() {
             let ctrl = Control::default();
+            let bounds = Score::lower()..Score::upper();
             pv = self.pvs(pos, bounds, depth, Ply::new(0), &ctrl).assume();
+            depth = depth + 1;
+            if pv.best().is_some() {
+                break;
+            }
         }
 
-        'id: for d in 2..=depth.get() {
+        'id: for d in depth.get()..=limit.get() {
             if timer.remaining() < Duration::checked_sub(time.end, time.start) {
                 break 'id;
             }
 
-            let mut w: i16 = 32;
-            let mut lower = (pv.score() - w / 2).min(Score::upper() - w);
-            let mut upper = (pv.score() + w / 2).max(Score::lower() + w);
+            let depth = Depth::new(d);
+            let mut window = Score::new(32);
+            let mut lower = (pv.score() - window / 2).min(Score::upper() - window);
+            let mut upper = (pv.score() + window / 2).max(Score::lower() + window);
 
             pv = 'aw: loop {
-                let depth = Depth::new(d);
-                let partial = match self.pvs(pos, lower..upper, depth, Ply::new(0), ctrl) {
-                    Err(_) => break 'id,
-                    Ok(pv) => pv,
+                let Ok(partial) = self.pvs(pos, lower..upper, depth, Ply::new(0), ctrl) else {
+                    break 'id;
                 };
 
-                w = w.saturating_mul(2);
-
+                window = window * 2;
                 match partial.score() {
-                    s if (-lower..Score::upper()).contains(&-s) => lower = s - w / 2,
-                    s if (upper..Score::upper()).contains(&s) => upper = s + w / 2,
+                    s if (-lower..Score::upper()).contains(&-s) => lower = s - window / 2,
+                    s if (upper..Score::upper()).contains(&s) => upper = s + window / 2,
                     _ => break 'aw partial,
                 }
 
@@ -587,6 +589,14 @@ mod tests {
         mut e: Engine,
         #[filter(#pos.outcome().is_none())] pos: Evaluator,
     ) {
-        assert_ne!(e.search(&pos, Limits::Time(Duration::ZERO)).best(), None);
+        assert_ne!(e.search(&pos, Duration::ZERO.into()).best(), None);
+    }
+
+    #[proptest]
+    fn search_extends_depth_to_find_some_pv(
+        mut e: Engine,
+        #[filter(#pos.outcome().is_none())] pos: Evaluator,
+    ) {
+        assert_ne!(e.search(&pos, Depth::lower().into()).best(), None);
     }
 }
