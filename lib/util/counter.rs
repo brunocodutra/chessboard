@@ -14,7 +14,7 @@ impl Counter {
         }
     }
 
-    /// Increments the counter and returns the counts remaining if any.
+    /// Increments the counter and returns the number of counts remaining if any.
     pub fn count(&self) -> Option<u64> {
         self.remaining
             .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |c| c.checked_sub(1))
@@ -28,13 +28,13 @@ mod tests {
     use test_strategy::proptest;
 
     #[proptest]
-    fn counter_measures_time_remaining(#[strategy(1u64..)] c: u64) {
+    fn counter_keeps_track_of_counts(#[strategy(1u64..)] c: u64) {
         let counter = Counter::new(c);
         assert_eq!(counter.count(), Some(c - 1));
     }
 
     #[test]
-    fn counter_overflows_once_limit_is_reached() {
+    fn counter_stops_once_limit_is_reached() {
         let counter = Counter::new(0);
         assert_eq!(counter.count(), None);
     }
