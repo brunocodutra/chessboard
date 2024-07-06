@@ -4,7 +4,8 @@
     coverage_attribute,
     const_refs_to_cell,
     const_trait_impl,
-    effects
+    effects,
+    new_uninit
 )]
 
 /// Chess domain types.

@@ -1,31 +1,30 @@
 use crate::chess::{Color, Move, ParsePositionError, Piece, Position, Role, Square};
 use crate::nnue::{Accumulator, Feature, Material, Positional, Value};
 use crate::util::Integer;
-use arrayvec::ArrayVec;
 use derive_more::{Debug, Deref, Display};
 use std::{ops::Range, str::FromStr};
 
-fn perspective(pos: &Position, side: Color) -> ArrayVec<u16, 32> {
-    let k = pos.king(side);
-    ArrayVec::from_iter(pos.iter().map(|(p, s)| Feature(k, p, s).index(side)))
-}
+#[cfg(test)]
+use proptest::prelude::*;
 
 /// An incrementally evaluated [`Position`].
 #[derive(Debug, Display, Clone, Eq, PartialEq, Hash, Deref)]
-#[cfg_attr(test, derive(test_strategy::Arbitrary))]
 #[debug("Evaluator({self})")]
 #[display("{pos}")]
 pub struct Evaluator<T: Clone + Accumulator = (Material, Positional)> {
     #[deref]
     pos: Position,
-    #[cfg_attr(test, map(|mut acc: T| {
-        acc.refresh(
-            &perspective(&#pos, Color::White),
-            &perspective(&#pos, Color::Black),
-        );
-        acc
-    }))]
     acc: T,
+}
+
+#[cfg(test)]
+impl<T: 'static + Clone + Accumulator> Arbitrary for Evaluator<T> {
+    type Parameters = ();
+    type Strategy = BoxedStrategy<Self>;
+
+    fn arbitrary_with(_: Self::Parameters) -> Self::Strategy {
+        any::<Position>().prop_map(Evaluator::new).boxed()
+    }
 }
 
 impl Default for Evaluator {
@@ -34,42 +33,20 @@ impl Default for Evaluator {
     }
 }
 
-impl FromStr for Evaluator {
-    type Err = ParsePositionError;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        Ok(Self::new(s.parse()?))
-    }
-}
-
-impl Evaluator {
+impl<T: Clone + Accumulator> Evaluator<T> {
     /// Constructs the evaluator from a [`Position`].
     pub fn new(pos: Position) -> Self {
-        let mut acc = <(Material, Positional)>::default();
-        let white = perspective(&pos, Color::White);
-        let black = perspective(&pos, Color::Black);
-        acc.refresh(&white, &black);
+        let ksqs = [Color::White, Color::Black].map(|c| (c, pos.king(c)));
+
+        let mut acc = T::default();
+        for (p, s) in pos.iter() {
+            let fts = ksqs.map(|(c, ksq)| Feature::new(c, ksq, p, s));
+            acc.add(fts[0], fts[1]);
+        }
+
         Evaluator { pos, acc }
     }
 
-    /// The [`Position`]'s material evaluator.
-    pub fn material(&self) -> Evaluator<Material> {
-        Evaluator {
-            pos: self.pos,
-            acc: self.acc.0.clone(),
-        }
-    }
-
-    /// The [`Position`]'s positional evaluator.
-    pub fn positional(&self) -> Evaluator<Positional> {
-        Evaluator {
-            pos: self.pos,
-            acc: self.acc.1.clone(),
-        }
-    }
-}
-
-impl<T: Clone + Accumulator> Evaluator<T> {
     /// The [`Position`]'s evaluation.
     pub fn evaluate(&self) -> Value {
         let phase = (self.occupied().len() - 1) / 4;
@@ -118,30 +95,55 @@ impl<T: Clone + Accumulator> Evaluator<T> {
 
     /// Play a [`Move`].
     pub fn play(&mut self, m: Move) {
-        let (role, capture) = self.pos.play(m);
         let turn = self.turn();
+        let (role, capture) = self.pos.play(m);
 
         use Color::*;
         if role == Role::King {
-            let white = perspective(&self.pos, White);
-            let black = perspective(&self.pos, Black);
-            self.acc.refresh(&white, &black);
+            *self = Evaluator::new(self.pos)
         } else {
-            let kings = [self.pos.king(White), self.pos.king(Black)];
+            let ksqs = [White, Black].map(|c| (c, self.pos.king(c)));
 
-            let new = Piece::new(m.promotion().unwrap_or(role), !turn);
-            let fts = kings.map(|ks| Feature(ks, new, m.whither()));
-            self.acc.add(fts[0].index(White), fts[1].index(Black));
+            let new = Piece::new(m.promotion().unwrap_or(role), turn);
+            let fts = ksqs.map(|(c, ksq)| Feature::new(c, ksq, new, m.whither()));
+            self.acc.add(fts[0], fts[1]);
 
-            let old = Piece::new(role, !turn);
-            let fts = kings.map(|ks| Feature(ks, old, m.whence()));
-            self.acc.remove(fts[0].index(White), fts[1].index(Black));
+            let old = Piece::new(role, turn);
+            let fts = ksqs.map(|(c, ksq)| Feature::new(c, ksq, old, m.whence()));
+            self.acc.remove(fts[0], fts[1]);
 
-            if let Some((v, s)) = capture {
-                let fts = kings.map(|ks| Feature(ks, Piece::new(v, turn), s));
-                self.acc.remove(fts[0].index(White), fts[1].index(Black));
+            if let Some((r, s)) = capture {
+                let victim = Piece::new(r, !turn);
+                let fts = ksqs.map(|(c, ksq)| Feature::new(c, ksq, victim, s));
+                self.acc.remove(fts[0], fts[1]);
             }
         }
+    }
+}
+
+impl Evaluator {
+    /// The [`Position`]'s material evaluator.
+    pub fn material(&self) -> Evaluator<Material> {
+        Evaluator {
+            pos: self.pos,
+            acc: self.acc.0.clone(),
+        }
+    }
+
+    /// The [`Position`]'s positional evaluator.
+    pub fn positional(&self) -> Evaluator<Positional> {
+        Evaluator {
+            pos: self.pos,
+            acc: self.acc.1.clone(),
+        }
+    }
+}
+
+impl FromStr for Evaluator {
+    type Err = ParsePositionError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Ok(Self::new(s.parse()?))
     }
 }
 
@@ -155,12 +157,15 @@ mod tests {
     #[proptest]
     fn see_returns_value_within_bounds(pos: Position, sq: Square, r: Range<Value>) {
         let (a, b) = (r.start, r.end);
-        assert!((a..=b).contains(&Evaluator::new(pos).see(sq, r)));
+        assert!((a..=b).contains(&Evaluator::<Positional>::new(pos).see(sq, r)));
     }
 
     #[proptest]
     fn see_returns_beta_if_alpha_is_not_smaller(pos: Position, sq: Square, r: Range<Value>) {
-        assert_eq!(Evaluator::new(pos).see(sq, r.end..r.start), r.start);
+        assert_eq!(
+            Evaluator::<Positional>::new(pos).see(sq, r.end..r.start),
+            r.start
+        );
     }
 
     #[proptest]

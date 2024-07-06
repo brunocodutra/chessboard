@@ -1,30 +1,33 @@
 use crate::chess::{Color, Mirror};
-use crate::nnue::{Accumulator, Nnue};
+use crate::nnue::{Accumulator, Feature, Nnue};
 use crate::util::AlignTo64;
 
 /// An accumulator for the psqt transformer.
-#[derive(Debug, Default, Clone, Eq, PartialEq, Hash)]
+#[derive(Debug, Clone, Eq, PartialEq, Hash)]
 #[cfg_attr(test, derive(test_strategy::Arbitrary))]
 pub struct Material(
-    #[cfg_attr(test, map(|vs: [[i8; Nnue::PHASES]; 2]| AlignTo64(vs.map(|v| v.map(i32::from)))))]
-    AlignTo64<[[i32; Nnue::PHASES]; 2]>,
+    #[cfg_attr(test, map(|vs: [[i8; Self::LEN]; 2]| AlignTo64(vs.map(|v| v.map(i32::from)))))]
+    AlignTo64<[[i32; Self::LEN]; 2]>,
 );
 
-impl Accumulator for Material {
+impl Default for Material {
     #[inline(always)]
-    fn refresh(&mut self, white: &[u16], black: &[u16]) {
-        Nnue::psqt().refresh(white, &mut self.0[0]);
-        Nnue::psqt().refresh(black, &mut self.0[1]);
+    fn default() -> Self {
+        Material(AlignTo64([Nnue::psqt().fresh(); 2]))
     }
+}
+
+impl Accumulator for Material {
+    const LEN: usize = 8;
 
     #[inline(always)]
-    fn add(&mut self, white: u16, black: u16) {
+    fn add(&mut self, white: Feature, black: Feature) {
         Nnue::psqt().add(white, &mut self.0[0]);
         Nnue::psqt().add(black, &mut self.0[1]);
     }
 
     #[inline(always)]
-    fn remove(&mut self, white: u16, black: u16) {
+    fn remove(&mut self, white: Feature, black: Feature) {
         Nnue::psqt().remove(white, &mut self.0[0]);
         Nnue::psqt().remove(black, &mut self.0[1]);
     }
@@ -42,22 +45,15 @@ mod tests {
     use test_strategy::proptest;
 
     #[proptest]
-    fn material_evaluation_is_symmetric(a: Material, c: Color, #[strategy(..8usize)] p: usize) {
-        assert_eq!(a.evaluate(c, p), -a.evaluate(!c, p));
+    fn material_evaluation_is_antisymmetric(e: Material, c: Color, #[strategy(..8usize)] p: usize) {
+        assert_eq!(e.evaluate(c, p), -e.evaluate(!c, p));
     }
 
     #[proptest]
-    fn refresh_resets_accumulator(mut a: Material, mut b: Material, f: Feature, c: Color) {
-        a.refresh(&[f.index(c)], &[f.index(!c)]);
-        b.refresh(&[f.index(c)], &[f.index(!c)]);
-        assert_eq!(a, b);
-    }
-
-    #[proptest]
-    fn remove_reverses_add(a: Material, f: Feature, c: Color) {
-        let mut b = a.clone();
-        b.add(f.index(c), f.index(!c));
-        b.remove(f.index(c), f.index(!c));
-        assert_eq!(a, b);
+    fn remove_reverses_add(e: Material, w: Feature, b: Feature) {
+        let mut f = e.clone();
+        f.add(w, b);
+        f.remove(w, b);
+        assert_eq!(e, f);
     }
 }
