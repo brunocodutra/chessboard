@@ -40,7 +40,7 @@ ruzstd = { version = "0.7.0", default-features = false, features = ["std"] }
 criterion = { version = "0.5.1", default-features = false, features = ["rayon"] }
 criterion-macro = { version = "0.4.0", default-features = false }
 proptest = { version = "1.5.0", default-features = false, features = ["std"] }
-test-strategy = { version = "0.3.1", default-features = false }
+test-strategy = { version = "0.4.0", default-features = false }
 
 [profile.release]
 codegen-units = 1

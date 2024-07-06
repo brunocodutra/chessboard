@@ -6,8 +6,8 @@ use crate::util::AlignTo64;
 #[derive(Debug, Default, Clone, Eq, PartialEq, Hash)]
 #[cfg_attr(test, derive(test_strategy::Arbitrary))]
 pub struct Material(
-    #[cfg_attr(test, map(|vs: [[i8; { Nnue::PHASES }]; 2]| AlignTo64(vs.map(|v| v.map(i32::from)))))]
-     AlignTo64<[[i32; Nnue::PHASES]; 2]>,
+    #[cfg_attr(test, map(|vs: [[i8; Nnue::PHASES]; 2]| AlignTo64(vs.map(|v| v.map(i32::from)))))]
+    AlignTo64<[[i32; Nnue::PHASES]; 2]>,
 );
 
 impl Accumulator for Material {
