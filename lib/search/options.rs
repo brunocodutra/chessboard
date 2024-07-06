@@ -182,14 +182,14 @@ mod tests {
 
     #[proptest]
     fn thread_count_constructs_if_count_not_too_large(
-        #[strategy((ThreadCount::MIN..=ThreadCount::MAX))] n: usize,
+        #[strategy(ThreadCount::MIN..=ThreadCount::MAX)] n: usize,
     ) {
         assert_eq!(ThreadCount::new(n), n);
     }
 
     #[proptest]
     #[should_panic]
-    fn thread_count_panics_if_count_too_large(#[strategy((ThreadCount::MAX + 1..))] n: usize) {
+    fn thread_count_panics_if_count_too_large(#[strategy(ThreadCount::MAX + 1..)] n: usize) {
         ThreadCount::new(n);
     }
 

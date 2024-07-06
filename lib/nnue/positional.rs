@@ -6,7 +6,7 @@ use crate::util::AlignTo64;
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
 #[cfg_attr(test, derive(test_strategy::Arbitrary))]
 pub struct Positional(
-    #[cfg_attr(test, map(|vs: [[i8; { Nnue::L1 }]; 2]| AlignTo64(vs.map(|v| v.map(i16::from)))))]
+    #[cfg_attr(test, map(|vs: [[i8; Nnue::L1]; 2]| AlignTo64(vs.map(|v| v.map(i16::from)))))]
     AlignTo64<[[i16; Nnue::L1]; 2]>,
 );
 
