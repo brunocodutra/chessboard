@@ -35,6 +35,7 @@ impl Default for Evaluator {
 
 impl<T: Clone + Accumulator> Evaluator<T> {
     /// Constructs the evaluator from a [`Position`].
+    #[inline(always)]
     pub fn new(pos: Position) -> Self {
         let ksqs = [Color::White, Color::Black].map(|c| (c, pos.king(c)));
 
@@ -98,19 +99,16 @@ impl<T: Clone + Accumulator> Evaluator<T> {
         let turn = self.turn();
         let (role, capture) = self.pos.play(m);
 
-        use Color::*;
         if role == Role::King {
             *self = Evaluator::new(self.pos)
         } else {
-            let ksqs = [White, Black].map(|c| (c, self.pos.king(c)));
-
-            let new = Piece::new(m.promotion().unwrap_or(role), turn);
-            let fts = ksqs.map(|(c, ksq)| Feature::new(c, ksq, new, m.whither()));
-            self.acc.add(fts[0], fts[1]);
+            let ksqs = [Color::White, Color::Black].map(|c| (c, self.pos.king(c)));
 
             let old = Piece::new(role, turn);
-            let fts = ksqs.map(|(c, ksq)| Feature::new(c, ksq, old, m.whence()));
-            self.acc.remove(fts[0], fts[1]);
+            let new = Piece::new(m.promotion().unwrap_or(role), turn);
+            let remove = ksqs.map(|(c, ksq)| Feature::new(c, ksq, old, m.whence()));
+            let add = ksqs.map(|(c, ksq)| Feature::new(c, ksq, new, m.whither()));
+            self.acc.replace([remove[0], add[0]], [remove[1], add[1]]);
 
             if let Some((r, s)) = capture {
                 let victim = Piece::new(r, !turn);

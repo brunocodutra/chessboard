@@ -11,6 +11,9 @@ pub trait Accumulator: Default {
     /// Updates this accumulator by removing features.
     fn remove(&mut self, white: Feature, black: Feature);
 
+    /// Updates this accumulator by replacing features.
+    fn replace(&mut self, white: [Feature; 2], black: [Feature; 2]);
+
     /// Evaluates this accumulator.
     fn evaluate(&self, turn: Color, phase: usize) -> i32;
 }
@@ -26,6 +29,11 @@ impl<T: Accumulator, U: Accumulator> Accumulator for (T, U) {
     fn remove(&mut self, white: Feature, black: Feature) {
         self.0.remove(white, black);
         self.1.remove(white, black);
+    }
+
+    fn replace(&mut self, white: [Feature; 2], black: [Feature; 2]) {
+        self.0.replace(white, black);
+        self.1.replace(white, black);
     }
 
     fn evaluate(&self, turn: Color, phase: usize) -> i32 {

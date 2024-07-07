@@ -33,6 +33,12 @@ impl Accumulator for Positional {
     }
 
     #[inline(always)]
+    fn replace(&mut self, white: [Feature; 2], black: [Feature; 2]) {
+        Nnue::ft().replace(white, &mut self.0[0]);
+        Nnue::ft().replace(black, &mut self.0[1]);
+    }
+
+    #[inline(always)]
     fn evaluate(&self, turn: Color, phase: usize) -> i32 {
         Nnue::hidden(phase).forward([&self.0[turn as usize], &self.0[turn.mirror() as usize]]) / 16
     }
