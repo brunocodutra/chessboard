@@ -12,6 +12,7 @@ pub struct Hidden<const N: usize> {
 
 impl<const N: usize> Hidden<N> {
     #[doc(hidden)]
+    #[inline(always)]
     #[cfg(target_feature = "avx2")]
     pub unsafe fn avx2(&self, input: [&[i16; N]; 2]) -> i32 {
         const { assert!(N % 128 == 0) };
@@ -78,6 +79,7 @@ impl<const N: usize> Hidden<N> {
     }
 
     #[doc(hidden)]
+    #[inline(always)]
     #[cfg(all(target_feature = "sse4.1", target_feature = "ssse3"))]
     pub unsafe fn sse(&self, input: [&[i16; N]; 2]) -> i32 {
         const { assert!(N % 64 == 0) };
@@ -137,6 +139,7 @@ impl<const N: usize> Hidden<N> {
     }
 
     #[doc(hidden)]
+    #[inline(always)]
     pub fn scalar(&self, input: [&[i16; N]; 2]) -> i32 {
         let mut y = self.bias;
         for (w, i) in self.weight.iter().zip(input) {
@@ -151,6 +154,7 @@ impl<const N: usize> Hidden<N> {
 
 impl<const N: usize> Hidden<N> {
     /// Transforms the accumulator.
+    #[inline(always)]
     pub fn forward(&self, input: [&[i16; N]; 2]) -> i32 {
         #[cfg(target_feature = "avx2")]
         unsafe {

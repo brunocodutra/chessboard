@@ -1,7 +1,7 @@
 use crate::nnue::Feature;
 use crate::util::{AlignTo64, Assume, Integer};
 use derive_more::Constructor;
-use std::ops::{AddAssign, SubAssign};
+use std::ops::{Add, AddAssign, Sub, SubAssign};
 
 #[cfg(test)]
 use proptest::{prelude::*, sample::Index};
@@ -43,7 +43,7 @@ impl<const N: usize> Arbitrary for Box<Transformer<i16, N>> {
 
 impl<T, const N: usize> Transformer<T, N>
 where
-    T: Copy + AddAssign + SubAssign,
+    T: Copy + Add<Output = T> + AddAssign + Sub<Output = T> + SubAssign,
 {
     /// A fresh accumulator.
     #[inline(always)]
@@ -54,18 +54,28 @@ where
     /// Updates the accumulator by adding features.
     #[inline(always)]
     pub fn add(&self, feature: Feature, accumulator: &mut [T; N]) {
-        let a = self.weight.get(feature.cast::<usize>()).assume();
+        let a = self.weight.get(feature.cast::<usize>()).assume().iter();
         for (y, a) in accumulator.iter_mut().zip(a) {
-            *y += *a
+            *y += *a;
         }
     }
 
     /// Updates the accumulator by removing features.
     #[inline(always)]
     pub fn remove(&self, feature: Feature, accumulator: &mut [T; N]) {
-        let a = self.weight.get(feature.cast::<usize>()).assume();
+        let a = self.weight.get(feature.cast::<usize>()).assume().iter();
         for (y, a) in accumulator.iter_mut().zip(a) {
-            *y -= *a
+            *y -= *a;
+        }
+    }
+
+    /// Updates the accumulator by replacing features.
+    #[inline(always)]
+    pub fn replace(&self, [remove, add]: [Feature; 2], accumulator: &mut [T; N]) {
+        let a = self.weight.get(add.cast::<usize>()).assume().iter();
+        let b = self.weight.get(remove.cast::<usize>()).assume().iter();
+        for (y, (a, b)) in accumulator.iter_mut().zip(Iterator::zip(a, b)) {
+            *y += *a - *b;
         }
     }
 }

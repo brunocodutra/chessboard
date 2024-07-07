@@ -33,6 +33,12 @@ impl Accumulator for Material {
     }
 
     #[inline(always)]
+    fn replace(&mut self, white: [Feature; 2], black: [Feature; 2]) {
+        Nnue::psqt().replace(white, &mut self.0[0]);
+        Nnue::psqt().replace(black, &mut self.0[1]);
+    }
+
+    #[inline(always)]
     fn evaluate(&self, turn: Color, phase: usize) -> i32 {
         (self.0[turn as usize][phase] - self.0[turn.mirror() as usize][phase]) / 32
     }
