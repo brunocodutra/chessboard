@@ -1,8 +1,9 @@
 use crate::chess::{Move, Zobrist};
 use crate::search::{Depth, HashSize, Score};
 use crate::util::{Assume, Binary, Bits, Integer};
-use std::sync::atomic::{AtomicU64, Ordering};
-use std::{mem::size_of, ops::RangeInclusive};
+use std::mem::size_of;
+use std::ops::{Index, RangeInclusive};
+use std::sync::atomic::{AtomicU64, Ordering::Relaxed};
 
 #[cfg(test)]
 use crate::chess::Position;
@@ -189,22 +190,25 @@ impl TranspositionTable {
         self.cache.len()
     }
 
-    fn signature_of(&self, key: Zobrist) -> Signature {
-        key.slice(self.capacity().trailing_zeros()..).pop()
-    }
-
-    fn index_of(&self, key: Zobrist) -> usize {
-        key.slice(..self.capacity().trailing_zeros()).cast()
+    /// Instructs the CPU to load the slot associated with `key` onto the cache.
+    #[inline(always)]
+    pub fn prefetch(&self, key: Zobrist) {
+        #[cfg(target_arch = "x86_64")]
+        unsafe {
+            use std::arch::x86_64::{_mm_prefetch, _MM_HINT_ET0};
+            _mm_prefetch(self.cache[key].as_ptr() as _, _MM_HINT_ET0);
+        }
     }
 
     /// Loads the [`Transposition`] from the slot associated with `key`.
+    #[inline(always)]
     pub fn get(&self, key: Zobrist) -> Option<Transposition> {
         if self.capacity() == 0 {
             return None;
         }
 
-        let sig = self.signature_of(key);
-        let bits = Bits::new(self.cache[self.index_of(key)].load(Ordering::Relaxed));
+        let sig = self.sign(key);
+        let bits = Bits::new(self.cache[key].load(Relaxed));
         match Binary::decode(bits) {
             Some(SignedTransposition(s, t)) if s == sig => Some(Binary::decode(t)),
             _ => None,
@@ -214,12 +218,29 @@ impl TranspositionTable {
     /// Stores a [`Transposition`] in the slot associated with `key`.
     ///
     /// In the slot if not empty, the [`Transposition`] with greater depth is chosen.
+    #[inline(always)]
     pub fn set(&self, key: Zobrist, tpos: Transposition) {
         if self.capacity() > 0 {
-            let sig = self.signature_of(key);
+            let sig = self.sign(key);
             let bits = Some(SignedTransposition(sig, tpos.encode())).encode();
-            self.cache[self.index_of(key)].store(bits.get(), Ordering::Relaxed);
+            self.cache[key].store(bits.get(), Relaxed);
         }
+    }
+
+    /// Returns the [`Signature`] associated with `key`.
+    #[inline(always)]
+    pub fn sign(&self, key: Zobrist) -> Signature {
+        key.slice(self.capacity().trailing_zeros()..).pop()
+    }
+}
+
+impl Index<Zobrist> for [AtomicU64] {
+    type Output = AtomicU64;
+
+    #[inline(always)]
+    fn index(&self, key: Zobrist) -> &Self::Output {
+        let idx: usize = key.slice(..self.len().trailing_zeros()).cast();
+        self.get(idx).assume()
     }
 }
 
@@ -297,30 +318,30 @@ mod tests {
     }
 
     #[proptest]
-    fn get_returns_none_if_transposition_does_not_exist(mut tt: TranspositionTable, k: Zobrist) {
-        *tt.cache[tt.index_of(k)].get_mut() = 0;
+    fn get_returns_none_if_transposition_does_not_exist(tt: TranspositionTable, k: Zobrist) {
+        tt.cache[k].store(0, Relaxed);
         assert_eq!(tt.get(k), None);
     }
 
     #[proptest]
     fn get_returns_none_if_signature_does_not_match(
-        mut tt: TranspositionTable,
+        tt: TranspositionTable,
         t: Transposition,
         k: Zobrist,
     ) {
-        let st = Some(SignedTransposition(!tt.signature_of(k), t.encode()));
-        *tt.cache[tt.index_of(k)].get_mut() = st.encode().get();
+        let st = Some(SignedTransposition(!tt.sign(k), t.encode()));
+        tt.cache[k].store(st.encode().get(), Relaxed);
         assert_eq!(tt.get(k), None);
     }
 
     #[proptest]
     fn get_returns_some_if_transposition_exists(
-        mut tt: TranspositionTable,
+        tt: TranspositionTable,
         t: Transposition,
         k: Zobrist,
     ) {
-        let st = Some(SignedTransposition(tt.signature_of(k), t.encode()));
-        *tt.cache[tt.index_of(k)].get_mut() = st.encode().get();
+        let st = Some(SignedTransposition(tt.sign(k), t.encode()));
+        tt.cache[k].store(st.encode().get(), Relaxed);
         assert_eq!(tt.get(k), Some(t));
     }
 
@@ -331,25 +352,25 @@ mod tests {
 
     #[proptest]
     fn set_replaces_transposition_if_one_exists(
-        #[by_ref] mut tt: TranspositionTable,
+        #[by_ref] tt: TranspositionTable,
         s: Signature,
         t: Transposition,
         u: Transposition,
         k: Zobrist,
     ) {
         let st = Some(SignedTransposition(s, t.encode()));
-        *tt.cache[tt.index_of(k)].get_mut() = st.encode().get();
+        tt.cache[k].store(st.encode().get(), Relaxed);
         tt.set(k, u);
         assert_eq!(tt.get(k), Some(u));
     }
 
     #[proptest]
     fn set_stores_transposition_if_none_exists(
-        mut tt: TranspositionTable,
+        tt: TranspositionTable,
         t: Transposition,
         k: Zobrist,
     ) {
-        *tt.cache[tt.index_of(k)].get_mut() = None::<SignedTransposition>.encode().get();
+        tt.cache[k].store(None::<SignedTransposition>.encode().get(), Relaxed);
         tt.set(k, t);
         assert_eq!(tt.get(k), Some(t));
     }

@@ -269,6 +269,7 @@ impl Engine {
             let mut next = pos.clone();
             next.play(m);
 
+            self.tt.prefetch(next.zobrist());
             if gain < 100 && !pos.is_check() && !next.is_check() {
                 if let Some(d) = self.lmp(&next, m, alpha.saturate(), depth, ply) {
                     if d <= ply || -self.nw(&next, -alpha, d, ply + 1, ctrl)? <= alpha {
