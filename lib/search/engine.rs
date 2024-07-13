@@ -126,6 +126,17 @@ impl Engine {
         Some(depth - r - (depth - ply) / 4)
     }
 
+    /// A full alpha-beta search.
+    fn fw(
+        &self,
+        pos: &Evaluator,
+        depth: Depth,
+        ply: Ply,
+        ctrl: &Control,
+    ) -> Result<Pv, Interrupted> {
+        self.pvs::<true>(pos, Score::lower()..Score::upper(), depth, ply, ctrl)
+    }
+
     /// A [zero-window] alpha-beta search.
     ///
     /// [zero-window]: https://www.chessprogramming.org/Null_Window
@@ -137,14 +148,14 @@ impl Engine {
         ply: Ply,
         ctrl: &Control,
     ) -> Result<Pv, Interrupted> {
-        self.pvs(pos, beta - 1..beta, depth, ply, ctrl)
+        self.pvs::<false>(pos, beta - 1..beta, depth, ply, ctrl)
     }
 
     /// An implementation of the [PVS] variation of [alpha-beta pruning] algorithm.
     ///
     /// [PVS]: https://www.chessprogramming.org/Principal_Variation_Search
     /// [alpha-beta pruning]: https://www.chessprogramming.org/Alpha-Beta
-    fn pvs(
+    fn pvs<const PV: bool>(
         &self,
         pos: &Evaluator,
         bounds: Range<Score>,
@@ -152,20 +163,16 @@ impl Engine {
         ply: Ply,
         ctrl @ Control(nodes, timer): &Control,
     ) -> Result<Pv, Interrupted> {
-        assert!(!bounds.is_empty(), "{bounds:?} ≠ ∅");
+        debug_assert!(!bounds.is_empty());
 
         nodes.count().ok_or(Interrupted)?;
         timer.remaining().ok_or(Interrupted)?;
 
-        let in_check = match pos.outcome() {
+        let tpos = match pos.outcome() {
             Some(o) if o.is_draw() => return Ok(Pv::new(Score::new(0), None)),
             Some(_) => return Ok(Pv::new(Score::lower().normalize(ply), None)),
-            None => pos.is_check(),
+            None => self.tt.get(pos.zobrist()),
         };
-
-        let (alpha, beta) = self.mdp(ply, &bounds);
-        let tpos = self.tt.get(pos.zobrist());
-        let is_pv = alpha + 1 < beta;
 
         let score = match tpos {
             Some(t) => t.score().normalize(ply),
@@ -175,16 +182,17 @@ impl Engine {
         let depth = match tpos {
             #[cfg(not(test))]
             // Extensions are not exact.
-            Some(_) if in_check => depth + 1,
+            Some(_) if pos.is_check() => depth + 1,
 
             #[cfg(not(test))]
             // Reductions are not exact.
-            None if !in_check => depth - 1,
+            None if !pos.is_check() => depth - 1,
 
             _ => depth,
         };
 
         let quiesce = ply >= depth;
+        let (alpha, beta) = self.mdp(ply, &bounds);
         let alpha = match quiesce {
             #[cfg(not(test))]
             // The stand pat heuristic is not exact.
@@ -195,7 +203,7 @@ impl Engine {
         if alpha >= beta {
             return Ok(Pv::new(alpha, None));
         } else if let Some(t) = tpos {
-            if !is_pv && t.depth() >= depth - ply {
+            if !PV && t.depth() >= depth - ply {
                 let (lower, upper) = t.bounds().into_inner();
                 if lower == upper || upper <= alpha || lower >= beta {
                     return Ok(Pv::new(score, Some(t.best())));
@@ -205,7 +213,7 @@ impl Engine {
 
         if ply >= Ply::MAX {
             return Ok(Pv::new(score, None));
-        } else if !is_pv && !in_check {
+        } else if !PV && !pos.is_check() {
             if let Some(d) = self.nmp(pos, score, beta, depth, ply) {
                 let mut next = pos.clone();
                 next.pass();
@@ -244,7 +252,7 @@ impl Engine {
             Some((m, _)) => {
                 let mut next = pos.clone();
                 next.play(m);
-                m >> -self.pvs(&next, -beta..-alpha, depth, ply + 1, ctrl)?
+                m >> -self.pvs::<PV>(&next, -beta..-alpha, depth, ply + 1, ctrl)?
             }
         };
 
@@ -261,7 +269,7 @@ impl Engine {
             let mut next = pos.clone();
             next.play(m);
 
-            if gain < 100 && !in_check && !next.is_check() {
+            if gain < 100 && !pos.is_check() && !next.is_check() {
                 if let Some(d) = self.lmp(&next, m, alpha.saturate(), depth, ply) {
                     if d <= ply || -self.nw(&next, -alpha, d, ply + 1, ctrl)? <= alpha {
                         #[cfg(not(test))]
@@ -273,7 +281,7 @@ impl Engine {
 
             let pv = match -self.nw(&next, -alpha, depth, ply + 1, ctrl)? {
                 pv if pv <= alpha || pv >= beta => m >> pv,
-                _ => m >> -self.pvs(&next, -beta..-alpha, depth, ply + 1, ctrl)?,
+                _ => m >> -self.pvs::<PV>(&next, -beta..-alpha, depth, ply + 1, ctrl)?,
             };
 
             Ok(pv)
@@ -293,8 +301,7 @@ impl Engine {
 
         while depth < Depth::upper() {
             let ctrl = Control::default();
-            let bounds = Score::lower()..Score::upper();
-            pv = self.pvs(pos, bounds, depth, Ply::new(0), &ctrl).assume();
+            pv = self.fw(pos, depth, Ply::new(0), &ctrl).assume();
             depth = depth + 1;
             if pv.best().is_some() {
                 break;
@@ -314,7 +321,8 @@ impl Engine {
             };
 
             pv = 'aw: loop {
-                let Ok(partial) = self.pvs(pos, lower..upper, depth, Ply::new(0), ctrl) else {
+                let bounds = lower..upper;
+                let Ok(partial) = self.pvs::<true>(pos, bounds, depth, Ply::new(0), ctrl) else {
                     break 'id;
                 };
 
@@ -495,7 +503,7 @@ mod tests {
         d: Depth,
         p: Ply,
     ) {
-        e.pvs(&pos, b.end..b.start, d, p, &Control::default())?;
+        e.pvs::<true>(&pos, b.end..b.start, d, p, &Control::default())?;
     }
 
     #[proptest]
@@ -507,7 +515,7 @@ mod tests {
         p: Ply,
     ) {
         let ctrl = Control(Counter::new(0), Timer::new(Duration::MAX));
-        assert_eq!(e.pvs(&pos, b, d, p, &ctrl), Err(Interrupted));
+        assert_eq!(e.pvs::<true>(&pos, b, d, p, &ctrl), Err(Interrupted));
     }
 
     #[proptest]
@@ -520,7 +528,7 @@ mod tests {
     ) {
         let ctrl = Control(Counter::new(u64::MAX), Timer::new(Duration::ZERO));
         std::thread::sleep(Duration::from_millis(1));
-        assert_eq!(e.pvs(&pos, b, d, p, &ctrl), Err(Interrupted));
+        assert_eq!(e.pvs::<true>(&pos, b, d, p, &ctrl), Err(Interrupted));
     }
 
     #[proptest]
@@ -531,7 +539,7 @@ mod tests {
         d: Depth,
     ) {
         assert_eq!(
-            e.pvs(&pos, b, d, Ply::upper(), &Control::default()),
+            e.pvs::<true>(&pos, b, d, Ply::upper(), &Control::default()),
             Ok(Pv::new(pos.evaluate().saturate(), None))
         );
     }
@@ -544,9 +552,8 @@ mod tests {
         d: Depth,
         p: Ply,
     ) {
-        let ctrl = Control::default();
         assert_eq!(
-            e.pvs(&pos, b, d, p, &ctrl),
+            e.pvs::<true>(&pos, b, d, p, &Control::default()),
             Ok(Pv::new(Score::new(0), None))
         );
     }
@@ -560,20 +567,18 @@ mod tests {
         p: Ply,
     ) {
         assert_eq!(
-            e.pvs(&pos, b, d, p, &Control::default()),
+            e.pvs::<true>(&pos, b, d, p, &Control::default()),
             Ok(Pv::new(Score::lower().normalize(p), None))
         );
     }
 
     #[proptest]
-    fn pvs_finds_best_score(e: Engine, pos: Evaluator, d: Depth, #[filter(#p >= 0)] p: Ply) {
-        let ctrl = Control::default();
-        let bounds = Score::lower()..Score::upper();
-        assert_eq!(e.pvs(&pos, bounds, d, p, &ctrl)?, negamax(&pos, d, p));
+    fn fw_finds_best_score(e: Engine, pos: Evaluator, d: Depth, #[filter(#p >= 0)] p: Ply) {
+        assert_eq!(e.fw(&pos, d, p, &Control::default())?, negamax(&pos, d, p));
     }
 
     #[proptest]
-    fn pvs_does_not_depend_on_configuration(
+    fn fw_does_not_depend_on_configuration(
         x: Options,
         y: Options,
         pos: Evaluator,
@@ -583,12 +588,11 @@ mod tests {
         let x = Engine::with_options(x);
         let y = Engine::with_options(y);
 
-        let bounds = Score::lower()..Score::upper();
         let ctrl = Control::default();
 
         assert_eq!(
-            x.pvs(&pos, bounds.clone(), d, p, &ctrl)?.score(),
-            y.pvs(&pos, bounds, d, p, &ctrl)?.score()
+            x.fw(&pos, d, p, &ctrl)?.score(),
+            y.fw(&pos, d, p, &ctrl)?.score()
         );
     }
 
@@ -598,13 +602,9 @@ mod tests {
         pos: Evaluator,
         #[filter(#d > 1)] d: Depth,
     ) {
-        let ctrl = Control::default();
-        let bounds = Score::lower()..Score::upper();
-        let ply = Ply::new(0);
-
         assert_eq!(
             e.search(&pos, Limits::Depth(d)).score(),
-            e.pvs(&pos, bounds, d, ply, &ctrl)?.score()
+            e.fw(&pos, d, Ply::new(0), &Control::default())?.score()
         );
     }
 
