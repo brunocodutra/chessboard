@@ -369,27 +369,40 @@ mod tests {
     use std::time::Instant;
     use test_strategy::proptest;
 
-    fn negamax(pos: &Evaluator, depth: Depth, ply: Ply) -> Score {
+    fn alphabeta(pos: &Evaluator, bounds: Range<Score>, depth: Depth, ply: Ply) -> Score {
         let score = match pos.outcome() {
             Some(o) if o.is_draw() => return Score::new(0),
             Some(_) => return Score::lower().normalize(ply),
             None => pos.evaluate().saturate(),
         };
 
-        if ply >= Ply::MAX {
+        let moves: ArrayVec<_, 255> = pos
+            .moves()
+            .filter(|m| ply < depth || !m.is_quiet())
+            .flatten()
+            .collect();
+
+        let (mut alpha, beta) = if ply < Ply::MAX && !moves.is_empty() {
+            (bounds.start, bounds.end)
+        } else {
             return score;
+        };
+
+        for m in moves {
+            let mut next = pos.clone();
+            next.play(m);
+            let pv = -alphabeta(&next, -beta..-alpha, depth, ply + 1);
+            alpha = pv.max(alpha);
+            if alpha >= beta {
+                break;
+            }
         }
 
-        pos.moves()
-            .flatten()
-            .filter(|m| ply < depth || !m.is_quiet())
-            .map(|m| {
-                let mut next = pos.clone();
-                next.play(m);
-                -negamax(&next, depth, ply + 1)
-            })
-            .max()
-            .unwrap_or(score)
+        alpha
+    }
+
+    fn negamax(pos: &Evaluator, depth: Depth, ply: Ply) -> Score {
+        alphabeta(pos, Score::lower()..Score::upper(), depth, ply)
     }
 
     #[proptest]
@@ -457,6 +470,20 @@ mod tests {
 
         let ctrl = Control::default();
         assert_eq!(e.nw(&pos, b, d, p, &ctrl), Ok(Pv::new(sc, Some(m))));
+    }
+
+    #[proptest]
+    fn nw_finds_score_bound(
+        e: Engine,
+        pos: Evaluator,
+        #[filter((Value::lower()..Value::upper()).contains(&#b))] b: Score,
+        d: Depth,
+        #[filter(#p >= 0)] p: Ply,
+    ) {
+        assert_eq!(
+            e.nw(&pos, b, d, p, &Control::default())? < b,
+            alphabeta(&pos, b - 1..b, d, p) < b
+        );
     }
 
     #[proptest]
