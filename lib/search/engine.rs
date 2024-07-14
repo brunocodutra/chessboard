@@ -310,33 +310,36 @@ impl Engine {
         }
 
         'id: for d in depth.get()..=limit.get() {
-            if timer.remaining() < Duration::checked_sub(time.end, time.start) {
-                break 'id;
-            }
-
-            let mut delta: i16 = 24;
+            let mut overtime = time.end - time.start;
             let mut depth = Depth::new(d);
+            let mut delta: i16 = 24;
+
             let (mut lower, mut upper) = match d {
                 ..=4 => (Score::lower(), Score::upper()),
                 _ => (pv.score() - delta, pv.score() + delta),
             };
 
             pv = 'aw: loop {
+                delta = delta.saturating_mul(2);
+                if timer.remaining() < Some(overtime) {
+                    break 'id;
+                }
+
                 let bounds = lower..upper;
                 let Ok(partial) = self.pvs::<true>(pos, bounds, depth, Ply::new(0), ctrl) else {
                     break 'id;
                 };
 
-                delta = delta.saturating_mul(2);
-
                 match partial.score() {
                     score if (-lower..Score::upper()).contains(&-score) => {
+                        overtime /= 2;
                         depth = Depth::new(d);
                         upper = lower / 2 + upper / 2;
                         lower = score - delta;
                     }
 
                     score if (upper..Score::upper()).contains(&score) => {
+                        overtime = time.end - time.start;
                         depth = depth - 1;
                         upper = score + delta;
                         pv = partial;
@@ -356,11 +359,10 @@ impl Engine {
             _ => return limits.time()..limits.time(),
         };
 
-        let cap = clock.mul_f32(0.8);
-        let excess = clock.saturating_sub(inc);
-        let scale = 400 / pos.fullmoves().get().min(40);
-        let max = inc.saturating_add(excess / scale).min(cap);
-        max / 2..max
+        let time_left = clock.saturating_sub(inc);
+        let moves_left = 280 / pos.fullmoves().get().min(40);
+        let time_per_move = inc.saturating_add(time_left / moves_left);
+        time_per_move / 2..time_per_move
     }
 
     /// Searches for the [principal variation][`Pv`].
