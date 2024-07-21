@@ -115,11 +115,11 @@ impl Engine {
         depth: Depth,
         ply: Ply,
     ) -> Option<Depth> {
-        let bounds = -(alpha - 60)..-(alpha - 501);
+        let bounds = -(alpha - 60)..-(alpha - 401);
         let r = match (alpha + next.clone().see(m.whither(), bounds)).get() {
             ..=60 => return None,
-            61..=180 => 1,
-            181..=500 => 2,
+            61..=200 => 1,
+            201..=400 => 2,
             _ => 3,
         };
 
@@ -270,7 +270,7 @@ impl Engine {
             next.play(m);
 
             self.tt.prefetch(next.zobrist());
-            if gain < 100 && !pos.is_check() && !next.is_check() {
+            if gain <= 0 && !pos.is_check() && !next.is_check() {
                 if let Some(d) = self.lmp(&next, m, alpha.saturate(), depth, ply) {
                     if d <= ply || -self.nw(&next, -alpha, d, ply + 1, ctrl)? <= alpha {
                         #[cfg(not(test))]
