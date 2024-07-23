@@ -1,4 +1,4 @@
-use crate::chess::{Bitboard, Mirror, Perspective};
+use crate::chess::{Bitboard, Perspective};
 use crate::util::Integer;
 use derive_more::{Display, Error};
 use std::{ops::Sub, str::FromStr};
@@ -40,18 +40,11 @@ unsafe impl Integer for Rank {
     const MAX: Self::Repr = Rank::Eighth as _;
 }
 
-impl Mirror for Rank {
-    #[inline(always)]
-    fn mirror(&self) -> Self {
-        Self::new(self.get() ^ Self::Eighth.get())
-    }
-}
-
 impl Perspective for Rank {
-    /// Mirrors this rank.
+    /// This rank from the opponent's perspective.
     #[inline(always)]
     fn flip(&self) -> Self {
-        self.mirror()
+        Self::new(self.get() ^ Self::MAX)
     }
 }
 
@@ -104,18 +97,13 @@ mod tests {
     }
 
     #[proptest]
-    fn mirroring_rank_returns_complement(r: Rank) {
-        assert_eq!(r.mirror().get(), Rank::MAX - r.get());
-    }
-
-    #[proptest]
     fn subtracting_ranks_returns_distance(a: Rank, b: Rank) {
         assert_eq!(a - b, a.get() - b.get());
     }
 
     #[proptest]
-    fn flipping_rank_produces_its_mirror(r: Rank) {
-        assert_eq!(r.flip(), r.mirror());
+    fn flipping_rank_returns_its_complement(r: Rank) {
+        assert_eq!(r.flip().get(), Rank::MAX - r.get());
     }
 
     #[proptest]

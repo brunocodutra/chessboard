@@ -1,4 +1,4 @@
-use crate::chess::{Color, Mirror};
+use crate::chess::{Color, Perspective};
 use crate::nnue::{Accumulator, Feature, Nnue};
 use crate::util::AlignTo64;
 use derive_more::Debug;
@@ -44,7 +44,7 @@ impl Accumulator for Material {
 
     #[inline(always)]
     fn evaluate(&self, turn: Color, phase: usize) -> i32 {
-        (self.0[turn as usize][phase] - self.0[turn.mirror() as usize][phase]) / 32
+        (self.0[turn as usize][phase] - self.0[turn.flip() as usize][phase]) / 32
     }
 }
 

@@ -100,12 +100,14 @@ impl<T: Copy + Accumulator> Evaluator<T> {
         let (role, capture) = self.pos.play(m);
         let mut sides = ArrayVec::<Color, 2>::from([!turn, turn]);
 
-        if role == Role::King {
+        if role == Role::King
+            && Feature::new(turn, m.whence(), Piece::lower(), Square::lower())
+                != Feature::new(turn, m.whither(), Piece::lower(), Square::lower())
+        {
             sides.truncate(1);
             self.acc.refresh(turn);
-            let ksq = self.king(turn);
             for (p, s) in self.pos.iter() {
-                self.acc.add(turn, Feature::new(turn, ksq, p, s));
+                self.acc.add(turn, Feature::new(turn, m.whither(), p, s));
             }
         }
 

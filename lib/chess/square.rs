@@ -53,10 +53,10 @@ unsafe impl Integer for Square {
 }
 
 impl Mirror for Square {
-    /// Mirrors this square's [`File`] and [`Rank`].
+    /// Horizontally mirrors this square.
     #[inline(always)]
     fn mirror(&self) -> Self {
-        <Self as Integer>::new(self.get() ^ Square::H8.get())
+        <Self as Integer>::new(self.get() ^ Square::H1.get())
     }
 }
 
@@ -176,11 +176,8 @@ mod tests {
     }
 
     #[proptest]
-    fn mirroring_square_mirrors_its_file_and_rank(sq: Square) {
-        assert_eq!(
-            sq.mirror(),
-            Square::new(sq.file().mirror(), sq.rank().mirror())
-        );
+    fn mirroring_square_mirrors_its_file(sq: Square) {
+        assert_eq!(sq.mirror(), Square::new(sq.file().mirror(), sq.rank()));
     }
 
     #[proptest]

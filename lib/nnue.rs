@@ -86,3 +86,26 @@ impl Nnue {
         unsafe { NNUE.hidden.get_unchecked(phase) }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use arrayvec::ArrayVec;
+
+    #[test]
+    fn feature_transformer_does_not_overflow() {
+        (0..Positional::LEN).for_each(|i| {
+            let bias = Nnue::ft().bias[i] as i32;
+            let mut features = ArrayVec::<_, { Feature::LEN }>::from_iter(
+                Nnue::ft().weight.iter().map(|a| a[i] as i32),
+            );
+
+            for weights in features.array_chunks_mut::<768>() {
+                let (small, _, _) = weights.select_nth_unstable(32);
+                assert!(small.iter().fold(bias, |s, &v| s + v).abs() <= i16::MAX as i32);
+                let (_, _, large) = weights.select_nth_unstable(Positional::LEN - 33);
+                assert!(large.iter().fold(bias, |s, &v| s + v).abs() <= i16::MAX as i32);
+            }
+        });
+    }
+}
