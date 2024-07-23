@@ -1,4 +1,4 @@
-use crate::chess::{Color, Perspective, Piece, Square};
+use crate::chess::{Color, File, Mirror, Perspective, Piece, Square};
 use crate::util::Integer;
 
 /// The HalfKAv2 feature.
@@ -15,13 +15,31 @@ unsafe impl Integer for Feature {
 
 impl Feature {
     /// The total number of different features.
-    pub const LEN: usize = 64 * 704;
+    pub const LEN: usize = 8 * 768;
+
+    #[rustfmt::skip]
+    const KING_BUCKETS: [u16; 64] = [
+        0, 0, 1, 1, 1, 1, 0, 0,
+        2, 2, 3, 3, 3, 3, 2, 2,
+        4, 4, 5, 5, 5, 5, 4, 4,
+        4, 4, 5, 5, 5, 5, 4, 4,
+        6, 6, 7, 7, 7, 7, 6, 6,
+        6, 6, 7, 7, 7, 7, 6, 6,
+        6, 6, 7, 7, 7, 7, 6, 6,
+        6, 6, 7, 7, 7, 7, 6, 6,
+    ];
 
     /// Constructs feature from some perspective.
     #[inline(always)]
     pub fn new(side: Color, ksq: Square, piece: Piece, sq: Square) -> Self {
-        let psq = sq.perspective(side) as u16 + 64 * piece.perspective(side).get().min(10) as u16;
-        Feature(psq + 704 * ksq.perspective(side) as u16)
+        let psq = 64 * piece.perspective(side) as u16
+            + if ksq.file() <= File::D {
+                sq.perspective(side).mirror() as u16
+            } else {
+                sq.perspective(side) as u16
+            };
+
+        Feature(psq + 768 * Self::KING_BUCKETS[ksq.perspective(side) as usize])
     }
 }
 

@@ -1,4 +1,4 @@
-use crate::chess::{Bitboard, Mirror, Piece, Rank, Role, Square, Squares};
+use crate::chess::{Bitboard, Perspective, Piece, Rank, Role, Square, Squares};
 use crate::util::{Assume, Binary, Bits, Integer};
 use std::fmt::{self, Write};
 use std::{num::NonZeroU16, ops::RangeBounds};
@@ -192,14 +192,14 @@ impl MoveSet {
     /// A set of castling moves.
     #[inline(always)]
     pub fn castling(whence: Square, whither: Bitboard) -> Self {
-        let base = Move::castling(whence, whence.mirror());
+        let base = Move::castling(whence, whence.flip());
         MoveSet { base, whither }
     }
 
     /// A set of en passant moves.
     #[inline(always)]
     pub fn en_passant(whence: Square, whither: Bitboard) -> Self {
-        let base = Move::en_passant(whence, whence.mirror());
+        let base = Move::en_passant(whence, whence.flip());
         MoveSet { base, whither }
     }
 
@@ -208,9 +208,9 @@ impl MoveSet {
     pub fn regular(piece: Piece, whence: Square, whither: Bitboard) -> Self {
         use {Piece::*, Rank::*, Role::*};
         let base = match (piece, whence.rank()) {
-            (WhitePawn, Seventh) => Move::regular(whence, whence.mirror(), Some(Knight)),
-            (BlackPawn, Second) => Move::regular(whence, whence.mirror(), Some(Knight)),
-            _ => Move::regular(whence, whence.mirror(), None),
+            (WhitePawn, Seventh) => Move::regular(whence, whence.flip(), Some(Knight)),
+            (BlackPawn, Second) => Move::regular(whence, whence.flip(), Some(Knight)),
+            _ => Move::regular(whence, whence.flip(), None),
         };
 
         MoveSet { base, whither }
@@ -221,9 +221,9 @@ impl MoveSet {
     pub fn capture(piece: Piece, whence: Square, whither: Bitboard) -> Self {
         use {Piece::*, Rank::*, Role::*};
         let base = match (piece, whence.rank()) {
-            (WhitePawn, Seventh) => Move::capture(whence, whence.mirror(), Some(Knight)),
-            (BlackPawn, Second) => Move::capture(whence, whence.mirror(), Some(Knight)),
-            _ => Move::capture(whence, whence.mirror(), None),
+            (WhitePawn, Seventh) => Move::capture(whence, whence.flip(), Some(Knight)),
+            (BlackPawn, Second) => Move::capture(whence, whence.flip(), Some(Knight)),
+            _ => Move::capture(whence, whence.flip(), None),
         };
 
         MoveSet { base, whither }

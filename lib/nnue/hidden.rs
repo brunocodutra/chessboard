@@ -1,5 +1,5 @@
 use crate::util::AlignTo64;
-use derive_more::Constructor;
+use derive_more::{Constructor, Shl};
 
 /// The hidden layer.
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash, Constructor)]
@@ -19,51 +19,42 @@ impl<const N: usize> Hidden<N> {
 
         use std::{arch::x86_64::*, mem::transmute};
 
-        let mut y = _mm256_setzero_si256();
+        #[inline(always)]
+        unsafe fn crelu(p: __m256i, q: __m256i) -> __m256i {
+            _mm256_packus_epi16(p, q)
+        }
+
+        #[inline(always)]
+        unsafe fn square(r: __m256i) -> __m256i {
+            let p = _mm256_unpacklo_epi8(r, _mm256_setzero_si256());
+            let q = _mm256_unpackhi_epi8(r, _mm256_setzero_si256());
+            let p = _mm256_slli_epi16(p, 3);
+            let q = _mm256_slli_epi16(q, 3);
+            let p = _mm256_mulhrs_epi16(p, p);
+            let q = _mm256_mulhrs_epi16(q, q);
+            let r = _mm256_packus_epi16(p, q);
+            _mm256_permute4x64_epi64(r, _MM_SHUFFLE(3, 1, 2, 0))
+        }
+
+        #[inline(always)]
+        unsafe fn dot(p: __m256i, q: __m256i) -> __m256i {
+            _mm256_madd_epi16(_mm256_maddubs_epi16(p, q), _mm256_set1_epi16(1))
+        }
+
+        let mut y = _mm256_setr_epi32(self.bias, 0, 0, 0, 0, 0, 0, 0);
+
         for (w, i) in self.weight.iter().zip(input) {
             debug_assert_eq!(w.as_ptr() as usize % 32, 0);
             debug_assert_eq!(i.as_ptr() as usize % 32, 0);
 
             for (a, x) in Iterator::zip(w.array_chunks::<128>(), i.array_chunks::<128>()) {
-                let a = transmute::<&[i8; 128], &[[i8; 32]; 4]>(a);
-                let x = transmute::<&[i16; 128], &[[i16; 32]; 4]>(x);
+                let a = transmute::<&[i8; 128], &[__m256i; 4]>(a);
+                let x = transmute::<&[i16; 128], &[[__m256i; 2]; 4]>(x);
 
-                let p0 = _mm256_load_si256(x[0][..16].as_ptr() as _);
-                let q0 = _mm256_load_si256(x[0][16..].as_ptr() as _);
-                let p1 = _mm256_load_si256(x[1][..16].as_ptr() as _);
-                let q1 = _mm256_load_si256(x[1][16..].as_ptr() as _);
-                let p2 = _mm256_load_si256(x[2][..16].as_ptr() as _);
-                let q2 = _mm256_load_si256(x[2][16..].as_ptr() as _);
-                let p3 = _mm256_load_si256(x[3][..16].as_ptr() as _);
-                let q3 = _mm256_load_si256(x[3][16..].as_ptr() as _);
-
-                let r = _mm256_packs_epi16(p0, q0);
-                let r = _mm256_max_epi8(r, _mm256_setzero_si256());
-                let r = _mm256_permute4x64_epi64(r, 0b11011000);
-                let r = _mm256_maddubs_epi16(r, _mm256_load_si256(a[0].as_ptr() as _));
-                let r = _mm256_madd_epi16(r, _mm256_set1_epi16(1));
-                y = _mm256_add_epi32(y, r);
-
-                let r = _mm256_packs_epi16(p1, q1);
-                let r = _mm256_max_epi8(r, _mm256_setzero_si256());
-                let r = _mm256_permute4x64_epi64(r, 0b11011000);
-                let r = _mm256_maddubs_epi16(r, _mm256_load_si256(a[1].as_ptr() as _));
-                let r = _mm256_madd_epi16(r, _mm256_set1_epi16(1));
-                y = _mm256_add_epi32(y, r);
-
-                let r = _mm256_packs_epi16(p2, q2);
-                let r = _mm256_max_epi8(r, _mm256_setzero_si256());
-                let r = _mm256_permute4x64_epi64(r, 0b11011000);
-                let r = _mm256_maddubs_epi16(r, _mm256_load_si256(a[2].as_ptr() as _));
-                let r = _mm256_madd_epi16(r, _mm256_set1_epi16(1));
-                y = _mm256_add_epi32(y, r);
-
-                let r = _mm256_packs_epi16(p3, q3);
-                let r = _mm256_max_epi8(r, _mm256_setzero_si256());
-                let r = _mm256_permute4x64_epi64(r, 0b11011000);
-                let r = _mm256_maddubs_epi16(r, _mm256_load_si256(a[3].as_ptr() as _));
-                let r = _mm256_madd_epi16(r, _mm256_set1_epi16(1));
-                y = _mm256_add_epi32(y, r);
+                y = _mm256_add_epi32(y, dot(square(crelu(x[0][0], x[0][1])), a[0]));
+                y = _mm256_add_epi32(y, dot(square(crelu(x[1][0], x[1][1])), a[1]));
+                y = _mm256_add_epi32(y, dot(square(crelu(x[2][0], x[2][1])), a[2]));
+                y = _mm256_add_epi32(y, dot(square(crelu(x[3][0], x[3][1])), a[3]));
             }
         }
 
@@ -75,58 +66,52 @@ impl<const N: usize> Hidden<N> {
         let r = _mm_add_epi32(r, s);
         let s = _mm_shuffle_epi32(r, _MM_SHUFFLE(2, 3, 0, 1));
         let r = _mm_add_epi32(r, s);
-        self.bias + _mm_cvtsi128_si32(r)
+        _mm_extract_epi32(r, 0)
     }
 
     #[doc(hidden)]
     #[inline(always)]
-    #[cfg(all(target_feature = "sse4.1", target_feature = "ssse3"))]
+    #[cfg(target_feature = "ssse3")]
     pub unsafe fn sse(&self, input: [&[i16; N]; 2]) -> i32 {
         const { assert!(N % 64 == 0) };
 
         use std::{arch::x86_64::*, mem::transmute};
 
-        let mut y = _mm_setzero_si128();
+        #[inline(always)]
+        unsafe fn crelu(p: __m128i, q: __m128i) -> __m128i {
+            _mm_packus_epi16(p, q)
+        }
+
+        #[inline(always)]
+        unsafe fn square(r: __m128i) -> __m128i {
+            let p = _mm_unpacklo_epi8(r, _mm_setzero_si128());
+            let q = _mm_unpackhi_epi8(r, _mm_setzero_si128());
+            let p = _mm_slli_epi16(p, 3);
+            let q = _mm_slli_epi16(q, 3);
+            let p = _mm_mulhrs_epi16(p, p);
+            let q = _mm_mulhrs_epi16(q, q);
+            _mm_packus_epi16(p, q)
+        }
+
+        #[inline(always)]
+        unsafe fn dot(p: __m128i, q: __m128i) -> __m128i {
+            _mm_madd_epi16(_mm_maddubs_epi16(p, q), _mm_set1_epi16(1))
+        }
+
+        let mut y = _mm_setr_epi32(self.bias, 0, 0, 0);
+
         for (w, i) in self.weight.iter().zip(input) {
             debug_assert_eq!(w.as_ptr() as usize % 16, 0);
             debug_assert_eq!(i.as_ptr() as usize % 16, 0);
 
             for (a, x) in Iterator::zip(w.array_chunks::<64>(), i.array_chunks::<64>()) {
-                let a = transmute::<&[i8; 64], &[[i8; 16]; 4]>(a);
-                let x = transmute::<&[i16; 64], &[[i16; 16]; 4]>(x);
+                let a = transmute::<&[i8; 64], &[__m128i; 4]>(a);
+                let x = transmute::<&[i16; 64], &[[__m128i; 2]; 4]>(x);
 
-                let p0 = _mm_load_si128(x[0][..8].as_ptr() as _);
-                let q0 = _mm_load_si128(x[0][8..].as_ptr() as _);
-                let p1 = _mm_load_si128(x[1][..8].as_ptr() as _);
-                let q1 = _mm_load_si128(x[1][8..].as_ptr() as _);
-                let p2 = _mm_load_si128(x[2][..8].as_ptr() as _);
-                let q2 = _mm_load_si128(x[2][8..].as_ptr() as _);
-                let p3 = _mm_load_si128(x[3][..8].as_ptr() as _);
-                let q3 = _mm_load_si128(x[3][8..].as_ptr() as _);
-
-                let r = _mm_packs_epi16(p0, q0);
-                let r = _mm_max_epi8(r, _mm_setzero_si128());
-                let r = _mm_maddubs_epi16(r, _mm_load_si128(a[0].as_ptr() as _));
-                let r = _mm_madd_epi16(r, _mm_set1_epi16(1));
-                y = _mm_add_epi32(y, r);
-
-                let r = _mm_packs_epi16(p1, q1);
-                let r = _mm_max_epi8(r, _mm_setzero_si128());
-                let r = _mm_maddubs_epi16(r, _mm_load_si128(a[1].as_ptr() as _));
-                let r = _mm_madd_epi16(r, _mm_set1_epi16(1));
-                y = _mm_add_epi32(y, r);
-
-                let r = _mm_packs_epi16(p2, q2);
-                let r = _mm_max_epi8(r, _mm_setzero_si128());
-                let r = _mm_maddubs_epi16(r, _mm_load_si128(a[2].as_ptr() as _));
-                let r = _mm_madd_epi16(r, _mm_set1_epi16(1));
-                y = _mm_add_epi32(y, r);
-
-                let r = _mm_packs_epi16(p3, q3);
-                let r = _mm_max_epi8(r, _mm_setzero_si128());
-                let r = _mm_maddubs_epi16(r, _mm_load_si128(a[3].as_ptr() as _));
-                let r = _mm_madd_epi16(r, _mm_set1_epi16(1));
-                y = _mm_add_epi32(y, r);
+                y = _mm_add_epi32(y, dot(square(crelu(x[0][0], x[0][1])), a[0]));
+                y = _mm_add_epi32(y, dot(square(crelu(x[1][0], x[1][1])), a[1]));
+                y = _mm_add_epi32(y, dot(square(crelu(x[2][0], x[2][1])), a[2]));
+                y = _mm_add_epi32(y, dot(square(crelu(x[3][0], x[3][1])), a[3]));
             }
         }
 
@@ -135,7 +120,7 @@ impl<const N: usize> Hidden<N> {
         let s = _mm_add_epi32(r, y);
         let r = _mm_shufflelo_epi16(s, _MM_SHUFFLE(1, 0, 3, 2));
         let s = _mm_add_epi32(r, s);
-        self.bias + _mm_cvtsi128_si32(s)
+        _mm_cvtsi128_si32(s)
     }
 
     #[doc(hidden)]
@@ -144,7 +129,7 @@ impl<const N: usize> Hidden<N> {
         let mut y = self.bias;
         for (w, i) in self.weight.iter().zip(input) {
             for (&a, &x) in Iterator::zip(w.iter(), i.iter()) {
-                y += a as i32 * x.clamp(0, i8::MAX as _) as i32;
+                y += a as i32 * (((x as i32).clamp(0, 255).shl(3i32).pow(2) + 16384) >> 15);
             }
         }
 
@@ -162,13 +147,13 @@ impl<const N: usize> Hidden<N> {
         }
 
         #[cfg(not(target_feature = "avx2"))]
-        #[cfg(all(target_feature = "sse4.1", target_feature = "ssse3"))]
+        #[cfg(target_feature = "ssse3")]
         unsafe {
             self.sse(input)
         }
 
         #[cfg(not(target_feature = "avx2"))]
-        #[cfg(not(all(target_feature = "sse4.1", target_feature = "ssse3")))]
+        #[cfg(not(target_feature = "ssse3"))]
         self.scalar(input)
     }
 }
@@ -184,20 +169,9 @@ mod tests {
         assert_eq!(unsafe { o.avx2([&i[0], &i[1]]) }, o.scalar([&i[0], &i[1]]));
     }
 
-    #[cfg(all(target_feature = "sse4.1", target_feature = "ssse3"))]
+    #[cfg(target_feature = "ssse3")]
     #[proptest]
     fn uses_sse(o: Hidden<128>, i: AlignTo64<[[i16; 128]; 2]>) {
         assert_eq!(unsafe { o.sse([&i[0], &i[1]]) }, o.scalar([&i[0], &i[1]]));
-    }
-
-    #[proptest]
-    fn clips_and_multiplies_by_weight_and_adds_bias(o: Hidden<128>, i: AlignTo64<[[i16; 128]; 2]>) {
-        assert_eq!(
-            o.forward([&i[0], &i[1]]),
-            o.bias
-                + Iterator::zip(o.weight.iter().flatten(), i.iter().flatten())
-                    .map(|(&a, &x)| a as i32 * x.clamp(0, i8::MAX as _) as i32)
-                    .sum::<i32>()
-        );
     }
 }

@@ -41,6 +41,7 @@ unsafe impl Integer for File {
 }
 
 impl Mirror for File {
+    /// Horizontally mirrors this file.
     #[inline(always)]
     fn mirror(&self) -> Self {
         Self::new(self.get() ^ Self::MAX)
@@ -96,7 +97,7 @@ mod tests {
     }
 
     #[proptest]
-    fn mirroring_file_returns_complement(f: File) {
+    fn mirroring_file_returns_its_complement(f: File) {
         assert_eq!(f.mirror().get(), File::MAX - f.get());
     }
 

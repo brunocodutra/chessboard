@@ -1,4 +1,4 @@
-use crate::chess::{Color, Mirror};
+use crate::chess::{Color, Perspective};
 use crate::nnue::{Accumulator, Feature, Nnue};
 use crate::util::AlignTo64;
 use derive_more::Debug;
@@ -20,7 +20,7 @@ impl Default for Positional {
 }
 
 impl Accumulator for Positional {
-    const LEN: usize = 512;
+    const LEN: usize = 768;
 
     #[inline(always)]
     fn refresh(&mut self, side: Color) {
@@ -44,7 +44,7 @@ impl Accumulator for Positional {
 
     #[inline(always)]
     fn evaluate(&self, turn: Color, phase: usize) -> i32 {
-        Nnue::hidden(phase).forward([&self.0[turn as usize], &self.0[turn.mirror() as usize]]) / 16
+        Nnue::hidden(phase).forward([&self.0[turn as usize], &self.0[turn.flip() as usize]]) / 16
     }
 }
 

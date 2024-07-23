@@ -1,4 +1,4 @@
-use crate::{chess::Mirror, util::Integer};
+use crate::{chess::Perspective, util::Integer};
 use derive_more::Display;
 use std::ops::Not;
 
@@ -19,13 +19,10 @@ unsafe impl Integer for Color {
     const MAX: Self::Repr = Color::Black as _;
 }
 
-impl Mirror for Color {
+impl Perspective for Color {
     #[inline(always)]
-    fn mirror(&self) -> Self {
-        match *self {
-            Color::White => Color::Black,
-            Color::Black => Color::White,
-        }
+    fn flip(&self) -> Self {
+        self.not()
     }
 }
 
@@ -34,7 +31,10 @@ impl Not for Color {
 
     #[inline(always)]
     fn not(self) -> Self {
-        self.mirror()
+        match self {
+            Color::White => Color::Black,
+            Color::Black => Color::White,
+        }
     }
 }
 
@@ -51,6 +51,6 @@ mod tests {
 
     #[proptest]
     fn color_implements_not_operator(c: Color) {
-        assert_eq!(!c, c.mirror());
+        assert_eq!(!c, c.flip());
     }
 }

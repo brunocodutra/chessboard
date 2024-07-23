@@ -40,20 +40,18 @@ fn crit(c: &mut Criterion) {
     }));
 
     for &o in &options {
-        let depth = Depth::new(14);
+        let depth = Depth::new(12);
         c.benchmark_group("ttd")
             .sampling_mode(SamplingMode::Flat)
-            .sample_size(10 * o.threads.get())
             .bench_function(o.threads.to_string(), |b| {
                 b.iter_custom(|i| bench(i, o, depth.into()))
             });
     }
 
     for &o in &options {
-        let nodes = 500_000;
+        let nodes = 300_000;
         c.benchmark_group("nps")
             .sampling_mode(SamplingMode::Flat)
-            .sample_size(10 * o.threads.get())
             .throughput(Throughput::Elements(nodes))
             .bench_function(o.threads.to_string(), |b| {
                 b.iter_custom(|i| bench(i, o, nodes.into()))

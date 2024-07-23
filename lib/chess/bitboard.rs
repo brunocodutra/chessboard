@@ -1,4 +1,4 @@
-use crate::chess::{File, Mirror, Perspective, Rank, Square};
+use crate::chess::{File, Perspective, Rank, Square};
 use crate::util::{Assume, Integer};
 use derive_more::{Debug, *};
 use std::fmt::{self, Write};
@@ -244,14 +244,6 @@ impl Bitboard {
     }
 }
 
-impl Mirror for Bitboard {
-    /// Mirrors all squares in the set.
-    #[inline(always)]
-    fn mirror(&self) -> Self {
-        Bitboard(self.0.reverse_bits())
-    }
-}
-
 impl Perspective for Bitboard {
     /// Flips all squares in the set.
     #[inline(always)]
@@ -475,14 +467,6 @@ mod tests {
         for sq in Square::iter() {
             assert_eq!(c.contains(sq), a.contains(sq) || b.contains(sq));
         }
-    }
-
-    #[proptest]
-    fn mirroring_bitboard_mirrors_every_square(bb: Bitboard) {
-        assert_eq!(
-            HashSet::<Square>::from_iter(bb.mirror()),
-            HashSet::<Square>::from_iter(bb.iter().map(|sq| sq.mirror()))
-        );
     }
 
     #[proptest]
