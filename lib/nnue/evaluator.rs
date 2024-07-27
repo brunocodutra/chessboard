@@ -1,6 +1,7 @@
-use crate::chess::{Color, Move, ParsePositionError, Piece, Position, Role, Square};
+use crate::chess::{Color, Move, ParsePositionError, Perspective, Piece, Position, Role, Square};
 use crate::nnue::{Accumulator, Feature, Material, Positional, Value};
 use crate::util::Integer;
+use arrayvec::ArrayVec;
 use derive_more::{Debug, Deref, Display};
 use std::{ops::Range, str::FromStr};
 
@@ -11,14 +12,14 @@ use proptest::prelude::*;
 #[derive(Debug, Display, Clone, Eq, PartialEq, Hash, Deref)]
 #[debug("Evaluator({self})")]
 #[display("{pos}")]
-pub struct Evaluator<T: Clone + Accumulator = (Material, Positional)> {
+pub struct Evaluator<T: Copy + Accumulator = (Material, Positional)> {
     #[deref]
     pos: Position,
     acc: T,
 }
 
 #[cfg(test)]
-impl<T: 'static + Clone + Accumulator> Arbitrary for Evaluator<T> {
+impl<T: 'static + Copy + Accumulator> Arbitrary for Evaluator<T> {
     type Parameters = ();
     type Strategy = BoxedStrategy<Self>;
 
@@ -33,16 +34,15 @@ impl Default for Evaluator {
     }
 }
 
-impl<T: Clone + Accumulator> Evaluator<T> {
+impl<T: Copy + Accumulator> Evaluator<T> {
     /// Constructs the evaluator from a [`Position`].
-    #[inline(always)]
     pub fn new(pos: Position) -> Self {
-        let ksqs = [Color::White, Color::Black].map(|c| (c, pos.king(c)));
-
         let mut acc = T::default();
-        for (p, s) in pos.iter() {
-            let fts = ksqs.map(|(c, ksq)| Feature::new(c, ksq, p, s));
-            acc.add(fts[0], fts[1]);
+        for side in Color::iter() {
+            let ksq = pos.king(side);
+            for (p, s) in pos.iter() {
+                acc.add(side, Feature::new(side, ksq, p, s));
+            }
         }
 
         Evaluator { pos, acc }
@@ -98,22 +98,43 @@ impl<T: Clone + Accumulator> Evaluator<T> {
     pub fn play(&mut self, m: Move) {
         let turn = self.turn();
         let (role, capture) = self.pos.play(m);
+        let mut sides = ArrayVec::<Color, 2>::from([!turn, turn]);
 
         if role == Role::King {
-            *self = Evaluator::new(self.pos)
-        } else {
-            let ksqs = [Color::White, Color::Black].map(|c| (c, self.pos.king(c)));
+            sides.truncate(1);
+            self.acc.refresh(turn);
+            let ksq = self.king(turn);
+            for (p, s) in self.pos.iter() {
+                self.acc.add(turn, Feature::new(turn, ksq, p, s));
+            }
+        }
 
+        for side in sides {
+            let ksq = self.king(side);
             let old = Piece::new(role, turn);
             let new = Piece::new(m.promotion().unwrap_or(role), turn);
-            let remove = ksqs.map(|(c, ksq)| Feature::new(c, ksq, old, m.whence()));
-            let add = ksqs.map(|(c, ksq)| Feature::new(c, ksq, new, m.whither()));
-            self.acc.replace([remove[0], add[0]], [remove[1], add[1]]);
+            self.acc.replace(
+                side,
+                Feature::new(side, ksq, old, m.whence()),
+                Feature::new(side, ksq, new, m.whither()),
+            );
 
             if let Some((r, s)) = capture {
                 let victim = Piece::new(r, !turn);
-                let fts = ksqs.map(|(c, ksq)| Feature::new(c, ksq, victim, s));
-                self.acc.remove(fts[0], fts[1]);
+                self.acc.remove(side, Feature::new(side, ksq, victim, s));
+            } else if m.is_castling() {
+                let rook = Piece::new(Role::Rook, turn);
+                let (wc, wt) = if m.whither() > m.whence() {
+                    (Square::H1.perspective(turn), Square::F1.perspective(turn))
+                } else {
+                    (Square::A1.perspective(turn), Square::D1.perspective(turn))
+                };
+
+                self.acc.replace(
+                    side,
+                    Feature::new(side, ksq, rook, wc),
+                    Feature::new(side, ksq, rook, wt),
+                );
             }
         }
     }
@@ -124,7 +145,7 @@ impl Evaluator {
     pub fn material(&self) -> Evaluator<Material> {
         Evaluator {
             pos: self.pos,
-            acc: self.acc.0.clone(),
+            acc: self.acc.0,
         }
     }
 
@@ -132,7 +153,7 @@ impl Evaluator {
     pub fn positional(&self) -> Evaluator<Positional> {
         Evaluator {
             pos: self.pos,
-            acc: self.acc.1.clone(),
+            acc: self.acc.1,
         }
     }
 }

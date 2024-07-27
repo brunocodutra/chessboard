@@ -3,7 +3,7 @@ use crate::nnue::{Accumulator, Feature, Nnue};
 use crate::util::AlignTo64;
 
 /// An accumulator for the feature transformer.
-#[derive(Debug, Clone, Eq, PartialEq, Hash)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
 #[cfg_attr(test, derive(test_strategy::Arbitrary))]
 pub struct Positional(
     #[cfg_attr(test, map(|vs: [[i8; Self::LEN]; 2]| AlignTo64(vs.map(|v| v.map(i16::from)))))]
@@ -21,21 +21,23 @@ impl Accumulator for Positional {
     const LEN: usize = 512;
 
     #[inline(always)]
-    fn add(&mut self, white: Feature, black: Feature) {
-        Nnue::ft().add(white, &mut self.0[0]);
-        Nnue::ft().add(black, &mut self.0[1]);
+    fn refresh(&mut self, side: Color) {
+        self.0[side as usize] = Nnue::ft().fresh();
     }
 
     #[inline(always)]
-    fn remove(&mut self, white: Feature, black: Feature) {
-        Nnue::ft().remove(white, &mut self.0[0]);
-        Nnue::ft().remove(black, &mut self.0[1]);
+    fn add(&mut self, side: Color, feature: Feature) {
+        Nnue::ft().add(feature, &mut self.0[side as usize]);
     }
 
     #[inline(always)]
-    fn replace(&mut self, white: [Feature; 2], black: [Feature; 2]) {
-        Nnue::ft().replace(white, &mut self.0[0]);
-        Nnue::ft().replace(black, &mut self.0[1]);
+    fn remove(&mut self, side: Color, feature: Feature) {
+        Nnue::ft().remove(feature, &mut self.0[side as usize]);
+    }
+
+    #[inline(always)]
+    fn replace(&mut self, side: Color, remove: Feature, add: Feature) {
+        Nnue::ft().replace(remove, add, &mut self.0[side as usize]);
     }
 
     #[inline(always)]
@@ -51,10 +53,18 @@ mod tests {
     use test_strategy::proptest;
 
     #[proptest]
-    fn remove_reverses_add(e: Positional, w: Feature, b: Feature) {
-        let mut f = e.clone();
-        f.add(w, b);
-        f.remove(w, b);
-        assert_eq!(e, f);
+    fn remove_reverses_add(a: Positional, c: Color, f: Feature) {
+        let mut b = a;
+        b.add(c, f);
+        b.remove(c, f);
+        assert_eq!(a, b);
+    }
+
+    #[proptest]
+    fn replace_reverses_itself(a: Positional, c: Color, x: Feature, y: Feature) {
+        let mut b = a;
+        b.replace(c, x, y);
+        b.replace(c, y, x);
+        assert_eq!(a, b);
     }
 }

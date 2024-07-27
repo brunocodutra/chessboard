@@ -71,7 +71,7 @@ where
 
     /// Updates the accumulator by replacing features.
     #[inline(always)]
-    pub fn replace(&self, [remove, add]: [Feature; 2], accumulator: &mut [T; N]) {
+    pub fn replace(&self, remove: Feature, add: Feature, accumulator: &mut [T; N]) {
         let a = self.weight.get(add.cast::<usize>()).assume().iter();
         let b = self.weight.get(remove.cast::<usize>()).assume().iter();
         for (y, (a, b)) in accumulator.iter_mut().zip(Iterator::zip(a, b)) {
