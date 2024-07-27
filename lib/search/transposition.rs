@@ -193,10 +193,12 @@ impl TranspositionTable {
     /// Instructs the CPU to load the slot associated with `key` onto the cache.
     #[inline(always)]
     pub fn prefetch(&self, key: Zobrist) {
-        #[cfg(target_arch = "x86_64")]
-        unsafe {
-            use std::arch::x86_64::{_mm_prefetch, _MM_HINT_ET0};
-            _mm_prefetch(self.cache[key].as_ptr() as _, _MM_HINT_ET0);
+        if self.capacity() > 0 {
+            #[cfg(target_arch = "x86_64")]
+            unsafe {
+                use std::arch::x86_64::{_mm_prefetch, _MM_HINT_ET0};
+                _mm_prefetch(self.cache[key].as_ptr() as _, _MM_HINT_ET0);
+            }
         }
     }
 
