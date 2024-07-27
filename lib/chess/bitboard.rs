@@ -123,6 +123,7 @@ impl Bitboard {
 
         #[cold]
         #[ctor::ctor]
+        #[optimize(size)]
         #[inline(never)]
         unsafe fn init() {
             for wc in Square::iter() {
@@ -163,6 +164,7 @@ impl Bitboard {
 
         #[cold]
         #[ctor::ctor]
+        #[optimize(size)]
         #[inline(never)]
         unsafe fn init() {
             for wc in Square::iter() {

@@ -41,6 +41,7 @@ impl Piece {
 
         #[cold]
         #[ctor::ctor]
+        #[optimize(size)]
         #[inline(never)]
         unsafe fn init() {
             for whence in Square::iter() {

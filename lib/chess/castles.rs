@@ -88,6 +88,7 @@ impl From<Square> for Castles {
 
         #[cold]
         #[ctor::ctor]
+        #[optimize(size)]
         #[inline(never)]
         unsafe fn init() {
             CASTLES[Square::A1 as usize] = Castles(Bits::new(0b0010));

@@ -42,6 +42,9 @@ criterion-macro = { version = "0.4.0", default-features = false }
 proptest = { version = "1.5.0", default-features = false, features = ["std"] }
 test-strategy = { version = "0.4.0", default-features = false }
 
+[profile.release.package.ruzstd]
+opt-level = 's'
+
 [profile.release]
 codegen-units = 1
 lto = true
