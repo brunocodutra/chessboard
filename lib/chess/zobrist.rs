@@ -21,6 +21,7 @@ static mut ZOBRIST: ZobristNumbers = unsafe { MaybeUninit::zeroed().assume_init(
 
 #[cold]
 #[ctor::ctor]
+#[optimize(size)]
 #[inline(never)]
 unsafe fn init() {
     let mut rng = Pcg64::seed_from_u64(0x980E8CE238E3B114);
