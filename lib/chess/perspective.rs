@@ -1,7 +1,6 @@
 use crate::chess::Color;
 
 /// Trait for types that can be seen from the opponent's perspective.
-#[const_trait]
 pub trait Perspective: Copy {
     /// Flips the perspective.
     fn flip(&self) -> Self;

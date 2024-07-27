@@ -23,36 +23,36 @@ pub enum Square {
 impl Square {
     /// Constructs [`Square`] from a pair of [`File`] and [`Rank`].
     #[inline(always)]
-    pub const fn new(f: File, r: Rank) -> Self {
+    pub fn new(f: File, r: Rank) -> Self {
         <Self as Integer>::new(f.get() | r.get() << 3)
     }
 
     /// This square's [`File`].
     #[inline(always)]
-    pub const fn file(&self) -> File {
+    pub fn file(&self) -> File {
         File::new(self.get() & 0b111)
     }
 
     /// This square's [`Rank`].
     #[inline(always)]
-    pub const fn rank(&self) -> Rank {
+    pub fn rank(&self) -> Rank {
         Rank::new(self.get() >> 3)
     }
 
     /// Returns a [`Bitboard`] that only contains this square.
     #[inline(always)]
-    pub const fn bitboard(self) -> Bitboard {
+    pub fn bitboard(self) -> Bitboard {
         Bitboard::new(1 << self.get())
     }
 }
 
-unsafe impl const Integer for Square {
+unsafe impl Integer for Square {
     type Repr = i8;
     const MIN: Self::Repr = Square::A1 as _;
     const MAX: Self::Repr = Square::H8 as _;
 }
 
-impl const Mirror for Square {
+impl Mirror for Square {
     /// Mirrors this square's [`File`] and [`Rank`].
     #[inline(always)]
     fn mirror(&self) -> Self {
@@ -60,7 +60,7 @@ impl const Mirror for Square {
     }
 }
 
-impl const Perspective for Square {
+impl Perspective for Square {
     /// Flips this square's [`Rank`].
     #[inline(always)]
     fn flip(&self) -> Self {

@@ -13,13 +13,13 @@ pub enum Color {
     Black,
 }
 
-unsafe impl const Integer for Color {
+unsafe impl Integer for Color {
     type Repr = u8;
     const MIN: Self::Repr = Color::White as _;
     const MAX: Self::Repr = Color::Black as _;
 }
 
-impl const Mirror for Color {
+impl Mirror for Color {
     #[inline(always)]
     fn mirror(&self) -> Self {
         match *self {

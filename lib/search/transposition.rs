@@ -21,7 +21,7 @@ enum TranspositionKind {
     Exact,
 }
 
-unsafe impl const Integer for TranspositionKind {
+unsafe impl Integer for TranspositionKind {
     type Repr = u8;
     const MIN: Self::Repr = TranspositionKind::Lower as _;
     const MAX: Self::Repr = TranspositionKind::Exact as _;

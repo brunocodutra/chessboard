@@ -34,10 +34,10 @@ use std::ops::RangeInclusive;
 #[repr(transparent)]
 pub struct Bits<T, const W: u32>(#[cfg_attr(test, strategy(T::zero()..=T::ones(W)))] T);
 
-unsafe impl<T: Unsigned + ~const Primitive, const W: u32> const Integer for Bits<T, W> {
+unsafe impl<T: Unsigned + Primitive, const W: u32> Integer for Bits<T, W> {
     type Repr = T;
-    const MIN: Self::Repr = unsafe { transmute_copy(&u128::ones(0)) };
-    const MAX: Self::Repr = unsafe { transmute_copy(&u128::ones(W)) };
+    const MIN: Self::Repr = unsafe { transmute_copy(&0u128) };
+    const MAX: Self::Repr = unsafe { transmute_copy(&(u128::MAX >> (u128::BITS - W))) };
 }
 
 impl<T: Unsigned, const W: u32> Bits<T, W> {

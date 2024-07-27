@@ -1,16 +1,14 @@
-use std::mem::{size_of, transmute_copy};
 use std::num::{NonZeroU16, NonZeroU32, NonZeroU64, NonZeroU8, NonZeroUsize};
-use std::{cmp::Ordering, iter::Map, marker::Destruct, ops::*};
+use std::{mem::transmute_copy, ops::*};
 
 /// Trait for types that can be represented by a contiguous range of primitive integers.
 ///
 /// # Safety
 ///
 /// Must only be implemented for types that can be safely transmuted to and from [`Integer::Repr`].
-#[const_trait]
-pub unsafe trait Integer: ~const Destruct + Copy {
+pub unsafe trait Integer: Copy {
     /// The equivalent primitive integer type.
-    type Repr: ~const Primitive;
+    type Repr: Primitive;
 
     /// The minimum repr.
     const MIN: Self::Repr;
@@ -33,7 +31,7 @@ pub unsafe trait Integer: ~const Destruct + Copy {
     /// Casts from [`Integer::Repr`].
     #[inline(always)]
     fn new(i: Self::Repr) -> Self {
-        debug_assert!(Self::in_range(i));
+        debug_assert!((Self::MIN..=Self::MAX).contains(&i));
         unsafe { transmute_copy(&i) }
     }
 
@@ -47,44 +45,37 @@ pub unsafe trait Integer: ~const Destruct + Copy {
     ///
     /// This is equivalent to the operator `as`.
     #[inline(always)]
-    fn cast<I: ~const Primitive>(self) -> I {
+    fn cast<I: Primitive>(self) -> I {
         self.get().cast()
     }
 
     /// Converts to another [`Integer`] if possible without data loss.
     #[inline(always)]
-    fn convert<I: ~const Integer>(self) -> Option<I> {
+    fn convert<I: Integer>(self) -> Option<I> {
         self.get().convert()
     }
 
     /// Converts to another [`Integer`] with saturation.
     #[inline(always)]
-    fn saturate<I: ~const Integer>(self) -> I {
-        self.get().saturate()
-    }
-
-    /// Whether a value is in the range `(Self::MIN..=Self::MAX)`.
-    #[inline(always)]
-    fn in_range(i: Self::Repr) -> bool {
-        !matches!(Self::MIN.ordering(i), Ordering::Greater)
-            && !matches!(Self::MAX.ordering(i), Ordering::Less)
+    fn saturate<I: Integer>(self) -> I {
+        let min = I::MIN.convert().unwrap_or(Self::MIN);
+        let max = I::MAX.convert().unwrap_or(Self::MAX);
+        I::new(self.get().clamp(min, max).cast::<I::Repr>())
     }
 
     /// An iterator over all values in the range [`Integer::MIN`]..=[`Integer::MAX`].
     #[inline(always)]
-    #[allow(clippy::type_complexity)]
-    fn iter() -> Map<RangeInclusive<Self::Repr>, fn(Self::Repr) -> Self>
+    fn iter() -> impl ExactSizeIterator<Item = Self> + DoubleEndedIterator
     where
-        RangeInclusive<Self::Repr>: Iterator<Item = Self::Repr>,
+        RangeInclusive<Self::Repr>: ExactSizeIterator<Item = Self::Repr> + DoubleEndedIterator,
     {
         (Self::MIN..=Self::MAX).map(Self::new)
     }
 }
 
 /// Trait for primitive integer types.
-#[const_trait]
 pub trait Primitive:
-    ~const Integer<Repr = Self>
+    Integer<Repr = Self>
     + Eq
     + PartialEq
     + Ord
@@ -113,15 +104,13 @@ pub trait Primitive:
     const BITS: u32;
 
     /// The constant `0`.
+    #[inline(always)]
     fn zero() -> Self {
         Self::ones(0)
     }
 
     /// A value with `n` trailing `1`s.
     fn ones(n: u32) -> Self;
-
-    /// Compares this primitive to another.
-    fn ordering(self, other: Self) -> Ordering;
 }
 
 /// Marker trait for signed primitive integers.
@@ -132,7 +121,7 @@ pub trait Unsigned: Primitive {}
 
 macro_rules! impl_integer_for_non_zero {
     ($nz: ty, $repr: ty) => {
-        unsafe impl const Integer for $nz {
+        unsafe impl Integer for $nz {
             type Repr = $repr;
             const MIN: Self::Repr = <$nz>::MIN.get();
             const MAX: Self::Repr = <$nz>::MAX.get();
@@ -150,7 +139,7 @@ macro_rules! impl_primitive_for {
     ($i: ty, $m: ty) => {
         impl $m for $i {}
 
-        impl const Primitive for $i {
+        impl Primitive for $i {
             const BITS: u32 = <$i>::BITS;
 
             #[inline(always)]
@@ -160,35 +149,24 @@ macro_rules! impl_primitive_for {
                     n => Self::MAX >> (Self::BITS - n),
                 }
             }
-
-            #[inline(always)]
-            fn ordering(self, other: Self) -> Ordering {
-                if self > other {
-                    Ordering::Greater
-                } else if self < other {
-                    Ordering::Less
-                } else {
-                    Ordering::Equal
-                }
-            }
         }
 
-        unsafe impl const Integer for $i {
+        unsafe impl Integer for $i {
             type Repr = $i;
 
             const MIN: Self::Repr = <$i>::MIN;
             const MAX: Self::Repr = <$i>::MAX;
 
             #[inline(always)]
-            fn cast<I: ~const Primitive>(self) -> I {
-                if size_of::<I>() <= size_of::<Self>() {
+            fn cast<I: Primitive>(self) -> I {
+                if I::BITS <= Self::BITS {
                     unsafe { transmute_copy(&self) }
                 } else {
-                    match size_of::<I>() {
-                        2 => (self as i16).cast(),
-                        4 => (self as i32).cast(),
-                        8 => (self as i64).cast(),
-                        16 => (self as i128).cast(),
+                    match I::BITS {
+                        16 => (self as i16).cast(),
+                        32 => (self as i32).cast(),
+                        64 => (self as i64).cast(),
+                        128 => (self as i128).cast(),
 
                         #[cfg(not(debug_assertions))]
                         _ => unsafe { std::hint::unreachable_unchecked() },
@@ -200,32 +178,17 @@ macro_rules! impl_primitive_for {
             }
 
             #[inline(always)]
-            fn convert<I: ~const Integer>(self) -> Option<I> {
+            fn convert<I: Integer>(self) -> Option<I> {
                 let i = self.cast();
 
-                if I::in_range(i)
+                if (I::MIN..=I::MAX).contains(&i)
                     && i.cast::<Self>() == self
-                    && i.ordering(I::Repr::zero()) as i8 == self.ordering(Self::zero()) as i8
+                    && (i < I::Repr::zero()) == (self < Self::zero())
                 {
                     Some(I::new(i))
                 } else {
                     None
                 }
-            }
-
-            #[inline(always)]
-            fn saturate<I: ~const Integer>(self) -> I {
-                let min = match I::MIN.convert() {
-                    None => Self::MIN,
-                    Some(i) => i,
-                };
-
-                let max = match I::MAX.convert() {
-                    None => Self::MAX,
-                    Some(i) => i,
-                };
-
-                I::new(self.clamp(min, max).cast::<I::Repr>())
             }
         }
     };
@@ -264,7 +227,7 @@ mod tests {
         Nine,
     }
 
-    unsafe impl const Integer for Digit {
+    unsafe impl Integer for Digit {
         type Repr = u16;
         const MIN: Self::Repr = Digit::One as _;
         const MAX: Self::Repr = Digit::Nine as _;
@@ -315,11 +278,6 @@ mod tests {
     #[proptest]
     fn integer_can_be_converted_to_another_integer_with_saturation(i: u8) {
         assert_eq!(i.saturate::<Digit>(), Digit::new(i.clamp(1, 9).into()));
-    }
-
-    #[proptest]
-    fn integer_is_always_in_range(d: Digit) {
-        assert!(Digit::in_range(d.get()));
     }
 
     #[test]
@@ -383,10 +341,5 @@ mod tests {
     fn integer_can_be_converted_to_another_primitive_with_saturation(i: u16) {
         assert_eq!(i.saturate::<i8>(), i.min(i8::MAX as _) as _);
         assert_eq!(i.saturate::<u32>(), i.into());
-    }
-
-    #[proptest]
-    fn primitive_has_total_order(i: i16, j: i16) {
-        assert_eq!(i.ordering(j), i.cmp(&j));
     }
 }

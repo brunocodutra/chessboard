@@ -7,7 +7,7 @@ use crate::util::Integer;
 #[repr(transparent)]
 pub struct Feature(#[cfg_attr(test, strategy(Self::MIN..=Self::MAX))] <Self as Integer>::Repr);
 
-unsafe impl const Integer for Feature {
+unsafe impl Integer for Feature {
     type Repr = u16;
     const MIN: Self::Repr = 0;
     const MAX: Self::Repr = Self::LEN as Self::Repr - 1;

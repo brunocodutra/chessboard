@@ -25,7 +25,7 @@ pub enum Limits {
 
 impl Limits {
     /// Maximum depth or [`Depth::MAX`].
-    pub const fn depth(&self) -> Depth {
+    pub fn depth(&self) -> Depth {
         match self {
             Limits::Depth(d) => *d,
             _ => Depth::upper(),
@@ -33,7 +33,7 @@ impl Limits {
     }
 
     /// Maximum number of nodes [`u64::MAX`].
-    pub const fn nodes(&self) -> u64 {
+    pub fn nodes(&self) -> u64 {
         match self {
             Limits::Nodes(n) => *n,
             _ => u64::MAX,
@@ -41,7 +41,7 @@ impl Limits {
     }
 
     /// Maximum time or [`Duration::MAX`].
-    pub const fn time(&self) -> Duration {
+    pub fn time(&self) -> Duration {
         match self {
             Limits::Time(t) => *t,
             Limits::Clock(t, _) => *t,
@@ -50,7 +50,7 @@ impl Limits {
     }
 
     /// Time left on the clock or [`Duration::MAX`].
-    pub const fn clock(&self) -> Duration {
+    pub fn clock(&self) -> Duration {
         match self {
             Limits::Clock(t, _) => *t,
             _ => Duration::MAX,
@@ -58,7 +58,7 @@ impl Limits {
     }
 
     /// Time increment or [`Duration::ZERO`].
-    pub const fn increment(&self) -> Duration {
+    pub fn increment(&self) -> Duration {
         match self {
             Limits::Clock(_, i) => *i,
             _ => Duration::ZERO,

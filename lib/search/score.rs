@@ -7,7 +7,7 @@ use std::fmt;
 #[repr(transparent)]
 pub struct ScoreRepr(#[cfg_attr(test, strategy(Self::MIN..=Self::MAX))] <Self as Integer>::Repr);
 
-unsafe impl const Integer for ScoreRepr {
+unsafe impl Integer for ScoreRepr {
     type Repr = i16;
     const MIN: Self::Repr = -Self::MAX;
     const MAX: Self::Repr = 8191;
@@ -42,7 +42,7 @@ impl Score {
     }
 }
 
-impl const Perspective for Score {
+impl Perspective for Score {
     #[inline(always)]
     fn flip(&self) -> Self {
         -*self

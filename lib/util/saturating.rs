@@ -8,7 +8,7 @@ use std::{cmp::Ordering, mem::size_of};
 #[repr(transparent)]
 pub struct Saturating<T>(T);
 
-unsafe impl<T: ~const Integer> const Integer for Saturating<T> {
+unsafe impl<T: Integer> Integer for Saturating<T> {
     type Repr = T::Repr;
     const MIN: Self::Repr = T::MIN;
     const MAX: Self::Repr = T::MAX;

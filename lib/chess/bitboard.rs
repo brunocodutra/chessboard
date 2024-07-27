@@ -2,6 +2,7 @@ use crate::chess::{File, Mirror, Perspective, Rank, Square};
 use crate::util::{Assume, Integer};
 use derive_more::{Debug, *};
 use std::fmt::{self, Write};
+use std::mem::MaybeUninit;
 
 /// A set of squares on a chess board.
 #[derive(
@@ -44,31 +45,31 @@ impl fmt::Debug for Bitboard {
 impl Bitboard {
     /// An empty board.
     #[inline(always)]
-    pub const fn empty() -> Self {
+    pub fn empty() -> Self {
         Bitboard(0)
     }
 
     /// A full board.
     #[inline(always)]
-    pub const fn full() -> Self {
+    pub fn full() -> Self {
         Bitboard(0xFFFFFFFFFFFFFFFF)
     }
 
     /// Border squares.
     #[inline(always)]
-    pub const fn border() -> Self {
+    pub fn border() -> Self {
         Bitboard(0xFF818181818181FF)
     }
 
     /// Light squares.
     #[inline(always)]
-    pub const fn light() -> Self {
+    pub fn light() -> Self {
         Bitboard(0x55AA55AA55AA55AA)
     }
 
     /// Dark squares.
     #[inline(always)]
-    pub const fn dark() -> Self {
+    pub fn dark() -> Self {
         Bitboard(0xAA55AA55AA55AA55)
     }
 
@@ -86,25 +87,20 @@ impl Bitboard {
     /// );
     /// ```
     #[inline(always)]
-    pub const fn fill(sq: Square, steps: &[(i8, i8)], occupied: Bitboard) -> Bitboard {
+    pub fn fill(sq: Square, steps: &[(i8, i8)], occupied: Bitboard) -> Self {
         let mut bitboard = sq.bitboard();
-        let mut i = steps.len();
-        while i > 0 {
-            i -= 1;
-            let (df, dr) = steps[i];
+
+        for (df, dr) in steps {
             let mut sq = sq;
-            let mut f = sq.file().get() + df;
-            let mut r = sq.rank().get() + dr;
-            while !occupied.contains(sq)
-                && (File::MIN <= f && f <= File::MAX)
-                && (Rank::MIN <= r && r <= Rank::MAX)
-            {
-                let file = File::new(f);
-                let rank = Rank::new(r);
+            while let Some((file, rank)) = Option::zip(
+                (sq.file().get() + df).convert(),
+                (sq.rank().get() + dr).convert(),
+            ) {
                 sq = Square::new(file, rank);
                 bitboard = bitboard.with(sq);
-                f = sq.file().get() + df;
-                r = sq.rank().get() + dr;
+                if occupied.contains(sq) {
+                    break;
+                }
             }
         }
 
@@ -122,39 +118,33 @@ impl Bitboard {
     /// );
     /// ```
     #[inline(always)]
-    pub const fn line(whence: Square, whither: Square) -> Self {
-        const TABLE: [[Bitboard; 64]; 64] = {
-            let mut table = [[Bitboard::empty(); 64]; 64];
-            let mut i = Square::MIN;
-            while i <= Square::MAX {
-                let wc = <Square as Integer>::new(i);
-                let mut j = Square::MIN;
-                while j <= Square::MAX {
-                    let wt = <Square as Integer>::new(j);
-                    let df = wt.file().get() - wc.file().get();
-                    let dr = wt.rank().get() - wc.rank().get();
+    pub fn line(whence: Square, whither: Square) -> Self {
+        static mut LINES: [[Bitboard; 64]; 64] = unsafe { MaybeUninit::zeroed().assume_init() };
+
+        #[cold]
+        #[ctor::ctor]
+        #[inline(never)]
+        unsafe fn init() {
+            for wc in Square::iter() {
+                for wt in Square::iter() {
+                    let df = wt.file() - wc.file();
+                    let dr = wt.rank() - wc.rank();
                     if df == 0 && dr == 0 {
-                        table[i as usize][j as usize] = wc.bitboard();
+                        LINES[wc as usize][wt as usize] = wc.bitboard();
                     } else if df == 0 {
-                        table[i as usize][j as usize] = wc.file().bitboard();
+                        LINES[wc as usize][wt as usize] = wc.file().bitboard();
                     } else if dr == 0 {
-                        table[i as usize][j as usize] = wc.rank().bitboard();
+                        LINES[wc as usize][wt as usize] = wc.rank().bitboard();
                     } else if df.abs() == dr.abs() {
                         let steps = [(df.signum(), dr.signum()), (-df.signum(), -dr.signum())];
                         let bb = Bitboard::fill(wc, &steps, Bitboard::empty());
-                        table[i as usize][j as usize] = bb;
+                        LINES[wc as usize][wt as usize] = bb;
                     }
-
-                    j += 1;
                 }
-
-                i += 1;
             }
+        }
 
-            table
-        };
-
-        TABLE[whence as usize][whither as usize]
+        unsafe { LINES[whence as usize][whither as usize] }
     }
 
     /// Bitboard with squares in the open segment between two squares.
@@ -168,97 +158,91 @@ impl Bitboard {
     /// );
     /// ```
     #[inline(always)]
-    pub const fn segment(whence: Square, whither: Square) -> Self {
-        const TABLE: [[Bitboard; 64]; 64] = {
-            let mut table = [[Bitboard::empty(); 64]; 64];
-            let mut i = Square::MIN;
-            while i <= Square::MAX {
-                let wc = <Square as Integer>::new(i);
-                let mut j = Square::MIN;
-                while j <= Square::MAX {
-                    let wt = <Square as Integer>::new(j);
-                    let df = wt.file().get() - wc.file().get();
-                    let dr = wt.rank().get() - wc.rank().get();
+    pub fn segment(whence: Square, whither: Square) -> Self {
+        static mut SEGMENTS: [[Bitboard; 64]; 64] = unsafe { MaybeUninit::zeroed().assume_init() };
+
+        #[cold]
+        #[ctor::ctor]
+        #[inline(never)]
+        unsafe fn init() {
+            for wc in Square::iter() {
+                for wt in Square::iter() {
+                    let df = wt.file() - wc.file();
+                    let dr = wt.rank() - wc.rank();
                     if df == 0 || dr == 0 || df.abs() == dr.abs() {
                         let steps = [(df.signum(), dr.signum())];
                         let bb = Bitboard::fill(wc, &steps, wt.bitboard());
-                        table[i as usize][j as usize] = bb.without(wc).without(wt);
+                        SEGMENTS[wc as usize][wt as usize] = bb.without(wc).without(wt);
                     }
-
-                    j += 1;
                 }
-
-                i += 1;
             }
+        }
 
-            table
-        };
-
-        TABLE[whence as usize][whither as usize]
+        unsafe { SEGMENTS[whence as usize][whither as usize] }
     }
 
     /// The number of [`Square`]s in the set.
     #[inline(always)]
-    pub const fn len(&self) -> usize {
+    pub fn len(&self) -> usize {
         self.0.count_ones() as _
     }
 
     /// Whether the board is empty.
     #[inline(always)]
-    pub const fn is_empty(&self) -> bool {
+    pub fn is_empty(&self) -> bool {
         self.len() == 0
     }
 
     /// Whether this [`Square`] is in the set.
     #[inline(always)]
-    pub const fn contains(&self, sq: Square) -> bool {
+    pub fn contains(&self, sq: Square) -> bool {
         !sq.bitboard().intersection(*self).is_empty()
     }
 
     /// Adds a [`Square`] to this bitboard.
     #[inline(always)]
-    pub const fn with(&self, sq: Square) -> Self {
+    pub fn with(&self, sq: Square) -> Self {
         sq.bitboard().union(*self)
     }
 
     /// Removes a [`Square`]s from this bitboard.
     #[inline(always)]
-    pub const fn without(&self, sq: Square) -> Self {
+    pub fn without(&self, sq: Square) -> Self {
         sq.bitboard().inverse().intersection(*self)
     }
 
     /// The set of [`Square`]s not in this bitboard.
     #[inline(always)]
-    pub const fn inverse(&self) -> Self {
+    pub fn inverse(&self) -> Self {
         Bitboard(!self.0)
     }
 
     /// The set of [`Square`]s in both bitboards.
     #[inline(always)]
-    pub const fn intersection(&self, bb: Bitboard) -> Self {
+    pub fn intersection(&self, bb: Bitboard) -> Self {
         Bitboard(self.0 & bb.0)
     }
 
     /// The set of [`Square`]s in either bitboard.
     #[inline(always)]
-    pub const fn union(&self, bb: Bitboard) -> Self {
+    pub fn union(&self, bb: Bitboard) -> Self {
         Bitboard(self.0 | bb.0)
     }
 
     /// An iterator over the [`Square`]s in this bitboard.
     #[inline(always)]
-    pub const fn iter(&self) -> Squares {
+    pub fn iter(&self) -> Squares {
         Squares::new(*self)
     }
 
     /// An iterator over the subsets of this bitboard.
     #[inline(always)]
-    pub const fn subsets(&self) -> Subsets {
+    pub fn subsets(&self) -> Subsets {
         Subsets::new(*self)
     }
 }
 
-impl const Mirror for Bitboard {
+impl Mirror for Bitboard {
     /// Mirrors all squares in the set.
     #[inline(always)]
     fn mirror(&self) -> Self {
@@ -266,7 +250,7 @@ impl const Mirror for Bitboard {
     }
 }
 
-impl const Perspective for Bitboard {
+impl Perspective for Bitboard {
     /// Flips all squares in the set.
     #[inline(always)]
     fn flip(&self) -> Self {
@@ -342,7 +326,7 @@ pub struct Subsets(u64, Option<u64>);
 
 impl Subsets {
     #[inline(always)]
-    pub const fn new(bb: Bitboard) -> Self {
+    pub fn new(bb: Bitboard) -> Self {
         Self(bb.0, Some(0))
     }
 }

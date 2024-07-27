@@ -5,7 +5,7 @@ use crate::util::{Integer, Saturating};
 #[repr(transparent)]
 pub struct PlyRepr(#[cfg_attr(test, strategy(Self::MIN..=Self::MAX))] <Self as Integer>::Repr);
 
-unsafe impl const Integer for PlyRepr {
+unsafe impl Integer for PlyRepr {
     type Repr = i8;
 
     const MIN: Self::Repr = -Self::MAX;

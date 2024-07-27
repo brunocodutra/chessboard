@@ -29,25 +29,25 @@ pub enum Rank {
 impl Rank {
     /// Returns a [`Bitboard`] that only contains this rank.
     #[inline(always)]
-    pub const fn bitboard(self) -> Bitboard {
+    pub fn bitboard(self) -> Bitboard {
         Bitboard::new(0x000000000000FF << (self.get() * 8))
     }
 }
 
-unsafe impl const Integer for Rank {
+unsafe impl Integer for Rank {
     type Repr = i8;
     const MIN: Self::Repr = Rank::First as _;
     const MAX: Self::Repr = Rank::Eighth as _;
 }
 
-impl const Mirror for Rank {
+impl Mirror for Rank {
     #[inline(always)]
     fn mirror(&self) -> Self {
         Self::new(self.get() ^ Self::Eighth.get())
     }
 }
 
-impl const Perspective for Rank {
+impl Perspective for Rank {
     /// Mirrors this rank.
     #[inline(always)]
     fn flip(&self) -> Self {
