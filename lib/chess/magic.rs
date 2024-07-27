@@ -4,19 +4,19 @@ use crate::chess::{Bitboard, Square};
 pub struct Magic(Bitboard, u64, usize);
 
 impl Magic {
-    pub const fn mask(&self) -> Bitboard {
+    pub fn mask(&self) -> Bitboard {
         self.0
     }
 
-    pub const fn factor(&self) -> u64 {
+    pub fn factor(&self) -> u64 {
         self.1
     }
 
-    pub const fn offset(&self) -> usize {
+    pub fn offset(&self) -> usize {
         self.2
     }
 
-    pub const fn pawn(sq: Square) -> (Self, Self) {
+    pub fn pawn(sq: Square) -> (Self, Self) {
         const MAGICS: [Magic; 64] = [
             Magic(Bitboard::new(0x0000000000000100), 0x008801704000002D, 82453),
             Magic(Bitboard::new(0x0000000000000200), 0x0A2208080800058D, 82454),
@@ -90,13 +90,13 @@ impl Magic {
         )
     }
 
-    pub const fn knight(sq: Square) -> Self {
+    pub fn knight(sq: Square) -> Self {
         Magic(Bitboard::empty(), 0, 58219 + sq as usize)
     }
 
     /// Bishop fixed shift magics by Volker Annuss,
     /// see http://www.talkchess.com/forum/viewtopic.php?p=727500&t=64790.
-    pub const fn bishop(sq: Square) -> Self {
+    pub fn bishop(sq: Square) -> Self {
         const MAGICS: [Magic; 64] = [
             Magic(Bitboard::new(0x0040201008040200), 0x007FBFBFBFBFBFFF, 5378),
             Magic(Bitboard::new(0x0000402010080400), 0x0000A060401007FC, 4093),
@@ -169,7 +169,7 @@ impl Magic {
 
     /// Rook fixed shift magics by Volker Annuss,
     /// see http://www.talkchess.com/forum/viewtopic.php?p=727500&t=64790.
-    pub const fn rook(sq: Square) -> Self {
+    pub fn rook(sq: Square) -> Self {
         const MAGICS: [Magic; 64] = [
             Magic(Bitboard::new(0x000101010101017E), 0x00280077FFEBFFFE, 26304),
             Magic(Bitboard::new(0x000202020202027C), 0x2004010201097FFF, 35520),
@@ -240,7 +240,7 @@ impl Magic {
         MAGICS[sq as usize]
     }
 
-    pub const fn king(sq: Square) -> Self {
+    pub fn king(sq: Square) -> Self {
         Magic(Bitboard::empty(), 0, 58293 + sq as usize)
     }
 }

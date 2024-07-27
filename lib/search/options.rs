@@ -10,7 +10,7 @@ use std::{cmp::Ordering, str::FromStr};
 #[repr(transparent)]
 pub struct HashSize(#[cfg_attr(test, strategy(Self::MIN..=Self::MAX))] usize);
 
-unsafe impl const Integer for HashSize {
+unsafe impl Integer for HashSize {
     type Repr = usize;
 
     const MIN: Self::Repr = 0;
@@ -69,7 +69,7 @@ impl FromStr for HashSize {
 #[repr(transparent)]
 pub struct ThreadCount(#[cfg_attr(test, strategy(Self::MIN..=Self::MAX))] usize);
 
-unsafe impl const Integer for ThreadCount {
+unsafe impl Integer for ThreadCount {
     type Repr = usize;
 
     const MIN: Self::Repr = 1;

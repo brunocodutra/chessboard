@@ -6,7 +6,7 @@ use crate::util::{Integer, Saturating};
 #[repr(transparent)]
 pub struct ValueRepr(#[cfg_attr(test, strategy(Self::MIN..=Self::MAX))] <Self as Integer>::Repr);
 
-unsafe impl const Integer for ValueRepr {
+unsafe impl Integer for ValueRepr {
     type Repr = i16;
     const MIN: Self::Repr = -Self::MAX;
     const MAX: Self::Repr = 8000;
@@ -15,7 +15,7 @@ unsafe impl const Integer for ValueRepr {
 /// A position's static evaluation.
 pub type Value = Saturating<ValueRepr>;
 
-impl const Perspective for Value {
+impl Perspective for Value {
     #[inline(always)]
     fn flip(&self) -> Self {
         -*self

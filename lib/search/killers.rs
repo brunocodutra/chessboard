@@ -8,6 +8,13 @@ use crate::{search::Ply, util::Integer};
 #[cfg_attr(test, derive(test_strategy::Arbitrary))]
 pub struct Killers<const P: usize>([[[Option<Move>; 2]; 2]; P]);
 
+impl<const P: usize> Default for Killers<P> {
+    #[inline(always)]
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl<const P: usize> Killers<P> {
     /// Constructs an empty set of killer moves.
     #[inline(always)]

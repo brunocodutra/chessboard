@@ -5,7 +5,7 @@ use crate::util::{Assume, Binary, Bits, Integer, Saturating};
 #[repr(transparent)]
 pub struct DepthRepr(#[cfg_attr(test, strategy(Self::MIN..=Self::MAX))] <Self as Integer>::Repr);
 
-unsafe impl const Integer for DepthRepr {
+unsafe impl Integer for DepthRepr {
     type Repr = i8;
 
     const MIN: Self::Repr = 0;

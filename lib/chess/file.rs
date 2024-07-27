@@ -29,18 +29,18 @@ pub enum File {
 impl File {
     /// Returns a [`Bitboard`] that only contains this file.
     #[inline(always)]
-    pub const fn bitboard(self) -> Bitboard {
+    pub fn bitboard(self) -> Bitboard {
         Bitboard::new(0x0101010101010101 << self.get())
     }
 }
 
-unsafe impl const Integer for File {
+unsafe impl Integer for File {
     type Repr = i8;
     const MIN: Self::Repr = File::A as _;
     const MAX: Self::Repr = File::H as _;
 }
 
-impl const Mirror for File {
+impl Mirror for File {
     #[inline(always)]
     fn mirror(&self) -> Self {
         Self::new(self.get() ^ Self::MAX)

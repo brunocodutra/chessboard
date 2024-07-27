@@ -1,7 +1,7 @@
 use crate::chess::{Color, Perspective, Piece, Role, Square};
 use crate::util::{Bits, Integer};
 use derive_more::{Debug, *};
-use std::{fmt, str::FromStr};
+use std::{fmt, mem::MaybeUninit, str::FromStr};
 
 /// The castling rights in a chess [`Position`][`crate::chess::Position`].
 #[derive(
@@ -26,7 +26,7 @@ pub struct Castles(Bits<u8, 4>);
 impl Castles {
     /// No castling rights.
     #[inline(always)]
-    pub const fn none() -> Self {
+    pub fn none() -> Self {
         Castles(Bits::new(0b0000))
     }
 
@@ -84,18 +84,21 @@ impl Default for Castles {
 impl From<Square> for Castles {
     #[inline(always)]
     fn from(sq: Square) -> Self {
-        const TABLE: [Castles; 64] = {
-            let mut table = [Castles::none(); 64];
-            table[Square::A1 as usize] = Castles(Bits::new(0b0010));
-            table[Square::H1 as usize] = Castles(Bits::new(0b0001));
-            table[Square::E1 as usize] = Castles(Bits::new(0b0011));
-            table[Square::A8 as usize] = Castles(Bits::new(0b1000));
-            table[Square::H8 as usize] = Castles(Bits::new(0b0100));
-            table[Square::E8 as usize] = Castles(Bits::new(0b1100));
-            table
-        };
+        static mut CASTLES: [Castles; 64] = unsafe { MaybeUninit::zeroed().assume_init() };
 
-        TABLE[sq as usize]
+        #[cold]
+        #[ctor::ctor]
+        #[inline(never)]
+        unsafe fn init() {
+            CASTLES[Square::A1 as usize] = Castles(Bits::new(0b0010));
+            CASTLES[Square::H1 as usize] = Castles(Bits::new(0b0001));
+            CASTLES[Square::E1 as usize] = Castles(Bits::new(0b0011));
+            CASTLES[Square::A8 as usize] = Castles(Bits::new(0b1000));
+            CASTLES[Square::H8 as usize] = Castles(Bits::new(0b0100));
+            CASTLES[Square::E8 as usize] = Castles(Bits::new(0b1100));
+        }
+
+        unsafe { CASTLES[sq as usize] }
     }
 }
 

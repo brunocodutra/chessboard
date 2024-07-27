@@ -1,7 +1,4 @@
-use std::marker::Destruct;
-
 /// A trait for types that can be assumed to be another type.
-#[const_trait]
 pub trait Assume {
     /// The type of the assumed value.
     type Assumed;
@@ -10,7 +7,7 @@ pub trait Assume {
     fn assume(self) -> Self::Assumed;
 }
 
-impl<T: ~const Destruct> const Assume for Option<T> {
+impl<T> Assume for Option<T> {
     type Assumed = T;
 
     #[inline]
@@ -29,7 +26,7 @@ impl<T: ~const Destruct> const Assume for Option<T> {
     }
 }
 
-impl<T: ~const Destruct, E: ~const Destruct> const Assume for Result<T, E> {
+impl<T, E> Assume for Result<T, E> {
     type Assumed = T;
 
     #[inline]
