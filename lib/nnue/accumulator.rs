@@ -5,14 +5,17 @@ pub trait Accumulator: Default {
     /// The accumulator length.
     const LEN: usize;
 
-    /// Updates this accumulator by adding features.
-    fn add(&mut self, white: Feature, black: Feature);
+    /// Resets this accumulator.
+    fn refresh(&mut self, side: Color);
 
-    /// Updates this accumulator by removing features.
-    fn remove(&mut self, white: Feature, black: Feature);
+    /// Updates this accumulator by adding a feature.
+    fn add(&mut self, side: Color, feature: Feature);
 
-    /// Updates this accumulator by replacing features.
-    fn replace(&mut self, white: [Feature; 2], black: [Feature; 2]);
+    /// Updates this accumulator by removing a feature.
+    fn remove(&mut self, side: Color, feature: Feature);
+
+    /// Updates this accumulator by replacing a feature.
+    fn replace(&mut self, side: Color, remove: Feature, add: Feature);
 
     /// Evaluates this accumulator.
     fn evaluate(&self, turn: Color, phase: usize) -> i32;
@@ -21,21 +24,31 @@ pub trait Accumulator: Default {
 impl<T: Accumulator, U: Accumulator> Accumulator for (T, U) {
     const LEN: usize = T::LEN + U::LEN;
 
-    fn add(&mut self, white: Feature, black: Feature) {
-        self.0.add(white, black);
-        self.1.add(white, black);
+    #[inline(always)]
+    fn refresh(&mut self, side: Color) {
+        self.0.refresh(side);
+        self.1.refresh(side);
     }
 
-    fn remove(&mut self, white: Feature, black: Feature) {
-        self.0.remove(white, black);
-        self.1.remove(white, black);
+    #[inline(always)]
+    fn add(&mut self, side: Color, feature: Feature) {
+        self.0.add(side, feature);
+        self.1.add(side, feature);
     }
 
-    fn replace(&mut self, white: [Feature; 2], black: [Feature; 2]) {
-        self.0.replace(white, black);
-        self.1.replace(white, black);
+    #[inline(always)]
+    fn remove(&mut self, side: Color, feature: Feature) {
+        self.0.remove(side, feature);
+        self.1.remove(side, feature);
     }
 
+    #[inline(always)]
+    fn replace(&mut self, side: Color, remove: Feature, add: Feature) {
+        self.0.replace(side, remove, add);
+        self.1.replace(side, remove, add);
+    }
+
+    #[inline(always)]
     fn evaluate(&self, turn: Color, phase: usize) -> i32 {
         self.0.evaluate(turn, phase) + self.1.evaluate(turn, phase)
     }
