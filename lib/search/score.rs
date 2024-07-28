@@ -66,8 +66,8 @@ impl Binary for Score {
 impl fmt::Display for Score {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self.mate() {
-            Some(p) if p > 0 => write!(f, "{:+}#{}", self.get(), (p.get() + 1) / 2),
-            Some(p) => write!(f, "{:+}#{}", self.get(), (1 - p.get()) / 2),
+            Some(p) if p > 0 => write!(f, "{:+}#{}", self.get(), (p.cast::<i16>() + 1) / 2),
+            Some(p) => write!(f, "{:+}#{}", self.get(), (1 - p.cast::<i16>()) / 2),
             None => write!(f, "{:+}", self.get()),
         }
     }
@@ -118,12 +118,12 @@ mod tests {
             assert!(Score::upper()
                 .normalize(p)
                 .to_string()
-                .ends_with(&format!("#{}", (p.get() + 1) / 2)));
+                .ends_with(&format!("#{}", (p.cast::<i16>() + 1) / 2)));
         } else {
             assert!(Score::lower()
                 .normalize(-p)
                 .to_string()
-                .ends_with(&format!("#{}", (1 - p.get()) / 2)));
+                .ends_with(&format!("#{}", (1 - p.cast::<i16>()) / 2)));
         };
     }
 }
