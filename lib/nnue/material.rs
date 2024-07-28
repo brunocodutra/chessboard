@@ -1,10 +1,12 @@
 use crate::chess::{Color, Mirror};
 use crate::nnue::{Accumulator, Feature, Nnue};
 use crate::util::AlignTo64;
+use derive_more::Debug;
 
 /// An accumulator for the psqt transformer.
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
 #[cfg_attr(test, derive(test_strategy::Arbitrary))]
+#[debug("Positional")]
 pub struct Material(
     #[cfg_attr(test, map(|vs: [[i8; Self::LEN]; 2]| AlignTo64(vs.map(|v| v.map(i32::from)))))]
     AlignTo64<[[i32; Self::LEN]; 2]>,
@@ -50,6 +52,7 @@ impl Accumulator for Material {
 mod tests {
     use super::*;
     use crate::nnue::Feature;
+    use std::fmt::Debug;
     use test_strategy::proptest;
 
     #[proptest]
