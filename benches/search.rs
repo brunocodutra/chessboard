@@ -3,8 +3,9 @@
 
 use criterion::{Criterion, SamplingMode, Throughput};
 use criterion_macro::criterion;
+use lib::nnue::Evaluator;
 use lib::search::{Depth, Engine, Limits, Options};
-use lib::{nnue::Evaluator, util::Integer};
+use lib::util::{Integer, Trigger};
 use std::time::{Duration, Instant};
 use std::{str::FromStr, thread::available_parallelism};
 
@@ -17,8 +18,9 @@ fn bench(reps: u64, options: Options, limits: Limits) -> Duration {
 
     for _ in 0..reps {
         let mut e = Engine::with_options(options);
+        let interrupter = Trigger::armed();
         let timer = Instant::now();
-        e.search(&POSITION, limits);
+        e.search(&POSITION, limits, &interrupter);
         time += timer.elapsed();
     }
 

@@ -1,7 +1,7 @@
 use crate::chess::{Color, Move, Perspective};
 use crate::nnue::Evaluator;
 use crate::search::{Engine, HashSize, Limits, Options, Score, ThreadCount};
-use crate::util::{Assume, Integer};
+use crate::util::{Assume, Integer, Trigger};
 use arrayvec::ArrayString;
 use derive_more::{Deref, Display};
 use std::fmt::Write as _;
@@ -67,7 +67,8 @@ impl Uci {
     }
 
     fn go<W: Write>(&mut self, limits: Limits, out: &mut W) -> io::Result<()> {
-        let pv = self.engine.search(&self.position, limits);
+        let interrupter = Trigger::armed();
+        let pv = self.engine.search(&self.position, limits, &interrupter);
         let best = pv.best().expect("the engine failed to find a move");
 
         match pv.score().mate() {
@@ -83,8 +84,9 @@ impl Uci {
     }
 
     fn bench<W: Write>(&mut self, limits: Limits, out: &mut W) -> io::Result<()> {
+        let interrupter = Trigger::armed();
         let timer = Instant::now();
-        self.engine.search(&self.position, limits);
+        self.engine.search(&self.position, limits, &interrupter);
         let elapsed = timer.elapsed();
         write!(out, "info time {}", elapsed.as_millis())?;
 
