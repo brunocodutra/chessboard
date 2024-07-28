@@ -79,10 +79,8 @@ impl Engine {
     /// [mate distance pruning]: https://www.chessprogramming.org/Mate_Distance_Pruning
     fn mdp(&self, ply: Ply, bounds: &Range<Score>) -> (Score, Score) {
         let lower = Score::lower().normalize(ply);
-        let upper = (Score::upper() - 1).normalize(ply); // One can't mate in 0 plies!
-        let alpha = bounds.start.clamp(lower, upper);
-        let beta = bounds.end.clamp(lower, upper);
-        (alpha, beta)
+        let upper = Score::upper().normalize(ply + 1); // One can't mate in 0 plies!
+        (bounds.start.max(lower), bounds.end.min(upper))
     }
 
     /// An implementation of [null move pruning].
@@ -168,18 +166,18 @@ impl Engine {
         nodes.count().ok_or(Interrupted)?;
         timer.remaining().ok_or(Interrupted)?;
 
-        let tpos = match pos.outcome() {
+        let (alpha, beta) = self.mdp(ply, &bounds);
+        if alpha >= beta {
+            return Ok(Pv::new(alpha, None));
+        }
+
+        let transposition = match pos.outcome() {
             Some(o) if o.is_draw() => return Ok(Pv::new(Score::new(0), None)),
             Some(_) => return Ok(Pv::new(Score::lower().normalize(ply), None)),
             None => self.tt.get(pos.zobrist()),
         };
 
-        let score = match tpos {
-            Some(t) => t.score().normalize(ply),
-            _ => pos.evaluate().saturate(),
-        };
-
-        let depth = match tpos {
+        let depth = match transposition {
             #[cfg(not(test))]
             // Extensions are not exact.
             Some(_) if pos.is_check() => depth + 1,
@@ -191,8 +189,21 @@ impl Engine {
             _ => depth,
         };
 
+        if let Some(t) = transposition {
+            if !PV && t.depth() >= depth - ply {
+                let (lower, upper) = t.bounds().into_inner();
+                if lower >= upper || upper <= alpha || lower >= beta {
+                    return Ok(Pv::new(t.score().normalize(ply), Some(t.best())));
+                }
+            }
+        }
+
+        let score = match transposition {
+            Some(t) => t.score().normalize(ply),
+            _ => pos.evaluate().saturate(),
+        };
+
         let quiesce = ply >= depth;
-        let (alpha, beta) = self.mdp(ply, &bounds);
         let alpha = match quiesce {
             #[cfg(not(test))]
             // The stand pat heuristic is not exact.
@@ -200,18 +211,7 @@ impl Engine {
             _ => alpha,
         };
 
-        if alpha >= beta {
-            return Ok(Pv::new(alpha, None));
-        } else if let Some(t) = tpos {
-            if !PV && t.depth() >= depth - ply {
-                let (lower, upper) = t.bounds().into_inner();
-                if lower == upper || upper <= alpha || lower >= beta {
-                    return Ok(Pv::new(score, Some(t.best())));
-                }
-            }
-        }
-
-        if ply >= Ply::MAX {
+        if alpha >= beta || ply >= Ply::MAX {
             return Ok(Pv::new(score, None));
         } else if !PV && !pos.is_check() {
             if let Some(d) = self.nmp(pos, score, beta, depth, ply) {
@@ -230,7 +230,7 @@ impl Engine {
             .filter(|ms| !quiesce || !ms.is_quiet())
             .flatten()
             .map(|m| {
-                if Some(m) == tpos.map(|t| t.best()) {
+                if Some(m) == transposition.map(|t| t.best()) {
                     (m, Value::upper())
                 } else if Self::KILLERS.with_borrow(|ks| ks.contains(ply, pos.turn(), m)) {
                     (m, Value::new(100))
@@ -381,6 +381,9 @@ mod tests {
     use test_strategy::proptest;
 
     fn alphabeta(pos: &Evaluator, bounds: Range<Score>, depth: Depth, ply: Ply) -> Score {
+        let (mut alpha, beta) = (bounds.start, bounds.end);
+        debug_assert!(alpha < beta);
+
         let score = match pos.outcome() {
             Some(o) if o.is_draw() => return Score::new(0),
             Some(_) => return Score::lower().normalize(ply),
@@ -393,17 +396,15 @@ mod tests {
             .flatten()
             .collect();
 
-        let (mut alpha, beta) = if ply < Ply::MAX && !moves.is_empty() {
-            (bounds.start, bounds.end)
-        } else {
+        if ply >= Ply::MAX || moves.is_empty() {
             return score;
-        };
+        }
 
         for m in moves {
             let mut next = pos.clone();
             next.play(m);
-            let pv = -alphabeta(&next, -beta..-alpha, depth, ply + 1);
-            alpha = pv.max(alpha);
+            let score = -alphabeta(&next, -beta..-alpha, depth, ply + 1);
+            alpha = score.max(alpha);
             if alpha >= beta {
                 break;
             }
