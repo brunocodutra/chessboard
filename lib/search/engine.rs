@@ -1,5 +1,5 @@
 use crate::nnue::{Evaluator, Value};
-use crate::util::{Assume, Counter, Integer, Timer};
+use crate::util::{Assume, Counter, Integer, Timer, Trigger};
 use crate::{chess::Move, search::*};
 use arrayvec::ArrayVec;
 use std::{cell::RefCell, ops::Range, time::Duration};
@@ -284,8 +284,15 @@ impl Engine {
     ///
     /// [aspiration windows]: https://www.chessprogramming.org/Aspiration_Windows
     /// [iterative deepening]: https://www.chessprogramming.org/Iterative_Deepening
-    fn aw(&self, pos: &Evaluator, limit: Depth, nodes: u64, time: Range<Duration>) -> Pv {
-        let ctrl = Control::Limited(Counter::new(nodes), Timer::new(time.end));
+    fn aw(
+        &self,
+        pos: &Evaluator,
+        limit: Depth,
+        nodes: u64,
+        time: Range<Duration>,
+        interrupter: &Trigger,
+    ) -> Pv {
+        let ctrl = Control::Limited(Counter::new(nodes), Timer::new(time.end), interrupter);
         let mut pv = Pv::new(Score::new(0), None);
         let mut depth = Depth::new(0);
 
@@ -355,10 +362,10 @@ impl Engine {
     }
 
     /// Searches for the [principal variation][`Pv`].
-    pub fn search(&mut self, pos: &Evaluator, limits: Limits) -> Pv {
+    pub fn search(&mut self, pos: &Evaluator, limits: Limits, interrupter: &Trigger) -> Pv {
         let time = self.time_to_search(pos, limits);
         let (depth, nodes) = (limits.depth(), limits.nodes());
-        self.aw(pos, depth, nodes, time)
+        self.aw(pos, depth, nodes, time, interrupter)
     }
 }
 
@@ -507,7 +514,8 @@ mod tests {
         d: Depth,
         p: Ply,
     ) {
-        let ctrl = Control::Limited(Counter::new(0), Timer::infinite());
+        let interrupter = Trigger::armed();
+        let ctrl = Control::Limited(Counter::new(0), Timer::infinite(), &interrupter);
         assert_eq!(e.pvs::<true>(&pos, b, d, p, &ctrl), Err(Interrupted));
     }
 
@@ -519,8 +527,26 @@ mod tests {
         d: Depth,
         p: Ply,
     ) {
-        let ctrl = Control::Limited(Counter::new(u64::MAX), Timer::new(Duration::ZERO));
+        let interrupter = Trigger::armed();
+        let ctrl = Control::Limited(
+            Counter::new(u64::MAX),
+            Timer::new(Duration::ZERO),
+            &interrupter,
+        );
         std::thread::sleep(Duration::from_millis(1));
+        assert_eq!(e.pvs::<true>(&pos, b, d, p, &ctrl), Err(Interrupted));
+    }
+
+    #[proptest]
+    fn pvs_aborts_if_interrupter_is_disarmed(
+        e: Engine,
+        pos: Evaluator,
+        #[filter(!#b.is_empty())] b: Range<Score>,
+        d: Depth,
+        p: Ply,
+    ) {
+        let interrupter = Trigger::disarmed();
+        let ctrl = Control::Limited(Counter::new(u64::MAX), Timer::infinite(), &interrupter);
         assert_eq!(e.pvs::<true>(&pos, b, d, p, &ctrl), Err(Interrupted));
     }
 
@@ -596,7 +622,7 @@ mod tests {
         #[filter(#d > 1)] d: Depth,
     ) {
         assert_eq!(
-            e.search(&pos, Limits::Depth(d)).score(),
+            e.search(&pos, Limits::Depth(d), &Trigger::armed()).score(),
             e.fw(&pos, d, Ply::new(0), &Control::Unlimited)?.score()
         );
     }
@@ -604,8 +630,8 @@ mod tests {
     #[proptest]
     fn search_is_stable(mut e: Engine, pos: Evaluator, d: Depth) {
         assert_eq!(
-            e.search(&pos, Limits::Depth(d)).score(),
-            e.search(&pos, Limits::Depth(d)).score()
+            e.search(&pos, Limits::Depth(d), &Trigger::armed()).score(),
+            e.search(&pos, Limits::Depth(d), &Trigger::armed()).score()
         );
     }
 
@@ -615,9 +641,11 @@ mod tests {
         #[filter(#pos.outcome().is_none())] pos: Evaluator,
         #[strategy(..10u8)] ms: u8,
     ) {
-        let t = Instant::now();
-        e.search(&pos, Limits::Time(Duration::from_millis(ms.into())));
-        assert!(t.elapsed() < Duration::from_secs(1));
+        let timer = Instant::now();
+        let trigger = Trigger::armed();
+        let limits = Limits::Time(Duration::from_millis(ms.into()));
+        e.search(&pos, limits, &trigger);
+        assert!(timer.elapsed() < Duration::from_secs(1));
     }
 
     #[proptest]
@@ -625,7 +653,8 @@ mod tests {
         mut e: Engine,
         #[filter(#pos.outcome().is_none())] pos: Evaluator,
     ) {
-        assert_ne!(e.search(&pos, Duration::ZERO.into()).best(), None);
+        let limits = Duration::ZERO.into();
+        assert_ne!(e.search(&pos, limits, &Trigger::armed()).best(), None);
     }
 
     #[proptest]
@@ -633,6 +662,16 @@ mod tests {
         mut e: Engine,
         #[filter(#pos.outcome().is_none())] pos: Evaluator,
     ) {
-        assert_ne!(e.search(&pos, Depth::lower().into()).best(), None);
+        let limits = Depth::lower().into();
+        assert_ne!(e.search(&pos, limits, &Trigger::armed()).best(), None);
+    }
+
+    #[proptest]
+    fn search_ignores_interrupter_to_find_some_pv(
+        mut e: Engine,
+        #[filter(#pos.outcome().is_none())] pos: Evaluator,
+    ) {
+        let limits = Limits::None;
+        assert_ne!(e.search(&pos, limits, &Trigger::disarmed()).best(), None);
     }
 }
