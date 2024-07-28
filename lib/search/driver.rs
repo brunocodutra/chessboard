@@ -1,13 +1,8 @@
-use crate::search::{Pv, ThreadCount};
+use crate::search::{Interrupted, Pv, ThreadCount};
 use crate::util::{Binary, Bits, Integer};
-use derive_more::{Deref, Display, Error, From};
+use derive_more::{Deref, From};
 use rayon::{prelude::*, ThreadPool, ThreadPoolBuilder};
 use std::sync::atomic::{AtomicU64, Ordering};
-
-/// Indicates the search was interrupted upon reaching the configured [`crate::search::Limits`].
-#[derive(Debug, Display, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Error)]
-#[display("the search was interrupted")]
-pub struct Interrupted;
 
 /// Whether the search should be [`Interrupted`] or exited early.
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, From)]
