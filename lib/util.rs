@@ -6,6 +6,7 @@ mod counter;
 mod integer;
 mod saturating;
 mod timer;
+mod trigger;
 
 pub use align::*;
 pub use assume::*;
@@ -15,3 +16,4 @@ pub use counter::*;
 pub use integer::*;
 pub use saturating::*;
 pub use timer::*;
+pub use trigger::*;
