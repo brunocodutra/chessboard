@@ -1,13 +1,20 @@
 use std::time::{Duration, Instant};
 
 /// Tracks time towards a deadline.
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct Timer {
     deadline: Option<Instant>,
 }
 
 impl Timer {
     /// Constructs a timer that elapses after the given duration.
+    #[inline(always)]
+    pub const fn infinite() -> Self {
+        Timer { deadline: None }
+    }
+
+    /// Constructs a timer that elapses after the given duration.
+    #[inline(always)]
     pub fn new(duration: Duration) -> Self {
         Timer {
             deadline: Instant::now().checked_add(duration),
@@ -15,6 +22,7 @@ impl Timer {
     }
 
     /// Returns the time remaining if any.
+    #[inline(always)]
     pub fn remaining(&self) -> Option<Duration> {
         match self.deadline {
             Some(deadline) => deadline.checked_duration_since(Instant::now()),
@@ -35,15 +43,17 @@ mod tests {
     }
 
     #[test]
-    fn timer_does_not_elapse_before_duration_expires() {
-        let timer = Timer::new(Duration::MAX);
-        assert_eq!(timer.remaining(), Some(Duration::MAX));
-    }
-
-    #[test]
     fn timer_elapses_once_duration_expires() {
         let timer = Timer::new(Duration::ZERO);
         sleep(Duration::from_millis(1));
         assert_eq!(timer.remaining(), None);
+    }
+
+    #[test]
+    fn timer_never_decreases_if_infinite() {
+        let timer = Timer::infinite();
+        let remaining = timer.remaining();
+        sleep(Duration::from_millis(1));
+        assert_eq!(remaining, timer.remaining());
     }
 }

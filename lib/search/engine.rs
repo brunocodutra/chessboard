@@ -7,16 +7,6 @@ use std::{cell::RefCell, ops::Range, time::Duration};
 #[cfg(test)]
 use crate::search::{HashSize, ThreadCount};
 
-/// The search control.
-#[derive(Debug)]
-struct Control(Counter, Timer);
-
-impl Default for Control {
-    fn default() -> Self {
-        Control(Counter::new(u64::MAX), Timer::new(Duration::MAX))
-    }
-}
-
 /// A chess engine.
 #[derive(Debug)]
 #[cfg_attr(test, derive(test_strategy::Arbitrary))]
@@ -159,12 +149,11 @@ impl Engine {
         bounds: Range<Score>,
         depth: Depth,
         ply: Ply,
-        ctrl @ Control(nodes, timer): &Control,
+        ctrl: &Control,
     ) -> Result<Pv, Interrupted> {
         debug_assert!(!bounds.is_empty());
 
-        nodes.count().ok_or(Interrupted)?;
-        timer.remaining().ok_or(Interrupted)?;
+        ctrl.interrupted()?;
 
         let (alpha, beta) = self.mdp(ply, &bounds);
         if alpha >= beta {
@@ -296,13 +285,13 @@ impl Engine {
     /// [aspiration windows]: https://www.chessprogramming.org/Aspiration_Windows
     /// [iterative deepening]: https://www.chessprogramming.org/Iterative_Deepening
     fn aw(&self, pos: &Evaluator, limit: Depth, nodes: u64, time: Range<Duration>) -> Pv {
-        let ref ctrl @ Control(_, ref timer) = Control(Counter::new(nodes), Timer::new(time.end));
+        let ctrl = Control::Limited(Counter::new(nodes), Timer::new(time.end));
         let mut pv = Pv::new(Score::new(0), None);
         let mut depth = Depth::new(0);
 
         while depth < Depth::upper() {
-            let ctrl = Control::default();
-            pv = self.fw(pos, depth, Ply::new(0), &ctrl).assume();
+            use Control::*;
+            pv = self.fw(pos, depth, Ply::new(0), &Unlimited).assume();
             depth = depth + 1;
             if pv.best().is_some() {
                 break;
@@ -321,12 +310,12 @@ impl Engine {
 
             pv = 'aw: loop {
                 delta = delta.saturating_mul(2);
-                if timer.remaining() < Some(overtime) {
+                if ctrl.timer().remaining() < Some(overtime) {
                     break 'id;
                 }
 
                 let bounds = lower..upper;
-                let Ok(partial) = self.pvs::<true>(pos, bounds, depth, Ply::new(0), ctrl) else {
+                let Ok(partial) = self.pvs::<true>(pos, bounds, depth, Ply::new(0), &ctrl) else {
                     break 'id;
                 };
 
@@ -427,7 +416,7 @@ mod tests {
     #[proptest]
     #[should_panic]
     fn nw_panics_if_beta_is_too_small(e: Engine, pos: Evaluator, d: Depth, p: Ply) {
-        e.nw(&pos, Score::lower(), d, p, &Control::default())?;
+        e.nw(&pos, Score::lower(), d, p, &Control::Unlimited)?;
     }
 
     #[proptest]
@@ -444,7 +433,7 @@ mod tests {
     ) {
         e.tt.set(pos.zobrist(), Transposition::lower(d, s, m));
 
-        let ctrl = Control::default();
+        let ctrl = Control::Unlimited;
         assert_eq!(e.nw(&pos, b, d, p, &ctrl), Ok(Pv::new(s, Some(m))));
     }
 
@@ -462,7 +451,7 @@ mod tests {
     ) {
         e.tt.set(pos.zobrist(), Transposition::upper(d, s, m));
 
-        let ctrl = Control::default();
+        let ctrl = Control::Unlimited;
         assert_eq!(e.nw(&pos, b, d, p, &ctrl), Ok(Pv::new(s, Some(m))));
     }
 
@@ -480,7 +469,7 @@ mod tests {
     ) {
         e.tt.set(pos.zobrist(), Transposition::exact(d, sc, m));
 
-        let ctrl = Control::default();
+        let ctrl = Control::Unlimited;
         assert_eq!(e.nw(&pos, b, d, p, &ctrl), Ok(Pv::new(sc, Some(m))));
     }
 
@@ -493,7 +482,7 @@ mod tests {
         #[filter(#p >= 0)] p: Ply,
     ) {
         assert_eq!(
-            e.nw(&pos, b, d, p, &Control::default())? < b,
+            e.nw(&pos, b, d, p, &Control::Unlimited)? < b,
             alphabeta(&pos, b - 1..b, d, p) < b
         );
     }
@@ -507,7 +496,7 @@ mod tests {
         d: Depth,
         p: Ply,
     ) {
-        e.pvs::<true>(&pos, b.end..b.start, d, p, &Control::default())?;
+        e.pvs::<true>(&pos, b.end..b.start, d, p, &Control::Unlimited)?;
     }
 
     #[proptest]
@@ -518,7 +507,7 @@ mod tests {
         d: Depth,
         p: Ply,
     ) {
-        let ctrl = Control(Counter::new(0), Timer::new(Duration::MAX));
+        let ctrl = Control::Limited(Counter::new(0), Timer::infinite());
         assert_eq!(e.pvs::<true>(&pos, b, d, p, &ctrl), Err(Interrupted));
     }
 
@@ -530,7 +519,7 @@ mod tests {
         d: Depth,
         p: Ply,
     ) {
-        let ctrl = Control(Counter::new(u64::MAX), Timer::new(Duration::ZERO));
+        let ctrl = Control::Limited(Counter::new(u64::MAX), Timer::new(Duration::ZERO));
         std::thread::sleep(Duration::from_millis(1));
         assert_eq!(e.pvs::<true>(&pos, b, d, p, &ctrl), Err(Interrupted));
     }
@@ -543,7 +532,7 @@ mod tests {
         d: Depth,
     ) {
         assert_eq!(
-            e.pvs::<true>(&pos, b, d, Ply::upper(), &Control::default()),
+            e.pvs::<true>(&pos, b, d, Ply::upper(), &Control::Unlimited),
             Ok(Pv::new(pos.evaluate().saturate(), None))
         );
     }
@@ -557,7 +546,7 @@ mod tests {
         p: Ply,
     ) {
         assert_eq!(
-            e.pvs::<true>(&pos, b, d, p, &Control::default()),
+            e.pvs::<true>(&pos, b, d, p, &Control::Unlimited),
             Ok(Pv::new(Score::new(0), None))
         );
     }
@@ -571,14 +560,14 @@ mod tests {
         p: Ply,
     ) {
         assert_eq!(
-            e.pvs::<true>(&pos, b, d, p, &Control::default()),
+            e.pvs::<true>(&pos, b, d, p, &Control::Unlimited),
             Ok(Pv::new(Score::lower().normalize(p), None))
         );
     }
 
     #[proptest]
     fn fw_finds_best_score(e: Engine, pos: Evaluator, d: Depth, #[filter(#p >= 0)] p: Ply) {
-        assert_eq!(e.fw(&pos, d, p, &Control::default())?, negamax(&pos, d, p));
+        assert_eq!(e.fw(&pos, d, p, &Control::Unlimited)?, negamax(&pos, d, p));
     }
 
     #[proptest]
@@ -592,7 +581,7 @@ mod tests {
         let x = Engine::with_options(x);
         let y = Engine::with_options(y);
 
-        let ctrl = Control::default();
+        let ctrl = Control::Unlimited;
 
         assert_eq!(
             x.fw(&pos, d, p, &ctrl)?.score(),
@@ -608,7 +597,7 @@ mod tests {
     ) {
         assert_eq!(
             e.search(&pos, Limits::Depth(d)).score(),
-            e.fw(&pos, d, Ply::new(0), &Control::default())?.score()
+            e.fw(&pos, d, Ply::new(0), &Control::Unlimited)?.score()
         );
     }
 

@@ -1,3 +1,4 @@
+mod control;
 mod depth;
 mod driver;
 mod engine;
@@ -9,6 +10,7 @@ mod pv;
 mod score;
 mod transposition;
 
+pub use control::*;
 pub use depth::*;
 pub use driver::*;
 pub use engine::*;
