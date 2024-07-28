@@ -1,6 +1,7 @@
 use crate::chess::{Move, Zobrist};
 use crate::search::{Depth, HashSize, Score};
 use crate::util::{Assume, Binary, Bits, Integer};
+use derive_more::Debug;
 use std::mem::size_of;
 use std::ops::{Index, RangeInclusive};
 use std::sync::atomic::{AtomicU64, Ordering::Relaxed};
@@ -150,6 +151,7 @@ impl Binary for SignedTransposition {
 /// A cache for [`Transposition`]s.
 #[derive(Debug)]
 #[cfg_attr(test, derive(test_strategy::Arbitrary))]
+#[debug("TranspositionTable({})", self.capacity())]
 pub struct TranspositionTable {
     #[cfg_attr(test,
         strategy(hash_map(any::<Position>(), any::<Transposition>(), ..32).prop_map(|ts| {
@@ -249,6 +251,7 @@ impl Index<Zobrist> for [AtomicU64] {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::fmt::Debug;
     use test_strategy::proptest;
 
     #[proptest]
