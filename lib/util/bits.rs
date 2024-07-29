@@ -28,7 +28,7 @@ use std::ops::RangeInclusive;
     BitXorAssign,
 )]
 #[cfg_attr(test, derive(test_strategy::Arbitrary))]
-#[cfg_attr(test, arbitrary(bound(T: 'static + Debug + Unsigned, Self: Debug, RangeInclusive<T>: Strategy<Value = T>)))]
+#[cfg_attr(test, arbitrary(bound(T, T: Unsigned, Self: Debug, RangeInclusive<T>: Strategy<Value = T>)))]
 #[debug("Bits({_0:b})")]
 #[display("{_0:b}")]
 #[repr(transparent)]
