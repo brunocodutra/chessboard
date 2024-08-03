@@ -44,6 +44,7 @@ unsafe fn init() {
 }
 
 impl Nnue {
+    #[inline(always)]
     fn load<T: Read>(&mut self, mut reader: T) -> io::Result<()> {
         reader.read_i16_into::<LittleEndian>(&mut *self.ft.bias)?;
         reader.read_i16_into::<LittleEndian>(unsafe {
