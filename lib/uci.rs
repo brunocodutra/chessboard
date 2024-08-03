@@ -4,12 +4,32 @@ use crate::search::{Engine, HashSize, Limits, Options, Score, ThreadCount};
 use crate::util::{Assume, Integer, Trigger};
 use arrayvec::ArrayString;
 use derive_more::{Deref, Display};
-use std::fmt::Debug;
-use std::io::{self, stdin, stdout, BufRead, StdinLock, StdoutLock, Write};
+use futures::{channel::oneshot, future::FusedFuture, prelude::*, select_biased as select};
 use std::time::{Duration, Instant};
+use std::{fmt::Debug, mem::transmute, thread};
 
 #[cfg(test)]
 use proptest::prelude::*;
+
+/// Runs the provided closure on a thread where blocking is acceptable.
+///
+/// # Safety
+///
+/// Must be awaited on through completion strictly before any
+/// of the variables `f` may capture is dropped.
+#[must_use]
+unsafe fn unblock<'a, F, R>(f: F) -> impl FusedFuture<Output = R> + 'a
+where
+    F: FnOnce() -> R + Send + 'a,
+    R: Send + 'a,
+{
+    let (tx, rx) = oneshot::channel();
+    thread::spawn(transmute::<
+        Box<dyn FnOnce() + Send + 'a>,
+        Box<dyn FnOnce() + Send + 'static>,
+    >(Box::new(move || tx.send(f()).assume()) as _));
+    rx.map(Assume::assume)
+}
 
 #[derive(Debug, Display, Default, Clone, Eq, PartialEq, Hash, Deref)]
 #[cfg_attr(test, derive(test_strategy::Arbitrary))]
@@ -31,12 +51,12 @@ impl PartialEq<&str> for UciMove {
     }
 }
 
-/// A basic *not fully compliant* UCI server.
-#[derive(Debug)]
+/// A basic UCI server.
+#[derive(Debug, Default)]
 #[cfg_attr(test, derive(test_strategy::Arbitrary))]
 #[cfg_attr(test, arbitrary(args = I,
     bound(I: 'static + Debug + Default + Clone, O: 'static + Debug + Default + Clone)))]
-pub struct Uci<I: BufRead, O: Write> {
+pub struct Uci<I, O> {
     #[cfg_attr(test, strategy(Just(args.clone())))]
     input: I,
     #[cfg_attr(test, strategy(Just(O::default())))]
@@ -47,13 +67,7 @@ pub struct Uci<I: BufRead, O: Write> {
     moves: Vec<UciMove>,
 }
 
-impl Default for Uci<StdinLock<'_>, StdoutLock<'_>> {
-    fn default() -> Self {
-        Self::new(stdin().lock(), stdout().lock())
-    }
-}
-
-impl<I: BufRead, O: Write> Uci<I, O> {
+impl<I, O> Uci<I, O> {
     /// Constructs a new uci server instance.
     pub fn new(input: I, output: O) -> Self {
         Self {
@@ -65,12 +79,13 @@ impl<I: BufRead, O: Write> Uci<I, O> {
             moves: Vec::with_capacity(128),
         }
     }
+}
 
+impl<I: Stream<Item = String> + Unpin, O: Sink<String> + Unpin> Uci<I, O> {
     /// Runs the UCI server.
-    pub fn run(&mut self) -> io::Result<()> {
-        while let Some(line) = (&mut self.input).lines().next().transpose()? {
-            self.output.flush()?;
-            if !self.process(&line)? {
+    pub async fn run(&mut self) -> Result<(), O::Error> {
+        while let Some(line) = self.input.next().await {
+            if !self.process(&line).await? {
                 break;
             };
         }
@@ -79,61 +94,79 @@ impl<I: BufRead, O: Write> Uci<I, O> {
     }
 
     fn play(&mut self, uci: &str) {
-        if !(0..=5).contains(&uci.len()) || !uci.is_ascii() {
-            return eprintln!("invalid move `{uci}`");
-        };
-
         let mut moves = self.position.moves().flatten();
         let Some(m) = moves.find(|&m| UciMove::from(m) == uci) else {
-            return eprintln!("illegal move `{uci}` in position `{}`", self.position);
+            return if !(0..=5).contains(&uci.len()) || !uci.is_ascii() {
+                eprintln!("invalid move `{uci}`")
+            } else {
+                eprintln!("illegal move `{uci}` in position `{}`", self.position)
+            };
         };
 
         self.position.play(m);
         self.moves.push(UciMove::from(m));
     }
 
-    fn go(&mut self, limits: Limits) -> io::Result<()> {
+    async fn go(&mut self, limits: Limits) -> Result<(), O::Error> {
         let interrupter = Trigger::armed();
-        let pv = self.engine.search(&self.position, limits, &interrupter);
+
+        let mut search =
+            unsafe { unblock(|| self.engine.search(&self.position, limits, &interrupter)) };
+
+        let stop = async {
+            loop {
+                match self.input.next().await.as_deref().map(str::trim) {
+                    None => break false,
+                    Some("stop") => break interrupter.disarm(),
+                    Some(cmd) => eprintln!("ignored unsupported command `{cmd}` during search"),
+                };
+            }
+        };
+
+        let pv = select! {
+            pv = search => pv,
+            _ = stop.fuse() => search.await
+        };
+
         let best = pv.best().expect("the engine failed to find a move");
+        let info = match pv.score().mate() {
+            Some(p) if p > 0 => format!("info score mate {} pv {best}", (p + 1).get() / 2),
+            Some(p) => format!("info score mate {} pv {best}", (p - 1).get() / 2),
+            None => format!("info score cp {} pv {best}", pv.score().get()),
+        };
 
-        match pv.score().mate() {
-            Some(p) if p > 0 => write!(self.output, "info score mate {}", (p + 1).get() / 2),
-            Some(p) => write!(self.output, "info score mate {}", (p - 1).get() / 2),
-            None => write!(self.output, "info score cp {}", pv.score().get()),
-        }?;
-
-        writeln!(self.output, " pv {best}")?;
-        writeln!(self.output, "bestmove {best}")?;
+        self.output.send(info).await?;
+        self.output.send(format!("bestmove {best}")).await?;
 
         Ok(())
     }
 
-    fn bench(&mut self, limits: Limits) -> io::Result<()> {
+    async fn bench(&mut self, limits: Limits) -> Result<(), O::Error> {
         let interrupter = Trigger::armed();
         let timer = Instant::now();
         self.engine.search(&self.position, limits, &interrupter);
-        let elapsed = timer.elapsed();
-        write!(self.output, "info time {}", elapsed.as_millis())?;
+        let millis = timer.elapsed().as_millis();
 
-        match limits {
-            Limits::Depth(d) => writeln!(self.output, " depth {}", d.get())?,
-            Limits::Nodes(nodes) => {
-                let nps = nodes as f64 / elapsed.as_secs_f64();
-                writeln!(self.output, " nodes {nodes} nps {nps:.0}")?
-            }
-            _ => writeln!(self.output)?,
-        }
+        let info = match limits {
+            Limits::Depth(d) => format!("info time {millis} depth {}", d.get()),
+            Limits::Nodes(nodes) => format!(
+                "info time {millis} nodes {nodes} nps {}",
+                nodes as u128 * 1000 / millis
+            ),
+            _ => return Ok(()),
+        };
 
-        Ok(())
+        self.output.send(info).await
     }
 
     /// Processes one [`UciMessage`].
-    fn process(&mut self, line: &str) -> io::Result<bool> {
+    async fn process(&mut self, line: &str) -> Result<bool, O::Error> {
         let tokens: Vec<_> = line.split_whitespace().collect();
 
         match &tokens[..] {
             [] => Ok(true),
+            ["stop"] => Ok(true),
+            ["quit"] => Ok(false),
 
             ["position", "startpos", "moves", m, n] => {
                 self.position = Evaluator::default();
@@ -185,7 +218,7 @@ impl<I: BufRead, O: Write> Uci<I, O> {
                     (Ok(t), Ok(i)) => {
                         let t = Duration::from_millis(t);
                         let i = Duration::from_millis(i);
-                        self.go(Limits::Clock(t, i))?
+                        self.go(Limits::Clock(t, i)).await?;
                     }
                 }
 
@@ -194,7 +227,7 @@ impl<I: BufRead, O: Write> Uci<I, O> {
 
             ["go", "depth", depth] => {
                 match depth.parse::<u8>() {
-                    Ok(d) => self.go(Limits::Depth(d.saturate()))?,
+                    Ok(d) => self.go(Limits::Depth(d.saturate())).await?,
                     Err(e) => eprintln!("{e}"),
                 }
 
@@ -203,7 +236,7 @@ impl<I: BufRead, O: Write> Uci<I, O> {
 
             ["go", "nodes", nodes] => {
                 match nodes.parse::<u64>() {
-                    Ok(n) => self.go(n.into())?,
+                    Ok(n) => self.go(n.into()).await?,
                     Err(e) => eprintln!("{e}"),
                 }
 
@@ -212,7 +245,7 @@ impl<I: BufRead, O: Write> Uci<I, O> {
 
             ["go", "movetime", time] => {
                 match time.parse() {
-                    Ok(ms) => self.go(Duration::from_millis(ms).into())?,
+                    Ok(ms) => self.go(Duration::from_millis(ms).into()).await?,
                     Err(e) => eprintln!("{e}"),
                 }
 
@@ -220,13 +253,13 @@ impl<I: BufRead, O: Write> Uci<I, O> {
             }
 
             ["go"] | ["go", "infinite"] => {
-                self.go(Limits::None)?;
+                self.go(Limits::None).await?;
                 Ok(true)
             }
 
             ["bench", "depth", depth] => {
                 match depth.parse::<u8>() {
-                    Ok(d) => self.bench(Limits::Depth(d.saturate()))?,
+                    Ok(d) => self.bench(Limits::Depth(d.saturate())).await?,
                     Err(e) => eprintln!("{e}"),
                 }
 
@@ -235,7 +268,7 @@ impl<I: BufRead, O: Write> Uci<I, O> {
 
             ["bench", "nodes", nodes] => {
                 match nodes.parse::<u64>() {
-                    Ok(n) => self.bench(n.into())?,
+                    Ok(n) => self.bench(n.into()).await?,
                     Err(e) => eprintln!("{e}"),
                 }
 
@@ -245,39 +278,37 @@ impl<I: BufRead, O: Write> Uci<I, O> {
             ["eval"] => {
                 let pos = &self.position;
                 let turn = self.position.turn();
-                let material: Score = pos.material().evaluate().perspective(turn).saturate();
+                let mat: Score = pos.material().evaluate().perspective(turn).saturate();
                 let positional: Score = pos.positional().evaluate().perspective(turn).saturate();
-                let evaluation: Score = pos.evaluate().perspective(turn).saturate();
-
-                writeln!(
-                    self.output,
-                    "info material {material} positional {positional} value {evaluation}"
-                )?;
-
+                let value: Score = pos.evaluate().perspective(turn).saturate();
+                let info = format!("info material {mat} positional {positional} value {value}");
+                self.output.send(info).await?;
                 Ok(true)
             }
 
             ["uci"] => {
-                writeln!(self.output, "id name {}", env!("CARGO_PKG_NAME"))?;
-                writeln!(self.output, "id author {}", env!("CARGO_PKG_AUTHORS"))?;
+                let name = format!("id name {}", env!("CARGO_PKG_NAME"));
+                let author = format!("id author {}", env!("CARGO_PKG_AUTHORS"));
 
-                writeln!(
-                    self.output,
+                let hash = format!(
                     "option name Hash type spin default {} min {} max {}",
                     HashSize::default(),
                     HashSize::lower(),
                     HashSize::upper()
-                )?;
+                );
 
-                writeln!(
-                    self.output,
+                let threads = format!(
                     "option name Threads type spin default {} min {} max {}",
                     ThreadCount::default(),
                     ThreadCount::lower(),
                     ThreadCount::upper()
-                )?;
+                );
 
-                writeln!(self.output, "uciok")?;
+                self.output.send(name).await?;
+                self.output.send(author).await?;
+                self.output.send(hash).await?;
+                self.output.send(threads).await?;
+                self.output.send("uciok".to_string()).await?;
 
                 Ok(true)
             }
@@ -290,7 +321,7 @@ impl<I: BufRead, O: Write> Uci<I, O> {
             }
 
             ["isready"] => {
-                writeln!(self.output, "readyok")?;
+                self.output.send("readyok".to_string()).await?;
                 Ok(true)
             }
 
@@ -324,8 +355,6 @@ impl<I: BufRead, O: Write> Uci<I, O> {
                 Ok(true)
             }
 
-            ["quit"] => Ok(false),
-
             cmd => {
                 eprintln!("ignored unsupported command `{}`", cmd.join(" "));
                 Ok(true)
@@ -338,17 +367,30 @@ impl<I: BufRead, O: Write> Uci<I, O> {
 mod tests {
     use super::*;
     use crate::search::Depth;
+    use futures::executor::block_on;
     use proptest::sample::Selector;
-    use std::{io::Cursor, str};
+    use std::task::{Context, Poll};
+    use std::{collections::VecDeque, pin::Pin};
     use test_strategy::proptest;
 
-    type MockUci = Uci<Cursor<String>, Vec<u8>>;
+    #[derive(Debug, Default, Clone, Eq, PartialEq)]
+    struct StaticStream(VecDeque<String>);
 
-    impl Default for MockUci {
-        fn default() -> Self {
-            Self::new(Cursor::new(String::new()), Vec::new())
+    impl StaticStream {
+        fn new(items: impl IntoIterator<Item = impl ToString>) -> Self {
+            Self(items.into_iter().map(|s| s.to_string()).collect())
         }
     }
+
+    impl Stream for StaticStream {
+        type Item = String;
+
+        fn poll_next(mut self: Pin<&mut Self>, _: &mut Context<'_>) -> Poll<Option<Self::Item>> {
+            Poll::Ready(self.0.pop_front())
+        }
+    }
+
+    type MockUci = Uci<StaticStream, Vec<String>>;
 
     #[proptest]
     fn play_updates_position(
@@ -418,9 +460,9 @@ mod tests {
 
     #[proptest]
     fn handles_position_with_startpos(
-        #[any(Cursor::new("position startpos".to_string()))] mut uci: MockUci,
+        #[any(StaticStream::new(["position startpos"]))] mut uci: MockUci,
     ) {
-        assert_eq!(uci.run().ok(), Some(()));
+        assert_eq!(block_on(uci.run()), Ok(()));
         assert_eq!(uci.position, Evaluator::default());
         assert!(uci.moves.is_empty());
         assert!(uci.output.is_empty());
@@ -428,10 +470,10 @@ mod tests {
 
     #[proptest]
     fn handles_position_with_fen(
-        #[any(Cursor::new(format!("position fen {}", #pos)))] mut uci: MockUci,
+        #[any(StaticStream::new([format!("position fen {}", #pos)]))] mut uci: MockUci,
         pos: Evaluator,
     ) {
-        assert_eq!(uci.run().ok(), Some(()));
+        assert_eq!(block_on(uci.run()), Ok(()));
         assert_eq!(uci.position.to_string(), pos.to_string());
         assert!(uci.moves.is_empty());
         assert!(uci.output.is_empty());
@@ -439,12 +481,12 @@ mod tests {
 
     #[proptest]
     fn ignores_invalid_fen(
-        #[any(Cursor::new(format!("position fen {}", #_s)))] mut uci: MockUci,
+        #[any(StaticStream::new([format!("position fen {}", #_s)]))] mut uci: MockUci,
         #[filter(#_s.parse::<Evaluator>().is_err())] _s: String,
     ) {
         let pos = uci.position.clone();
         let moves = uci.moves.clone();
-        assert_eq!(uci.run().ok(), Some(()));
+        assert_eq!(block_on(uci.run()), Ok(()));
         assert_eq!(uci.position, pos);
         assert_eq!(uci.moves, moves);
         assert!(uci.output.is_empty());
@@ -467,8 +509,8 @@ mod tests {
             pos.play(m);
         }
 
-        uci.input = Cursor::new(input);
-        assert_eq!(uci.run().ok(), Some(()));
+        uci.input = StaticStream::new([input]);
+        assert_eq!(block_on(uci.run()), Ok(()));
         assert_eq!(uci.position, pos);
         assert_eq!(uci.moves, moves);
         assert!(uci.output.is_empty());
@@ -477,71 +519,106 @@ mod tests {
     #[proptest]
     fn handles_go_time_left(
         #[filter(#uci.position.outcome().is_none())]
-        #[any(Cursor::new(format!("go wtime {} btime {} winc {} binc {}", #_wt, #_bt, #_wi, #_bi)))]
+        #[any(StaticStream::new([format!("go wtime {} btime {} winc {} binc {}", #_wt, #_bt, #_wi, #_bi)]))]
         mut uci: MockUci,
         #[strategy(..10u8)] _wt: u8,
         #[strategy(..10u8)] _wi: u8,
         #[strategy(..10u8)] _bt: u8,
         #[strategy(..10u8)] _bi: u8,
     ) {
-        assert_eq!(uci.run().ok(), Some(()));
-        assert!(str::from_utf8(&uci.output)?.contains("bestmove"));
+        assert_eq!(block_on(uci.run()), Ok(()));
+        assert!(uci.output.concat().contains("bestmove"));
     }
 
     #[proptest]
     fn handles_go_depth(
         #[filter(#uci.position.outcome().is_none())]
-        #[any(Cursor::new(format!("go depth {}", #_d.get())))]
+        #[any(StaticStream::new([format!("go depth {}", #_d.get())]))]
         mut uci: MockUci,
         _d: Depth,
     ) {
-        assert_eq!(uci.run().ok(), Some(()));
-        assert!(str::from_utf8(&uci.output)?.contains("bestmove"));
+        assert_eq!(block_on(uci.run()), Ok(()));
+        assert!(uci.output.concat().contains("bestmove"));
     }
 
     #[proptest]
     fn handles_go_nodes(
         #[filter(#uci.position.outcome().is_none())]
-        #[any(Cursor::new(format!("go nodes {}", #_n)))]
+        #[any(StaticStream::new([format!("go nodes {}", #_n)]))]
         mut uci: MockUci,
         #[strategy(..1000u64)] _n: u64,
     ) {
-        assert_eq!(uci.run().ok(), Some(()));
-        assert!(str::from_utf8(&uci.output)?.contains("bestmove"));
+        assert_eq!(block_on(uci.run()), Ok(()));
+        assert!(uci.output.concat().contains("bestmove"));
     }
 
     #[proptest]
     fn handles_go_time(
         #[filter(#uci.position.outcome().is_none())]
-        #[any(Cursor::new(format!("go movetime {}", #_ms)))]
+        #[any(StaticStream::new([format!("go movetime {}", #_ms)]))]
         mut uci: MockUci,
         #[strategy(..10u8)] _ms: u8,
     ) {
-        assert_eq!(uci.run().ok(), Some(()));
-        assert!(str::from_utf8(&uci.output)?.contains("bestmove"));
+        assert_eq!(block_on(uci.run()), Ok(()));
+        assert!(uci.output.concat().contains("bestmove"));
     }
 
     #[proptest]
-    fn handles_eval(#[any(Cursor::new("eval".to_string()))] mut uci: MockUci) {
+    fn handles_go(
+        #[by_ref]
+        #[filter(#uci.position.outcome().is_none())]
+        #[any(StaticStream::new(["go"]))]
+        mut uci: MockUci,
+    ) {
+        assert_eq!(block_on(uci.run()), Ok(()));
+        assert!(uci.output.concat().contains("bestmove"));
+    }
+
+    #[proptest]
+    fn handles_stop_during_search(
+        #[by_ref]
+        #[filter(#uci.position.outcome().is_none())]
+        #[any(StaticStream::new(["go", "stop"]))]
+        mut uci: MockUci,
+    ) {
+        assert_eq!(block_on(uci.run()), Ok(()));
+        assert!(uci.output.concat().contains("bestmove"));
+    }
+
+    #[proptest]
+    fn handles_stop(#[any(StaticStream::new(["stop"]))] mut uci: MockUci) {
+        assert_eq!(block_on(uci.run()), Ok(()));
+        assert!(uci.output.is_empty());
+    }
+
+    #[proptest]
+    fn handles_quit(#[any(StaticStream::new(["quit"]))] mut uci: MockUci) {
+        assert_eq!(block_on(uci.run()), Ok(()));
+        assert!(uci.output.is_empty());
+    }
+
+    #[proptest]
+    fn handles_eval(#[any(StaticStream::new(["eval"]))] mut uci: MockUci) {
         let pos = uci.position.clone();
         let value = match pos.turn() {
             Color::White => pos.evaluate(),
             Color::Black => -pos.evaluate(),
         };
 
-        assert_eq!(uci.run().ok(), Some(()));
-        assert!(str::from_utf8(&uci.output)?.contains(&format!("value {:+}", value.get())));
+        let value = format!("value {:+}", value.get());
+        assert_eq!(block_on(uci.run()), Ok(()));
+        assert!(uci.output.concat().ends_with(&value));
     }
 
     #[proptest]
-    fn handles_uci(#[any(Cursor::new("uci".to_string()))] mut uci: MockUci) {
-        assert_eq!(uci.run().ok(), Some(()));
-        assert!(str::from_utf8(&uci.output)?.contains("uciok"));
+    fn handles_uci(#[any(StaticStream::new(["uci"]))] mut uci: MockUci) {
+        assert_eq!(block_on(uci.run()), Ok(()));
+        assert!(uci.output.concat().ends_with("uciok"));
     }
 
     #[proptest]
-    fn handles_new_game(#[any(Cursor::new("ucinewgame".to_string()))] mut uci: MockUci) {
-        assert_eq!(uci.run().ok(), Some(()));
+    fn handles_new_game(#[any(StaticStream::new(["ucinewgame"]))] mut uci: MockUci) {
+        assert_eq!(block_on(uci.run()), Ok(()));
         assert_eq!(uci.position, Evaluator::default());
         assert!(uci.moves.is_empty());
         assert!(uci.output.is_empty());
@@ -549,64 +626,60 @@ mod tests {
 
     #[proptest]
     fn handles_option_hash(
-        #[any(Cursor::new(format!("setoption name Hash value {}", #h)))] mut uci: MockUci,
+        #[any(StaticStream::new([format!("setoption name Hash value {}", #h)]))] mut uci: MockUci,
         h: HashSize,
     ) {
-        assert_eq!(uci.run().ok(), Some(()));
+        assert_eq!(block_on(uci.run()), Ok(()));
         assert_eq!(uci.options.hash, h >> 20 << 20);
         assert!(uci.output.is_empty());
     }
 
     #[proptest]
     fn ignores_invalid_hash_size(
-        #[any(Cursor::new(format!("setoption name Hash value {}", #_s)))] mut uci: MockUci,
+        #[any(StaticStream::new([format!("setoption name Hash value {}", #_s)]))] mut uci: MockUci,
         #[filter(#_s.trim().parse::<HashSize>().is_err())] _s: String,
     ) {
         let o = uci.options;
-        assert_eq!(uci.run().ok(), Some(()));
+        assert_eq!(block_on(uci.run()), Ok(()));
         assert_eq!(uci.options, o);
         assert!(uci.output.is_empty());
     }
 
     #[proptest]
     fn handles_option_threads(
-        #[any(Cursor::new(format!("setoption name Threads value {}", #t)))] mut uci: MockUci,
+        #[any(StaticStream::new([format!("setoption name Threads value {}", #t)]))]
+        mut uci: MockUci,
         t: ThreadCount,
     ) {
-        assert_eq!(uci.run().ok(), Some(()));
+        assert_eq!(block_on(uci.run()), Ok(()));
         assert_eq!(uci.options.threads, t);
         assert!(uci.output.is_empty());
     }
 
     #[proptest]
     fn ignores_invalid_thread_count(
-        #[any(Cursor::new(format!("setoption name Threads value {}", #_s)))] mut uci: MockUci,
+        #[any(StaticStream::new([format!("setoption name Threads value {}", #_s)]))]
+        mut uci: MockUci,
         #[filter(#_s.trim().parse::<ThreadCount>().is_err())] _s: String,
     ) {
         let o = uci.options;
-        assert_eq!(uci.run().ok(), Some(()));
+        assert_eq!(block_on(uci.run()), Ok(()));
         assert_eq!(uci.options, o);
         assert!(uci.output.is_empty());
     }
 
     #[proptest]
-    fn handles_ready(#[any(Cursor::new("isready".to_string()))] mut uci: MockUci) {
-        assert_eq!(uci.run().ok(), Some(()));
-        assert!(str::from_utf8(&uci.output)?.contains("readyok"));
-    }
-
-    #[proptest]
-    fn handles_quit(#[any(Cursor::new("quit".to_string()))] mut uci: MockUci) {
-        assert_eq!(uci.run().ok(), Some(()));
-        assert!(uci.output.is_empty());
+    fn handles_ready(#[any(StaticStream::new(["isready"]))] mut uci: MockUci) {
+        assert_eq!(block_on(uci.run()), Ok(()));
+        assert_eq!(uci.output.concat(), "readyok");
     }
 
     #[proptest]
     fn ignores_unsupported_messages(
-        #[any(Cursor::new(#_s))] mut uci: MockUci,
+        #[any(StaticStream::new([#_s]))] mut uci: MockUci,
         #[strategy("[^pgbeuisq].*")] _s: String,
     ) {
-        assert_eq!(uci.run().ok(), Some(()));
+        assert_eq!(block_on(uci.run()), Ok(()));
         assert!(uci.output.is_empty());
     }
 }
