@@ -10,7 +10,7 @@ pub struct ScoreRepr(#[cfg_attr(test, strategy(Self::MIN..=Self::MAX))] <Self as
 unsafe impl Integer for ScoreRepr {
     type Repr = i16;
     const MIN: Self::Repr = -Self::MAX;
-    const MAX: Self::Repr = 8191;
+    const MAX: Self::Repr = 4095;
 }
 
 /// The minimax score.
@@ -50,7 +50,7 @@ impl Perspective for Score {
 }
 
 impl Binary for Score {
-    type Bits = Bits<u16, 14>;
+    type Bits = Bits<u16, 13>;
 
     #[inline(always)]
     fn encode(&self) -> Self::Bits {

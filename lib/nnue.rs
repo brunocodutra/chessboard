@@ -103,7 +103,7 @@ mod tests {
             for weights in features.array_chunks_mut::<768>() {
                 let (small, _, _) = weights.select_nth_unstable(32);
                 assert!(small.iter().fold(bias, |s, &v| s + v).abs() <= i16::MAX as i32);
-                let (_, _, large) = weights.select_nth_unstable(Positional::LEN - 33);
+                let (_, _, large) = weights.select_nth_unstable(735);
                 assert!(large.iter().fold(bias, |s, &v| s + v).abs() <= i16::MAX as i32);
             }
         });

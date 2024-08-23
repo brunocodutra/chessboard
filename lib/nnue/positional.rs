@@ -44,7 +44,7 @@ impl Accumulator for Positional {
 
     #[inline(always)]
     fn evaluate(&self, turn: Color, phase: usize) -> i32 {
-        Nnue::hidden(phase).forward([&self.0[turn as usize], &self.0[turn.flip() as usize]]) / 16
+        Nnue::hidden(phase).forward([&self.0[turn as usize], &self.0[turn.flip() as usize]]) / 40
     }
 }
 
