@@ -102,7 +102,7 @@ impl Transposition {
 }
 
 impl Binary for Transposition {
-    type Bits = Bits<u64, 38>;
+    type Bits = Bits<u64, 37>;
 
     #[inline(always)]
     fn encode(&self) -> Self::Bits {
@@ -125,7 +125,7 @@ impl Binary for Transposition {
     }
 }
 
-type Signature = Bits<u32, 26>;
+type Signature = Bits<u32, 27>;
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
 #[cfg_attr(test, derive(test_strategy::Arbitrary))]

@@ -11,7 +11,7 @@ unsafe impl Integer for PlyRepr {
     const MIN: Self::Repr = -Self::MAX;
 
     #[cfg(not(test))]
-    const MAX: Self::Repr = 127;
+    const MAX: Self::Repr = 95;
 
     #[cfg(test)]
     const MAX: Self::Repr = 3;
