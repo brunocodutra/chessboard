@@ -13,7 +13,7 @@ keywords = ["chess"]
 unexpected_cfgs = { level = "warn", check-cfg = ['cfg(coverage)'] }
 
 [dependencies]
-arrayvec = { version = "0.7.3", default-features = false, features = ["std"] }
+arrayvec = { version = "0.7.6", default-features = false, features = ["std"] }
 byteorder = { version = "1.5.0", default-features = false, features = ["std"] }
 ctor = { version = "0.2.8", default-features = false }
 derive_more = { version = "1.0.0", default-features = false, features = [
