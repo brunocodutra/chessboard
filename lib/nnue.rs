@@ -1,5 +1,7 @@
+use crate::util::Assume;
 use byteorder::{LittleEndian, ReadBytesExt};
 use ruzstd::StreamingDecoder;
+use std::cell::SyncUnsafeCell;
 use std::io::{self, Read};
 use std::mem::{transmute, MaybeUninit};
 
@@ -31,7 +33,7 @@ struct Nnue {
     hidden: [Hidden<{ Positional::LEN }>; Material::LEN],
 }
 
-static mut NNUE: Nnue = unsafe { MaybeUninit::zeroed().assume_init() };
+static NNUE: SyncUnsafeCell<Nnue> = unsafe { MaybeUninit::zeroed().assume_init() };
 
 #[cold]
 #[ctor::ctor]
@@ -40,7 +42,7 @@ static mut NNUE: Nnue = unsafe { MaybeUninit::zeroed().assume_init() };
 unsafe fn init() {
     let encoded = include_bytes!("nnue/nn.zst").as_slice();
     let decoder = StreamingDecoder::new(encoded).expect("failed to initialize zstd decoder");
-    NNUE.load(decoder).expect("failed to load the NNUE");
+    Nnue::load(NNUE.get().as_mut_unchecked(), decoder).expect("failed to load the NNUE");
 }
 
 impl Nnue {
@@ -73,17 +75,19 @@ impl Nnue {
         Ok(())
     }
 
+    #[inline(always)]
     fn psqt() -> &'static Transformer<i32, { Material::LEN }> {
-        unsafe { &NNUE.psqt }
+        unsafe { &NNUE.get().as_ref_unchecked().psqt }
     }
 
+    #[inline(always)]
     fn ft() -> &'static Transformer<i16, { Positional::LEN }> {
-        unsafe { &NNUE.ft }
+        unsafe { &NNUE.get().as_ref_unchecked().ft }
     }
 
+    #[inline(always)]
     fn hidden(phase: usize) -> &'static Hidden<{ Positional::LEN }> {
-        debug_assert!(phase < Positional::LEN);
-        unsafe { NNUE.hidden.get_unchecked(phase) }
+        unsafe { NNUE.get().as_ref_unchecked().hidden.get(phase).assume() }
     }
 }
 
