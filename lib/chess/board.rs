@@ -132,7 +132,7 @@ impl Board {
     /// Toggles a piece on a square.
     #[inline(always)]
     pub fn toggle(&mut self, p: Piece, sq: Square) {
-        debug_assert!(!self[sq].is_some_and(|q| p != q));
+        debug_assert!(self[sq].is_none_or(|q| p == q));
         self.colors[p.color() as usize] ^= sq.bitboard();
         self.roles[p.role() as usize] ^= sq.bitboard();
     }

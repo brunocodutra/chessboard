@@ -1,5 +1,12 @@
 #![cfg_attr(target_arch = "x86_64", feature(stdarch_x86_mm_shuffle))]
-#![feature(array_chunks, coverage_attribute, new_zeroed_alloc, optimize_attribute)]
+#![feature(
+    array_chunks,
+    coverage_attribute,
+    new_zeroed_alloc,
+    optimize_attribute,
+    ptr_as_ref_unchecked,
+    sync_unsafe_cell
+)]
 
 /// Chess domain types.
 pub mod chess;
