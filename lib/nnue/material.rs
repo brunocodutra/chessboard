@@ -1,6 +1,6 @@
 use crate::chess::{Color, Perspective};
 use crate::nnue::{Accumulator, Feature, Nnue};
-use crate::util::AlignTo64;
+use crate::util::{AlignTo64, Assume};
 use derive_more::Debug;
 
 /// An accumulator for the psqt transformer.
@@ -44,7 +44,9 @@ impl Accumulator for Material {
 
     #[inline(always)]
     fn evaluate(&self, turn: Color, phase: usize) -> i32 {
-        (self.0[turn as usize][phase] - self.0[turn.flip() as usize][phase]) / 80
+        let us = self.0[turn as usize];
+        let them = self.0[turn.flip() as usize];
+        (us.get(phase).assume() - them.get(phase).assume()) / 80
     }
 }
 

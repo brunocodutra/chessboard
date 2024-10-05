@@ -70,7 +70,7 @@ impl Move {
     #[inline(always)]
     pub fn set_whence(&mut self, whence: Square) {
         let bits = self.0.get() & 0b0000001111111111 | ((whence as u16) << 10);
-        self.0 = NonZeroU16::new(bits).assume();
+        self.0 = <NonZeroU16 as Integer>::new(bits);
     }
 
     /// The destination [`Square`].
@@ -83,7 +83,7 @@ impl Move {
     #[inline(always)]
     pub fn set_whither(&mut self, whither: Square) {
         let bits = (self.0.get() & 0b1111110000001111) | ((whither as u16) << 4);
-        self.0 = NonZeroU16::new(bits).assume();
+        self.0 = <NonZeroU16 as Integer>::new(bits);
     }
 
     /// The promotion specifier.
@@ -101,7 +101,7 @@ impl Move {
     pub fn set_promotion(&mut self, promotion: Role) {
         debug_assert!(self.is_promotion());
         let bits = (self.0.get() & 0b1111111111111100) | (promotion as u16 - 1);
-        self.0 = NonZeroU16::new(bits).assume();
+        self.0 = <NonZeroU16 as Integer>::new(bits);
     }
 
     /// Whether this is a castling move.
