@@ -4,7 +4,7 @@ use crate::util::AlignTo64;
 use derive_more::Debug;
 
 /// An accumulator for the feature transformer.
-#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
+#[derive(Debug, Clone, Eq, PartialEq, Hash)]
 #[cfg_attr(test, derive(test_strategy::Arbitrary))]
 #[debug("Positional")]
 pub struct Positional(
@@ -44,7 +44,7 @@ impl Accumulator for Positional {
 
     #[inline(always)]
     fn evaluate(&self, turn: Color, phase: usize) -> i32 {
-        Nnue::hidden(phase).forward([&self.0[turn as usize], &self.0[turn.flip() as usize]]) / 40
+        Nnue::hidden(phase).forward(&self.0[turn as usize], &self.0[turn.flip() as usize]) / 40
     }
 }
 
@@ -57,7 +57,7 @@ mod tests {
 
     #[proptest]
     fn remove_reverses_add(a: Positional, c: Color, f: Feature) {
-        let mut b = a;
+        let mut b = a.clone();
         b.add(c, f);
         b.remove(c, f);
         assert_eq!(a, b);
@@ -65,7 +65,7 @@ mod tests {
 
     #[proptest]
     fn replace_reverses_itself(a: Positional, c: Color, x: Feature, y: Feature) {
-        let mut b = a;
+        let mut b = a.clone();
         b.replace(c, x, y);
         b.replace(c, y, x);
         assert_eq!(a, b);

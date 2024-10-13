@@ -2,7 +2,7 @@ use crate::chess::{File, Perspective, Rank, Square};
 use crate::util::{Assume, Integer};
 use derive_more::{Debug, *};
 use std::fmt::{self, Write};
-use std::mem::MaybeUninit;
+use std::{cell::SyncUnsafeCell, mem::MaybeUninit};
 
 /// A set of squares on a chess board.
 #[derive(
@@ -119,33 +119,36 @@ impl Bitboard {
     /// ```
     #[inline(always)]
     pub fn line(whence: Square, whither: Square) -> Self {
-        static mut LINES: [[Bitboard; 64]; 64] = unsafe { MaybeUninit::zeroed().assume_init() };
+        static LINES: SyncUnsafeCell<[[Bitboard; 64]; 64]> =
+            unsafe { MaybeUninit::zeroed().assume_init() };
 
         #[cold]
         #[ctor::ctor]
         #[optimize(size)]
         #[inline(never)]
         unsafe fn init() {
+            let lines = LINES.get().as_mut_unchecked();
+
             for wc in Square::iter() {
                 for wt in Square::iter() {
                     let df = wt.file() - wc.file();
                     let dr = wt.rank() - wc.rank();
                     if df == 0 && dr == 0 {
-                        LINES[wc as usize][wt as usize] = wc.bitboard();
+                        lines[wc as usize][wt as usize] = wc.bitboard();
                     } else if df == 0 {
-                        LINES[wc as usize][wt as usize] = wc.file().bitboard();
+                        lines[wc as usize][wt as usize] = wc.file().bitboard();
                     } else if dr == 0 {
-                        LINES[wc as usize][wt as usize] = wc.rank().bitboard();
+                        lines[wc as usize][wt as usize] = wc.rank().bitboard();
                     } else if df.abs() == dr.abs() {
                         let steps = [(df.signum(), dr.signum()), (-df.signum(), -dr.signum())];
                         let bb = Bitboard::fill(wc, &steps, Bitboard::empty());
-                        LINES[wc as usize][wt as usize] = bb;
+                        lines[wc as usize][wt as usize] = bb;
                     }
                 }
             }
         }
 
-        unsafe { LINES[whence as usize][whither as usize] }
+        unsafe { LINES.get().as_ref_unchecked()[whence as usize][whither as usize] }
     }
 
     /// Bitboard with squares in the open segment between two squares.
@@ -160,13 +163,16 @@ impl Bitboard {
     /// ```
     #[inline(always)]
     pub fn segment(whence: Square, whither: Square) -> Self {
-        static mut SEGMENTS: [[Bitboard; 64]; 64] = unsafe { MaybeUninit::zeroed().assume_init() };
+        static SEGMENTS: SyncUnsafeCell<[[Bitboard; 64]; 64]> =
+            unsafe { MaybeUninit::zeroed().assume_init() };
 
         #[cold]
         #[ctor::ctor]
         #[optimize(size)]
         #[inline(never)]
         unsafe fn init() {
+            let segments = SEGMENTS.get().as_mut_unchecked();
+
             for wc in Square::iter() {
                 for wt in Square::iter() {
                     let df = wt.file() - wc.file();
@@ -174,13 +180,13 @@ impl Bitboard {
                     if df == 0 || dr == 0 || df.abs() == dr.abs() {
                         let steps = [(df.signum(), dr.signum())];
                         let bb = Bitboard::fill(wc, &steps, wt.bitboard());
-                        SEGMENTS[wc as usize][wt as usize] = bb.without(wc).without(wt);
+                        segments[wc as usize][wt as usize] = bb.without(wc).without(wt);
                     }
                 }
             }
         }
 
-        unsafe { SEGMENTS[whence as usize][whither as usize] }
+        unsafe { SEGMENTS.get().as_ref_unchecked()[whence as usize][whither as usize] }
     }
 
     /// The number of [`Square`]s in the set.
