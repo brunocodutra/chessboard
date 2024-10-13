@@ -5,7 +5,7 @@ use std::fmt::{self, Write};
 use std::{ops::Index, str::FromStr};
 
 /// The chess board.
-#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
+#[derive(Debug, Clone, Eq, PartialEq, Hash)]
 #[cfg_attr(test, derive(test_strategy::Arbitrary))]
 #[debug("Board({self})")]
 pub struct Board {

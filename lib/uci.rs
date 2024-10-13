@@ -107,7 +107,7 @@ impl<I: Stream<Item = String> + Unpin, O: Sink<String> + Unpin> Uci<I, O> {
         self.moves.push(UciMove::from(m));
     }
 
-    async fn go(&mut self, limits: Limits) -> Result<(), O::Error> {
+    async fn go(&mut self, limits: &Limits) -> Result<(), O::Error> {
         let interrupter = Trigger::armed();
 
         let mut search =
@@ -141,7 +141,7 @@ impl<I: Stream<Item = String> + Unpin, O: Sink<String> + Unpin> Uci<I, O> {
         Ok(())
     }
 
-    async fn bench(&mut self, limits: Limits) -> Result<(), O::Error> {
+    async fn bench(&mut self, limits: &Limits) -> Result<(), O::Error> {
         let interrupter = Trigger::armed();
         let timer = Instant::now();
         self.engine.search(&self.position, limits, &interrupter);
@@ -151,7 +151,7 @@ impl<I: Stream<Item = String> + Unpin, O: Sink<String> + Unpin> Uci<I, O> {
             Limits::Depth(d) => format!("info time {millis} depth {}", d.get()),
             Limits::Nodes(nodes) => format!(
                 "info time {millis} nodes {nodes} nps {}",
-                nodes as u128 * 1000 / millis
+                *nodes as u128 * 1000 / millis
             ),
             _ => return Ok(()),
         };
@@ -218,7 +218,7 @@ impl<I: Stream<Item = String> + Unpin, O: Sink<String> + Unpin> Uci<I, O> {
                     (Ok(t), Ok(i)) => {
                         let t = Duration::from_millis(t);
                         let i = Duration::from_millis(i);
-                        self.go(Limits::Clock(t, i)).await?;
+                        self.go(&Limits::Clock(t, i)).await?;
                     }
                 }
 
@@ -227,7 +227,7 @@ impl<I: Stream<Item = String> + Unpin, O: Sink<String> + Unpin> Uci<I, O> {
 
             ["go", "depth", depth] => {
                 match depth.parse::<u8>() {
-                    Ok(d) => self.go(Limits::Depth(d.saturate())).await?,
+                    Ok(d) => self.go(&Limits::Depth(d.saturate())).await?,
                     Err(e) => eprintln!("{e}"),
                 }
 
@@ -236,7 +236,7 @@ impl<I: Stream<Item = String> + Unpin, O: Sink<String> + Unpin> Uci<I, O> {
 
             ["go", "nodes", nodes] => {
                 match nodes.parse::<u64>() {
-                    Ok(n) => self.go(n.into()).await?,
+                    Ok(n) => self.go(&n.into()).await?,
                     Err(e) => eprintln!("{e}"),
                 }
 
@@ -245,7 +245,7 @@ impl<I: Stream<Item = String> + Unpin, O: Sink<String> + Unpin> Uci<I, O> {
 
             ["go", "movetime", time] => {
                 match time.parse() {
-                    Ok(ms) => self.go(Duration::from_millis(ms).into()).await?,
+                    Ok(ms) => self.go(&Duration::from_millis(ms).into()).await?,
                     Err(e) => eprintln!("{e}"),
                 }
 
@@ -253,13 +253,13 @@ impl<I: Stream<Item = String> + Unpin, O: Sink<String> + Unpin> Uci<I, O> {
             }
 
             ["go"] | ["go", "infinite"] => {
-                self.go(Limits::None).await?;
+                self.go(&Limits::None).await?;
                 Ok(true)
             }
 
             ["bench", "depth", depth] => {
                 match depth.parse::<u8>() {
-                    Ok(d) => self.bench(Limits::Depth(d.saturate())).await?,
+                    Ok(d) => self.bench(&Limits::Depth(d.saturate())).await?,
                     Err(e) => eprintln!("{e}"),
                 }
 
@@ -268,7 +268,7 @@ impl<I: Stream<Item = String> + Unpin, O: Sink<String> + Unpin> Uci<I, O> {
 
             ["bench", "nodes", nodes] => {
                 match nodes.parse::<u64>() {
-                    Ok(n) => self.bench(n.into()).await?,
+                    Ok(n) => self.bench(&n.into()).await?,
                     Err(e) => eprintln!("{e}"),
                 }
 
@@ -314,7 +314,7 @@ impl<I: Stream<Item = String> + Unpin, O: Sink<String> + Unpin> Uci<I, O> {
             }
 
             ["ucinewgame"] => {
-                self.engine = Engine::with_options(self.options);
+                self.engine = Engine::with_options(&self.options);
                 self.position = Evaluator::default();
                 self.moves.clear();
                 Ok(true)
@@ -332,7 +332,7 @@ impl<I: Stream<Item = String> + Unpin, O: Sink<String> + Unpin> Uci<I, O> {
                     Ok(h) => {
                         if h != self.options.hash {
                             self.options.hash = h;
-                            self.engine = Engine::with_options(self.options);
+                            self.engine = Engine::with_options(&self.options);
                         }
                     }
                 }
@@ -347,7 +347,7 @@ impl<I: Stream<Item = String> + Unpin, O: Sink<String> + Unpin> Uci<I, O> {
                     Ok(t) => {
                         if t != self.options.threads {
                             self.options.threads = t;
-                            self.engine = Engine::with_options(self.options);
+                            self.engine = Engine::with_options(&self.options);
                         }
                     }
                 };
@@ -639,7 +639,7 @@ mod tests {
         #[any(StaticStream::new([format!("setoption name Hash value {}", #_s)]))] mut uci: MockUci,
         #[filter(#_s.trim().parse::<HashSize>().is_err())] _s: String,
     ) {
-        let o = uci.options;
+        let o = uci.options.clone();
         assert_eq!(block_on(uci.run()), Ok(()));
         assert_eq!(uci.options, o);
         assert!(uci.output.is_empty());
@@ -662,7 +662,7 @@ mod tests {
         mut uci: MockUci,
         #[filter(#_s.trim().parse::<ThreadCount>().is_err())] _s: String,
     ) {
-        let o = uci.options;
+        let o = uci.options.clone();
         assert_eq!(block_on(uci.run()), Ok(()));
         assert_eq!(uci.options, o);
         assert!(uci.output.is_empty());
