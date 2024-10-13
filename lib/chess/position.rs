@@ -159,7 +159,7 @@ impl Moves {
 /// The current position on the board board.
 ///
 /// This type guarantees that it only holds valid positions.
-#[derive(Debug, Copy, Clone, Eq)]
+#[derive(Debug, Clone, Eq)]
 #[debug("Position({self})")]
 pub struct Position {
     board: Board,
@@ -175,11 +175,11 @@ impl Default for Position {
         let board = Board::default();
 
         Self {
-            board,
             zobrist: board.zobrist(),
             checkers: Default::default(),
             pinned: Default::default(),
             history: Default::default(),
+            board,
         }
     }
 }
@@ -320,7 +320,7 @@ impl Position {
         match NonZeroU32::new(self.zobrist().cast()) {
             None => 0,
             hash => {
-                let history = self.history[self.turn() as usize];
+                let history = &self.history[self.turn() as usize];
                 history.iter().filter(|h| **h == hash).count()
             }
         }
@@ -664,11 +664,11 @@ impl FromStr for Position {
         }
 
         Ok(Position {
-            board,
             checkers,
             pinned,
             zobrist: board.zobrist(),
             history: Default::default(),
+            board,
         })
     }
 }
@@ -779,7 +779,7 @@ mod tests {
         #[filter(#pos.moves().any(|ms| ms.is_capture()))] mut pos: Position,
         #[map(|s: Selector| s.select(#pos.moves().filter(MoveSet::is_capture).flatten()))] m: Move,
     ) {
-        let prev = pos;
+        let prev = pos.clone();
         pos.play(m);
         assert!(pos.material(pos.turn()).len() < prev.material(pos.turn()).len());
     }
@@ -790,7 +790,7 @@ mod tests {
         #[map(|s: Selector| s.select(#pos.moves().filter(MoveSet::is_promotion).flatten()))]
         m: Move,
     ) {
-        let prev = pos;
+        let prev = pos.clone();
         pos.play(m);
         let pawn = Piece::new(Role::Pawn, prev.turn());
         assert!(pos.board.by_piece(pawn).len() < prev.board.by_piece(pawn).len());
@@ -819,7 +819,7 @@ mod tests {
         #[filter(#pos.outcome().is_none())] mut pos: Position,
         #[map(|s: Selector| s.select(#pos.moves().flatten()))] m: Move,
     ) {
-        let prev = pos;
+        let prev = pos.clone();
         pos.play(m);
 
         assert_ne!(pos, prev);
@@ -880,14 +880,14 @@ mod tests {
 
     #[proptest]
     fn pass_updates_position(#[filter(!#pos.is_check())] mut pos: Position) {
-        let prev = pos;
+        let prev = pos.clone();
         pos.pass();
         assert_ne!(pos, prev);
     }
 
     #[proptest]
     fn pass_reverts_itself(#[filter(!#pos.is_check() )] mut pos: Position) {
-        let prev = pos;
+        let prev = pos.clone();
         pos.pass();
         pos.pass();
         assert_eq!(Vec::from_iter(pos.iter()), Vec::from_iter(prev.iter()));

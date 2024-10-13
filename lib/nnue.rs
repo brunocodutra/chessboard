@@ -26,7 +26,7 @@ pub use value::*;
 /// An [Efficiently Updatable Neural Network][NNUE].
 ///
 /// [NNUE]: https://www.chessprogramming.org/NNUE
-#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
+#[derive(Debug, Clone, Eq, PartialEq, Hash)]
 struct Nnue {
     ft: Transformer<i16, { Positional::LEN }>,
     psqt: Transformer<i32, { Material::LEN }>,

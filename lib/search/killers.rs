@@ -4,7 +4,7 @@ use crate::{search::Ply, util::Integer};
 /// A set of [killer moves] indexed by [`Ply`] and side to move.
 ///
 /// [killer moves]: https://www.chessprogramming.org/Killer_Move
-#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
+#[derive(Debug, Clone, Eq, PartialEq, Hash)]
 #[cfg_attr(test, derive(test_strategy::Arbitrary))]
 pub struct Killers<const P: usize>([[[Option<Move>; 2]; 2]; P]);
 
@@ -85,7 +85,7 @@ mod tests {
         c: Color,
         m: Move,
     ) {
-        let prev = ks;
+        let prev = ks.clone();
         ks.insert(p, c, m);
         assert_eq!(ks, prev);
     }
