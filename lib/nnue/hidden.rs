@@ -2,7 +2,7 @@ use crate::util::AlignTo64;
 use derive_more::{Constructor, Shl};
 
 /// The hidden layer.
-#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash, Constructor)]
+#[derive(Debug, Clone, Eq, PartialEq, Hash, Constructor)]
 #[cfg_attr(test, derive(test_strategy::Arbitrary))]
 pub struct Hidden<const N: usize> {
     #[cfg_attr(test, map(|b: i8| i32::from(b)))]
@@ -14,7 +14,7 @@ impl<const N: usize> Hidden<N> {
     #[doc(hidden)]
     #[inline(always)]
     #[cfg(target_feature = "avx2")]
-    pub unsafe fn avx2(&self, input: [&[i16; N]; 2]) -> i32 {
+    pub unsafe fn avx2(&self, us: &[i16; N], them: &[i16; N]) -> i32 {
         const { assert!(N % 128 == 0) };
 
         use std::{arch::x86_64::*, mem::transmute};
@@ -43,7 +43,7 @@ impl<const N: usize> Hidden<N> {
 
         let mut y = _mm256_setr_epi32(self.bias, 0, 0, 0, 0, 0, 0, 0);
 
-        for (w, i) in self.weight.iter().zip(input) {
+        for (w, i) in self.weight.iter().zip([us, them]) {
             debug_assert_eq!(w.as_ptr() as usize % 32, 0);
             debug_assert_eq!(i.as_ptr() as usize % 32, 0);
 
@@ -72,7 +72,7 @@ impl<const N: usize> Hidden<N> {
     #[doc(hidden)]
     #[inline(always)]
     #[cfg(target_feature = "ssse3")]
-    pub unsafe fn sse(&self, input: [&[i16; N]; 2]) -> i32 {
+    pub unsafe fn sse(&self, us: &[i16; N], them: &[i16; N]) -> i32 {
         const { assert!(N % 64 == 0) };
 
         use std::{arch::x86_64::*, mem::transmute};
@@ -100,7 +100,7 @@ impl<const N: usize> Hidden<N> {
 
         let mut y = _mm_setr_epi32(self.bias, 0, 0, 0);
 
-        for (w, i) in self.weight.iter().zip(input) {
+        for (w, i) in self.weight.iter().zip([us, them]) {
             debug_assert_eq!(w.as_ptr() as usize % 16, 0);
             debug_assert_eq!(i.as_ptr() as usize % 16, 0);
 
@@ -125,9 +125,9 @@ impl<const N: usize> Hidden<N> {
 
     #[doc(hidden)]
     #[inline(always)]
-    pub fn scalar(&self, input: [&[i16; N]; 2]) -> i32 {
+    pub fn scalar(&self, us: &[i16; N], them: &[i16; N]) -> i32 {
         let mut y = self.bias;
-        for (w, i) in self.weight.iter().zip(input) {
+        for (w, i) in self.weight.iter().zip([us, them]) {
             for (&a, &x) in Iterator::zip(w.iter(), i.iter()) {
                 y += a as i32 * (((x as i32).clamp(0, 255).shl(3i32).pow(2) + 16384) >> 15);
             }
@@ -140,21 +140,21 @@ impl<const N: usize> Hidden<N> {
 impl<const N: usize> Hidden<N> {
     /// Transforms the accumulator.
     #[inline(always)]
-    pub fn forward(&self, input: [&[i16; N]; 2]) -> i32 {
+    pub fn forward(&self, us: &[i16; N], them: &[i16; N]) -> i32 {
         #[cfg(target_feature = "avx2")]
         unsafe {
-            self.avx2(input)
+            self.avx2(us, them)
         }
 
         #[cfg(not(target_feature = "avx2"))]
         #[cfg(target_feature = "ssse3")]
         unsafe {
-            self.sse(input)
+            self.sse(us, them)
         }
 
         #[cfg(not(target_feature = "avx2"))]
         #[cfg(not(target_feature = "ssse3"))]
-        self.scalar(input)
+        self.scalar(us, them)
     }
 }
 
@@ -166,12 +166,12 @@ mod tests {
     #[cfg(target_feature = "avx2")]
     #[proptest]
     fn uses_avx(o: Hidden<128>, i: AlignTo64<[[i16; 128]; 2]>) {
-        assert_eq!(unsafe { o.avx2([&i[0], &i[1]]) }, o.scalar([&i[0], &i[1]]));
+        assert_eq!(unsafe { o.avx2(&i[0], &i[1]) }, o.scalar(&i[0], &i[1]));
     }
 
     #[cfg(target_feature = "ssse3")]
     #[proptest]
     fn uses_sse(o: Hidden<128>, i: AlignTo64<[[i16; 128]; 2]>) {
-        assert_eq!(unsafe { o.sse([&i[0], &i[1]]) }, o.scalar([&i[0], &i[1]]));
+        assert_eq!(unsafe { o.sse(&i[0], &i[1]) }, o.scalar(&i[0], &i[1]));
     }
 }

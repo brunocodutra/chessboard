@@ -5,7 +5,7 @@ use rayon::{prelude::*, ThreadPool, ThreadPoolBuilder};
 use std::sync::atomic::{AtomicU64, Ordering};
 
 /// Whether the search should be [`Interrupted`] or exited early.
-#[derive(Debug, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, From)]
+#[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, From)]
 pub enum ControlFlow {
     Interrupt(Interrupted),
     Break,
@@ -68,7 +68,7 @@ impl Driver {
     }
 }
 
-#[derive(Debug, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Deref)]
+#[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Deref)]
 #[cfg_attr(test, derive(test_strategy::Arbitrary))]
 struct IndexedPv(#[deref] Pv, u32);
 

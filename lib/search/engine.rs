@@ -32,11 +32,11 @@ impl Engine {
 
     /// Initializes the engine with the default [`Options`].
     pub fn new() -> Self {
-        Self::with_options(Options::default())
+        Self::with_options(&Options::default())
     }
 
     /// Initializes the engine with the given [`Options`].
-    pub fn with_options(options: Options) -> Self {
+    pub fn with_options(options: &Options) -> Self {
         Engine {
             driver: Driver::new(options.threads),
             tt: TranspositionTable::new(options.hash),
@@ -289,7 +289,7 @@ impl Engine {
         pos: &Evaluator,
         limit: Depth,
         nodes: u64,
-        time: Range<Duration>,
+        time: &Range<Duration>,
         interrupter: &Trigger,
     ) -> Pv {
         let ctrl = Control::Limited(Counter::new(nodes), Timer::new(time.end), interrupter);
@@ -349,23 +349,22 @@ impl Engine {
         pv
     }
 
-    fn time_to_search(&self, pos: &Evaluator, limits: Limits) -> Range<Duration> {
+    fn time_to_search(&self, pos: &Evaluator, limits: &Limits) -> Range<Duration> {
         let (clock, inc) = match limits {
             Limits::Clock(c, i) => (c, i),
             _ => return limits.time()..limits.time(),
         };
 
-        let time_left = clock.saturating_sub(inc);
+        let time_left = clock.saturating_sub(*inc);
         let moves_left = 280 / pos.fullmoves().get().min(40);
         let time_per_move = inc.saturating_add(time_left / moves_left);
         time_per_move / 2..time_per_move
     }
 
     /// Searches for the [principal variation][`Pv`].
-    pub fn search(&mut self, pos: &Evaluator, limits: Limits, interrupter: &Trigger) -> Pv {
+    pub fn search(&mut self, pos: &Evaluator, limits: &Limits, interrupter: &Trigger) -> Pv {
         let time = self.time_to_search(pos, limits);
-        let (depth, nodes) = (limits.depth(), limits.nodes());
-        self.aw(pos, depth, nodes, time, interrupter)
+        self.aw(pos, limits.depth(), limits.nodes(), &time, interrupter)
     }
 }
 
@@ -415,7 +414,7 @@ mod tests {
 
     #[proptest]
     fn hash_is_an_upper_limit_for_table_size(o: Options) {
-        let e = Engine::with_options(o);
+        let e = Engine::with_options(&o);
         prop_assume!(e.tt.capacity() > 1);
         assert!(e.tt.size() <= o.hash);
     }
@@ -604,8 +603,8 @@ mod tests {
         d: Depth,
         #[filter(#p >= 0)] p: Ply,
     ) {
-        let x = Engine::with_options(x);
-        let y = Engine::with_options(y);
+        let x = Engine::with_options(&x);
+        let y = Engine::with_options(&y);
 
         let ctrl = Control::Unlimited;
 
@@ -622,7 +621,7 @@ mod tests {
         #[filter(#d > 1)] d: Depth,
     ) {
         assert_eq!(
-            e.search(&pos, Limits::Depth(d), &Trigger::armed()).score(),
+            e.search(&pos, &Limits::Depth(d), &Trigger::armed()).score(),
             e.fw(&pos, d, Ply::new(0), &Control::Unlimited)?.score()
         );
     }
@@ -630,8 +629,8 @@ mod tests {
     #[proptest]
     fn search_is_stable(mut e: Engine, pos: Evaluator, d: Depth) {
         assert_eq!(
-            e.search(&pos, Limits::Depth(d), &Trigger::armed()).score(),
-            e.search(&pos, Limits::Depth(d), &Trigger::armed()).score()
+            e.search(&pos, &Limits::Depth(d), &Trigger::armed()).score(),
+            e.search(&pos, &Limits::Depth(d), &Trigger::armed()).score()
         );
     }
 
@@ -644,7 +643,7 @@ mod tests {
         let timer = Instant::now();
         let trigger = Trigger::armed();
         let limits = Limits::Time(Duration::from_millis(ms.into()));
-        e.search(&pos, limits, &trigger);
+        e.search(&pos, &limits, &trigger);
         assert!(timer.elapsed() < Duration::from_secs(1));
     }
 
@@ -654,7 +653,7 @@ mod tests {
         #[filter(#pos.outcome().is_none())] pos: Evaluator,
     ) {
         let limits = Duration::ZERO.into();
-        assert_ne!(e.search(&pos, limits, &Trigger::armed()).best(), None);
+        assert_ne!(e.search(&pos, &limits, &Trigger::armed()).best(), None);
     }
 
     #[proptest]
@@ -663,7 +662,7 @@ mod tests {
         #[filter(#pos.outcome().is_none())] pos: Evaluator,
     ) {
         let limits = Depth::lower().into();
-        assert_ne!(e.search(&pos, limits, &Trigger::armed()).best(), None);
+        assert_ne!(e.search(&pos, &limits, &Trigger::armed()).best(), None);
     }
 
     #[proptest]
@@ -672,6 +671,6 @@ mod tests {
         #[filter(#pos.outcome().is_none())] pos: Evaluator,
     ) {
         let limits = Limits::None;
-        assert_ne!(e.search(&pos, limits, &Trigger::disarmed()).best(), None);
+        assert_ne!(e.search(&pos, &limits, &Trigger::disarmed()).best(), None);
     }
 }
