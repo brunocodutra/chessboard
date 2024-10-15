@@ -46,7 +46,7 @@ impl Accumulator for Material {
     fn evaluate(&self, turn: Color, phase: usize) -> i32 {
         let us = self.0[turn as usize];
         let them = self.0[turn.flip() as usize];
-        (us.get(phase).assume() - them.get(phase).assume()) / 80
+        (us.get(phase).assume() - them.get(phase).assume()) >> 7
     }
 }
 
