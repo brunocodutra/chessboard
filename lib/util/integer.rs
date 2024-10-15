@@ -167,12 +167,7 @@ macro_rules! impl_primitive_for {
                         32 => (self as i32).cast(),
                         64 => (self as i64).cast(),
                         128 => (self as i128).cast(),
-
-                        #[cfg(not(debug_assertions))]
                         _ => unsafe { std::hint::unreachable_unchecked() },
-
-                        #[cfg(debug_assertions)]
-                        _ => unreachable!(),
                     }
                 }
             }

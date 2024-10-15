@@ -3,7 +3,7 @@ use derive_more::From;
 use std::time::Duration;
 
 /// Configuration for search limits.
-#[derive(Debug, Default, Copy, Clone, Eq, PartialEq, From)]
+#[derive(Debug, Default, Clone, Eq, PartialEq, From)]
 pub enum Limits {
     /// Unlimited search.
     #[default]

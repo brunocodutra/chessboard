@@ -1,7 +1,7 @@
 use crate::chess::{Color, Perspective, Piece, Role, Square};
 use crate::util::{Bits, Integer};
 use derive_more::{Debug, *};
-use std::{fmt, mem::MaybeUninit, str::FromStr};
+use std::{cell::SyncUnsafeCell, fmt, mem::MaybeUninit, str::FromStr};
 
 /// The castling rights in a chess [`Position`][`crate::chess::Position`].
 #[derive(
@@ -37,6 +37,7 @@ impl Castles {
     }
 
     /// A unique number the represents this castling rights configuration.
+    #[inline(always)]
     pub fn index(&self) -> u8 {
         self.0.get()
     }
@@ -84,22 +85,25 @@ impl Default for Castles {
 impl From<Square> for Castles {
     #[inline(always)]
     fn from(sq: Square) -> Self {
-        static mut CASTLES: [Castles; 64] = unsafe { MaybeUninit::zeroed().assume_init() };
+        static CASTLES: SyncUnsafeCell<[Castles; 64]> =
+            unsafe { MaybeUninit::zeroed().assume_init() };
 
         #[cold]
         #[ctor::ctor]
         #[optimize(size)]
         #[inline(never)]
         unsafe fn init() {
-            CASTLES[Square::A1 as usize] = Castles(Bits::new(0b0010));
-            CASTLES[Square::H1 as usize] = Castles(Bits::new(0b0001));
-            CASTLES[Square::E1 as usize] = Castles(Bits::new(0b0011));
-            CASTLES[Square::A8 as usize] = Castles(Bits::new(0b1000));
-            CASTLES[Square::H8 as usize] = Castles(Bits::new(0b0100));
-            CASTLES[Square::E8 as usize] = Castles(Bits::new(0b1100));
+            let castles = CASTLES.get().as_mut_unchecked();
+
+            castles[Square::A1 as usize] = Castles(Bits::new(0b0010));
+            castles[Square::H1 as usize] = Castles(Bits::new(0b0001));
+            castles[Square::E1 as usize] = Castles(Bits::new(0b0011));
+            castles[Square::A8 as usize] = Castles(Bits::new(0b1000));
+            castles[Square::H8 as usize] = Castles(Bits::new(0b0100));
+            castles[Square::E8 as usize] = Castles(Bits::new(0b1100));
         }
 
-        unsafe { CASTLES[sq as usize] }
+        unsafe { CASTLES.get().as_ref_unchecked()[sq as usize] }
     }
 }
 

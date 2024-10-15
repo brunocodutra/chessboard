@@ -12,14 +12,14 @@ use proptest::prelude::*;
 #[derive(Debug, Display, Clone, Eq, PartialEq, Hash, Deref)]
 #[debug("Evaluator({self})")]
 #[display("{pos}")]
-pub struct Evaluator<T: Copy + Accumulator = (Material, Positional)> {
+pub struct Evaluator<T: Accumulator = (Material, Positional)> {
     #[deref]
     pos: Position,
     acc: T,
 }
 
 #[cfg(test)]
-impl<T: 'static + Copy + Accumulator> Arbitrary for Evaluator<T> {
+impl<T: 'static + Accumulator> Arbitrary for Evaluator<T> {
     type Parameters = ();
     type Strategy = BoxedStrategy<Self>;
 
@@ -34,7 +34,7 @@ impl Default for Evaluator {
     }
 }
 
-impl<T: Copy + Accumulator> Evaluator<T> {
+impl<T: Accumulator> Evaluator<T> {
     /// Constructs the evaluator from a [`Position`].
     pub fn new(pos: Position) -> Self {
         let mut acc = T::default();
@@ -146,16 +146,16 @@ impl Evaluator {
     /// The [`Position`]'s material evaluator.
     pub fn material(&self) -> Evaluator<Material> {
         Evaluator {
-            pos: self.pos,
-            acc: self.acc.0,
+            pos: self.pos.clone(),
+            acc: self.acc.0.clone(),
         }
     }
 
     /// The [`Position`]'s positional evaluator.
     pub fn positional(&self) -> Evaluator<Positional> {
         Evaluator {
-            pos: self.pos,
-            acc: self.acc.1,
+            pos: self.pos.clone(),
+            acc: self.acc.1.clone(),
         }
     }
 }
@@ -194,7 +194,7 @@ mod tests {
         #[filter(#e.outcome().is_none())] mut e: Evaluator,
         #[map(|sq: Selector| sq.select(#e.moves().flatten()))] m: Move,
     ) {
-        let mut pos = e.pos;
+        let mut pos = e.pos.clone();
         e.play(m);
         pos.play(m);
         assert_eq!(e, Evaluator::new(pos));
@@ -202,7 +202,7 @@ mod tests {
 
     #[proptest]
     fn pass_updates_evaluator(#[filter(!#e.is_check())] mut e: Evaluator) {
-        let mut pos = e.pos;
+        let mut pos = e.pos.clone();
         e.pass();
         pos.pass();
         assert_eq!(e, Evaluator::new(pos));
