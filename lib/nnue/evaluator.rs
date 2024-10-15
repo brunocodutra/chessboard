@@ -51,7 +51,8 @@ impl<T: Accumulator> Evaluator<T> {
     /// The [`Position`]'s evaluation.
     pub fn evaluate(&self) -> Value {
         let phase = (self.occupied().len() - 1) / 4;
-        self.acc.evaluate(self.turn(), phase).saturate()
+        let value = self.acc.evaluate(self.turn(), phase) >> 7;
+        value.saturate()
     }
 
     /// The Static Exchange Evaluation ([SEE]) algorithm.
