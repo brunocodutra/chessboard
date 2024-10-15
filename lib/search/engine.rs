@@ -103,11 +103,11 @@ impl Engine {
         depth: Depth,
         ply: Ply,
     ) -> Option<Depth> {
-        let bounds = -(alpha - 24)..-(alpha - 161);
+        let bounds = -(alpha - 8)..-(alpha - 51);
         let r = match (alpha + next.clone().see(m.whither(), bounds)).get() {
-            ..=24 => return None,
-            25..=80 => 1,
-            81..=160 => 2,
+            ..=8 => return None,
+            9..=25 => 1,
+            26..=50 => 2,
             _ => 3,
         };
 
@@ -222,7 +222,7 @@ impl Engine {
                 if Some(m) == transposition.map(|t| t.best()) {
                     (m, Value::upper())
                 } else if Self::KILLERS.with_borrow(|ks| ks.contains(ply, pos.turn(), m)) {
-                    (m, Value::new(40))
+                    (m, Value::new(15))
                 } else if m.is_quiet() {
                     (m, Value::new(0))
                 } else {
@@ -308,7 +308,7 @@ impl Engine {
         'id: for d in depth.get()..=limit.get() {
             let mut overtime = time.end - time.start;
             let mut depth = Depth::new(d);
-            let mut delta: i16 = 10;
+            let mut delta: i16 = 2;
 
             let (mut lower, mut upper) = match d {
                 ..=4 => (Score::lower(), Score::upper()),
