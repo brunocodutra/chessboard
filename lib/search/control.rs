@@ -14,7 +14,7 @@ pub enum Control<'a> {
     Limited(Counter, Timer, &'a Trigger),
 }
 
-impl<'a> Control<'a> {
+impl Control<'_> {
     /// A reference to the timer.
     #[inline(always)]
     pub fn timer(&self) -> &Timer {
