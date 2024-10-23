@@ -1,7 +1,7 @@
 use crate::chess::{Bitboard, Color, Magic, Perspective, Role, Square};
 use crate::util::{Assume, Integer};
 use derive_more::{Display, Error};
-use std::{mem::MaybeUninit, str::FromStr};
+use std::{cell::SyncUnsafeCell, mem::MaybeUninit, str::FromStr};
 
 /// A chess [piece][`Role`] of a certain [`Color`].
 #[derive(Debug, Display, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
@@ -37,27 +37,30 @@ pub enum Piece {
 impl Piece {
     #[inline(always)]
     fn bitboard(idx: usize) -> Bitboard {
-        static mut BITBOARDS: [Bitboard; 88772] = unsafe { MaybeUninit::zeroed().assume_init() };
+        static BITBOARDS: SyncUnsafeCell<[Bitboard; 88772]> =
+            unsafe { MaybeUninit::zeroed().assume_init() };
 
         #[cold]
         #[ctor::ctor]
         #[optimize(size)]
         #[inline(never)]
         unsafe fn init() {
+            let bitboard = BITBOARDS.get().as_mut_unchecked();
+
             for whence in Square::iter() {
                 let (attacks, quiets) = Magic::pawn(whence);
                 let steps = [(-1, 1), (1, 1)];
                 let idx = attacks.offset();
                 let moves = Bitboard::fill(whence, &steps, Bitboard::full()).without(whence);
-                debug_assert!(BITBOARDS[idx] == moves || BITBOARDS[idx] == Bitboard::empty());
-                BITBOARDS[idx] = moves;
+                debug_assert!(bitboard[idx] == moves || bitboard[idx] == Bitboard::empty());
+                bitboard[idx] = moves;
 
                 for bb in quiets.mask().subsets() {
                     let blks = bb | !quiets.mask();
                     let moves = Bitboard::fill(whence, &[(0, 1)], blks).without(whence) & !blks;
                     let idx = (bb.wrapping_mul(quiets.factor()) >> 62) as usize + quiets.offset();
-                    debug_assert!(BITBOARDS[idx] == moves || BITBOARDS[idx] == Bitboard::empty());
-                    BITBOARDS[idx] = moves;
+                    debug_assert!(bitboard[idx] == moves || bitboard[idx] == Bitboard::empty());
+                    bitboard[idx] = moves;
                 }
 
                 let magic = Magic::knight(whence);
@@ -65,8 +68,8 @@ impl Piece {
                 let steps = [(-2, 1), (-1, 2), (1, 2), (2, 1), (2, -1), (1, -2), (-1, -2), (-2, -1)];
                 let moves = Bitboard::fill(whence, &steps, Bitboard::full()).without(whence);
                 let idx = magic.offset();
-                debug_assert!(BITBOARDS[idx] == moves || BITBOARDS[idx] == Bitboard::empty());
-                BITBOARDS[idx] = moves;
+                debug_assert!(bitboard[idx] == moves || bitboard[idx] == Bitboard::empty());
+                bitboard[idx] = moves;
 
                 let magic = Magic::bishop(whence);
                 for bb in magic.mask().subsets() {
@@ -74,8 +77,8 @@ impl Piece {
                     let steps = [(-1, 1), (1, 1), (1, -1), (-1, -1)];
                     let moves = Bitboard::fill(whence, &steps, blks).without(whence);
                     let idx = (bb.wrapping_mul(magic.factor()) >> 55) as usize + magic.offset();
-                    debug_assert!(BITBOARDS[idx] == moves || BITBOARDS[idx] == Bitboard::empty());
-                    BITBOARDS[idx] = moves;
+                    debug_assert!(bitboard[idx] == moves || bitboard[idx] == Bitboard::empty());
+                    bitboard[idx] = moves;
                 }
 
                 let magic = Magic::rook(whence);
@@ -84,8 +87,8 @@ impl Piece {
                     let steps = [(-1, 0), (0, 1), (1, 0), (0, -1)];
                     let moves = Bitboard::fill(whence, &steps, blks).without(whence);
                     let idx = (bb.wrapping_mul(magic.factor()) >> 52) as usize + magic.offset();
-                    debug_assert!(BITBOARDS[idx] == moves || BITBOARDS[idx] == Bitboard::empty());
-                    BITBOARDS[idx] = moves;
+                    debug_assert!(bitboard[idx] == moves || bitboard[idx] == Bitboard::empty());
+                    bitboard[idx] = moves;
                 }
 
                 let magic = Magic::king(whence);
@@ -93,12 +96,12 @@ impl Piece {
                 let steps = [(-1, 0), (-1, 1), (0, 1), (1, 1), (1, 0), (1, -1), (0, -1), (-1, -1)];
                 let moves = Bitboard::fill(whence, &steps, Bitboard::full()).without(whence);
                 let idx = magic.offset();
-                debug_assert!(BITBOARDS[idx] == moves || BITBOARDS[idx] == Bitboard::empty());
-                BITBOARDS[idx] = moves;
+                debug_assert!(bitboard[idx] == moves || bitboard[idx] == Bitboard::empty());
+                bitboard[idx] = moves;
             }
         }
 
-        unsafe { *BITBOARDS.get(idx).assume() }
+        *unsafe { BITBOARDS.get().as_ref_unchecked().get(idx).assume() }
     }
 
     /// Constructs [`Piece`] from a pair of [`Color`] and [`Role`].

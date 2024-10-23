@@ -120,7 +120,7 @@ impl FromStr for ThreadCount {
 }
 
 /// Configuration for adversarial search algorithms.
-#[derive(Debug, Default, Copy, Clone, Eq, PartialEq)]
+#[derive(Debug, Default, Clone, Eq, PartialEq)]
 #[cfg_attr(test, derive(test_strategy::Arbitrary))]
 pub struct Options {
     /// The size of the transposition table in bytes.

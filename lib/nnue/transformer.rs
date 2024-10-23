@@ -10,7 +10,7 @@ use proptest::{prelude::*, sample::Index};
 use std::ops::Range;
 
 /// A feature transformer.
-#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash, Constructor)]
+#[derive(Debug, Clone, Eq, PartialEq, Hash, Constructor)]
 pub struct Transformer<T, const N: usize> {
     pub(super) bias: AlignTo64<[T; N]>,
     pub(super) weight: AlignTo64<[[T; N]; Feature::LEN]>,
