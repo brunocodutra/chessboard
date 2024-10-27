@@ -1,23 +1,18 @@
 use crate::util::Integer;
 use derive_more::{Display, Error};
+use std::fmt::{self, Formatter, Write};
 use std::str::FromStr;
 
 /// The type of a chess [`Piece`][`crate::Piece`].
-#[derive(Debug, Display, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
 #[cfg_attr(test, derive(test_strategy::Arbitrary))]
 #[repr(u8)]
 pub enum Role {
-    #[display("p")]
     Pawn,
-    #[display("n")]
     Knight,
-    #[display("b")]
     Bishop,
-    #[display("r")]
     Rook,
-    #[display("q")]
     Queen,
-    #[display("k")]
     King,
 }
 
@@ -27,22 +22,28 @@ unsafe impl Integer for Role {
     const MAX: Self::Repr = Role::King as _;
 }
 
+impl Display for Role {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            Role::Pawn => f.write_char('p'),
+            Role::Knight => f.write_char('n'),
+            Role::Bishop => f.write_char('b'),
+            Role::Rook => f.write_char('r'),
+            Role::Queen => f.write_char('q'),
+            Role::King => f.write_char('k'),
+        }
+    }
+}
+
 /// The reason why parsing the piece.
 #[derive(Debug, Display, Clone, Eq, PartialEq, Error)]
-#[display(
-    "failed to parse piece, expected one of `[{}{}{}{}{}{}]`",
-    Role::Pawn,
-    Role::Knight,
-    Role::Bishop,
-    Role::Rook,
-    Role::Queen,
-    Role::King
-)]
+#[display("failed to parse piece")]
 pub struct ParseRoleError;
 
 impl FromStr for Role {
     type Err = ParseRoleError;
 
+    #[inline(always)]
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
             "p" => Ok(Role::Pawn),

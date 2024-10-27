@@ -1,28 +1,21 @@
 use crate::chess::{Bitboard, Mirror};
 use crate::util::Integer;
 use derive_more::{Display, Error};
+use std::fmt::{self, Formatter, Write};
 use std::{ops::Sub, str::FromStr};
 
 /// A column on the chess board.
-#[derive(Debug, Display, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
 #[cfg_attr(test, derive(test_strategy::Arbitrary))]
 #[repr(i8)]
 pub enum File {
-    #[display("a")]
     A,
-    #[display("b")]
     B,
-    #[display("c")]
     C,
-    #[display("d")]
     D,
-    #[display("e")]
     E,
-    #[display("f")]
     F,
-    #[display("g")]
     G,
-    #[display("h")]
     H,
 }
 
@@ -57,30 +50,29 @@ impl Sub for File {
     }
 }
 
+impl Display for File {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        f.write_char((b'a' + self.cast::<u8>()).into())
+    }
+}
+
 /// The reason why parsing [`File`] failed.
 #[derive(Debug, Display, Clone, Eq, PartialEq, Error)]
-#[display(
-    "failed to parse file, expected letter in the range `({}..={})`",
-    File::A,
-    File::H
-)]
+#[display("failed to parse file")]
 pub struct ParseFileError;
 
 impl FromStr for File {
     type Err = ParseFileError;
 
+    #[inline(always)]
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s {
-            "a" => Ok(File::A),
-            "b" => Ok(File::B),
-            "c" => Ok(File::C),
-            "d" => Ok(File::D),
-            "e" => Ok(File::E),
-            "f" => Ok(File::F),
-            "g" => Ok(File::G),
-            "h" => Ok(File::H),
-            _ => Err(ParseFileError),
-        }
+        let [c] = s.as_bytes() else {
+            return Err(ParseFileError);
+        };
+
+        c.checked_sub(b'a')
+            .and_then(Integer::convert)
+            .ok_or(ParseFileError)
     }
 }
 

@@ -1,6 +1,6 @@
 use crate::chess::{Bitboard, Perspective, Piece, Rank, Role, Square, Squares};
 use crate::util::{Assume, Binary, Bits, Integer};
-use std::fmt::{self, Write};
+use std::fmt::{self, Debug, Display, Formatter, Write};
 use std::{num::NonZeroU16, ops::RangeBounds};
 
 /// A chess move.
@@ -135,10 +135,10 @@ impl Move {
     }
 }
 
-impl fmt::Debug for Move {
+impl Debug for Move {
     #[coverage(off)]
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        fmt::Display::fmt(&self, f)?;
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        Display::fmt(&self, f)?;
 
         if self.is_en_passant() {
             f.write_char('^')?;
@@ -152,13 +152,13 @@ impl fmt::Debug for Move {
     }
 }
 
-impl fmt::Display for Move {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        fmt::Display::fmt(&self.whence(), f)?;
-        fmt::Display::fmt(&self.whither(), f)?;
+impl Display for Move {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        Display::fmt(&self.whence(), f)?;
+        Display::fmt(&self.whither(), f)?;
 
         if let Some(r) = self.promotion() {
-            fmt::Display::fmt(&r, f)?;
+            Display::fmt(&r, f)?;
         }
 
         Ok(())

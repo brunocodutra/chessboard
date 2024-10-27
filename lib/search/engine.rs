@@ -122,7 +122,7 @@ impl Engine {
         ply: Ply,
         ctrl: &Control,
     ) -> Result<Pv, Interrupted> {
-        self.pvs::<true>(pos, Score::lower()..Score::upper(), depth, ply, ctrl)
+        self.pvs(pos, Score::lower()..Score::upper(), depth, ply, ctrl)
     }
 
     /// A [zero-window] alpha-beta search.
@@ -136,14 +136,14 @@ impl Engine {
         ply: Ply,
         ctrl: &Control,
     ) -> Result<Pv, Interrupted> {
-        self.pvs::<false>(pos, beta - 1..beta, depth, ply, ctrl)
+        self.pvs(pos, beta - 1..beta, depth, ply, ctrl)
     }
 
     /// An implementation of the [PVS] variation of [alpha-beta pruning] algorithm.
     ///
     /// [PVS]: https://www.chessprogramming.org/Principal_Variation_Search
     /// [alpha-beta pruning]: https://www.chessprogramming.org/Alpha-Beta
-    fn pvs<const PV: bool>(
+    fn pvs(
         &self,
         pos: &Evaluator,
         bounds: Range<Score>,
@@ -178,8 +178,9 @@ impl Engine {
             _ => depth,
         };
 
+        let is_pv = alpha + 1 < beta;
         if let Some(t) = transposition {
-            if !PV && t.depth() >= depth - ply {
+            if !is_pv && t.depth() >= depth - ply {
                 let (lower, upper) = t.bounds().into_inner();
                 if lower >= upper || upper <= alpha || lower >= beta {
                     return Ok(Pv::new(t.score().normalize(ply), Some(t.best())));
@@ -202,7 +203,7 @@ impl Engine {
 
         if alpha >= beta || ply >= Ply::MAX {
             return Ok(Pv::new(score, None));
-        } else if !PV && !pos.is_check() {
+        } else if !is_pv && !pos.is_check() {
             if let Some(d) = self.nmp(pos, score, beta, depth, ply) {
                 let mut next = pos.clone();
                 next.pass();
@@ -241,7 +242,7 @@ impl Engine {
             Some((m, _)) => {
                 let mut next = pos.clone();
                 next.play(m);
-                m >> -self.pvs::<PV>(&next, -beta..-alpha, depth, ply + 1, ctrl)?
+                m >> -self.pvs(&next, -beta..-alpha, depth, ply + 1, ctrl)?
             }
         };
 
@@ -271,7 +272,7 @@ impl Engine {
 
             let pv = match -self.nw(&next, -alpha, depth, ply + 1, ctrl)? {
                 pv if pv <= alpha || pv >= beta => m >> pv,
-                _ => m >> -self.pvs::<PV>(&next, -beta..-alpha, depth, ply + 1, ctrl)?,
+                _ => m >> -self.pvs(&next, -beta..-alpha, depth, ply + 1, ctrl)?,
             };
 
             Ok(pv)
@@ -321,8 +322,7 @@ impl Engine {
                     break 'id;
                 }
 
-                let bounds = lower..upper;
-                let Ok(partial) = self.pvs::<true>(pos, bounds, depth, Ply::new(0), &ctrl) else {
+                let Ok(partial) = self.pvs(pos, lower..upper, depth, Ply::new(0), &ctrl) else {
                     break 'id;
                 };
 
@@ -502,7 +502,7 @@ mod tests {
         d: Depth,
         p: Ply,
     ) {
-        e.pvs::<true>(&pos, b.end..b.start, d, p, &Control::Unlimited)?;
+        e.pvs(&pos, b.end..b.start, d, p, &Control::Unlimited)?;
     }
 
     #[proptest]
@@ -515,7 +515,7 @@ mod tests {
     ) {
         let interrupter = Trigger::armed();
         let ctrl = Control::Limited(Counter::new(0), Timer::infinite(), &interrupter);
-        assert_eq!(e.pvs::<true>(&pos, b, d, p, &ctrl), Err(Interrupted));
+        assert_eq!(e.pvs(&pos, b, d, p, &ctrl), Err(Interrupted));
     }
 
     #[proptest]
@@ -533,7 +533,7 @@ mod tests {
             &interrupter,
         );
         std::thread::sleep(Duration::from_millis(1));
-        assert_eq!(e.pvs::<true>(&pos, b, d, p, &ctrl), Err(Interrupted));
+        assert_eq!(e.pvs(&pos, b, d, p, &ctrl), Err(Interrupted));
     }
 
     #[proptest]
@@ -546,7 +546,7 @@ mod tests {
     ) {
         let interrupter = Trigger::disarmed();
         let ctrl = Control::Limited(Counter::new(u64::MAX), Timer::infinite(), &interrupter);
-        assert_eq!(e.pvs::<true>(&pos, b, d, p, &ctrl), Err(Interrupted));
+        assert_eq!(e.pvs(&pos, b, d, p, &ctrl), Err(Interrupted));
     }
 
     #[proptest]
@@ -557,7 +557,7 @@ mod tests {
         d: Depth,
     ) {
         assert_eq!(
-            e.pvs::<true>(&pos, b, d, Ply::upper(), &Control::Unlimited),
+            e.pvs(&pos, b, d, Ply::upper(), &Control::Unlimited),
             Ok(Pv::new(pos.evaluate().saturate(), None))
         );
     }
@@ -571,7 +571,7 @@ mod tests {
         p: Ply,
     ) {
         assert_eq!(
-            e.pvs::<true>(&pos, b, d, p, &Control::Unlimited),
+            e.pvs(&pos, b, d, p, &Control::Unlimited),
             Ok(Pv::new(Score::new(0), None))
         );
     }
@@ -585,7 +585,7 @@ mod tests {
         p: Ply,
     ) {
         assert_eq!(
-            e.pvs::<true>(&pos, b, d, p, &Control::Unlimited),
+            e.pvs(&pos, b, d, p, &Control::Unlimited),
             Ok(Pv::new(Score::lower().normalize(p), None))
         );
     }

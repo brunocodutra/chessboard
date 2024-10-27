@@ -1,12 +1,12 @@
 use crate::chess::{Color, Move, Perspective};
 use crate::nnue::Evaluator;
-use crate::search::{Engine, HashSize, Limits, Options, Score, ThreadCount};
+use crate::search::{Engine, HashSize, Limits, Options, ThreadCount};
 use crate::util::{Assume, Integer, Trigger};
-use arrayvec::ArrayString;
-use derive_more::{Deref, Display};
-use futures::{channel::oneshot, future::FusedFuture, prelude::*, select_biased as select};
+use derive_more::Display;
+use futures::channel::oneshot::channel as oneshot;
+use futures::{future::FusedFuture, prelude::*, select_biased as select, stream::FusedStream};
 use std::time::{Duration, Instant};
-use std::{fmt::Debug, mem::transmute, thread};
+use std::{fmt::Debug, io::Write, mem::transmute, ops::Deref, str, thread};
 
 #[cfg(test)]
 use proptest::prelude::*;
@@ -18,36 +18,44 @@ use proptest::prelude::*;
 /// Must be awaited on through completion strictly before any
 /// of the variables `f` may capture is dropped.
 #[must_use]
-unsafe fn unblock<'a, F, R>(f: F) -> impl FusedFuture<Output = R> + 'a
+unsafe fn unblock<F, R>(f: F) -> impl FusedFuture<Output = R>
 where
-    F: FnOnce() -> R + Send + 'a,
-    R: Send + 'a,
+    F: FnOnce() -> R + Send,
+    R: Send,
 {
-    let (tx, rx) = oneshot::channel();
+    let (tx, rx) = oneshot();
     thread::spawn(transmute::<
-        Box<dyn FnOnce() + Send + 'a>,
+        Box<dyn FnOnce() + Send>,
         Box<dyn FnOnce() + Send + 'static>,
     >(Box::new(move || tx.send(f()).assume()) as _));
     rx.map(Assume::assume)
 }
 
-#[derive(Debug, Display, Default, Clone, Eq, PartialEq, Hash, Deref)]
+#[derive(Debug, Display, Default, Clone, Eq, PartialEq, Hash)]
 #[cfg_attr(test, derive(test_strategy::Arbitrary))]
-struct UciMove(
-    #[deref(forward)]
-    #[cfg_attr(test, map(|m: Move| ArrayString::from(&m.to_string()).unwrap()))]
-    ArrayString<5>,
-);
+#[display("{}", *self)]
+struct UciMove([u8; 5]);
 
-impl From<Move> for UciMove {
-    fn from(m: Move) -> Self {
-        Self(ArrayString::from(&m.to_string()).assume())
+impl Deref for UciMove {
+    type Target = str;
+
+    fn deref(&self) -> &Self::Target {
+        let len = if self.0[4] == b'\0' { 4 } else { 5 };
+        unsafe { str::from_utf8_unchecked(&self.0[..len]) }
     }
 }
 
 impl PartialEq<&str> for UciMove {
     fn eq(&self, other: &&str) -> bool {
-        self.0.eq(*other)
+        **self == **other
+    }
+}
+
+impl From<Move> for UciMove {
+    fn from(m: Move) -> Self {
+        let mut buffer = [b'\0'; 5];
+        write!(&mut buffer[..], "{m}").assume();
+        Self(buffer)
     }
 }
 
@@ -81,7 +89,7 @@ impl<I, O> Uci<I, O> {
     }
 }
 
-impl<I: Stream<Item = String> + Unpin, O: Sink<String> + Unpin> Uci<I, O> {
+impl<I: FusedStream<Item = String> + Unpin, O: Sink<String> + Unpin> Uci<I, O> {
     /// Runs the UCI server.
     pub async fn run(&mut self) -> Result<(), O::Error> {
         while let Some(line) = self.input.next().await {
@@ -93,18 +101,23 @@ impl<I: Stream<Item = String> + Unpin, O: Sink<String> + Unpin> Uci<I, O> {
         Ok(())
     }
 
-    fn play(&mut self, uci: &str) {
-        let mut moves = self.position.moves().flatten();
-        let Some(m) = moves.find(|&m| UciMove::from(m) == uci) else {
-            return if !(0..=5).contains(&uci.len()) || !uci.is_ascii() {
-                eprintln!("invalid move `{uci}`")
-            } else {
-                eprintln!("illegal move `{uci}` in position `{}`", self.position)
-            };
-        };
+    fn play(&mut self, s: &str) {
+        if let Ok(whence) = s[..s.ceil_char_boundary(2)].parse() {
+            for ms in self.position.moves() {
+                if ms.whence() == whence {
+                    for m in ms {
+                        let uci = UciMove::from(m);
+                        if uci == s {
+                            self.position.play(m);
+                            self.moves.push(uci);
+                            return;
+                        }
+                    }
+                }
+            }
+        }
 
-        self.position.play(m);
-        self.moves.push(UciMove::from(m));
+        eprintln!("illegal move `{s}` in position `{}`", self.position)
     }
 
     async fn go(&mut self, limits: &Limits) -> Result<(), O::Error> {
@@ -113,30 +126,29 @@ impl<I: Stream<Item = String> + Unpin, O: Sink<String> + Unpin> Uci<I, O> {
         let mut search =
             unsafe { unblock(|| self.engine.search(&self.position, limits, &interrupter)) };
 
-        let stop = async {
-            loop {
-                match self.input.next().await.as_deref().map(str::trim) {
-                    None => break false,
-                    Some("stop") => break interrupter.disarm(),
-                    Some(cmd) => eprintln!("ignored unsupported command `{cmd}` during search"),
-                };
+        let pv = loop {
+            select! {
+                pv = search => break pv,
+                line = self.input.next() => {
+                    match line.as_deref().map(str::trim) {
+                        None | Some("stop") => { interrupter.disarm(); },
+                        Some(cmd) => eprintln!("ignored unsupported command `{cmd}` during search"),
+                    }
+                }
             }
         };
 
-        let pv = select! {
-            pv = search => pv,
-            _ = stop.fuse() => search.await
-        };
-
-        let best = pv.best().expect("the engine failed to find a move");
         let info = match pv.score().mate() {
-            Some(p) if p > 0 => format!("info score mate {} pv {best}", (p + 1).get() / 2),
-            Some(p) => format!("info score mate {} pv {best}", (p - 1).get() / 2),
-            None => format!("info score cp {} pv {best}", pv.score().get()),
+            Some(p) if p > 0 => format!("info score mate {}", (p + 1) / 2),
+            Some(p) => format!("info score mate {}", (p - 1) / 2),
+            None => format!("info score cp {:+}", pv.score()),
         };
 
         self.output.send(info).await?;
-        self.output.send(format!("bestmove {best}")).await?;
+
+        if let Some(m) = pv.best() {
+            self.output.send(format!("bestmove {m}")).await?;
+        }
 
         Ok(())
     }
@@ -148,7 +160,7 @@ impl<I: Stream<Item = String> + Unpin, O: Sink<String> + Unpin> Uci<I, O> {
         let millis = timer.elapsed().as_millis();
 
         let info = match limits {
-            Limits::Depth(d) => format!("info time {millis} depth {}", d.get()),
+            Limits::Depth(d) => format!("info time {millis} depth {d}"),
             Limits::Nodes(nodes) => format!(
                 "info time {millis} nodes {nodes} nps {}",
                 *nodes as u128 * 1000 / millis
@@ -167,13 +179,6 @@ impl<I: Stream<Item = String> + Unpin, O: Sink<String> + Unpin> Uci<I, O> {
             [] => Ok(true),
             ["stop"] => Ok(true),
             ["quit"] => Ok(false),
-
-            ["position", "startpos", "moves", m, n] => {
-                self.position = Evaluator::default();
-                self.play(m);
-                self.play(n);
-                Ok(true)
-            }
 
             ["position", "startpos", "moves", moves @ .., m, n] if self.moves == moves => {
                 self.play(m);
@@ -226,8 +231,8 @@ impl<I: Stream<Item = String> + Unpin, O: Sink<String> + Unpin> Uci<I, O> {
             }
 
             ["go", "depth", depth] => {
-                match depth.parse::<u8>() {
-                    Ok(d) => self.go(&Limits::Depth(d.saturate())).await?,
+                match depth.parse() {
+                    Ok(d) => self.go(&Limits::Depth(d)).await?,
                     Err(e) => eprintln!("{e}"),
                 }
 
@@ -235,8 +240,8 @@ impl<I: Stream<Item = String> + Unpin, O: Sink<String> + Unpin> Uci<I, O> {
             }
 
             ["go", "nodes", nodes] => {
-                match nodes.parse::<u64>() {
-                    Ok(n) => self.go(&n.into()).await?,
+                match nodes.parse() {
+                    Ok(n) => self.go(&Limits::Nodes(n)).await?,
                     Err(e) => eprintln!("{e}"),
                 }
 
@@ -258,8 +263,8 @@ impl<I: Stream<Item = String> + Unpin, O: Sink<String> + Unpin> Uci<I, O> {
             }
 
             ["bench", "depth", depth] => {
-                match depth.parse::<u8>() {
-                    Ok(d) => self.bench(&Limits::Depth(d.saturate())).await?,
+                match depth.parse() {
+                    Ok(d) => self.bench(&Limits::Depth(d)).await?,
                     Err(e) => eprintln!("{e}"),
                 }
 
@@ -267,8 +272,8 @@ impl<I: Stream<Item = String> + Unpin, O: Sink<String> + Unpin> Uci<I, O> {
             }
 
             ["bench", "nodes", nodes] => {
-                match nodes.parse::<u64>() {
-                    Ok(n) => self.bench(&n.into()).await?,
+                match nodes.parse() {
+                    Ok(n) => self.bench(&Limits::Nodes(n)).await?,
                     Err(e) => eprintln!("{e}"),
                 }
 
@@ -278,10 +283,10 @@ impl<I: Stream<Item = String> + Unpin, O: Sink<String> + Unpin> Uci<I, O> {
             ["eval"] => {
                 let pos = &self.position;
                 let turn = self.position.turn();
-                let mat: Score = pos.material().evaluate().perspective(turn).saturate();
-                let positional: Score = pos.positional().evaluate().perspective(turn).saturate();
-                let value: Score = pos.evaluate().perspective(turn).saturate();
-                let info = format!("info material {mat} positional {positional} value {value}");
+                let mat = pos.material().evaluate().perspective(turn);
+                let psn = pos.positional().evaluate().perspective(turn);
+                let val = pos.evaluate().perspective(turn);
+                let info = format!("info material {mat:+} positional {psn:+} value {val:+}");
                 self.output.send(info).await?;
                 Ok(true)
             }
@@ -327,7 +332,7 @@ impl<I: Stream<Item = String> + Unpin, O: Sink<String> + Unpin> Uci<I, O> {
 
             ["setoption", "name", "hash", "value", hash]
             | ["setoption", "name", "Hash", "value", hash] => {
-                match hash.parse::<HashSize>() {
+                match hash.parse() {
                     Err(e) => eprintln!("{e}"),
                     Ok(h) => {
                         if h != self.options.hash {
@@ -342,7 +347,7 @@ impl<I: Stream<Item = String> + Unpin, O: Sink<String> + Unpin> Uci<I, O> {
 
             ["setoption", "name", "threads", "value", threads]
             | ["setoption", "name", "Threads", "value", threads] => {
-                match threads.parse::<ThreadCount>() {
+                match threads.parse() {
                     Err(e) => eprintln!("{e}"),
                     Ok(t) => {
                         if t != self.options.threads {
@@ -387,6 +392,12 @@ mod tests {
 
         fn poll_next(mut self: Pin<&mut Self>, _: &mut Context<'_>) -> Poll<Option<Self::Item>> {
             Poll::Ready(self.0.pop_front())
+        }
+    }
+
+    impl FusedStream for StaticStream {
+        fn is_terminated(&self) -> bool {
+            self.0.is_empty()
         }
     }
 
@@ -533,7 +544,7 @@ mod tests {
     #[proptest]
     fn handles_go_depth(
         #[filter(#uci.position.outcome().is_none())]
-        #[any(StaticStream::new([format!("go depth {}", #_d.get())]))]
+        #[any(StaticStream::new([format!("go depth {}", #_d)]))]
         mut uci: MockUci,
         _d: Depth,
     ) {
@@ -605,7 +616,7 @@ mod tests {
             Color::Black => -pos.evaluate(),
         };
 
-        let value = format!("value {:+}", value.get());
+        let value = format!("value {:+}", value);
         assert_eq!(block_on(uci.run()), Ok(()));
         assert!(uci.output.concat().ends_with(&value));
     }

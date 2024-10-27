@@ -1,4 +1,4 @@
-use std::num::{NonZeroU16, NonZeroU32, NonZeroU64, NonZeroU8, NonZeroUsize};
+use std::num::{NonZeroU128, NonZeroU16, NonZeroU32, NonZeroU64, NonZeroU8, NonZeroUsize};
 use std::{mem::transmute_copy, ops::*};
 
 /// Trait for types that can be represented by a contiguous range of primitive integers.
@@ -133,6 +133,7 @@ impl_integer_for_non_zero!(NonZeroU8, u8);
 impl_integer_for_non_zero!(NonZeroU16, u16);
 impl_integer_for_non_zero!(NonZeroU32, u32);
 impl_integer_for_non_zero!(NonZeroU64, u64);
+impl_integer_for_non_zero!(NonZeroU128, u128);
 impl_integer_for_non_zero!(NonZeroUsize, usize);
 
 macro_rules! impl_primitive_for {

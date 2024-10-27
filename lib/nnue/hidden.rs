@@ -1,8 +1,8 @@
 use crate::util::AlignTo64;
-use derive_more::{Constructor, Shl};
+use std::ops::Shl;
 
 /// The hidden layer.
-#[derive(Debug, Clone, Eq, PartialEq, Hash, Constructor)]
+#[derive(Debug, Clone, Eq, PartialEq, Hash)]
 #[cfg_attr(test, derive(test_strategy::Arbitrary))]
 pub struct Hidden<const N: usize> {
     #[cfg_attr(test, map(|b: i8| i32::from(b)))]

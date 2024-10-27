@@ -1,6 +1,5 @@
 use crate::nnue::Feature;
 use crate::util::{AlignTo64, Assume, Integer};
-use derive_more::Constructor;
 use std::ops::{Add, AddAssign, Sub, SubAssign};
 
 #[cfg(test)]
@@ -10,7 +9,7 @@ use proptest::{prelude::*, sample::Index};
 use std::ops::Range;
 
 /// A feature transformer.
-#[derive(Debug, Clone, Eq, PartialEq, Hash, Constructor)]
+#[derive(Debug, Clone, Eq, PartialEq, Hash)]
 pub struct Transformer<T, const N: usize> {
     pub(super) bias: AlignTo64<[T; N]>,
     pub(super) weight: AlignTo64<[[T; N]; Feature::LEN]>,

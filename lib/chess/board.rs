@@ -1,8 +1,9 @@
-use crate::{chess::*, util::Integer};
-use arrayvec::ArrayString;
+use crate::chess::*;
+use crate::util::{Assume, Integer};
 use derive_more::{Debug, Display, Error};
-use std::fmt::{self, Write};
-use std::{ops::Index, str::FromStr};
+use std::fmt::{self, Formatter, Write};
+use std::str::{self, FromStr};
+use std::{io::Write as _, ops::Index};
 
 /// The chess board.
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
@@ -163,26 +164,31 @@ impl Index<Square> for Board {
 }
 
 impl Display for Board {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         let mut skip = 0;
         for sq in Square::iter().map(|sq| sq.flip()) {
-            let mut buffer = ArrayString::<2>::new();
+            let mut buffer = [b'\0'; 2];
+
+            if sq.file() == File::H {
+                buffer[0] = if sq.rank() == Rank::First { b' ' } else { b'/' };
+            }
 
             match self[sq] {
                 None => skip += 1,
-                Some(p) => write!(buffer, "{}", p)?,
+                Some(p) => {
+                    buffer[1] = buffer[0];
+                    write!(&mut buffer[..1], "{p}").assume()
+                }
             }
 
-            if sq.file() == File::H {
-                buffer.push(if sq.rank() == Rank::First { ' ' } else { '/' });
-            }
-
-            if !buffer.is_empty() && skip > 0 {
-                write!(f, "{}", skip)?;
+            if skip > 0 && buffer != [b'\0'; 2] {
+                write!(f, "{skip}")?;
                 skip = 0;
             }
 
-            f.write_str(&buffer)?;
+            for b in buffer.into_iter().take_while(|&b| b != b'\0') {
+                f.write_char(b.into())?;
+            }
         }
 
         match self.turn {
@@ -197,7 +203,7 @@ impl Display for Board {
         }
 
         if let Some(ep) = self.en_passant {
-            write!(f, "{} ", ep)?;
+            write!(f, "{ep} ")?;
         } else {
             f.write_str("- ")?;
         }
@@ -230,6 +236,7 @@ pub enum ParseFenError {
 impl FromStr for Board {
     type Err = ParseFenError;
 
+    #[inline(always)]
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let fields: Vec<_> = s.split(' ').collect();
         let [board, turn, castles, en_passant, halfmoves, fullmoves] = &fields[..] else {

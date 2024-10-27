@@ -52,6 +52,7 @@ pub struct Transposition {
 }
 
 impl Transposition {
+    #[inline(always)]
     fn new(kind: TranspositionKind, depth: Depth, score: Score, best: Move) -> Self {
         Transposition {
             kind,
@@ -62,21 +63,25 @@ impl Transposition {
     }
 
     /// Constructs a [`Transposition`] given a lower bound for the score, the depth searched, and best [`Move`].
+    #[inline(always)]
     pub fn lower(depth: Depth, score: Score, best: Move) -> Self {
         Transposition::new(TranspositionKind::Lower, depth, score, best)
     }
 
     /// Constructs a [`Transposition`] given an upper bound for the score, the depth searched, and best [`Move`].
+    #[inline(always)]
     pub fn upper(depth: Depth, score: Score, best: Move) -> Self {
         Transposition::new(TranspositionKind::Upper, depth, score, best)
     }
 
     /// Constructs a [`Transposition`] given the exact score, the depth searched, and best [`Move`].
+    #[inline(always)]
     pub fn exact(depth: Depth, score: Score, best: Move) -> Self {
         Transposition::new(TranspositionKind::Exact, depth, score, best)
     }
 
     /// Bounds for the exact score.
+    #[inline(always)]
     pub fn bounds(&self) -> RangeInclusive<Score> {
         match self.kind {
             TranspositionKind::Lower => self.score..=Score::upper(),
@@ -86,16 +91,19 @@ impl Transposition {
     }
 
     /// Depth searched.
+    #[inline(always)]
     pub fn depth(&self) -> Depth {
         self.depth
     }
 
     /// Partial score.
+    #[inline(always)]
     pub fn score(&self) -> Score {
         self.score
     }
 
     /// Best [`Move`] at this depth.
+    #[inline(always)]
     pub fn best(&self) -> Move {
         self.best
     }
@@ -174,6 +182,7 @@ impl TranspositionTable {
     const WIDTH: usize = size_of::<<Option<SignedTransposition> as Binary>::Bits>();
 
     /// Constructs a transposition table of at most `size` many bytes.
+    #[inline(always)]
     pub fn new(size: HashSize) -> Self {
         let capacity = (1 + size.get() / 2).next_power_of_two() / Self::WIDTH;
 
@@ -183,11 +192,13 @@ impl TranspositionTable {
     }
 
     /// The actual size of this table in bytes.
+    #[inline(always)]
     pub fn size(&self) -> HashSize {
         HashSize::new(self.capacity() * Self::WIDTH)
     }
 
     /// The actual size of this table in number of entries.
+    #[inline(always)]
     pub fn capacity(&self) -> usize {
         self.cache.len()
     }

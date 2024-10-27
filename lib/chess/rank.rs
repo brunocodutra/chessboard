@@ -1,28 +1,21 @@
 use crate::chess::{Bitboard, Perspective};
 use crate::util::Integer;
 use derive_more::{Display, Error};
+use std::fmt::{self, Formatter, Write};
 use std::{ops::Sub, str::FromStr};
 
 /// A row on the chess board.
-#[derive(Debug, Display, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
 #[cfg_attr(test, derive(test_strategy::Arbitrary))]
 #[repr(i8)]
 pub enum Rank {
-    #[display("1")]
     First,
-    #[display("2")]
     Second,
-    #[display("3")]
     Third,
-    #[display("4")]
     Fourth,
-    #[display("5")]
     Fifth,
-    #[display("6")]
     Sixth,
-    #[display("7")]
     Seventh,
-    #[display("8")]
     Eighth,
 }
 
@@ -57,30 +50,29 @@ impl Sub for Rank {
     }
 }
 
+impl Display for Rank {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        f.write_char((b'1' + self.cast::<u8>()).into())
+    }
+}
+
 /// The reason why parsing [`Rank`] failed.
 #[derive(Debug, Display, Clone, Eq, PartialEq, Error)]
-#[display(
-    "failed to parse rank, expected digit in the range `({}..={})`",
-    Rank::First,
-    Rank::Eighth
-)]
+#[display("failed to parse rank")]
 pub struct ParseRankError;
 
 impl FromStr for Rank {
     type Err = ParseRankError;
 
+    #[inline(always)]
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s {
-            "1" => Ok(Rank::First),
-            "2" => Ok(Rank::Second),
-            "3" => Ok(Rank::Third),
-            "4" => Ok(Rank::Fourth),
-            "5" => Ok(Rank::Fifth),
-            "6" => Ok(Rank::Sixth),
-            "7" => Ok(Rank::Seventh),
-            "8" => Ok(Rank::Eighth),
-            _ => Err(ParseRankError),
-        }
+        let [c] = s.as_bytes() else {
+            return Err(ParseRankError);
+        };
+
+        c.checked_sub(b'1')
+            .and_then(Integer::convert)
+            .ok_or(ParseRankError)
     }
 }
 

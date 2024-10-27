@@ -2,8 +2,9 @@ use crate::chess::*;
 use crate::util::{Assume, Integer};
 use arrayvec::{ArrayVec, CapacityError};
 use derive_more::{Debug, Display, Error, From};
+use std::fmt::{self, Formatter};
 use std::hash::{Hash, Hasher};
-use std::{fmt, num::NonZeroU32, str::FromStr};
+use std::{num::NonZeroU32, str::FromStr};
 
 #[cfg(test)]
 use proptest::{prelude::*, sample::*};
@@ -617,9 +618,8 @@ impl Position {
 }
 
 impl Display for Position {
-    #[inline(always)]
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        fmt::Display::fmt(&self.board, f)
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        Display::fmt(&self.board, f)
     }
 }
 
@@ -635,6 +635,7 @@ pub enum ParsePositionError {
 impl FromStr for Position {
     type Err = ParsePositionError;
 
+    #[inline(always)]
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         use {ParsePositionError::*, Role::*};
 

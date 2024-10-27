@@ -2,6 +2,7 @@
 #![feature(
     array_chunks,
     coverage_attribute,
+    round_char_boundary,
     new_zeroed_alloc,
     optimize_attribute,
     ptr_as_ref_unchecked,

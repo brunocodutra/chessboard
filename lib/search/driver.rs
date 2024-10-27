@@ -20,6 +20,7 @@ pub enum Driver {
 
 impl Driver {
     /// Constructs a parallel search driver with the given [`ThreadCount`].
+    #[inline(always)]
     pub fn new(threads: ThreadCount) -> Self {
         match threads.get() {
             1 => Self::Sequential,
