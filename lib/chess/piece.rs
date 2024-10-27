@@ -1,36 +1,25 @@
 use crate::chess::{Bitboard, Color, Magic, Perspective, Role, Square};
 use crate::util::{Assume, Integer};
 use derive_more::{Display, Error};
+use std::fmt::{self, Formatter, Write};
 use std::{cell::SyncUnsafeCell, mem::MaybeUninit, str::FromStr};
 
 /// A chess [piece][`Role`] of a certain [`Color`].
-#[derive(Debug, Display, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
 #[cfg_attr(test, derive(test_strategy::Arbitrary))]
 #[repr(u8)]
 pub enum Piece {
-    #[display("P")]
     WhitePawn,
-    #[display("p")]
     BlackPawn,
-    #[display("N")]
     WhiteKnight,
-    #[display("n")]
     BlackKnight,
-    #[display("B")]
     WhiteBishop,
-    #[display("b")]
     BlackBishop,
-    #[display("R")]
     WhiteRook,
-    #[display("r")]
     BlackRook,
-    #[display("Q")]
     WhiteQueen,
-    #[display("q")]
     BlackQueen,
-    #[display("K")]
     WhiteKing,
-    #[display("k")]
     BlackKing,
 }
 
@@ -201,28 +190,34 @@ impl Perspective for Piece {
     }
 }
 
+impl Display for Piece {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            Piece::WhitePawn => f.write_char('P'),
+            Piece::BlackPawn => f.write_char('p'),
+            Piece::WhiteKnight => f.write_char('N'),
+            Piece::BlackKnight => f.write_char('n'),
+            Piece::WhiteBishop => f.write_char('B'),
+            Piece::BlackBishop => f.write_char('b'),
+            Piece::WhiteRook => f.write_char('R'),
+            Piece::BlackRook => f.write_char('r'),
+            Piece::WhiteQueen => f.write_char('Q'),
+            Piece::BlackQueen => f.write_char('q'),
+            Piece::WhiteKing => f.write_char('K'),
+            Piece::BlackKing => f.write_char('k'),
+        }
+    }
+}
+
 /// The reason why parsing the piece.
 #[derive(Debug, Display, Clone, Eq, PartialEq, Error)]
-#[display(
-    "failed to parse piece, expected one of `[{}{}{}{}{}{}{}{}{}{}{}{}]`",
-    Piece::WhitePawn,
-    Piece::BlackPawn,
-    Piece::WhiteKnight,
-    Piece::BlackKnight,
-    Piece::WhiteBishop,
-    Piece::BlackBishop,
-    Piece::WhiteRook,
-    Piece::BlackRook,
-    Piece::WhiteQueen,
-    Piece::BlackQueen,
-    Piece::WhiteKing,
-    Piece::BlackKing
-)]
+#[display("failed to parse piece")]
 pub struct ParsePieceError;
 
 impl FromStr for Piece {
     type Err = ParsePieceError;
 
+    #[inline(always)]
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
             "P" => Ok(Piece::WhitePawn),

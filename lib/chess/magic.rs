@@ -4,14 +4,17 @@ use crate::chess::{Bitboard, Square};
 pub struct Magic(Bitboard, u64, usize);
 
 impl Magic {
+    #[inline(always)]
     pub fn mask(&self) -> Bitboard {
         self.0
     }
 
+    #[inline(always)]
     pub fn factor(&self) -> u64 {
         self.1
     }
 
+    #[inline(always)]
     pub fn offset(&self) -> usize {
         self.2
     }

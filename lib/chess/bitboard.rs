@@ -1,7 +1,7 @@
 use crate::chess::{File, Perspective, Rank, Square};
 use crate::util::{Assume, Integer};
 use derive_more::{Debug, *};
-use std::fmt::{self, Write};
+use std::fmt::{self, Formatter, Write};
 use std::{cell::SyncUnsafeCell, mem::MaybeUninit};
 
 /// A set of squares on a chess board.
@@ -26,9 +26,9 @@ use std::{cell::SyncUnsafeCell, mem::MaybeUninit};
 #[repr(transparent)]
 pub struct Bitboard(u64);
 
-impl fmt::Debug for Bitboard {
+impl Debug for Bitboard {
     #[coverage(off)]
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         f.write_char('\n')?;
         for rank in Rank::iter().rev() {
             for file in File::iter() {

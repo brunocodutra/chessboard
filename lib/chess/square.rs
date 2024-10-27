@@ -1,8 +1,9 @@
 use crate::chess::{Bitboard, File, Mirror, ParseFileError, ParseRankError, Perspective, Rank};
 use crate::util::{Assume, Binary, Bits, Integer};
 use derive_more::{Display, Error, From};
+use std::fmt::{self, Formatter};
 use std::ops::{Add, AddAssign, Sub, SubAssign};
-use std::{fmt, str::FromStr};
+use std::str::FromStr;
 
 /// A square on the chess board.
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
@@ -123,10 +124,10 @@ impl AddAssign<i8> for Square {
     }
 }
 
-impl fmt::Display for Square {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        fmt::Display::fmt(&self.file(), f)?;
-        fmt::Display::fmt(&self.rank(), f)?;
+impl Display for Square {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        Display::fmt(&self.file(), f)?;
+        Display::fmt(&self.rank(), f)?;
         Ok(())
     }
 }
@@ -143,8 +144,9 @@ pub enum ParseSquareError {
 impl FromStr for Square {
     type Err = ParseSquareError;
 
+    #[inline(always)]
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let i = s.char_indices().nth(1).map_or_else(|| s.len(), |(i, _)| i);
+        let i = s.ceil_char_boundary(1);
         Ok(Square::new(s[..i].parse()?, s[i..].parse()?))
     }
 }

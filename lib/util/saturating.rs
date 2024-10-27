@@ -1,10 +1,15 @@
-use crate::util::{Integer, Signed};
+use crate::util::Integer;
+use derive_more::{Debug, Display, Error};
+use std::fmt::{self, Formatter};
 use std::ops::{Add, Div, Mul, Neg, Sub};
-use std::{cmp::Ordering, mem::size_of};
+use std::{cmp::Ordering, mem::size_of, num::Saturating as S, str::FromStr};
 
 /// A saturating bounded integer.
 #[derive(Debug, Default, Copy, Clone, Hash)]
 #[cfg_attr(test, derive(test_strategy::Arbitrary))]
+#[cfg_attr(test, arbitrary(bound(T, Self: Debug)))]
+#[debug("Saturating({self})")]
+#[debug(bounds(T: Integer, T::Repr: Display))]
 #[repr(transparent)]
 pub struct Saturating<T>(T);
 
@@ -16,155 +21,142 @@ unsafe impl<T: Integer> Integer for Saturating<T> {
 
 impl<T: Integer> Eq for Saturating<T> where Self: PartialEq<Self> {}
 
-impl<T, U, I, J> PartialEq<U> for Saturating<T>
-where
-    T: Integer<Repr = I>,
-    U: Integer<Repr = J>,
-    I: Signed,
-    J: Signed,
-{
+impl<T: Integer, U: Integer> PartialEq<U> for Saturating<T> {
     #[inline(always)]
     fn eq(&self, other: &U) -> bool {
-        if size_of::<I>() <= size_of::<J>() {
-            J::eq(&self.cast(), &other.cast())
+        if size_of::<T>() > size_of::<U>() {
+            T::Repr::eq(&self.get(), &other.cast())
         } else {
-            I::eq(&self.cast(), &other.cast())
+            U::Repr::eq(&self.cast(), &other.get())
         }
     }
 }
 
-impl<T, I> Ord for Saturating<T>
-where
-    T: Integer<Repr = I>,
-    I: Signed + Ord,
-{
+impl<T: Integer> Ord for Saturating<T> {
     #[inline(always)]
     fn cmp(&self, other: &Self) -> Ordering {
         self.get().cmp(&other.get())
     }
 }
 
-impl<T, U, I, J> PartialOrd<U> for Saturating<T>
-where
-    T: Integer<Repr = I>,
-    U: Integer<Repr = J>,
-    I: Signed,
-    J: Signed,
-{
+impl<T: Integer, U: Integer> PartialOrd<U> for Saturating<T> {
     #[inline(always)]
     fn partial_cmp(&self, other: &U) -> Option<Ordering> {
-        if size_of::<I>() <= size_of::<J>() {
-            J::partial_cmp(&self.cast(), &other.cast())
+        if size_of::<T>() > size_of::<U>() {
+            T::Repr::partial_cmp(&self.get(), &other.cast())
         } else {
-            I::partial_cmp(&self.cast(), &other.cast())
+            U::Repr::partial_cmp(&self.cast(), &other.get())
         }
     }
 }
 
-impl<T, I, J> Neg for Saturating<T>
+impl<T: Integer> Neg for Saturating<T>
 where
-    T: Integer<Repr = I>,
-    I: Widen<Wider = J>,
-    J: Signed + Neg<Output = J>,
+    S<T::Repr>: Neg<Output = S<T::Repr>>,
 {
     type Output = Self;
 
     #[inline(always)]
     fn neg(self) -> Self::Output {
-        J::neg(self.cast()).saturate()
+        S(self.get()).neg().0.saturate()
     }
 }
 
-impl<T, U, I, J> Add<U> for Saturating<T>
+impl<T: Integer, U: Integer> Add<U> for Saturating<T>
 where
-    T: Integer<Repr = I>,
-    U: Integer<Repr = J>,
-    I: Widen,
-    J: Widen,
+    S<T::Repr>: Add<Output = S<T::Repr>>,
+    S<U::Repr>: Add<Output = S<U::Repr>>,
 {
     type Output = Self;
 
     #[inline(always)]
     fn add(self, rhs: U) -> Self::Output {
-        if size_of::<I::Wider>() <= size_of::<J::Wider>() {
-            J::Wider::add(self.cast(), rhs.cast()).saturate()
+        if size_of::<T>() > size_of::<U>() {
+            S::add(S(self.get()), S(rhs.cast())).0.saturate()
         } else {
-            I::Wider::add(self.cast(), rhs.cast()).saturate()
+            S::add(S(self.cast()), S(rhs.get())).0.saturate()
         }
     }
 }
 
-impl<T, U, I, J> Sub<U> for Saturating<T>
+impl<T: Integer, U: Integer> Sub<U> for Saturating<T>
 where
-    T: Integer<Repr = I>,
-    U: Integer<Repr = J>,
-    I: Widen,
-    J: Widen,
+    S<T::Repr>: Sub<Output = S<T::Repr>>,
+    S<U::Repr>: Sub<Output = S<U::Repr>>,
 {
     type Output = Self;
 
     #[inline(always)]
     fn sub(self, rhs: U) -> Self::Output {
-        if size_of::<I::Wider>() <= size_of::<J::Wider>() {
-            J::Wider::sub(self.cast(), rhs.cast()).saturate()
+        if size_of::<T>() > size_of::<U>() {
+            S::sub(S(self.get()), S(rhs.cast())).0.saturate()
         } else {
-            I::Wider::sub(self.cast(), rhs.cast()).saturate()
+            S::sub(S(self.cast()), S(rhs.get())).0.saturate()
         }
     }
 }
 
-impl<T, U, I, J> Mul<U> for Saturating<T>
+impl<T: Integer, U: Integer> Mul<U> for Saturating<T>
 where
-    T: Integer<Repr = I>,
-    U: Integer<Repr = J>,
-    I: Widen,
-    J: Widen,
+    S<T::Repr>: Mul<Output = S<T::Repr>>,
+    S<U::Repr>: Mul<Output = S<U::Repr>>,
 {
     type Output = Self;
 
     #[inline(always)]
     fn mul(self, rhs: U) -> Self::Output {
-        if size_of::<I::Wider>() <= size_of::<J::Wider>() {
-            J::Wider::mul(self.cast(), rhs.cast()).saturate()
+        if size_of::<T>() > size_of::<U>() {
+            S::mul(S(self.get()), S(rhs.cast())).0.saturate()
         } else {
-            I::Wider::mul(self.cast(), rhs.cast()).saturate()
+            S::mul(S(self.cast()), S(rhs.get())).0.saturate()
         }
     }
 }
 
-impl<T, U, I, J> Div<U> for Saturating<T>
+impl<T: Integer, U: Integer> Div<U> for Saturating<T>
 where
-    T: Integer<Repr = I>,
-    U: Integer<Repr = J>,
-    I: Widen,
-    J: Widen,
+    S<T::Repr>: Div<Output = S<T::Repr>>,
+    S<U::Repr>: Div<Output = S<U::Repr>>,
 {
     type Output = Self;
 
     #[inline(always)]
     fn div(self, rhs: U) -> Self::Output {
-        if size_of::<I::Wider>() <= size_of::<J::Wider>() {
-            J::Wider::div(self.cast(), rhs.cast()).saturate()
+        if size_of::<T>() > size_of::<U>() {
+            S::div(S(self.get()), S(rhs.cast())).0.saturate()
         } else {
-            I::Wider::div(self.cast(), rhs.cast()).saturate()
+            S::div(S(self.cast()), S(rhs.get())).0.saturate()
         }
     }
 }
 
-trait Widen: Signed {
-    type Wider: Signed;
+impl<T: Integer> Display for Saturating<T>
+where
+    T::Repr: Display,
+{
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        Display::fmt(&self.get(), f)
+    }
 }
 
-impl Widen for i8 {
-    type Wider = i16;
-}
+/// The reason why parsing [`Saturating`] failed.
+#[derive(Debug, Display, Clone, Eq, PartialEq, Error)]
+#[display("failed to parse saturating integer")]
+pub struct ParseSaturatingIntegerError;
 
-impl Widen for i16 {
-    type Wider = i32;
-}
+impl<T: Integer> FromStr for Saturating<T>
+where
+    T::Repr: FromStr,
+{
+    type Err = ParseSaturatingIntegerError;
 
-impl Widen for i32 {
-    type Wider = i64;
+    #[inline(always)]
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        s.parse::<T::Repr>()
+            .ok()
+            .and_then(Integer::convert)
+            .ok_or(ParseSaturatingIntegerError)
+    }
 }
 
 #[cfg(test)]
@@ -232,5 +224,40 @@ mod tests {
 
         let r: i8 = i16::saturating_div(b.cast(), a.cast()).saturate();
         assert_eq!(b / a, r);
+    }
+
+    #[proptest]
+    fn parsing_printed_saturating_integer_is_an_identity(a: Saturating<Asymmetric>) {
+        assert_eq!(a.to_string().parse(), Ok(a));
+    }
+
+    #[proptest]
+    fn parsing_saturating_integer_fails_for_numbers_too_small(
+        #[strategy(..Saturating::<Asymmetric>::MIN)] n: i16,
+    ) {
+        assert_eq!(
+            n.to_string().parse::<Saturating<Asymmetric>>(),
+            Err(ParseSaturatingIntegerError)
+        );
+    }
+
+    #[proptest]
+    fn parsing_saturating_integer_fails_for_numbers_too_large(
+        #[strategy(Saturating::<Asymmetric>::MAX + 1..)] n: i16,
+    ) {
+        assert_eq!(
+            n.to_string().parse::<Saturating<Asymmetric>>(),
+            Err(ParseSaturatingIntegerError)
+        );
+    }
+
+    #[proptest]
+    fn parsing_saturating_integer_fails_for_invalid_number(
+        #[filter(#s.parse::<i16>().is_err())] s: String,
+    ) {
+        assert_eq!(
+            s.to_string().parse::<Saturating<Asymmetric>>(),
+            Err(ParseSaturatingIntegerError)
+        );
     }
 }

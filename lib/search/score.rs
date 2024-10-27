@@ -1,6 +1,5 @@
 use crate::util::{Binary, Bits, Integer, Saturating};
 use crate::{chess::Perspective, search::Ply};
-use std::fmt;
 
 #[derive(Debug, Default, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
 #[cfg_attr(test, derive(test_strategy::Arbitrary))]
@@ -20,6 +19,7 @@ impl Score {
     /// Returns number of plies to mate, if one is in the horizon.
     ///
     /// Negative number of plies means the opponent is mating.
+    #[inline(always)]
     pub fn mate(&self) -> Option<Ply> {
         if *self <= Score::lower() - Ply::MIN {
             Some((Score::lower() - *self).saturate())
@@ -31,6 +31,7 @@ impl Score {
     }
 
     /// Normalizes mate scores relative to `ply`.
+    #[inline(always)]
     pub fn normalize(&self, ply: Ply) -> Self {
         if *self <= Score::lower() - Ply::MIN {
             (*self + ply).min(Score::lower() - Ply::MIN)
@@ -60,16 +61,6 @@ impl Binary for Score {
     #[inline(always)]
     fn decode(bits: Self::Bits) -> Self {
         Self::lower() + bits.cast::<i16>()
-    }
-}
-
-impl fmt::Display for Score {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self.mate() {
-            Some(p) if p > 0 => write!(f, "{:+}#{}", self.get(), (p.cast::<i16>() + 1) / 2),
-            Some(p) => write!(f, "{:+}#{}", self.get(), (1 - p.cast::<i16>()) / 2),
-            None => write!(f, "{:+}", self.get()),
-        }
     }
 }
 
@@ -105,25 +96,5 @@ mod tests {
     #[proptest]
     fn decoding_encoded_score_is_an_identity(s: Score) {
         assert_eq!(Score::decode(s.encode()), s);
-    }
-
-    #[proptest]
-    fn printing_score_displays_sign(s: Score) {
-        assert!(s.to_string().starts_with(if s < 0 { "-" } else { "+" }));
-    }
-
-    #[proptest]
-    fn printing_mate_score_displays_moves_to_mate(p: Ply) {
-        if p > 0 {
-            assert!(Score::upper()
-                .normalize(p)
-                .to_string()
-                .ends_with(&format!("#{}", (p.cast::<i16>() + 1) / 2)));
-        } else {
-            assert!(Score::lower()
-                .normalize(-p)
-                .to_string()
-                .ends_with(&format!("#{}", (1 - p.cast::<i16>()) / 2)));
-        };
     }
 }

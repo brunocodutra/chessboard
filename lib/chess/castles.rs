@@ -1,7 +1,8 @@
 use crate::chess::{Color, Perspective, Piece, Role, Square};
 use crate::util::{Bits, Integer};
 use derive_more::{Debug, *};
-use std::{cell::SyncUnsafeCell, fmt, mem::MaybeUninit, str::FromStr};
+use std::fmt::{self, Formatter};
+use std::{cell::SyncUnsafeCell, mem::MaybeUninit, str::FromStr};
 
 /// The castling rights in a chess [`Position`][`crate::chess::Position`].
 #[derive(
@@ -107,15 +108,15 @@ impl From<Square> for Castles {
     }
 }
 
-impl fmt::Display for Castles {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+impl Display for Castles {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         for side in Color::iter() {
             if self.has_short(side) {
-                fmt::Display::fmt(&Piece::new(Role::King, side), f)?;
+                Display::fmt(&Piece::new(Role::King, side), f)?;
             }
 
             if self.has_long(side) {
-                fmt::Display::fmt(&Piece::new(Role::Queen, side), f)?;
+                Display::fmt(&Piece::new(Role::Queen, side), f)?;
             }
         }
 
@@ -131,6 +132,7 @@ pub struct ParseCastlesError;
 impl FromStr for Castles {
     type Err = ParseCastlesError;
 
+    #[inline(always)]
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let mut castles = Castles::none();
 

@@ -25,16 +25,19 @@ impl Outcome {
     /// Whether the outcome is a [draw] and neither side has won.
     ///
     /// [draw]: https://www.chessprogramming.org/Draw
+    #[inline(always)]
     pub fn is_draw(&self) -> bool {
         !self.is_decisive()
     }
 
     /// Whether the outcome is a decisive and one of the sides has won.
+    #[inline(always)]
     pub fn is_decisive(&self) -> bool {
         matches!(self, Outcome::Checkmate(_))
     }
 
     /// The winning side, if the outcome is [decisive](`Self::is_decisive`).
+    #[inline(always)]
     pub fn winner(&self) -> Option<Color> {
         match *self {
             Outcome::Checkmate(c) => Some(c),
