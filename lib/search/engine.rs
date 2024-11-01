@@ -73,6 +73,16 @@ impl Engine {
         (bounds.start.max(lower), bounds.end.min(upper))
     }
 
+    /// An implementation of [reverse futility pruning].
+    ///
+    /// [reverse futility pruning]: https://www.chessprogramming.org/Reverse_Futility_Pruning
+    fn rfp(&self, depth: Depth, ply: Ply) -> Score {
+        match (depth - ply).get() {
+            draft @ ..=6 => Score::new(100) * draft,
+            _ => Score::upper(),
+        }
+    }
+
     /// An implementation of [null move pruning].
     ///
     /// [null move pruning]: https://www.chessprogramming.org/Null_Move_Pruning
@@ -186,6 +196,10 @@ impl Engine {
         };
 
         if alpha >= beta || ply >= Ply::MAX {
+            return Ok(Pv::new(score, None));
+        } else if score - self.rfp(depth, ply) >= beta {
+            #[cfg(not(test))]
+            // The reverse futility pruning heuristic is not exact.
             return Ok(Pv::new(score, None));
         } else if !is_pv && !pos.is_check() && pos.pieces(pos.turn()).len() > 1 {
             if let Some(d) = self.nmp(score, beta, depth, ply) {
