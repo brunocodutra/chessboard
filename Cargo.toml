@@ -31,7 +31,7 @@ derive_more = { version = "1.0.0", default-features = false, features = [
     "mul_assign",
     "not",
 ] }
-futures = { version = "0.3.30", default-features = false, features = [
+futures = { version = "0.3.31", default-features = false, features = [
     "async-await",
     "executor",
     "std",
