@@ -4,7 +4,8 @@ use arrayvec::{ArrayVec, CapacityError};
 use derive_more::{Debug, Display, Error, From};
 use std::fmt::{self, Formatter};
 use std::hash::{Hash, Hasher};
-use std::{num::NonZeroU32, str::FromStr};
+use std::num::{NonZeroU16, NonZeroU32};
+use std::str::FromStr;
 
 #[cfg(test)]
 use proptest::{prelude::*, sample::*};
@@ -167,7 +168,7 @@ pub struct Position {
     zobrist: Zobrist,
     checkers: Bitboard,
     pinned: Bitboard,
-    history: [[Option<NonZeroU32>; 8]; 2],
+    history: [[Option<NonZeroU16>; 48]; 2],
 }
 
 impl Default for Position {
@@ -179,7 +180,7 @@ impl Default for Position {
             zobrist: board.zobrist(),
             checkers: Default::default(),
             pinned: Default::default(),
-            history: Default::default(),
+            history: [[None; 48]; 2],
             board,
         }
     }
@@ -318,7 +319,7 @@ impl Position {
     /// How many other times this position has repeated.
     #[inline(always)]
     pub fn repetitions(&self) -> usize {
-        match NonZeroU32::new(self.zobrist().cast()) {
+        match NonZeroU16::new(self.zobrist().cast()) {
             None => 0,
             hash => {
                 let history = &self.history[self.turn() as usize];
@@ -498,12 +499,12 @@ impl Position {
 
         if role == Pawn || capture.is_some() {
             self.board.halfmoves = 0;
-            self.history = Default::default();
+            self.history = [[None; 48]; 2];
         } else {
             self.board.halfmoves += 1;
             let entries = self.history[turn as usize].len();
             self.history[turn as usize].copy_within(..entries - 1, 1);
-            self.history[turn as usize][0] = NonZeroU32::new(self.zobrist().cast());
+            self.history[turn as usize][0] = NonZeroU16::new(self.zobrist().cast());
         }
 
         self.board.turn = !self.board.turn;
@@ -592,7 +593,7 @@ impl Position {
         self.board.halfmoves += 1;
         let entries = self.history[turn as usize].len();
         self.history[turn as usize].copy_within(..entries - 1, 1);
-        self.history[turn as usize][0] = NonZeroU32::new(self.zobrist.cast());
+        self.history[turn as usize][0] = NonZeroU16::new(self.zobrist.cast());
 
         self.board.turn = !self.board.turn;
         self.zobrist ^= ZobristNumbers::turn();
@@ -668,7 +669,7 @@ impl FromStr for Position {
             checkers,
             pinned,
             zobrist: board.zobrist(),
-            history: Default::default(),
+            history: [[None; 48]; 2],
             board,
         })
     }
@@ -905,9 +906,9 @@ mod tests {
     #[proptest]
     fn threefold_repetition_implies_draw(
         #[filter(#pos.outcome().is_none())] mut pos: Position,
-        z: NonZeroU32,
+        z: NonZeroU16,
     ) {
-        let zobrist = NonZeroU32::new(pos.zobrist().cast());
+        let zobrist = NonZeroU16::new(pos.zobrist().cast());
         prop_assume!(zobrist.is_some());
 
         let history = [zobrist, Some(z), zobrist, Some(z)];
