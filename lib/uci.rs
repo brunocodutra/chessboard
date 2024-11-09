@@ -2,11 +2,10 @@ use crate::chess::{Color, Move, Perspective};
 use crate::nnue::Evaluator;
 use crate::search::{Engine, HashSize, Limits, Options, ThreadCount};
 use crate::util::{Assume, Integer, Trigger};
-use derive_more::Display;
 use futures::channel::oneshot::channel as oneshot;
 use futures::{future::FusedFuture, prelude::*, select_biased as select, stream::FusedStream};
 use std::time::{Duration, Instant};
-use std::{fmt::Debug, io::Write, mem::transmute, ops::Deref, str, thread};
+use std::{fmt::Debug, io::Write, mem::transmute, str, thread};
 
 #[cfg(test)]
 use proptest::prelude::*;
@@ -31,31 +30,15 @@ where
     rx.map(Assume::assume)
 }
 
-#[derive(Debug, Display, Default, Clone, Eq, PartialEq, Hash)]
-#[cfg_attr(test, derive(test_strategy::Arbitrary))]
-#[display("{}", *self)]
-struct UciMove([u8; 5]);
+#[derive(Copy, Clone, Eq, PartialEq, Hash)]
+struct UciMove(Move);
 
-impl Deref for UciMove {
-    type Target = str;
-
-    fn deref(&self) -> &Self::Target {
-        let len = if self.0[4] == b'\0' { 4 } else { 5 };
-        unsafe { str::from_utf8_unchecked(&self.0[..len]) }
-    }
-}
-
-impl PartialEq<&str> for UciMove {
-    fn eq(&self, other: &&str) -> bool {
-        **self == **other
-    }
-}
-
-impl From<Move> for UciMove {
-    fn from(m: Move) -> Self {
+impl PartialEq<str> for UciMove {
+    fn eq(&self, other: &str) -> bool {
         let mut buffer = [b'\0'; 5];
-        write!(&mut buffer[..], "{m}").assume();
-        Self(buffer)
+        write!(&mut buffer[..], "{}", self.0).assume();
+        let len = if buffer[4] == b'\0' { 4 } else { 5 };
+        other == unsafe { str::from_utf8_unchecked(&buffer[..len]) }
     }
 }
 
@@ -72,7 +55,6 @@ pub struct Uci<I, O> {
     engine: Engine,
     options: Options,
     position: Evaluator,
-    moves: Vec<UciMove>,
 }
 
 impl<I, O> Uci<I, O> {
@@ -84,42 +66,11 @@ impl<I, O> Uci<I, O> {
             engine: Engine::default(),
             options: Options::default(),
             position: Evaluator::default(),
-            moves: Vec::with_capacity(128),
         }
     }
 }
 
 impl<I: FusedStream<Item = String> + Unpin, O: Sink<String> + Unpin> Uci<I, O> {
-    /// Runs the UCI server.
-    pub async fn run(&mut self) -> Result<(), O::Error> {
-        while let Some(line) = self.input.next().await {
-            if !self.process(&line).await? {
-                break;
-            };
-        }
-
-        Ok(())
-    }
-
-    fn play(&mut self, s: &str) {
-        if let Ok(whence) = s[..s.ceil_char_boundary(2)].parse() {
-            for ms in self.position.moves() {
-                if ms.whence() == whence {
-                    for m in ms {
-                        let uci = UciMove::from(m);
-                        if uci == s {
-                            self.position.play(m);
-                            self.moves.push(uci);
-                            return;
-                        }
-                    }
-                }
-            }
-        }
-
-        eprintln!("illegal move `{s}` in position `{}`", self.position)
-    }
-
     async fn go(&mut self, limits: &Limits) -> Result<(), O::Error> {
         let interrupter = Trigger::armed();
 
@@ -131,7 +82,8 @@ impl<I: FusedStream<Item = String> + Unpin, O: Sink<String> + Unpin> Uci<I, O> {
                 pv = search => break pv,
                 line = self.input.next() => {
                     match line.as_deref().map(str::trim) {
-                        None | Some("stop") => { interrupter.disarm(); },
+                        None => break search.await,
+                        Some("stop") => { interrupter.disarm(); },
                         Some(cmd) => eprintln!("ignored unsupported command `{cmd}` during search"),
                     }
                 }
@@ -171,207 +123,157 @@ impl<I: FusedStream<Item = String> + Unpin, O: Sink<String> + Unpin> Uci<I, O> {
         self.output.send(info).await
     }
 
-    /// Processes one [`UciMessage`].
-    async fn process(&mut self, line: &str) -> Result<bool, O::Error> {
-        let tokens: Vec<_> = line.split_whitespace().collect();
+    /// Runs the UCI server.
+    pub async fn run(&mut self) -> Result<(), O::Error> {
+        while let Some(line) = self.input.next().await {
+            match line.split_whitespace().collect::<Vec<_>>().as_slice() {
+                ["quit"] => return Ok(()),
+                [] | ["stop"] => continue,
 
-        match &tokens[..] {
-            [] => Ok(true),
-            ["stop"] => Ok(true),
-            ["quit"] => Ok(false),
+                ["go", "wtime", wtime, "btime", btime, "winc", winc, "binc", binc]
+                | ["go", "wtime", wtime, "winc", winc, "btime", btime, "binc", binc] => {
+                    let (t, i) = match self.position.turn() {
+                        Color::White => (wtime, winc),
+                        Color::Black => (btime, binc),
+                    };
 
-            ["position", "startpos", "moves", moves @ .., m, n] if self.moves == moves => {
-                self.play(m);
-                self.play(n);
-                Ok(true)
-            }
-
-            ["position", "startpos", "moves", moves @ ..] => {
-                self.moves.clear();
-                self.position = Evaluator::default();
-                moves.iter().for_each(|&m| self.play(m));
-                Ok(true)
-            }
-
-            ["position", "startpos"] => {
-                self.moves.clear();
-                self.position = Evaluator::default();
-                Ok(true)
-            }
-
-            ["position", "fen", fen @ ..] => {
-                match fen.join(" ").parse() {
-                    Err(e) => eprintln!("{e}"),
-                    Ok(pos) => {
-                        self.moves.clear();
-                        self.position = pos;
+                    match (t.parse(), i.parse()) {
+                        (Err(e), _) | (_, Err(e)) => eprintln!("{e}"),
+                        (Ok(t), Ok(i)) => {
+                            let t = Duration::from_millis(t);
+                            let i = Duration::from_millis(i);
+                            self.go(&Limits::Clock(t, i)).await?;
+                        }
                     }
                 }
 
-                Ok(true)
-            }
-
-            ["go", "wtime", wtime, "btime", btime, "winc", winc, "binc", binc]
-            | ["go", "wtime", wtime, "winc", winc, "btime", btime, "binc", binc] => {
-                let (t, i) = match self.position.turn() {
-                    Color::White => (wtime, winc),
-                    Color::Black => (btime, binc),
-                };
-
-                match (t.parse(), i.parse()) {
-                    (Err(e), _) | (_, Err(e)) => eprintln!("{e}"),
-                    (Ok(t), Ok(i)) => {
-                        let t = Duration::from_millis(t);
-                        let i = Duration::from_millis(i);
-                        self.go(&Limits::Clock(t, i)).await?;
-                    }
-                }
-
-                Ok(true)
-            }
-
-            ["go", "depth", depth] => {
-                match depth.parse() {
+                ["go", "depth", depth] => match depth.parse() {
                     Ok(d) => self.go(&Limits::Depth(d)).await?,
                     Err(e) => eprintln!("{e}"),
-                }
+                },
 
-                Ok(true)
-            }
-
-            ["go", "nodes", nodes] => {
-                match nodes.parse() {
+                ["go", "nodes", nodes] => match nodes.parse() {
                     Ok(n) => self.go(&Limits::Nodes(n)).await?,
                     Err(e) => eprintln!("{e}"),
-                }
+                },
 
-                Ok(true)
-            }
-
-            ["go", "movetime", time] => {
-                match time.parse() {
+                ["go", "movetime", time] => match time.parse() {
                     Ok(ms) => self.go(&Duration::from_millis(ms).into()).await?,
                     Err(e) => eprintln!("{e}"),
-                }
+                },
 
-                Ok(true)
-            }
+                ["go"] | ["go", "infinite"] => self.go(&Limits::None).await?,
 
-            ["go"] | ["go", "infinite"] => {
-                self.go(&Limits::None).await?;
-                Ok(true)
-            }
-
-            ["bench", "depth", depth] => {
-                match depth.parse() {
+                ["bench", "depth", depth] => match depth.parse() {
                     Ok(d) => self.bench(&Limits::Depth(d)).await?,
                     Err(e) => eprintln!("{e}"),
-                }
+                },
 
-                Ok(true)
-            }
-
-            ["bench", "nodes", nodes] => {
-                match nodes.parse() {
+                ["bench", "nodes", nodes] => match nodes.parse() {
                     Ok(n) => self.bench(&Limits::Nodes(n)).await?,
                     Err(e) => eprintln!("{e}"),
+                },
+
+                ["position", "fen", fen @ ..] => match fen.join(" ").parse() {
+                    Err(e) => eprintln!("{e}"),
+                    Ok(pos) => self.position = pos,
+                },
+
+                ["position", "startpos"] => self.position = Evaluator::default(),
+                ["position", "startpos", "moves", moves @ ..] => {
+                    self.position = Evaluator::default();
+
+                    for s in moves.iter() {
+                        let whence = match s[..s.ceil_char_boundary(2)].parse() {
+                            Ok(whence) => whence,
+                            Err(e) => {
+                                eprintln!("invalid move `{s}`, {e}");
+                                break;
+                            }
+                        };
+
+                        let moves = self.position.moves().filter(|ms| ms.whence() == whence);
+                        let Some(m) = moves.flatten().find(|m| UciMove(*m) == **s) else {
+                            eprintln!("illegal move `{s}` in position `{}`", self.position);
+                            break;
+                        };
+
+                        self.position.play(m);
+                    }
                 }
 
-                Ok(true)
-            }
+                ["eval"] => {
+                    let pos = &self.position;
+                    let turn = self.position.turn();
+                    let mat = pos.material().evaluate().perspective(turn);
+                    let psn = pos.positional().evaluate().perspective(turn);
+                    let val = pos.evaluate().perspective(turn);
+                    let info = format!("info material {mat:+} positional {psn:+} value {val:+}");
+                    self.output.send(info).await?;
+                }
 
-            ["eval"] => {
-                let pos = &self.position;
-                let turn = self.position.turn();
-                let mat = pos.material().evaluate().perspective(turn);
-                let psn = pos.positional().evaluate().perspective(turn);
-                let val = pos.evaluate().perspective(turn);
-                let info = format!("info material {mat:+} positional {psn:+} value {val:+}");
-                self.output.send(info).await?;
-                Ok(true)
-            }
+                ["uci"] => {
+                    let name = format!("id name {}", env!("CARGO_PKG_NAME"));
+                    let author = format!("id author {}", env!("CARGO_PKG_AUTHORS"));
 
-            ["uci"] => {
-                let name = format!("id name {}", env!("CARGO_PKG_NAME"));
-                let author = format!("id author {}", env!("CARGO_PKG_AUTHORS"));
+                    let hash = format!(
+                        "option name Hash type spin default {} min {} max {}",
+                        HashSize::default(),
+                        HashSize::lower(),
+                        HashSize::upper()
+                    );
 
-                let hash = format!(
-                    "option name Hash type spin default {} min {} max {}",
-                    HashSize::default(),
-                    HashSize::lower(),
-                    HashSize::upper()
-                );
+                    let threads = format!(
+                        "option name Threads type spin default {} min {} max {}",
+                        ThreadCount::default(),
+                        ThreadCount::lower(),
+                        ThreadCount::upper()
+                    );
 
-                let threads = format!(
-                    "option name Threads type spin default {} min {} max {}",
-                    ThreadCount::default(),
-                    ThreadCount::lower(),
-                    ThreadCount::upper()
-                );
+                    self.output.send(name).await?;
+                    self.output.send(author).await?;
+                    self.output.send(hash).await?;
+                    self.output.send(threads).await?;
+                    self.output.send("uciok".to_string()).await?;
+                }
 
-                self.output.send(name).await?;
-                self.output.send(author).await?;
-                self.output.send(hash).await?;
-                self.output.send(threads).await?;
-                self.output.send("uciok".to_string()).await?;
+                ["ucinewgame"] => {
+                    self.engine = Engine::with_options(&self.options);
+                    self.position = Evaluator::default();
+                }
 
-                Ok(true)
-            }
+                ["isready"] => self.output.send("readyok".to_string()).await?,
 
-            ["ucinewgame"] => {
-                self.engine = Engine::with_options(&self.options);
-                self.position = Evaluator::default();
-                self.moves.clear();
-                Ok(true)
-            }
-
-            ["isready"] => {
-                self.output.send("readyok".to_string()).await?;
-                Ok(true)
-            }
-
-            ["setoption", "name", "hash", "value", hash]
-            | ["setoption", "name", "Hash", "value", hash] => {
-                match hash.parse() {
+                ["setoption", "name", "hash", "value", hash]
+                | ["setoption", "name", "Hash", "value", hash] => match hash.parse() {
                     Err(e) => eprintln!("{e}"),
                     Ok(h) => {
-                        if h != self.options.hash {
-                            self.options.hash = h;
-                            self.engine = Engine::with_options(&self.options);
-                        }
+                        self.options.hash = h;
+                        self.engine = Engine::with_options(&self.options);
                     }
-                }
+                },
 
-                Ok(true)
-            }
-
-            ["setoption", "name", "threads", "value", threads]
-            | ["setoption", "name", "Threads", "value", threads] => {
-                match threads.parse() {
+                ["setoption", "name", "threads", "value", threads]
+                | ["setoption", "name", "Threads", "value", threads] => match threads.parse() {
                     Err(e) => eprintln!("{e}"),
                     Ok(t) => {
-                        if t != self.options.threads {
-                            self.options.threads = t;
-                            self.engine = Engine::with_options(&self.options);
-                        }
+                        self.options.threads = t;
+                        self.engine = Engine::with_options(&self.options);
                     }
-                };
+                },
 
-                Ok(true)
-            }
-
-            cmd => {
-                eprintln!("ignored unsupported command `{}`", cmd.join(" "));
-                Ok(true)
+                cmd => eprintln!("ignored unsupported command `{}`", cmd.join(" ")),
             }
         }
+
+        Ok(())
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::search::Depth;
+    use crate::{chess::Position, search::Depth};
     use futures::executor::block_on;
     use proptest::sample::Selector;
     use std::task::{Context, Poll};
@@ -404,78 +306,11 @@ mod tests {
     type MockUci = Uci<StaticStream, Vec<String>>;
 
     #[proptest]
-    fn play_updates_position(
-        #[filter(#pos.outcome().is_none())] mut pos: Evaluator,
-        #[map(|sq: Selector| sq.select(#pos.moves().flatten()))] m: Move,
-    ) {
-        let mut uci = MockUci {
-            position: pos.clone(),
-            ..MockUci::default()
-        };
-
-        pos.play(m);
-        uci.play(&m.to_string());
-        assert_eq!(uci.position, pos);
-    }
-
-    #[proptest]
-    fn play_updates_move_history(
-        ms: Vec<UciMove>,
-        #[filter(#pos.outcome().is_none())] pos: Evaluator,
-        #[map(|sq: Selector| sq.select(#pos.moves().flatten()))] m: Move,
-    ) {
-        let mut uci = MockUci {
-            moves: ms.clone(),
-            position: pos.clone(),
-            ..MockUci::default()
-        };
-
-        uci.play(&m.to_string());
-        assert_eq!(uci.moves, [&*ms, &[m.into()]].concat());
-    }
-
-    #[proptest]
-    fn play_ignores_illegal_move(
-        ms: Vec<UciMove>,
-        pos: Evaluator,
-        #[filter(!#pos.moves().flatten().any(|m| (m.whence(), m.whither()) == (#m.whence(), #m.whither())))]
-        m: Move,
-    ) {
-        let mut uci = MockUci {
-            moves: ms.clone(),
-            position: pos.clone(),
-            ..MockUci::default()
-        };
-
-        uci.play(&m.to_string());
-        assert_eq!(uci.position, pos);
-        assert_eq!(uci.moves, ms);
-    }
-
-    #[proptest]
-    fn play_ignores_invalid_move(
-        ms: Vec<UciMove>,
-        pos: Evaluator,
-        #[filter(!(4..5).contains(&#m.len()) || !#m.is_ascii())] m: String,
-    ) {
-        let mut uci = MockUci {
-            position: pos.clone(),
-            moves: ms.clone(),
-            ..MockUci::default()
-        };
-
-        uci.play(&m.to_string());
-        assert_eq!(uci.position, pos);
-        assert_eq!(uci.moves, ms);
-    }
-
-    #[proptest]
     fn handles_position_with_startpos(
         #[any(StaticStream::new(["position startpos"]))] mut uci: MockUci,
     ) {
         assert_eq!(block_on(uci.run()), Ok(()));
         assert_eq!(uci.position, Evaluator::default());
-        assert!(uci.moves.is_empty());
         assert!(uci.output.is_empty());
     }
 
@@ -486,7 +321,6 @@ mod tests {
     ) {
         assert_eq!(block_on(uci.run()), Ok(()));
         assert_eq!(uci.position.to_string(), pos.to_string());
-        assert!(uci.moves.is_empty());
         assert!(uci.output.is_empty());
     }
 
@@ -496,10 +330,8 @@ mod tests {
         #[filter(#_s.parse::<Evaluator>().is_err())] _s: String,
     ) {
         let pos = uci.position.clone();
-        let moves = uci.moves.clone();
         assert_eq!(block_on(uci.run()), Ok(()));
         assert_eq!(uci.position, pos);
-        assert_eq!(uci.moves, moves);
         assert!(uci.output.is_empty());
     }
 
@@ -508,7 +340,6 @@ mod tests {
         let mut uci = MockUci::default();
         let mut input = String::new();
         let mut pos = Evaluator::default();
-        let mut moves = vec![];
 
         input.push_str("position startpos moves");
 
@@ -516,14 +347,33 @@ mod tests {
             let m = selector.select(pos.moves().flatten());
             input.push(' ');
             input.push_str(&m.to_string());
-            moves.push(UciMove::from(m));
             pos.play(m);
         }
 
         uci.input = StaticStream::new([input]);
         assert_eq!(block_on(uci.run()), Ok(()));
         assert_eq!(uci.position, pos);
-        assert_eq!(uci.moves, moves);
+        assert!(uci.output.is_empty());
+    }
+
+    #[proptest]
+    fn handles_position_with_invalid_move(
+        #[strategy("[^[:ascii:]]+")] _s: String,
+        #[any(StaticStream::new([format!("position startpos moves {}", #_s)]))] mut uci: MockUci,
+    ) {
+        assert_eq!(block_on(uci.run()), Ok(()));
+        assert_eq!(uci.position, Evaluator::default());
+        assert!(uci.output.is_empty());
+    }
+
+    #[proptest]
+    fn handles_position_with_illegal_move(
+        #[filter(!Position::default().moves().flatten().any(|m| UciMove(m) == *#_m.to_string()))]
+        _m: Move,
+        #[any(StaticStream::new([format!("position startpos moves {}", #_m)]))] mut uci: MockUci,
+    ) {
+        assert_eq!(block_on(uci.run()), Ok(()));
+        assert_eq!(uci.position, Evaluator::default());
         assert!(uci.output.is_empty());
     }
 
@@ -631,8 +481,13 @@ mod tests {
     fn handles_new_game(#[any(StaticStream::new(["ucinewgame"]))] mut uci: MockUci) {
         assert_eq!(block_on(uci.run()), Ok(()));
         assert_eq!(uci.position, Evaluator::default());
-        assert!(uci.moves.is_empty());
         assert!(uci.output.is_empty());
+    }
+
+    #[proptest]
+    fn handles_ready(#[any(StaticStream::new(["isready"]))] mut uci: MockUci) {
+        assert_eq!(block_on(uci.run()), Ok(()));
+        assert_eq!(uci.output.concat(), "readyok");
     }
 
     #[proptest]
@@ -680,15 +535,9 @@ mod tests {
     }
 
     #[proptest]
-    fn handles_ready(#[any(StaticStream::new(["isready"]))] mut uci: MockUci) {
-        assert_eq!(block_on(uci.run()), Ok(()));
-        assert_eq!(uci.output.concat(), "readyok");
-    }
-
-    #[proptest]
     fn ignores_unsupported_messages(
         #[any(StaticStream::new([#_s]))] mut uci: MockUci,
-        #[strategy("[^pgbeuisq].*")] _s: String,
+        #[strategy("[^[:ascii:]]*")] _s: String,
     ) {
         assert_eq!(block_on(uci.run()), Ok(()));
         assert!(uci.output.is_empty());
