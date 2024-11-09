@@ -1,21 +1,21 @@
-use futures::executor::block_on;
-use futures::{channel::mpsc::unbounded, sink::unfold};
+use futures::{channel::mpsc::unbounded, executor::block_on, sink::unfold as sink};
 use lib::uci::Uci;
 use std::io::{prelude::*, stdin, stdout};
 use std::{future::ready, thread};
 
 fn main() {
-    let (tx, rx) = unbounded();
+    let (tx, input) = unbounded();
 
     thread::spawn(move || {
-        for line in stdin().lock().lines() {
-            if tx.unbounded_send(line.unwrap()).is_err() {
+        let mut lines = stdin().lock().lines();
+        while let Some(Ok(line)) = lines.next() {
+            if tx.unbounded_send(line).is_err() {
                 break;
             }
         }
     });
 
     let mut stdout = stdout().lock();
-    let output = unfold((), |_, line: String| ready(writeln!(stdout, "{line}")));
-    block_on(Uci::new(rx, output).run()).unwrap();
+    let output = sink((), |_, line: String| ready(writeln!(stdout, "{line}")));
+    block_on(Uci::new(input, output).run()).unwrap();
 }
