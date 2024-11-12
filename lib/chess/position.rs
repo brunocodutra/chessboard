@@ -168,7 +168,7 @@ pub struct Position {
     zobrist: Zobrist,
     checkers: Bitboard,
     pinned: Bitboard,
-    history: [[Option<NonZeroU16>; 48]; 2],
+    history: [[Option<NonZeroU16>; 32]; 2],
 }
 
 impl Default for Position {
@@ -180,7 +180,7 @@ impl Default for Position {
             zobrist: board.zobrist(),
             checkers: Default::default(),
             pinned: Default::default(),
-            history: [[None; 48]; 2],
+            history: Default::default(),
             board,
         }
     }
@@ -499,7 +499,7 @@ impl Position {
 
         if role == Pawn || capture.is_some() {
             self.board.halfmoves = 0;
-            self.history = [[None; 48]; 2];
+            self.history = Default::default();
         } else {
             self.board.halfmoves += 1;
             let entries = self.history[turn as usize].len();
@@ -669,7 +669,7 @@ impl FromStr for Position {
             checkers,
             pinned,
             zobrist: board.zobrist(),
-            history: [[None; 48]; 2],
+            history: Default::default(),
             board,
         })
     }
