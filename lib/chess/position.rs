@@ -435,45 +435,6 @@ impl Position {
         moves.into_iter()
     }
 
-    /// Finds the least valued captor of the piece on a square.
-    #[inline(always)]
-    pub fn exchange(&self, sq: Square) -> Option<Move> {
-        use Role::*;
-
-        let turn = self.turn();
-        let king = self.king(turn);
-        let occupied = self.occupied();
-
-        if !self.material(!turn).contains(sq) {
-            return None;
-        } else if !self.is_check() || self.checkers() == sq.bitboard() {
-            let unpinned = self.material(turn) & (!self.pinned() | Bitboard::segment(sq, king));
-
-            for role in [Pawn, Knight, Bishop, Rook, Queen] {
-                let candidates = unpinned & self.board.by_role(role);
-                if !candidates.is_empty() {
-                    let piece = Piece::new(role, turn);
-                    for wc in candidates & piece.flip().targets(sq) {
-                        if matches!(role, Pawn | Knight)
-                            || Bitboard::segment(sq, wc).intersection(occupied).is_empty()
-                        {
-                            let moves = MoveSet::capture(piece, wc, sq.bitboard());
-                            return moves.into_iter().next();
-                        }
-                    }
-                }
-            }
-        }
-
-        if Piece::new(King, turn).targets(king).contains(sq)
-            && !self.is_threatened(sq, !turn, occupied.without(king))
-        {
-            return Some(Move::capture(king, sq, None));
-        }
-
-        None
-    }
-
     /// Play a [`Move`].
     #[inline(always)]
     pub fn play(&mut self, m: Move) -> (Role, Option<(Role, Square)>) {
@@ -678,7 +639,7 @@ impl FromStr for Position {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::{cmp::Reverse, fmt::Debug, hash::DefaultHasher};
+    use std::{fmt::Debug, hash::DefaultHasher};
     use test_strategy::proptest;
 
     #[proptest]
@@ -758,22 +719,6 @@ mod tests {
         for m in pos.moves().flatten() {
             pos.clone().play(m);
         }
-    }
-
-    #[proptest]
-    fn exchange_finds_captor_of_least_value(
-        #[filter(#pos.outcome().is_none())] pos: Position,
-        #[map(|s: Selector| s.select(#pos.material(!#pos.turn())))] sq: Square,
-    ) {
-        assert_eq!(
-            pos.exchange(sq)
-                .map(|m| (pos.board.role_on(m.whence()), m.promotion(),)),
-            pos.moves()
-                .filter(|m| m.whither().contains(sq))
-                .flatten()
-                .map(|m| (pos.board.role_on(m.whence()), m.promotion()))
-                .min_by_key(|&(r, p)| (r, Reverse(p)))
-        );
     }
 
     #[proptest]
