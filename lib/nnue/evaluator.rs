@@ -3,7 +3,7 @@ use crate::nnue::{Accumulator, Feature, Material, Positional, Value};
 use crate::util::Integer;
 use arrayvec::ArrayVec;
 use derive_more::{Debug, Deref, Display};
-use std::{ops::Range, str::FromStr};
+use std::str::FromStr;
 
 #[cfg(test)]
 use proptest::prelude::*;
@@ -53,39 +53,6 @@ impl<T: Accumulator> Evaluator<T> {
         let phase = (self.occupied().len() - 1) / 4;
         let value = self.acc.evaluate(self.turn(), phase) >> 7;
         value.saturate()
-    }
-
-    /// The Static Exchange Evaluation ([SEE]) algorithm.
-    ///
-    /// [SEE]: https://www.chessprogramming.org/Static_Exchange_Evaluation
-    pub fn see(&mut self, sq: Square, bounds: Range<Value>) -> Value {
-        let (mut alpha, mut beta) = (bounds.start, bounds.end);
-
-        loop {
-            alpha = alpha.max(self.evaluate());
-
-            if alpha >= beta {
-                break beta;
-            }
-
-            let Some(m) = self.exchange(sq) else {
-                break alpha;
-            };
-
-            self.play(m);
-
-            beta = beta.min(-self.evaluate());
-
-            if alpha >= beta {
-                break alpha;
-            }
-
-            let Some(m) = self.exchange(sq) else {
-                break beta;
-            };
-
-            self.play(m);
-        }
     }
 
     /// Play a [null-move].
@@ -175,20 +142,6 @@ mod tests {
     use proptest::sample::Selector;
     use std::fmt::Debug;
     use test_strategy::proptest;
-
-    #[proptest]
-    fn see_returns_value_within_bounds(pos: Position, sq: Square, r: Range<Value>) {
-        let (a, b) = (r.start, r.end);
-        assert!((a..=b).contains(&Evaluator::<Positional>::new(pos).see(sq, r)));
-    }
-
-    #[proptest]
-    fn see_returns_beta_if_alpha_is_not_smaller(pos: Position, sq: Square, r: Range<Value>) {
-        assert_eq!(
-            Evaluator::<Positional>::new(pos).see(sq, r.end..r.start),
-            r.start
-        );
-    }
 
     #[proptest]
     fn play_updates_evaluator(

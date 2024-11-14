@@ -1,6 +1,6 @@
 use crate::nnue::{Evaluator, Value};
+use crate::search::*;
 use crate::util::{Assume, Counter, Integer, Timer, Trigger};
-use crate::{chess::Move, search::*};
 use arrayvec::ArrayVec;
 use std::{cell::RefCell, ops::Range, time::Duration};
 
@@ -76,16 +76,8 @@ impl Engine {
     /// An implementation of [null move pruning].
     ///
     /// [null move pruning]: https://www.chessprogramming.org/Null_Move_Pruning
-    fn nmp(
-        &self,
-        pos: &Evaluator,
-        guess: Score,
-        beta: Score,
-        depth: Depth,
-        ply: Ply,
-    ) -> Option<Depth> {
-        let turn = pos.turn();
-        if guess >= beta && pos.pieces(turn).len() > 1 {
+    fn nmp(&self, guess: Score, beta: Score, depth: Depth, ply: Ply) -> Option<Depth> {
+        if guess >= beta {
             Some(depth - 2 - (depth - ply) / 4)
         } else {
             None
@@ -95,15 +87,8 @@ impl Engine {
     /// An implementation of [late move pruning].
     ///
     /// [late move pruning]: https://www.chessprogramming.org/Late_Move_Reductions
-    fn lmp(
-        &self,
-        next: &Evaluator,
-        m: Move,
-        alpha: Value,
-        depth: Depth,
-        ply: Ply,
-    ) -> Option<Depth> {
-        let r = match (alpha + next.clone().see(m.whither(), -(alpha - 15)..-(alpha - 101))).get() {
+    fn lmp(&self, guess: Value, alpha: Value, depth: Depth, ply: Ply) -> Option<Depth> {
+        let r = match (alpha - guess).get() {
             ..=15 => return None,
             16..=50 => 1,
             51..=100 => 2,
@@ -202,8 +187,8 @@ impl Engine {
 
         if alpha >= beta || ply >= Ply::MAX {
             return Ok(Pv::new(score, None));
-        } else if !is_pv && !pos.is_check() {
-            if let Some(d) = self.nmp(pos, score, beta, depth, ply) {
+        } else if !is_pv && !pos.is_check() && pos.pieces(pos.turn()).len() > 1 {
+            if let Some(d) = self.nmp(score, beta, depth, ply) {
                 let mut next = pos.clone();
                 next.pass();
                 if d <= ply || -self.nw(&next, -beta + 1, d, ply + 1, ctrl)? >= beta {
@@ -224,7 +209,7 @@ impl Engine {
                 } else if Self::KILLERS.with_borrow(|ks| ks.contains(ply, pos.turn(), m)) {
                     (m, Value::new(25))
                 } else if m.is_quiet() {
-                    (m, Value::new(0))
+                    (m, Value::lower())
                 } else {
                     let mut next = pos.material();
                     let material = next.evaluate();
@@ -259,8 +244,9 @@ impl Engine {
             next.play(m);
 
             self.tt.prefetch(next.zobrist());
-            if gain <= 0 && !pos.is_check() && !next.is_check() {
-                if let Some(d) = self.lmp(&next, m, alpha.saturate(), depth, ply) {
+            if gain < 0 && !pos.is_check() && !next.is_check() {
+                let guess = -next.evaluate();
+                if let Some(d) = self.lmp(guess, alpha.saturate(), depth, ply) {
                     if d <= ply || -self.nw(&next, -alpha, d, ply + 1, ctrl)? <= alpha {
                         #[cfg(not(test))]
                         // The late move pruning heuristic is not exact.
@@ -370,6 +356,7 @@ impl Engine {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::chess::Move;
     use proptest::{prop_assume, sample::Selector};
     use std::time::Instant;
     use test_strategy::proptest;
