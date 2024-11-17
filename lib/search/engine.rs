@@ -45,7 +45,7 @@ impl Engine {
 
     /// Records a `[Transposition`].
     fn record(&self, pos: &Evaluator, bounds: Range<Score>, depth: Depth, ply: Ply, pv: Pv) -> Pv {
-        let m = pv.best().assume();
+        let m = pv.assume();
         if pv >= bounds.end && m.is_quiet() {
             Self::KILLERS.with_borrow_mut(|ks| ks.insert(ply, pos.turn(), m));
         }
@@ -177,38 +177,38 @@ impl Engine {
             if !is_pv && t.depth() >= depth - ply {
                 let (lower, upper) = t.bounds().into_inner();
                 if lower >= upper || upper <= alpha || lower >= beta {
-                    return Ok(Pv::new(t.score().normalize(ply), Some(t.best())));
+                    return Ok(t.pv(ply));
                 }
             }
         }
 
-        let score = match transposition {
-            Some(t) => t.score().normalize(ply),
-            _ => pos.evaluate().saturate(),
+        let pv = match transposition {
+            None => Pv::new(pos.evaluate().saturate(), None),
+            Some(t) => t.pv(ply),
         };
 
         let quiesce = ply >= depth;
         let alpha = match quiesce {
             #[cfg(not(test))]
             // The stand pat heuristic is not exact.
-            true => alpha.max(score),
+            true => pv.score().max(alpha),
             _ => alpha,
         };
 
         if alpha >= beta || ply >= Ply::MAX {
-            return Ok(Pv::new(score, None));
-        } else if score - self.rfp(depth, ply) >= beta {
+            return Ok(pv);
+        } else if pv.score() - self.rfp(depth, ply) >= beta {
             #[cfg(not(test))]
             // The reverse futility pruning heuristic is not exact.
-            return Ok(Pv::new(score, None));
+            return Ok(pv);
         } else if !is_pv && !pos.is_check() && pos.pieces(pos.turn()).len() > 1 {
-            if let Some(d) = self.nmp(score, beta, depth, ply) {
+            if let Some(d) = self.nmp(pv.score(), beta, depth, ply) {
                 let mut next = pos.clone();
                 next.pass();
                 if d <= ply || -self.nw(&next, -beta + 1, d, ply + 1, ctrl)? >= beta {
                     #[cfg(not(test))]
                     // The null move pruning heuristic is not exact.
-                    return Ok(Pv::new(score, None));
+                    return Ok(pv);
                 }
             }
         }
@@ -218,7 +218,7 @@ impl Engine {
             .filter(|ms| !quiesce || !ms.is_quiet())
             .flatten()
             .map(|m| {
-                if Some(m) == transposition.map(|t| t.best()) {
+                if Some(m) == *pv {
                     (m, Value::upper())
                 } else if Self::KILLERS.with_borrow(|ks| ks.contains(ply, pos.turn(), m)) {
                     (m, Value::new(25))
@@ -236,7 +236,7 @@ impl Engine {
         moves.sort_unstable_by_key(|(_, gain)| *gain);
 
         let pv = match moves.pop() {
-            None => return Ok(Pv::new(score, None)),
+            None => return Ok(pv),
             Some((m, _)) => {
                 let mut next = pos.clone();
                 next.play(m);
@@ -300,7 +300,7 @@ impl Engine {
             use Control::*;
             pv = self.fw(pos, depth, Ply::new(0), &Unlimited).assume();
             depth = depth + 1;
-            if pv.best().is_some() {
+            if pv.is_some() {
                 break;
             }
         }
@@ -653,7 +653,7 @@ mod tests {
         #[filter(#pos.outcome().is_none())] pos: Evaluator,
     ) {
         let limits = Duration::ZERO.into();
-        assert_ne!(e.search(&pos, &limits, &Trigger::armed()).best(), None);
+        assert_ne!(*e.search(&pos, &limits, &Trigger::armed()), None);
     }
 
     #[proptest]
@@ -662,7 +662,7 @@ mod tests {
         #[filter(#pos.outcome().is_none())] pos: Evaluator,
     ) {
         let limits = Depth::lower().into();
-        assert_ne!(e.search(&pos, &limits, &Trigger::armed()).best(), None);
+        assert_ne!(*e.search(&pos, &limits, &Trigger::armed()), None);
     }
 
     #[proptest]
@@ -671,6 +671,6 @@ mod tests {
         #[filter(#pos.outcome().is_none())] pos: Evaluator,
     ) {
         let limits = Limits::None;
-        assert_ne!(e.search(&pos, &limits, &Trigger::disarmed()).best(), None);
+        assert_ne!(*e.search(&pos, &limits, &Trigger::disarmed()), None);
     }
 }

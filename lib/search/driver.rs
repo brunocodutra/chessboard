@@ -32,7 +32,7 @@ impl Driver {
     ///
     /// The order in which elements are processed and on which thread is unspecified.
     #[inline(always)]
-    pub fn drive<M, F>(&self, mut best: Pv, moves: &[M], f: F) -> Result<Pv, Interrupted>
+    pub fn drive<M, F>(&self, mut pv: Pv, moves: &[M], f: F) -> Result<Pv, Interrupted>
     where
         M: Sync,
         F: Fn(&Pv, &M) -> Result<Pv, ControlFlow> + Sync,
@@ -40,27 +40,27 @@ impl Driver {
         match self {
             Self::Sequential => {
                 for m in moves.iter().rev() {
-                    best = match f(&best, m) {
-                        Ok(pv) => pv.max(best),
+                    pv = match f(&pv, m) {
+                        Ok(partial) => partial.max(pv),
                         Err(ControlFlow::Break) => break,
                         Err(ControlFlow::Interrupt(e)) => return Err(e),
                     };
                 }
 
-                Ok(best)
+                Ok(pv)
             }
 
             Self::Parallel(e) => e.install(|| {
                 use Ordering::Relaxed;
-                let best = AtomicU64::new(IndexedPv(best, u32::MAX).encode().get());
+                let pv = AtomicU64::new(IndexedPv(pv, u32::MAX).encode().get());
                 let result = moves.par_iter().enumerate().rev().try_for_each(|(idx, m)| {
-                    let pv = f(&IndexedPv::decode(Bits::new(best.load(Relaxed))), m)?;
-                    best.fetch_max(IndexedPv(pv, idx.saturate()).encode().get(), Relaxed);
+                    let partial = f(&IndexedPv::decode(Bits::new(pv.load(Relaxed))), m)?;
+                    pv.fetch_max(IndexedPv(partial, idx.saturate()).encode().get(), Relaxed);
                     Ok(())
                 });
 
                 if matches!(result, Ok(()) | Err(ControlFlow::Break)) {
-                    Ok(*IndexedPv::decode(Bits::new(best.into_inner())))
+                    Ok(*IndexedPv::decode(Bits::new(pv.into_inner())))
                 } else {
                     Err(Interrupted)
                 }
@@ -81,7 +81,7 @@ impl Binary for IndexedPv {
         let mut bits = Bits::default();
         bits.push(self.score().encode());
         bits.push(Bits::<u32, 32>::new(self.1));
-        bits.push(self.best().encode());
+        bits.push(self.deref().encode());
         bits
     }
 
