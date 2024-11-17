@@ -98,7 +98,7 @@ impl<I: FusedStream<Item = String> + Unpin, O: Sink<String> + Unpin> Uci<I, O> {
 
         self.output.send(info).await?;
 
-        if let Some(m) = pv.best() {
+        if let Some(m) = *pv {
             self.output.send(format!("bestmove {m}")).await?;
         }
 

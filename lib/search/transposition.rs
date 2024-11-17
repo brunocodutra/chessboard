@@ -1,5 +1,5 @@
 use crate::chess::{Move, Zobrist};
-use crate::search::{Depth, HashSize, Score};
+use crate::search::{Depth, HashSize, Ply, Pv, Score};
 use crate::util::{Assume, Binary, Bits, Integer};
 use derive_more::Debug;
 use std::mem::size_of;
@@ -102,10 +102,10 @@ impl Transposition {
         self.score
     }
 
-    /// Best [`Move`] at this depth.
+    /// Principal variation normalized to [`Ply`].
     #[inline(always)]
-    pub fn best(&self) -> Move {
-        self.best
+    pub fn pv(&self, ply: Ply) -> Pv {
+        Pv::new(self.score().normalize(ply), Some(self.best))
     }
 }
 

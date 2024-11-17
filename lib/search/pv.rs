@@ -1,34 +1,24 @@
 use crate::{chess::Move, search::Score};
+use derive_more::{Constructor, Deref};
 use std::cmp::Ordering;
 use std::ops::{Neg, Shr};
 
 /// The [principal variation].
 ///
 /// [principal variation]: https://www.chessprogramming.org/Principal_Variation
-#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash, Constructor, Deref)]
 #[cfg_attr(test, derive(test_strategy::Arbitrary))]
 pub struct Pv {
     score: Score,
-    best: Option<Move>,
+    #[deref]
+    r#move: Option<Move>,
 }
 
 impl Pv {
-    /// Constructs a pv.
-    #[inline(always)]
-    pub fn new(score: Score, best: Option<Move>) -> Self {
-        Pv { score, best }
-    }
-
     /// The score from the point of view of the side to move.
     #[inline(always)]
     pub fn score(&self) -> Score {
         self.score
-    }
-
-    /// An iterator over [`Move`]s in this principal variation.
-    #[inline(always)]
-    pub fn best(&self) -> Option<Move> {
-        self.best
     }
 }
 
@@ -81,7 +71,7 @@ impl Shr<Pv> for Move {
 
     #[inline(always)]
     fn shr(self, mut pv: Pv) -> Self::Output {
-        pv.best = Some(self);
+        pv.r#move = Some(self);
         pv
     }
 }
@@ -103,12 +93,12 @@ mod tests {
 
     #[proptest]
     fn negation_preserves_best(pv: Pv) {
-        assert_eq!(pv.neg().best(), pv.best());
+        assert_eq!(*pv.neg(), *pv);
     }
 
     #[proptest]
     fn shift_changes_best(pv: Pv, m: Move) {
-        assert_eq!(m.shr(pv).best(), Some(m));
+        assert_eq!(*m.shr(pv), Some(m));
     }
 
     #[proptest]
