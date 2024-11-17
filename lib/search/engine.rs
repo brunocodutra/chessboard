@@ -1,6 +1,6 @@
 use crate::nnue::{Evaluator, Value};
-use crate::search::*;
 use crate::util::{Assume, Counter, Integer, Timer, Trigger};
+use crate::{chess::Outcome, search::*};
 use arrayvec::ArrayVec;
 use std::{cell::RefCell, ops::Range, time::Duration};
 
@@ -108,17 +108,6 @@ impl Engine {
         Some(depth - r - (depth - ply) / 4)
     }
 
-    /// A full alpha-beta search.
-    fn fw(
-        &self,
-        pos: &Evaluator,
-        depth: Depth,
-        ply: Ply,
-        ctrl: &Control,
-    ) -> Result<Pv, Interrupted> {
-        self.pvs(pos, Score::lower()..Score::upper(), depth, ply, ctrl)
-    }
-
     /// A [zero-window] alpha-beta search.
     ///
     /// [zero-window]: https://www.chessprogramming.org/Null_Window
@@ -148,19 +137,22 @@ impl Engine {
         debug_assert!(!bounds.is_empty());
 
         ctrl.interrupted()?;
+        let is_root = ply == 0;
+        let (alpha, beta) = match pos.outcome() {
+            None => self.mdp(ply, &bounds),
+            Some(Outcome::DrawByThreefoldRepetition) if is_root => self.mdp(ply, &bounds),
+            Some(o) if o.is_draw() => return Ok(Pv::new(Score::new(0), None)),
+            Some(_) => return Ok(Pv::new(Score::lower().normalize(ply), None)),
+        };
 
-        let (alpha, beta) = self.mdp(ply, &bounds);
         if alpha >= beta {
             return Ok(Pv::new(alpha, None));
         }
 
-        let transposition = match pos.outcome() {
-            Some(o) if o.is_draw() => return Ok(Pv::new(Score::new(0), None)),
-            Some(_) => return Ok(Pv::new(Score::lower().normalize(ply), None)),
-            None => self.tt.get(pos.zobrist()),
-        };
-
+        let transposition = self.tt.get(pos.zobrist());
         let depth = match transposition {
+            _ if is_root => depth,
+
             #[cfg(not(test))]
             // Extensions are not exact.
             Some(_) if pos.is_check() => depth + 1,
@@ -294,25 +286,23 @@ impl Engine {
     ) -> Pv {
         let ctrl = Control::Limited(Counter::new(nodes), Timer::new(time.end), interrupter);
         let mut pv = Pv::new(Score::new(0), None);
-        let mut depth = Depth::new(0);
 
-        while depth < Depth::upper() {
-            use Control::*;
-            pv = self.fw(pos, depth, Ply::new(0), &Unlimited).assume();
-            depth = depth + 1;
-            if pv.is_some() {
-                break;
-            }
-        }
-
-        'id: for d in depth.get()..=limit.get() {
+        'id: for depth in Depth::iter() {
             let mut overtime = time.end - time.start;
-            let mut depth = Depth::new(d);
-            let mut delta: i16 = 5;
+            let mut draft = depth;
+            let mut delta = 5i16;
 
-            let (mut lower, mut upper) = match d {
+            let (mut lower, mut upper) = match depth.get() {
                 ..=4 => (Score::lower(), Score::upper()),
                 _ => (pv.score() - delta, pv.score() + delta),
+            };
+
+            let ctrl = if pv.is_none() {
+                &Control::Unlimited
+            } else if depth < limit {
+                &ctrl
+            } else {
+                break;
             };
 
             pv = 'aw: loop {
@@ -321,21 +311,21 @@ impl Engine {
                     break 'id;
                 }
 
-                let Ok(partial) = self.pvs(pos, lower..upper, depth, Ply::new(0), &ctrl) else {
+                let Ok(partial) = self.pvs(pos, lower..upper, draft, Ply::new(0), ctrl) else {
                     break 'id;
                 };
 
                 match partial.score() {
                     score if (-lower..Score::upper()).contains(&-score) => {
                         overtime /= 2;
-                        depth = Depth::new(d);
+                        draft = depth;
                         upper = lower / 2 + upper / 2;
                         lower = score - delta;
                     }
 
                     score if (upper..Score::upper()).contains(&score) => {
                         overtime = time.end - time.start;
-                        depth = depth - 1;
+                        draft = draft - 1;
                         upper = score + delta;
                         pv = partial;
                     }
@@ -408,10 +398,6 @@ mod tests {
         alpha
     }
 
-    fn negamax(pos: &Evaluator, depth: Depth, ply: Ply) -> Score {
-        alphabeta(pos, Score::lower()..Score::upper(), depth, ply)
-    }
-
     #[proptest]
     fn hash_is_an_upper_limit_for_table_size(o: Options) {
         let e = Engine::with_options(&o);
@@ -475,17 +461,19 @@ mod tests {
     ) {
         e.tt.set(pos.zobrist(), Transposition::exact(d, sc, m));
 
-        let ctrl = Control::Unlimited;
-        assert_eq!(e.nw(&pos, b, d, p, &ctrl), Ok(Pv::new(sc, Some(m))));
+        assert_eq!(
+            e.nw(&pos, b, d, p, &Control::Unlimited),
+            Ok(Pv::new(sc, Some(m)))
+        );
     }
 
     #[proptest]
     fn nw_finds_score_bound(
-        e: Engine,
+        #[by_ref] e: Engine,
         pos: Evaluator,
         #[filter((Value::lower()..Value::upper()).contains(&#b))] b: Score,
         d: Depth,
-        #[filter(#p >= 0)] p: Ply,
+        #[filter(#p > 0)] p: Ply,
     ) {
         assert_eq!(
             e.nw(&pos, b, d, p, &Control::Unlimited)? < b,
@@ -564,11 +552,11 @@ mod tests {
 
     #[proptest]
     fn pvs_returns_drawn_score_if_game_ends_in_a_draw(
-        e: Engine,
+        #[by_ref] e: Engine,
         #[filter(#pos.outcome().is_some_and(|o| o.is_draw()))] pos: Evaluator,
         #[filter(!#b.is_empty())] b: Range<Score>,
         d: Depth,
-        p: Ply,
+        #[filter(#p > 0 || #pos.outcome() != Some(Outcome::DrawByThreefoldRepetition))] p: Ply,
     ) {
         assert_eq!(
             e.pvs(&pos, b, d, p, &Control::Unlimited),
@@ -591,38 +579,17 @@ mod tests {
     }
 
     #[proptest]
-    fn fw_finds_best_score(e: Engine, pos: Evaluator, d: Depth, #[filter(#p >= 0)] p: Ply) {
-        assert_eq!(e.fw(&pos, d, p, &Control::Unlimited)?, negamax(&pos, d, p));
-    }
-
-    #[proptest]
-    fn fw_does_not_depend_on_configuration(
-        x: Options,
-        y: Options,
-        pos: Evaluator,
-        d: Depth,
-        #[filter(#p >= 0)] p: Ply,
-    ) {
-        let x = Engine::with_options(&x);
-        let y = Engine::with_options(&y);
-
-        let ctrl = Control::Unlimited;
-
-        assert_eq!(
-            x.fw(&pos, d, p, &ctrl)?.score(),
-            y.fw(&pos, d, p, &ctrl)?.score()
-        );
-    }
-
-    #[proptest]
     fn search_finds_the_principal_variation(
         mut e: Engine,
         pos: Evaluator,
         #[filter(#d > 1)] d: Depth,
     ) {
+        let interrupter = Trigger::armed();
+        let time = Duration::MAX..Duration::MAX;
+
         assert_eq!(
-            e.search(&pos, &Limits::Depth(d), &Trigger::armed()).score(),
-            e.fw(&pos, d, Ply::new(0), &Control::Unlimited)?.score()
+            e.search(&pos, &Limits::Depth(d), &interrupter).score(),
+            e.aw(&pos, d, u64::MAX, &time, &interrupter).score()
         );
     }
 
