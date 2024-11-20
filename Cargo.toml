@@ -10,7 +10,10 @@ readme = "README.md"
 keywords = ["chess"]
 
 [lints.rust]
-unexpected_cfgs = { level = "warn", check-cfg = ['cfg(coverage)'] }
+unexpected_cfgs = { level = "warn", check-cfg = [
+    'cfg(coverage)',
+    'cfg(feature, values("used_linker"))',
+] }
 
 [dependencies]
 arrayvec = { version = "0.7.6", default-features = false, features = ["std"] }
