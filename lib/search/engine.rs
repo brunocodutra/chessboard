@@ -189,7 +189,7 @@ impl Engine {
 
         if alpha >= beta || ply >= Ply::MAX {
             return Ok(pv);
-        } else if pv.score() - self.rfp(depth, ply) >= beta {
+        } else if !is_pv && pv.score() - self.rfp(depth, ply) >= beta {
             #[cfg(not(test))]
             // The reverse futility pruning heuristic is not exact.
             return Ok(pv);
