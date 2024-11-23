@@ -104,8 +104,8 @@ impl Transposition {
 
     /// Principal variation normalized to [`Ply`].
     #[inline(always)]
-    pub fn pv(&self, ply: Ply) -> Pv {
-        Pv::new(self.score().normalize(ply), Some(self.best))
+    pub fn transpose(&self, ply: Ply) -> Pv<1> {
+        Pv::new(self.score().normalize(ply), [self.best])
     }
 }
 

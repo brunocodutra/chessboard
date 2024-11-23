@@ -1,6 +1,7 @@
+use crate::chess::{Move, Outcome};
 use crate::nnue::{Evaluator, Value};
-use crate::util::{Assume, Counter, Integer, Timer, Trigger};
-use crate::{chess::Outcome, search::*};
+use crate::search::*;
+use crate::util::{Counter, Integer, Timer, Trigger};
 use arrayvec::ArrayVec;
 use std::{cell::RefCell, ops::Range, time::Duration};
 
@@ -44,24 +45,29 @@ impl Engine {
     }
 
     /// Records a `[Transposition`].
-    fn record(&self, pos: &Evaluator, bounds: Range<Score>, depth: Depth, ply: Ply, pv: Pv) -> Pv {
-        let m = pv.assume();
-        if pv >= bounds.end && m.is_quiet() {
-            Self::KILLERS.with_borrow_mut(|ks| ks.insert(ply, pos.turn(), m));
+    fn record(
+        &self,
+        pos: &Evaluator,
+        bounds: Range<Score>,
+        depth: Depth,
+        ply: Ply,
+        best: Move,
+        score: Score,
+    ) {
+        if score >= bounds.end && best.is_quiet() {
+            Self::KILLERS.with_borrow_mut(|ks| ks.insert(ply, pos.turn(), best));
         }
 
         self.tt.set(
             pos.zobrist(),
-            if pv.score() >= bounds.end {
-                Transposition::lower(depth - ply, pv.score().normalize(-ply), m)
-            } else if pv.score() <= bounds.start {
-                Transposition::upper(depth - ply, pv.score().normalize(-ply), m)
+            if score >= bounds.end {
+                Transposition::lower(depth - ply, score.normalize(-ply), best)
+            } else if score <= bounds.start {
+                Transposition::upper(depth - ply, score.normalize(-ply), best)
             } else {
-                Transposition::exact(depth - ply, pv.score().normalize(-ply), m)
+                Transposition::exact(depth - ply, score.normalize(-ply), best)
             },
         );
-
-        pv
     }
 
     /// An implementation of [mate distance pruning].
@@ -108,32 +114,49 @@ impl Engine {
         Some(depth - r - (depth - ply) / 4)
     }
 
-    /// A [zero-window] alpha-beta search.
+    /// The [alpha-beta] search.
     ///
-    /// [zero-window]: https://www.chessprogramming.org/Null_Window
-    fn nw(
-        &self,
-        pos: &Evaluator,
-        beta: Score,
-        depth: Depth,
-        ply: Ply,
-        ctrl: &Control,
-    ) -> Result<Pv, Interrupted> {
-        self.pvs(pos, beta - 1..beta, depth, ply, ctrl)
-    }
-
-    /// An implementation of the [PVS] variation of [alpha-beta pruning] algorithm.
-    ///
-    /// [PVS]: https://www.chessprogramming.org/Principal_Variation_Search
-    /// [alpha-beta pruning]: https://www.chessprogramming.org/Alpha-Beta
-    fn pvs(
+    /// [alpha-beta]: https://www.chessprogramming.org/Alpha-Beta
+    fn ab<const N: usize>(
         &self,
         pos: &Evaluator,
         bounds: Range<Score>,
         depth: Depth,
         ply: Ply,
         ctrl: &Control,
-    ) -> Result<Pv, Interrupted> {
+    ) -> Result<Pv<N>, Interrupted> {
+        if ply < N && depth > ply && bounds.start + 1 < bounds.end {
+            self.pvs(pos, bounds, depth, ply, ctrl)
+        } else {
+            Ok(self.pvs::<0>(pos, bounds, depth, ply, ctrl)?.convert())
+        }
+    }
+
+    /// The [zero-window] alpha-beta search.
+    ///
+    /// [zero-window]: https://www.chessprogramming.org/Null_Window
+    fn nw<const N: usize>(
+        &self,
+        pos: &Evaluator,
+        beta: Score,
+        depth: Depth,
+        ply: Ply,
+        ctrl: &Control,
+    ) -> Result<Pv<N>, Interrupted> {
+        self.ab(pos, beta - 1..beta, depth, ply, ctrl)
+    }
+
+    /// An implementation of the [PVS] variation of the alpha-beta search.
+    ///
+    /// [PVS]: https://www.chessprogramming.org/Principal_Variation_Search
+    fn pvs<const N: usize>(
+        &self,
+        pos: &Evaluator,
+        bounds: Range<Score>,
+        depth: Depth,
+        ply: Ply,
+        ctrl: &Control,
+    ) -> Result<Pv<N>, Interrupted> {
         debug_assert!(!bounds.is_empty());
 
         ctrl.interrupted()?;
@@ -141,12 +164,12 @@ impl Engine {
         let (alpha, beta) = match pos.outcome() {
             None => self.mdp(ply, &bounds),
             Some(Outcome::DrawByThreefoldRepetition) if is_root => self.mdp(ply, &bounds),
-            Some(o) if o.is_draw() => return Ok(Pv::new(Score::new(0), None)),
-            Some(_) => return Ok(Pv::new(Score::lower().normalize(ply), None)),
+            Some(o) if o.is_draw() => return Ok(Pv::new(Score::new(0), [])),
+            Some(_) => return Ok(Pv::new(Score::lower().normalize(ply), [])),
         };
 
         if alpha >= beta {
-            return Ok(Pv::new(alpha, None));
+            return Ok(Pv::new(alpha, []));
         }
 
         let transposition = self.tt.get(pos.zobrist());
@@ -164,43 +187,43 @@ impl Engine {
             _ => depth,
         };
 
+        let transposed = match transposition {
+            None => Pv::new(pos.evaluate().saturate(), []),
+            Some(t) => t.transpose(ply),
+        };
+
         let is_pv = alpha + 1 < beta;
         if let Some(t) = transposition {
             if !is_pv && t.depth() >= depth - ply {
                 let (lower, upper) = t.bounds().into_inner();
                 if lower >= upper || upper <= alpha || lower >= beta {
-                    return Ok(t.pv(ply));
+                    return Ok(transposed.convert());
                 }
             }
         }
 
-        let pv = match transposition {
-            None => Pv::new(pos.evaluate().saturate(), None),
-            Some(t) => t.pv(ply),
-        };
-
-        let quiesce = ply >= depth;
+        let quiesce = depth <= ply;
         let alpha = match quiesce {
             #[cfg(not(test))]
             // The stand pat heuristic is not exact.
-            true => pv.score().max(alpha),
+            true => transposed.score().max(alpha),
             _ => alpha,
         };
 
         if alpha >= beta || ply >= Ply::MAX {
-            return Ok(pv);
-        } else if !is_pv && pv.score() - self.rfp(depth, ply) >= beta {
+            return Ok(transposed.convert());
+        } else if !is_pv && transposed.score() - self.rfp(depth, ply) >= beta {
             #[cfg(not(test))]
             // The reverse futility pruning heuristic is not exact.
-            return Ok(pv);
+            return Ok(transposed.convert());
         } else if !is_pv && !pos.is_check() && pos.pieces(pos.turn()).len() > 1 {
-            if let Some(d) = self.nmp(pv.score(), beta, depth, ply) {
+            if let Some(d) = self.nmp(transposed.score(), beta, depth, ply) {
                 let mut next = pos.clone();
                 next.pass();
-                if d <= ply || -self.nw(&next, -beta + 1, d, ply + 1, ctrl)? >= beta {
+                if d <= ply || -self.nw::<0>(&next, -beta + 1, d, ply + 1, ctrl)? >= beta {
                     #[cfg(not(test))]
                     // The null move pruning heuristic is not exact.
-                    return Ok(pv);
+                    return Ok(transposed.convert());
                 }
             }
         }
@@ -210,7 +233,7 @@ impl Engine {
             .filter(|ms| !quiesce || !ms.is_quiet())
             .flatten()
             .map(|m| {
-                if Some(m) == *pv {
+                if Some(m) == transposed.moves().next() {
                     (m, Value::upper())
                 } else if Self::KILLERS.with_borrow(|ks| ks.contains(ply, pos.turn(), m)) {
                     (m, Value::new(25))
@@ -227,21 +250,22 @@ impl Engine {
 
         moves.sort_unstable_by_key(|(_, gain)| *gain);
 
-        let pv = match moves.pop() {
-            None => return Ok(pv),
+        let (head, tail) = match moves.pop() {
+            None => return Ok(transposed.convert()),
             Some((m, _)) => {
                 let mut next = pos.clone();
                 next.play(m);
-                m >> -self.pvs(&next, -beta..-alpha, depth, ply + 1, ctrl)?
+                (m, -self.ab(&next, -beta..-alpha, depth, ply + 1, ctrl)?)
             }
         };
 
-        if pv >= beta || moves.is_empty() {
-            return Ok(self.record(pos, bounds, depth, ply, pv));
+        if tail >= beta || moves.is_empty() {
+            self.record(pos, bounds, depth, ply, head, tail.score());
+            return Ok(head >> tail);
         }
 
-        let pv = self.driver.drive(pv, &moves, |&best, &(m, gain)| {
-            let alpha = match best.score() {
+        let (head, tail) = self.driver.drive(head, tail, &moves, |score, m, gain| {
+            let alpha = match score {
                 s if s >= beta => return Err(ControlFlow::Break),
                 s => s.max(alpha),
             };
@@ -253,39 +277,40 @@ impl Engine {
             if gain < 0 && !pos.is_check() && !next.is_check() {
                 let guess = -next.evaluate();
                 if let Some(d) = self.lmp(guess, alpha.saturate(), depth, ply) {
-                    if d <= ply || -self.nw(&next, -alpha, d, ply + 1, ctrl)? <= alpha {
+                    if d <= ply || -self.nw::<0>(&next, -alpha, d, ply + 1, ctrl)? <= alpha {
                         #[cfg(not(test))]
                         // The late move pruning heuristic is not exact.
-                        return Ok(best);
+                        return Err(ControlFlow::Continue);
                     }
                 }
             }
 
-            let pv = match -self.nw(&next, -alpha, depth, ply + 1, ctrl)? {
-                pv if pv <= alpha || pv >= beta => m >> pv,
-                _ => m >> -self.pvs(&next, -beta..-alpha, depth, ply + 1, ctrl)?,
+            let partial = match -self.nw(&next, -alpha, depth, ply + 1, ctrl)? {
+                partial if partial <= alpha || partial >= beta => partial,
+                _ => -self.ab(&next, -beta..-alpha, depth, ply + 1, ctrl)?,
             };
 
-            Ok(pv)
+            Ok(partial)
         })?;
 
-        Ok(self.record(pos, bounds, depth, ply, pv))
+        self.record(pos, bounds, depth, ply, head, tail.score());
+        Ok(head >> tail)
     }
 
     /// An implementation of [aspiration windows] with [iterative deepening].
     ///
     /// [aspiration windows]: https://www.chessprogramming.org/Aspiration_Windows
     /// [iterative deepening]: https://www.chessprogramming.org/Iterative_Deepening
-    fn aw(
+    fn aw<const N: usize>(
         &self,
         pos: &Evaluator,
         limit: Depth,
         nodes: u64,
         time: &Range<Duration>,
-        interrupter: &Trigger,
-    ) -> Pv {
-        let ctrl = Control::Limited(Counter::new(nodes), Timer::new(time.end), interrupter);
-        let mut pv = Pv::new(Score::new(0), None);
+        stopper: &Trigger,
+    ) -> Pv<N> {
+        let ctrl = Control::Limited(Counter::new(nodes), Timer::new(time.end), stopper);
+        let mut pv = Pv::new(Score::lower(), []);
 
         'id: for depth in Depth::iter() {
             let mut overtime = time.end - time.start;
@@ -297,21 +322,22 @@ impl Engine {
                 _ => (pv.score() - delta, pv.score() + delta),
             };
 
-            let ctrl = if pv.is_none() {
+            const { assert!(N > 0) }
+            let ctrl = if pv.moves().next().is_none() {
                 &Control::Unlimited
             } else if depth < limit {
                 &ctrl
             } else {
-                break;
+                break 'id;
             };
 
-            pv = 'aw: loop {
+            'aw: loop {
                 delta = delta.saturating_mul(2);
                 if ctrl.timer().remaining() < Some(overtime) {
                     break 'id;
                 }
 
-                let Ok(partial) = self.pvs(pos, lower..upper, draft, Ply::new(0), ctrl) else {
+                let Ok(partial) = self.ab(pos, lower..upper, draft, Ply::new(0), ctrl) else {
                     break 'id;
                 };
 
@@ -330,9 +356,12 @@ impl Engine {
                         pv = partial;
                     }
 
-                    _ => break 'aw partial,
+                    _ => {
+                        pv = partial;
+                        break 'aw;
+                    }
                 }
-            };
+            }
         }
 
         pv
@@ -351,9 +380,14 @@ impl Engine {
     }
 
     /// Searches for the [principal variation][`Pv`].
-    pub fn search(&mut self, pos: &Evaluator, limits: &Limits, interrupter: &Trigger) -> Pv {
+    pub fn search<const N: usize>(
+        &mut self,
+        pos: &Evaluator,
+        limits: &Limits,
+        stopper: &Trigger,
+    ) -> Pv<N> {
         let time = self.time_to_search(pos, limits);
-        self.aw(pos, limits.depth(), limits.nodes(), &time, interrupter)
+        self.aw(pos, limits.depth(), limits.nodes(), &time, stopper)
     }
 }
 
@@ -408,7 +442,7 @@ mod tests {
     #[proptest]
     #[should_panic]
     fn nw_panics_if_beta_is_too_small(e: Engine, pos: Evaluator, d: Depth, p: Ply) {
-        e.nw(&pos, Score::lower(), d, p, &Control::Unlimited)?;
+        e.nw::<3>(&pos, Score::lower(), d, p, &Control::Unlimited)?;
     }
 
     #[proptest]
@@ -423,10 +457,9 @@ mod tests {
         #[filter(#s.mate().is_none() && #s >= #b)] s: Score,
         #[map(|s: Selector| s.select(#pos.moves().flatten()))] m: Move,
     ) {
+        use Control::Unlimited;
         e.tt.set(pos.zobrist(), Transposition::lower(d, s, m));
-
-        let ctrl = Control::Unlimited;
-        assert_eq!(e.nw(&pos, b, d, p, &ctrl), Ok(Pv::new(s, Some(m))));
+        assert_eq!(e.nw::<3>(&pos, b, d, p, &Unlimited), Ok(Pv::new(s, [])));
     }
 
     #[proptest]
@@ -441,10 +474,9 @@ mod tests {
         #[filter(#s.mate().is_none() && #s < #b)] s: Score,
         #[map(|s: Selector| s.select(#pos.moves().flatten()))] m: Move,
     ) {
+        use Control::Unlimited;
         e.tt.set(pos.zobrist(), Transposition::upper(d, s, m));
-
-        let ctrl = Control::Unlimited;
-        assert_eq!(e.nw(&pos, b, d, p, &ctrl), Ok(Pv::new(s, Some(m))));
+        assert_eq!(e.nw::<3>(&pos, b, d, p, &Unlimited), Ok(Pv::new(s, [])));
     }
 
     #[proptest]
@@ -459,12 +491,9 @@ mod tests {
         #[filter(#sc.mate().is_none())] sc: Score,
         #[map(|s: Selector| s.select(#pos.moves().flatten()))] m: Move,
     ) {
+        use Control::Unlimited;
         e.tt.set(pos.zobrist(), Transposition::exact(d, sc, m));
-
-        assert_eq!(
-            e.nw(&pos, b, d, p, &Control::Unlimited),
-            Ok(Pv::new(sc, Some(m)))
-        );
+        assert_eq!(e.nw::<3>(&pos, b, d, p, &Unlimited), Ok(Pv::new(sc, [])));
     }
 
     #[proptest]
@@ -476,82 +505,78 @@ mod tests {
         #[filter(#p > 0)] p: Ply,
     ) {
         assert_eq!(
-            e.nw(&pos, b, d, p, &Control::Unlimited)? < b,
+            e.nw::<3>(&pos, b, d, p, &Control::Unlimited)? < b,
             alphabeta(&pos, b - 1..b, d, p) < b
         );
     }
 
     #[proptest]
     #[should_panic]
-    fn pvs_panics_if_alpha_is_not_greater_than_beta(
+    fn ab_panics_if_alpha_is_not_greater_than_beta(
         e: Engine,
         pos: Evaluator,
         b: Range<Score>,
         d: Depth,
         p: Ply,
     ) {
-        e.pvs(&pos, b.end..b.start, d, p, &Control::Unlimited)?;
+        e.ab::<3>(&pos, b.end..b.start, d, p, &Control::Unlimited)?;
     }
 
     #[proptest]
-    fn pvs_aborts_if_maximum_number_of_nodes_visited(
+    fn ab_aborts_if_maximum_number_of_nodes_visited(
         e: Engine,
         pos: Evaluator,
         #[filter(!#b.is_empty())] b: Range<Score>,
         d: Depth,
         p: Ply,
     ) {
-        let interrupter = Trigger::armed();
-        let ctrl = Control::Limited(Counter::new(0), Timer::infinite(), &interrupter);
-        assert_eq!(e.pvs(&pos, b, d, p, &ctrl), Err(Interrupted));
+        let trigger = Trigger::armed();
+        let ctrl = Control::Limited(Counter::new(0), Timer::infinite(), &trigger);
+        assert_eq!(e.ab::<3>(&pos, b, d, p, &ctrl), Err(Interrupted));
     }
 
     #[proptest]
-    fn pvs_aborts_if_time_is_up(
+    fn ab_aborts_if_time_is_up(
         e: Engine,
         pos: Evaluator,
         #[filter(!#b.is_empty())] b: Range<Score>,
         d: Depth,
         p: Ply,
     ) {
-        let interrupter = Trigger::armed();
-        let ctrl = Control::Limited(
-            Counter::new(u64::MAX),
-            Timer::new(Duration::ZERO),
-            &interrupter,
-        );
+        let trigger = Trigger::armed();
+        let ctrl = Control::Limited(Counter::new(u64::MAX), Timer::new(Duration::ZERO), &trigger);
         std::thread::sleep(Duration::from_millis(1));
-        assert_eq!(e.pvs(&pos, b, d, p, &ctrl), Err(Interrupted));
+        assert_eq!(e.ab::<3>(&pos, b, d, p, &ctrl), Err(Interrupted));
     }
 
     #[proptest]
-    fn pvs_aborts_if_interrupter_is_disarmed(
+    fn ab_aborts_if_stopper_is_disarmed(
         e: Engine,
         pos: Evaluator,
         #[filter(!#b.is_empty())] b: Range<Score>,
         d: Depth,
         p: Ply,
     ) {
-        let interrupter = Trigger::disarmed();
-        let ctrl = Control::Limited(Counter::new(u64::MAX), Timer::infinite(), &interrupter);
-        assert_eq!(e.pvs(&pos, b, d, p, &ctrl), Err(Interrupted));
+        let trigger = Trigger::disarmed();
+        let ctrl = Control::Limited(Counter::new(u64::MAX), Timer::infinite(), &trigger);
+        assert_eq!(e.ab::<3>(&pos, b, d, p, &ctrl), Err(Interrupted));
     }
 
     #[proptest]
-    fn pvs_returns_static_evaluation_if_max_ply(
+    fn ab_returns_static_evaluation_if_max_ply(
         e: Engine,
         #[filter(#pos.outcome().is_none())] pos: Evaluator,
         #[filter(!#b.is_empty())] b: Range<Score>,
         d: Depth,
     ) {
         assert_eq!(
-            e.pvs(&pos, b, d, Ply::upper(), &Control::Unlimited),
-            Ok(Pv::new(pos.evaluate().saturate(), None))
+            e.ab::<3>(&pos, b, d, Ply::upper(), &Control::Unlimited),
+            Ok(Pv::new(pos.evaluate().saturate(), []))
         );
     }
 
     #[proptest]
-    fn pvs_returns_drawn_score_if_game_ends_in_a_draw(
+    fn ab_returns_drawn_score_if_game_ends_in_a_draw(
         #[by_ref] e: Engine,
         #[filter(#pos.outcome().is_some_and(|o| o.is_draw()))] pos: Evaluator,
         #[filter(!#b.is_empty())] b: Range<Score>,
@@ -559,13 +584,13 @@ mod tests {
         #[filter(#p > 0 || #pos.outcome() != Some(Outcome::DrawByThreefoldRepetition))] p: Ply,
     ) {
         assert_eq!(
-            e.pvs(&pos, b, d, p, &Control::Unlimited),
-            Ok(Pv::new(Score::new(0), None))
+            e.ab::<3>(&pos, b, d, p, &Control::Unlimited),
+            Ok(Pv::new(Score::new(0), []))
         );
     }
 
     #[proptest]
-    fn pvs_returns_lost_score_if_game_ends_in_checkmate(
+    fn ab_returns_lost_score_if_game_ends_in_checkmate(
         e: Engine,
         #[filter(#pos.outcome().is_some_and(|o| o.is_decisive()))] pos: Evaluator,
         #[filter(!#b.is_empty())] b: Range<Score>,
@@ -573,31 +598,30 @@ mod tests {
         p: Ply,
     ) {
         assert_eq!(
-            e.pvs(&pos, b, d, p, &Control::Unlimited),
-            Ok(Pv::new(Score::lower().normalize(p), None))
+            e.ab::<3>(&pos, b, d, p, &Control::Unlimited),
+            Ok(Pv::new(Score::lower().normalize(p), []))
         );
     }
 
     #[proptest]
-    fn search_finds_the_principal_variation(
-        mut e: Engine,
-        pos: Evaluator,
-        #[filter(#d > 1)] d: Depth,
-    ) {
-        let interrupter = Trigger::armed();
+    fn search_finds_the_minimax_score(mut e: Engine, pos: Evaluator, #[filter(#d > 1)] d: Depth) {
+        let trigger = Trigger::armed();
         let time = Duration::MAX..Duration::MAX;
 
         assert_eq!(
-            e.search(&pos, &Limits::Depth(d), &interrupter).score(),
-            e.aw(&pos, d, u64::MAX, &time, &interrupter).score()
+            e.search::<1>(&pos, &Limits::Depth(d), &trigger).score(),
+            e.aw::<1>(&pos, d, u64::MAX, &time, &trigger).score()
         );
     }
 
     #[proptest]
     fn search_is_stable(mut e: Engine, pos: Evaluator, d: Depth) {
+        let limits = Limits::Depth(d);
+        let trigger = Trigger::armed();
+
         assert_eq!(
-            e.search(&pos, &Limits::Depth(d), &Trigger::armed()).score(),
-            e.search(&pos, &Limits::Depth(d), &Trigger::armed()).score()
+            e.search::<1>(&pos, &limits, &trigger).score(),
+            e.search::<1>(&pos, &limits, &trigger).score()
         );
     }
 
@@ -610,7 +634,7 @@ mod tests {
         let timer = Instant::now();
         let trigger = Trigger::armed();
         let limits = Limits::Time(Duration::from_millis(ms.into()));
-        e.search(&pos, &limits, &trigger);
+        e.search::<3>(&pos, &limits, &trigger);
         assert!(timer.elapsed() < Duration::from_secs(1));
     }
 
@@ -620,7 +644,8 @@ mod tests {
         #[filter(#pos.outcome().is_none())] pos: Evaluator,
     ) {
         let limits = Duration::ZERO.into();
-        assert_ne!(*e.search(&pos, &limits, &Trigger::armed()), None);
+        let trigger = Trigger::armed();
+        assert_ne!(e.search::<3>(&pos, &limits, &trigger).moves().next(), None);
     }
 
     #[proptest]
@@ -629,15 +654,17 @@ mod tests {
         #[filter(#pos.outcome().is_none())] pos: Evaluator,
     ) {
         let limits = Depth::lower().into();
-        assert_ne!(*e.search(&pos, &limits, &Trigger::armed()), None);
+        let trigger = Trigger::armed();
+        assert_ne!(e.search::<3>(&pos, &limits, &trigger).moves().next(), None);
     }
 
     #[proptest]
-    fn search_ignores_interrupter_to_find_some_pv(
+    fn search_ignores_stopper_to_find_some_pv(
         mut e: Engine,
         #[filter(#pos.outcome().is_none())] pos: Evaluator,
     ) {
         let limits = Limits::None;
-        assert_ne!(*e.search(&pos, &limits, &Trigger::disarmed()), None);
+        let trigger = Trigger::armed();
+        assert_ne!(e.search::<3>(&pos, &limits, &trigger).moves().next(), None);
     }
 }
