@@ -1,6 +1,6 @@
 use crate::chess::{Color, Move, Perspective};
 use crate::nnue::Evaluator;
-use crate::search::{Engine, HashSize, Limits, Options, ThreadCount};
+use crate::search::{Depth, Engine, HashSize, Limits, Options, ThreadCount};
 use crate::util::{Assume, Integer, Trigger};
 use futures::channel::oneshot::channel as oneshot;
 use futures::{future::FusedFuture, prelude::*, select_biased as select, stream::FusedStream};
@@ -71,11 +71,11 @@ impl<I, O> Uci<I, O> {
 }
 
 impl<I: FusedStream<Item = String> + Unpin, O: Sink<String> + Unpin> Uci<I, O> {
-    async fn go(&mut self, limits: &Limits) -> Result<(), O::Error> {
-        let interrupter = Trigger::armed();
+    async fn go<const N: usize>(&mut self, limits: &Limits) -> Result<(), O::Error> {
+        let stopper = Trigger::armed();
 
         let mut search =
-            unsafe { unblock(|| self.engine.search(&self.position, limits, &interrupter)) };
+            unsafe { unblock(|| self.engine.search::<N>(&self.position, limits, &stopper)) };
 
         let pv = loop {
             select! {
@@ -83,7 +83,7 @@ impl<I: FusedStream<Item = String> + Unpin, O: Sink<String> + Unpin> Uci<I, O> {
                 line = self.input.next() => {
                     match line.as_deref().map(str::trim) {
                         None => break search.await,
-                        Some("stop") => { interrupter.disarm(); },
+                        Some("stop") => { stopper.disarm(); },
                         Some(cmd) => eprintln!("ignored unsupported command `{cmd}` during search"),
                     }
                 }
@@ -91,14 +91,15 @@ impl<I: FusedStream<Item = String> + Unpin, O: Sink<String> + Unpin> Uci<I, O> {
         };
 
         let info = match pv.score().mate() {
-            Some(p) if p > 0 => format!("info score mate {}", (p + 1) / 2),
-            Some(p) => format!("info score mate {}", (p - 1) / 2),
-            None => format!("info score cp {:+}", pv.score()),
+            Some(p) if p > 0 => format!("info score mate {} pv {pv}", (p + 1) / 2),
+            Some(p) => format!("info score mate {} pv {pv}", (p - 1) / 2),
+            None => format!("info score cp {:+} pv {pv}", pv.score()),
         };
 
         self.output.send(info).await?;
 
-        if let Some(m) = *pv {
+        const { assert!(N > 0) }
+        if let Some(m) = pv.moves().next() {
             self.output.send(format!("bestmove {m}")).await?;
         }
 
@@ -106,9 +107,9 @@ impl<I: FusedStream<Item = String> + Unpin, O: Sink<String> + Unpin> Uci<I, O> {
     }
 
     async fn bench(&mut self, limits: &Limits) -> Result<(), O::Error> {
-        let interrupter = Trigger::armed();
+        let stopper = Trigger::armed();
         let timer = Instant::now();
-        self.engine.search(&self.position, limits, &interrupter);
+        self.engine.search::<1>(&self.position, limits, &stopper);
         let millis = timer.elapsed().as_millis();
 
         let info = match limits {
@@ -142,27 +143,32 @@ impl<I: FusedStream<Item = String> + Unpin, O: Sink<String> + Unpin> Uci<I, O> {
                         (Ok(t), Ok(i)) => {
                             let t = Duration::from_millis(t);
                             let i = Duration::from_millis(i);
-                            self.go(&Limits::Clock(t, i)).await?;
+                            self.go::<1>(&Limits::Clock(t, i)).await?;
                         }
                     }
                 }
 
+                ["go", "movetime", time] => match time.parse() {
+                    Err(e) => eprintln!("{e}"),
+                    Ok(ms) => {
+                        let time = Duration::from_millis(ms);
+                        self.go::<{ Depth::MAX as _ }>(&time.into()).await?
+                    }
+                },
+
                 ["go", "depth", depth] => match depth.parse() {
-                    Ok(d) => self.go(&Limits::Depth(d)).await?,
+                    Ok(d) => self.go::<{ Depth::MAX as _ }>(&Limits::Depth(d)).await?,
                     Err(e) => eprintln!("{e}"),
                 },
 
                 ["go", "nodes", nodes] => match nodes.parse() {
-                    Ok(n) => self.go(&Limits::Nodes(n)).await?,
+                    Ok(n) => self.go::<{ Depth::MAX as _ }>(&Limits::Nodes(n)).await?,
                     Err(e) => eprintln!("{e}"),
                 },
 
-                ["go", "movetime", time] => match time.parse() {
-                    Ok(ms) => self.go(&Duration::from_millis(ms).into()).await?,
-                    Err(e) => eprintln!("{e}"),
-                },
-
-                ["go"] | ["go", "infinite"] => self.go(&Limits::None).await?,
+                ["go"] | ["go", "infinite"] => {
+                    self.go::<{ Depth::MAX as _ }>(&Limits::None).await?
+                }
 
                 ["bench", "depth", depth] => match depth.parse() {
                     Ok(d) => self.bench(&Limits::Depth(d)).await?,

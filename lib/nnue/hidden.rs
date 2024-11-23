@@ -15,7 +15,7 @@ impl<const N: usize> Hidden<N> {
     #[inline(always)]
     #[cfg(target_feature = "avx2")]
     pub unsafe fn avx2(&self, us: &[i16; N], them: &[i16; N]) -> i32 {
-        const { assert!(N % 128 == 0) };
+        const { assert!(N % 128 == 0) }
 
         use std::{arch::x86_64::*, mem::transmute};
 
@@ -73,7 +73,7 @@ impl<const N: usize> Hidden<N> {
     #[inline(always)]
     #[cfg(target_feature = "ssse3")]
     pub unsafe fn sse(&self, us: &[i16; N], them: &[i16; N]) -> i32 {
-        const { assert!(N % 64 == 0) };
+        const { assert!(N % 64 == 0) }
 
         use std::{arch::x86_64::*, mem::transmute};
 

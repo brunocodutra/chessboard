@@ -14,10 +14,10 @@ fn bench(reps: u64, options: &Options, limits: &Limits) -> Duration {
 
     for _ in 0..reps {
         let mut e = Engine::with_options(options);
-        let interrupter = Trigger::armed();
+        let stopper = Trigger::armed();
         let pos = Evaluator::default();
         let timer = Instant::now();
-        e.search(&pos, limits, &interrupter);
+        e.search::<1>(&pos, limits, &stopper);
         time += timer.elapsed();
     }
 
