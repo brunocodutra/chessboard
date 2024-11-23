@@ -6,12 +6,8 @@ use criterion_macro::criterion;
 use lib::nnue::Evaluator;
 use lib::search::{Depth, Engine, Limits, Options};
 use lib::util::{Integer, Trigger};
+use std::thread::available_parallelism;
 use std::time::{Duration, Instant};
-use std::{str::FromStr, thread::available_parallelism};
-
-#[ctor::ctor]
-static POSITION: Evaluator =
-    Evaluator::from_str("6br/1KNp1n1r/2p2p2/P1ppRP2/1kP3pP/3PBB2/PN1P4/8 w - - 0 1").unwrap();
 
 fn bench(reps: u64, options: &Options, limits: &Limits) -> Duration {
     let mut time = Duration::ZERO;
@@ -19,8 +15,9 @@ fn bench(reps: u64, options: &Options, limits: &Limits) -> Duration {
     for _ in 0..reps {
         let mut e = Engine::with_options(options);
         let interrupter = Trigger::armed();
+        let pos = Evaluator::default();
         let timer = Instant::now();
-        e.search(&POSITION, limits, &interrupter);
+        e.search(&pos, limits, &interrupter);
         time += timer.elapsed();
     }
 
@@ -40,7 +37,7 @@ fn crit(c: &mut Criterion) {
     }));
 
     for o in &options {
-        let depth = Depth::new(12);
+        let depth = Depth::new(14);
         c.benchmark_group("ttd")
             .sampling_mode(SamplingMode::Flat)
             .bench_function(o.threads.to_string(), |b| {
@@ -49,7 +46,7 @@ fn crit(c: &mut Criterion) {
     }
 
     for o in &options {
-        let nodes = 300_000;
+        let nodes = 500_000;
         c.benchmark_group("nps")
             .sampling_mode(SamplingMode::Flat)
             .throughput(Throughput::Elements(nodes))
