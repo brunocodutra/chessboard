@@ -65,36 +65,38 @@ impl<T: Accumulator> Evaluator<T> {
     /// Play a [`Move`].
     pub fn play(&mut self, m: Move) {
         let turn = self.turn();
+        let promotion = m.promotion();
+        let (wc, wt) = (m.whence(), m.whither());
         let (role, capture) = self.pos.play(m);
         let mut sides = ArrayVec::<Color, 2>::from([!turn, turn]);
 
         if role == Role::King
-            && Feature::new(turn, m.whence(), Piece::lower(), Square::lower())
-                != Feature::new(turn, m.whither(), Piece::lower(), Square::lower())
+            && Feature::new(turn, wc, Piece::lower(), Square::lower())
+                != Feature::new(turn, wt, Piece::lower(), Square::lower())
         {
             sides.truncate(1);
             self.acc.refresh(turn);
             for (p, s) in self.pos.iter() {
-                self.acc.add(turn, Feature::new(turn, m.whither(), p, s));
+                self.acc.add(turn, Feature::new(turn, wt, p, s));
             }
         }
 
         for side in sides {
             let ksq = self.king(side);
             let old = Piece::new(role, turn);
-            let new = Piece::new(m.promotion().unwrap_or(role), turn);
+            let new = Piece::new(promotion.unwrap_or(role), turn);
             self.acc.replace(
                 side,
-                Feature::new(side, ksq, old, m.whence()),
-                Feature::new(side, ksq, new, m.whither()),
+                Feature::new(side, ksq, old, wc),
+                Feature::new(side, ksq, new, wt),
             );
 
             if let Some((r, s)) = capture {
                 let victim = Piece::new(r, !turn);
                 self.acc.remove(side, Feature::new(side, ksq, victim, s));
-            } else if m.is_castling() {
+            } else if role == Role::King && (wt - wc).abs() == 2 {
                 let rook = Piece::new(Role::Rook, turn);
-                let (wc, wt) = if m.whither() > m.whence() {
+                let (wc, wt) = if wt > wc {
                     (Square::H1.perspective(turn), Square::F1.perspective(turn))
                 } else {
                     (Square::A1.perspective(turn), Square::D1.perspective(turn))

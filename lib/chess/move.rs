@@ -14,26 +14,6 @@ impl Move {
         self.encode().slice(r)
     }
 
-    /// Constructs a castling move.
-    #[inline(always)]
-    pub fn castling(whence: Square, whither: Square) -> Self {
-        let mut bits = Bits::<u16, 16>::default();
-        bits.push(whence.encode());
-        bits.push(whither.encode());
-        bits.push(Bits::<u8, 4>::new(0b0001));
-        Move(bits.convert().assume())
-    }
-
-    /// Constructs an en passant move.
-    #[inline(always)]
-    pub fn en_passant(whence: Square, whither: Square) -> Self {
-        let mut bits = Bits::<u16, 16>::default();
-        bits.push(whence.encode());
-        bits.push(whither.encode());
-        bits.push(Bits::<u8, 4>::new(0b0110));
-        Move(bits.convert().assume())
-    }
-
     /// Constructs a regular move.
     #[inline(always)]
     pub fn regular(whence: Square, whither: Square, promotion: Option<Role>) -> Self {
@@ -66,24 +46,10 @@ impl Move {
         Square::decode(self.bits(10..).pop())
     }
 
-    /// Updates the source [`Square`].
-    #[inline(always)]
-    pub fn set_whence(&mut self, whence: Square) {
-        let bits = self.0.get() & 0b0000001111111111 | ((whence as u16) << 10);
-        self.0 = <NonZeroU16 as Integer>::new(bits);
-    }
-
     /// The destination [`Square`].
     #[inline(always)]
     pub fn whither(&self) -> Square {
         Square::decode(self.bits(4..).pop())
-    }
-
-    /// This move with a different destination [`Square`].
-    #[inline(always)]
-    pub fn set_whither(&mut self, whither: Square) {
-        let bits = (self.0.get() & 0b1111110000001111) | ((whither as u16) << 4);
-        self.0 = <NonZeroU16 as Integer>::new(bits);
     }
 
     /// The promotion specifier.
@@ -94,26 +60,6 @@ impl Move {
         } else {
             None
         }
-    }
-
-    /// This move with a different promotion specifier.
-    #[inline(always)]
-    pub fn set_promotion(&mut self, promotion: Role) {
-        debug_assert!(self.is_promotion());
-        let bits = (self.0.get() & 0b1111111111111100) | (promotion as u16 - 1);
-        self.0 = <NonZeroU16 as Integer>::new(bits);
-    }
-
-    /// Whether this is a castling move.
-    #[inline(always)]
-    pub fn is_castling(&self) -> bool {
-        self.bits(..4) == Bits::new(0b0001)
-    }
-
-    /// Whether this is an en passant capture move.
-    #[inline(always)]
-    pub fn is_en_passant(&self) -> bool {
-        self.bits(..4) == Bits::new(0b0110)
     }
 
     /// Whether this is a capture move.
@@ -140,12 +86,8 @@ impl Debug for Move {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         Display::fmt(&self, f)?;
 
-        if self.is_en_passant() {
-            f.write_char('^')?;
-        } else if self.is_capture() {
+        if self.is_capture() {
             f.write_char('x')?;
-        } else if self.is_castling() {
-            f.write_char('~')?;
         }
 
         Ok(())
@@ -189,28 +131,14 @@ pub struct MoveSet {
 }
 
 impl MoveSet {
-    /// A set of castling moves.
-    #[inline(always)]
-    pub fn castling(whence: Square, whither: Bitboard) -> Self {
-        let base = Move::castling(whence, whence.flip());
-        MoveSet { base, whither }
-    }
-
-    /// A set of en passant moves.
-    #[inline(always)]
-    pub fn en_passant(whence: Square, whither: Bitboard) -> Self {
-        let base = Move::en_passant(whence, whence.flip());
-        MoveSet { base, whither }
-    }
-
     /// A set of regular moves.
     #[inline(always)]
     pub fn regular(piece: Piece, whence: Square, whither: Bitboard) -> Self {
-        use {Piece::*, Rank::*, Role::*};
-        let base = match (piece, whence.rank()) {
-            (WhitePawn, Seventh) => Move::regular(whence, whence.flip(), Some(Knight)),
-            (BlackPawn, Second) => Move::regular(whence, whence.flip(), Some(Knight)),
-            _ => Move::regular(whence, whence.flip(), None),
+        use {Rank::*, Role::*};
+        let base = if piece.role() == Pawn && whence.rank().perspective(piece.color()) == Seventh {
+            Move::regular(whence, whence.flip(), Some(Knight))
+        } else {
+            Move::regular(whence, whence.flip(), None)
         };
 
         MoveSet { base, whither }
@@ -219,14 +147,9 @@ impl MoveSet {
     /// A set of capture moves.
     #[inline(always)]
     pub fn capture(piece: Piece, whence: Square, whither: Bitboard) -> Self {
-        use {Piece::*, Rank::*, Role::*};
-        let base = match (piece, whence.rank()) {
-            (WhitePawn, Seventh) => Move::capture(whence, whence.flip(), Some(Knight)),
-            (BlackPawn, Second) => Move::capture(whence, whence.flip(), Some(Knight)),
-            _ => Move::capture(whence, whence.flip(), None),
-        };
-
-        MoveSet { base, whither }
+        let mut moves = Self::regular(piece, whence, whither);
+        moves.base.0 |= 0b100;
+        moves
     }
 
     /// The source [`Square`].
@@ -239,18 +162,6 @@ impl MoveSet {
     #[inline(always)]
     pub fn whither(&self) -> Bitboard {
         self.whither
-    }
-
-    /// Whether the moves in this set are castling moves.
-    #[inline(always)]
-    pub fn is_castling(&self) -> bool {
-        self.base.is_castling()
-    }
-
-    /// Whether the moves in this set are en passant captures.
-    #[inline(always)]
-    pub fn is_en_passant(&self) -> bool {
-        self.base.is_en_passant()
     }
 
     /// Whether the moves in this set are captures.
@@ -310,14 +221,16 @@ impl Iterator for Moves {
 
     #[inline(always)]
     fn next(&mut self) -> Option<Self::Item> {
-        if let Some(r @ (Role::Queen | Role::Rook | Role::Bishop)) = self.base.promotion() {
-            self.base.set_promotion(Role::new(r.get() - 1));
-            return Some(self.base);
+        if self.base.is_promotion() {
+            let mask = 0b1111111111111100;
+            let promotion = [0b11, 0b00, 0b01, 0b10][(self.base.0.get() & !mask) as usize];
+            self.base.0 = <NonZeroU16 as Integer>::new(self.base.0.get() & mask) | promotion;
         }
 
-        self.base.set_whither(self.whither.next()?);
-        if self.base.is_promotion() {
-            self.base.set_promotion(Role::Queen);
+        if matches!(self.base.promotion(), None | Some(Role::Queen)) {
+            let whither = self.whither.next()?;
+            let bits = (self.base.0.get() & 0b1111110000001111) | ((whither as u16) << 4);
+            self.base.0 = <NonZeroU16 as Integer>::new(bits);
         }
 
         Some(self.base)
@@ -354,16 +267,6 @@ mod tests {
     #[proptest]
     fn decoding_encoded_move_is_an_identity(m: Move) {
         assert_eq!(Move::decode(m.encode()), m);
-    }
-
-    #[proptest]
-    fn castling_move_can_be_constructed(wc: Square, #[filter(#wc != #wt)] wt: Square) {
-        assert!(Move::castling(wc, wt).is_castling());
-    }
-
-    #[proptest]
-    fn en_passant_move_can_be_constructed(wc: Square, #[filter(#wc != #wt)] wt: Square) {
-        assert!(Move::en_passant(wc, wt).is_en_passant());
     }
 
     #[proptest]
@@ -410,36 +313,6 @@ mod tests {
     }
 
     #[proptest]
-    fn castling_moves_are_never_captures(wc: Square, #[filter(#wc != #wt)] wt: Square) {
-        assert!(!Move::castling(wc, wt).is_capture());
-    }
-
-    #[proptest]
-    fn castling_moves_are_never_promotions(wc: Square, #[filter(#wc != #wt)] wt: Square) {
-        assert!(!Move::castling(wc, wt).is_promotion());
-    }
-
-    #[proptest]
-    fn castling_moves_are_always_quiet(wc: Square, #[filter(#wc != #wt)] wt: Square) {
-        assert!(Move::castling(wc, wt).is_quiet());
-    }
-
-    #[proptest]
-    fn en_passant_moves_are_always_captures(wc: Square, #[filter(#wc != #wt)] wt: Square) {
-        assert!(Move::en_passant(wc, wt).is_capture());
-    }
-
-    #[proptest]
-    fn en_passant_moves_are_never_promotions(wc: Square, #[filter(#wc != #wt)] wt: Square) {
-        assert!(!Move::en_passant(wc, wt).is_promotion());
-    }
-
-    #[proptest]
-    fn en_passant_moves_are_never_quiet(wc: Square, #[filter(#wc != #wt)] wt: Square) {
-        assert!(!Move::en_passant(wc, wt).is_quiet());
-    }
-
-    #[proptest]
     fn promotions_are_never_quiet(
         wc: Square,
         #[filter(#wc != #wt)] wt: Square,
@@ -459,33 +332,6 @@ mod tests {
     }
 
     #[proptest]
-    fn can_set_whence(mut m: Move, #[filter(#wc != #m.whither())] wc: Square) {
-        m.set_whence(wc);
-        assert_eq!(m.whence(), wc);
-    }
-
-    #[proptest]
-    fn can_set_whither(mut m: Move, #[filter(#wt != #m.whence())] wt: Square) {
-        m.set_whither(wt);
-        assert_eq!(m.whither(), wt);
-    }
-
-    #[proptest]
-    fn can_set_promotion(
-        #[filter(#m.is_promotion())] mut m: Move,
-        #[strategy(select(&[Role::Knight, Role::Bishop, Role::Rook, Role::Queen]))] p: Role,
-    ) {
-        m.set_promotion(p);
-        assert_eq!(m.promotion(), Some(p));
-    }
-
-    #[proptest]
-    #[should_panic]
-    fn set_promotion_panics_if_not_promotion(#[filter(!#m.is_promotion())] mut m: Move, p: Role) {
-        m.set_promotion(p)
-    }
-
-    #[proptest]
     fn can_iterate_moves_in_set(ml: MoveSet) {
         let v = Vec::from_iter(ml);
         assert_eq!(ml.iter().len(), v.len());
@@ -494,8 +340,6 @@ mod tests {
     #[proptest]
     fn all_moves_in_set_are_of_the_same_type(ml: MoveSet) {
         for m in ml {
-            assert_eq!(m.is_castling(), ml.is_castling());
-            assert_eq!(m.is_en_passant(), ml.is_en_passant());
             assert_eq!(m.is_promotion(), ml.is_promotion());
             assert_eq!(m.is_capture(), ml.is_capture());
             assert_eq!(m.is_quiet(), ml.is_quiet());

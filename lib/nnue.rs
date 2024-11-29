@@ -1,4 +1,3 @@
-use crate::util::Assume;
 use byteorder::{LittleEndian, ReadBytesExt};
 use ruzstd::StreamingDecoder;
 use std::cell::SyncUnsafeCell;
@@ -87,7 +86,7 @@ impl Nnue {
 
     #[inline(always)]
     fn hidden(phase: usize) -> &'static Hidden<{ Positional::LEN }> {
-        unsafe { NNUE.get().as_ref_unchecked().hidden.get(phase).assume() }
+        unsafe { NNUE.get().as_ref_unchecked().hidden.get_unchecked(phase) }
     }
 }
 
