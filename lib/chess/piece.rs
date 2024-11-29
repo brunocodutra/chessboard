@@ -1,5 +1,5 @@
 use crate::chess::{Bitboard, Color, Magic, Perspective, Role, Square};
-use crate::util::{Assume, Integer};
+use crate::util::Integer;
 use derive_more::{Display, Error};
 use std::fmt::{self, Formatter, Write};
 use std::{cell::SyncUnsafeCell, mem::MaybeUninit, str::FromStr};
@@ -37,20 +37,20 @@ impl Piece {
             let bitboard = BITBOARDS.get().as_mut_unchecked();
 
             for whence in Square::iter() {
-                let (attacks, quiets) = Magic::pawn(whence);
+                let (pushes, attacks) = Magic::pawn(whence);
+                for bb in pushes.mask().subsets() {
+                    let blks = bb | !pushes.mask();
+                    let moves = Bitboard::fill(whence, &[(0, 1)], blks).without(whence) & !blks;
+                    let idx = (bb.wrapping_mul(pushes.factor()) >> 62) as usize + pushes.offset();
+                    debug_assert!(bitboard[idx] == moves || bitboard[idx] == Bitboard::empty());
+                    bitboard[idx] = moves;
+                }
+
                 let steps = [(-1, 1), (1, 1)];
                 let idx = attacks.offset();
                 let moves = Bitboard::fill(whence, &steps, Bitboard::full()).without(whence);
                 debug_assert!(bitboard[idx] == moves || bitboard[idx] == Bitboard::empty());
                 bitboard[idx] = moves;
-
-                for bb in quiets.mask().subsets() {
-                    let blks = bb | !quiets.mask();
-                    let moves = Bitboard::fill(whence, &[(0, 1)], blks).without(whence) & !blks;
-                    let idx = (bb.wrapping_mul(quiets.factor()) >> 62) as usize + quiets.offset();
-                    debug_assert!(bitboard[idx] == moves || bitboard[idx] == Bitboard::empty());
-                    bitboard[idx] = moves;
-                }
 
                 let magic = Magic::knight(whence);
                 #[rustfmt::skip]
@@ -90,7 +90,7 @@ impl Piece {
             }
         }
 
-        *unsafe { BITBOARDS.get().as_ref_unchecked().get(idx).assume() }
+        *unsafe { BITBOARDS.get().as_ref_unchecked().get_unchecked(idx) }
     }
 
     /// Constructs [`Piece`] from a pair of [`Color`] and [`Role`].
@@ -123,7 +123,7 @@ impl Piece {
         match self.role() {
             Role::Pawn => {
                 let color = self.color();
-                let (magic, _) = Magic::pawn(whence.perspective(color));
+                let (_, magic) = Magic::pawn(whence.perspective(color));
                 Self::bitboard(magic.offset()).perspective(color)
             }
 
@@ -166,12 +166,10 @@ impl Piece {
             self.attacks(whence, blockers) & !ours
         } else {
             let color = self.color();
-            let (_, magic) = Magic::pawn(whence.perspective(color));
+            let (magic, _) = Magic::pawn(whence.perspective(color));
             let blks = blockers.perspective(color) & magic.mask();
             let idx = (blks.wrapping_mul(magic.factor()) >> 62) as usize + magic.offset();
-            let quiets = Self::bitboard(idx).perspective(color);
-            let attacks = self.attacks(whence, blockers);
-            quiets | (attacks & theirs)
+            Self::bitboard(idx).perspective(color)
         }
     }
 }

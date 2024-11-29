@@ -5,7 +5,7 @@ use test_strategy::proptest;
 fn perft(pos: &Position, depth: u8) -> usize {
     match depth {
         0 => 1,
-        1 => pos.moves().flatten().count(),
+        1 => pos.moves().map(|ms| ms.iter().len()).sum(),
         d => pos
             .moves()
             .flatten()
