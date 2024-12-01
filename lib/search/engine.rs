@@ -82,36 +82,45 @@ impl Engine {
     /// An implementation of [reverse futility pruning].
     ///
     /// [reverse futility pruning]: https://www.chessprogramming.org/Reverse_Futility_Pruning
-    fn rfp(&self, depth: Depth, ply: Ply) -> Score {
-        match (depth - ply).get() {
-            draft @ ..=6 => Score::new(100) * draft,
-            _ => Score::upper(),
+    fn rfp(&self, surplus: Score, draft: Depth) -> Option<Depth> {
+        match draft.get() {
+            1..7 => Some(draft - surplus / 100),
+            ..1 | 7.. => None,
         }
     }
 
     /// An implementation of [null move pruning].
     ///
     /// [null move pruning]: https://www.chessprogramming.org/Null_Move_Pruning
-    fn nmp(&self, guess: Score, beta: Score, depth: Depth, ply: Ply) -> Option<Depth> {
-        if guess >= beta {
-            Some(depth - 2 - (depth - ply) / 4)
-        } else {
-            None
+    fn nmp(&self, surplus: Score, draft: Depth) -> Option<Depth> {
+        match surplus.get() {
+            0.. => Some(draft - 2 - draft / 4),
+            ..0 => None,
+        }
+    }
+
+    /// An implementation of [multi-cut pruning].
+    ///
+    /// [multi-cut pruning]: https://www.chessprogramming.org/Multi-Cut
+    fn mcp(&self, surplus: Score, draft: Depth) -> Option<Depth> {
+        match surplus.get() {
+            0.. if draft >= 6 => Some(draft / 2),
+            _ => None,
         }
     }
 
     /// An implementation of [late move pruning].
     ///
     /// [late move pruning]: https://www.chessprogramming.org/Late_Move_Reductions
-    fn lmp(&self, guess: Value, alpha: Value, depth: Depth, ply: Ply) -> Option<Depth> {
-        let r = match (alpha - guess).get() {
-            ..=15 => return None,
-            16..=50 => 1,
-            51..=100 => 2,
-            _ => 3,
+    fn lmp(&self, deficit: Score, draft: Depth) -> Option<Depth> {
+        let r = match deficit.get() {
+            ..15 => return None,
+            15..50 => 1,
+            50..100 => 2,
+            100.. => 3,
         };
 
-        Some(depth - r - (depth - ply) / 4)
+        Some(draft - r - draft / 4)
     }
 
     /// The [alpha-beta] search.
@@ -173,28 +182,36 @@ impl Engine {
         }
 
         let transposition = self.tt.get(pos.zobrist());
-        let depth = match transposition {
-            _ if is_root => depth,
-
-            #[cfg(not(test))]
-            // Extensions are not exact.
-            Some(_) if pos.is_check() => depth + 1,
-
-            #[cfg(not(test))]
-            // Reductions are not exact.
-            None if !pos.is_check() => depth - 1,
-
-            _ => depth,
-        };
-
         let transposed = match transposition {
             None => Pv::new(pos.evaluate().saturate(), []),
             Some(t) => t.transpose(ply),
         };
 
+        #[cfg(not(test))]
+        let mut depth = depth;
+
+        #[cfg(not(test))]
+        let mut alpha = alpha;
+
+        if !is_root {
+            #[cfg(not(test))]
+            if transposition.is_some() && pos.is_check() {
+                // The check extension heuristic is not exact.
+                depth = depth + 1;
+            }
+
+            #[cfg(not(test))]
+            if transposition.is_none() && !pos.is_check() {
+                // The internal iterative reduction heuristic is not exact.
+                depth = depth - 1;
+            }
+        }
+
+        let draft = depth - ply;
+        let quiesce = draft <= 0;
         let is_pv = alpha + 1 < beta;
         if let Some(t) = transposition {
-            if !is_pv && t.depth() >= depth - ply {
+            if !is_pv && t.draft() >= draft {
                 let (lower, upper) = t.bounds().into_inner();
                 if lower >= upper || upper <= alpha || lower >= beta {
                     return Ok(transposed.convert());
@@ -202,28 +219,39 @@ impl Engine {
             }
         }
 
-        let quiesce = depth <= ply;
-        let alpha = match quiesce {
-            #[cfg(not(test))]
+        #[cfg(not(test))]
+        if quiesce {
             // The stand pat heuristic is not exact.
-            true => transposed.score().max(alpha),
-            _ => alpha,
-        };
+            alpha = transposed.score().max(alpha);
+        }
 
         if alpha >= beta || ply >= Ply::MAX {
             return Ok(transposed.convert());
-        } else if !is_pv && transposed.score() - self.rfp(depth, ply) >= beta {
-            #[cfg(not(test))]
-            // The reverse futility pruning heuristic is not exact.
-            return Ok(transposed.convert());
-        } else if !is_pv && !pos.is_check() && pos.pieces(pos.turn()).len() > 1 {
-            if let Some(d) = self.nmp(transposed.score(), beta, depth, ply) {
-                let mut next = pos.clone();
-                next.pass();
-                if d <= ply || -self.nw::<0>(&next, -beta + 1, d, ply + 1, ctrl)? >= beta {
+        }
+
+        if let Some(d) = self.rfp(transposed.score() - beta, draft) {
+            if !is_pv && d <= 0 {
+                #[cfg(not(test))]
+                // The reverse futility pruning heuristic is not exact.
+                return Ok(transposed.convert());
+            }
+        }
+
+        if let Some(d) = self.nmp(transposed.score() - beta, draft) {
+            if !is_pv && !pos.is_check() && pos.pieces(pos.turn()).len() > 1 {
+                if d <= 0 {
                     #[cfg(not(test))]
                     // The null move pruning heuristic is not exact.
                     return Ok(transposed.convert());
+                } else {
+                    let mut next = pos.clone();
+                    next.pass();
+                    self.tt.prefetch(next.zobrist());
+                    if -self.nw::<0>(&next, -beta + 1, d + ply, ply + 1, ctrl)? >= beta {
+                        #[cfg(not(test))]
+                        // The null move pruning heuristic is not exact.
+                        return Ok(transposed.convert());
+                    }
                 }
             }
         }
@@ -250,11 +278,35 @@ impl Engine {
 
         moves.sort_unstable_by_key(|(_, gain)| *gain);
 
+        if let Some(t) = transposition {
+            if let Some(d) = self.mcp(*t.bounds().start() - beta, draft) {
+                if !is_root && !pos.is_check() && t.draft() >= d {
+                    for (m, _) in moves.iter().rev().skip(1) {
+                        let mut next = pos.clone();
+                        next.play(*m);
+                        self.tt.prefetch(next.zobrist());
+                        if -self.nw::<0>(&next, -beta + 1, d + ply, ply + 1, ctrl)? >= beta {
+                            #[cfg(not(test))]
+                            // The multi-cut pruning heuristic is not exact.
+                            return Ok(transposed.convert());
+                        }
+                    }
+
+                    #[cfg(not(test))]
+                    {
+                        // The singular extension heuristic is not exact.
+                        depth = depth + 1;
+                    }
+                }
+            }
+        }
+
         let (head, tail) = match moves.pop() {
             None => return Ok(transposed.convert()),
             Some((m, _)) => {
                 let mut next = pos.clone();
                 next.play(m);
+                self.tt.prefetch(next.zobrist());
                 (m, -self.ab(&next, -beta..-alpha, depth, ply + 1, ctrl)?)
             }
         };
@@ -275,9 +327,8 @@ impl Engine {
 
             self.tt.prefetch(next.zobrist());
             if gain < 0 && !pos.is_check() && !next.is_check() {
-                let guess = -next.evaluate();
-                if let Some(d) = self.lmp(guess, alpha.saturate(), depth, ply) {
-                    if d <= ply || -self.nw::<0>(&next, -alpha, d, ply + 1, ctrl)? <= alpha {
+                if let Some(d) = self.lmp(alpha + next.evaluate(), draft) {
+                    if d <= 0 || -self.nw::<0>(&next, -alpha, d + ply, ply + 1, ctrl)? <= alpha {
                         #[cfg(not(test))]
                         // The late move pruning heuristic is not exact.
                         return Err(ControlFlow::Continue);

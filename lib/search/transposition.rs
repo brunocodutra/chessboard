@@ -46,17 +46,17 @@ impl Binary for TranspositionKind {
 #[cfg_attr(test, derive(test_strategy::Arbitrary))]
 pub struct Transposition {
     kind: TranspositionKind,
-    depth: Depth,
+    draft: Depth,
     score: Score,
     best: Move,
 }
 
 impl Transposition {
     #[inline(always)]
-    fn new(kind: TranspositionKind, depth: Depth, score: Score, best: Move) -> Self {
+    fn new(kind: TranspositionKind, draft: Depth, score: Score, best: Move) -> Self {
         Transposition {
             kind,
-            depth,
+            draft,
             score,
             best,
         }
@@ -64,20 +64,20 @@ impl Transposition {
 
     /// Constructs a [`Transposition`] given a lower bound for the score, the depth searched, and best [`Move`].
     #[inline(always)]
-    pub fn lower(depth: Depth, score: Score, best: Move) -> Self {
-        Transposition::new(TranspositionKind::Lower, depth, score, best)
+    pub fn lower(draft: Depth, score: Score, best: Move) -> Self {
+        Transposition::new(TranspositionKind::Lower, draft, score, best)
     }
 
     /// Constructs a [`Transposition`] given an upper bound for the score, the depth searched, and best [`Move`].
     #[inline(always)]
-    pub fn upper(depth: Depth, score: Score, best: Move) -> Self {
-        Transposition::new(TranspositionKind::Upper, depth, score, best)
+    pub fn upper(draft: Depth, score: Score, best: Move) -> Self {
+        Transposition::new(TranspositionKind::Upper, draft, score, best)
     }
 
     /// Constructs a [`Transposition`] given the exact score, the depth searched, and best [`Move`].
     #[inline(always)]
-    pub fn exact(depth: Depth, score: Score, best: Move) -> Self {
-        Transposition::new(TranspositionKind::Exact, depth, score, best)
+    pub fn exact(draft: Depth, score: Score, best: Move) -> Self {
+        Transposition::new(TranspositionKind::Exact, draft, score, best)
     }
 
     /// Bounds for the exact score.
@@ -92,8 +92,8 @@ impl Transposition {
 
     /// Depth searched.
     #[inline(always)]
-    pub fn depth(&self) -> Depth {
-        self.depth
+    pub fn draft(&self) -> Depth {
+        self.draft
     }
 
     /// Partial score.
@@ -115,7 +115,7 @@ impl Binary for Transposition {
     #[inline(always)]
     fn encode(&self) -> Self::Bits {
         let mut bits = Bits::default();
-        bits.push(self.depth.encode());
+        bits.push(self.draft.encode());
         bits.push(self.kind.encode());
         bits.push(self.score.encode());
         bits.push(self.best.encode());
@@ -128,7 +128,7 @@ impl Binary for Transposition {
             best: Binary::decode(bits.pop()),
             score: Binary::decode(bits.pop()),
             kind: Binary::decode(bits.pop()),
-            depth: Binary::decode(bits.pop()),
+            draft: Binary::decode(bits.pop()),
         }
     }
 }
@@ -231,8 +231,6 @@ impl TranspositionTable {
     }
 
     /// Stores a [`Transposition`] in the slot associated with `key`.
-    ///
-    /// In the slot if not empty, the [`Transposition`] with greater depth is chosen.
     #[inline(always)]
     pub fn set(&self, key: Zobrist, tpos: Transposition) {
         if self.capacity() > 0 {
