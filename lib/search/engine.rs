@@ -280,7 +280,7 @@ impl Engine {
 
         if let Some(t) = transposition {
             if let Some(d) = self.mcp(*t.bounds().start() - beta, draft) {
-                if !is_root && !pos.is_check() && t.draft() >= d {
+                if !is_root && t.draft() >= d {
                     for (m, _) in moves.iter().rev().skip(1) {
                         let mut next = pos.clone();
                         next.play(*m);
