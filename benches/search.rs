@@ -37,7 +37,7 @@ fn crit(c: &mut Criterion) {
     }));
 
     for o in &options {
-        let depth = Depth::new(14);
+        let depth = Depth::new(16);
         c.benchmark_group("ttd")
             .sampling_mode(SamplingMode::Flat)
             .bench_function(o.threads.to_string(), |b| {
@@ -46,7 +46,7 @@ fn crit(c: &mut Criterion) {
     }
 
     for o in &options {
-        let nodes = 500_000;
+        let nodes = 200_000;
         c.benchmark_group("nps")
             .sampling_mode(SamplingMode::Flat)
             .throughput(Throughput::Elements(nodes))

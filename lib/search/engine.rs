@@ -203,7 +203,7 @@ impl Engine {
             #[cfg(not(test))]
             if transposition.is_none() && !pos.is_check() {
                 // The internal iterative reduction heuristic is not exact.
-                depth = depth - 1;
+                depth = depth - 2;
             }
         }
 
