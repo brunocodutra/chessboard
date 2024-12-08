@@ -3,10 +3,13 @@ use crate::nnue::{Evaluator, Value};
 use crate::search::*;
 use crate::util::{Counter, Integer, Timer, Trigger};
 use arrayvec::ArrayVec;
-use std::{cell::RefCell, ops::Range, time::Duration};
+use std::{ops::Range, time::Duration};
 
 #[cfg(test)]
 use crate::search::{HashSize, ThreadCount};
+
+#[cfg(test)]
+use proptest::strategy::LazyJust;
 
 /// A chess engine.
 #[derive(Debug)]
@@ -16,6 +19,8 @@ pub struct Engine {
     driver: Driver,
     #[cfg_attr(test, map(|s: HashSize| TranspositionTable::new(s)))]
     tt: TranspositionTable,
+    #[cfg_attr(test, strategy(LazyJust::new(Killers::default)))]
+    killers: Killers,
 }
 
 impl Default for Engine {
@@ -25,12 +30,6 @@ impl Default for Engine {
 }
 
 impl Engine {
-    thread_local! {
-        static KILLERS: RefCell<Killers<{ Depth::MAX as _ }>> = const {
-            RefCell::new(Killers::new())
-        };
-    }
-
     /// Initializes the engine with the default [`Options`].
     pub fn new() -> Self {
         Self::with_options(&Options::default())
@@ -41,6 +40,7 @@ impl Engine {
         Engine {
             driver: Driver::new(options.threads),
             tt: TranspositionTable::new(options.hash),
+            killers: Killers::default(),
         }
     }
 
@@ -55,7 +55,7 @@ impl Engine {
         score: Score,
     ) {
         if score >= bounds.end && best.is_quiet() {
-            Self::KILLERS.with_borrow_mut(|ks| ks.insert(ply, pos.turn(), best));
+            self.killers.insert(ply, pos.turn(), best);
         }
 
         self.tt.set(
@@ -256,6 +256,7 @@ impl Engine {
             }
         }
 
+        let killers = self.killers.get(ply, pos.turn());
         let mut moves: ArrayVec<_, 255> = pos
             .moves()
             .filter(|ms| !quiesce || !ms.is_quiet())
@@ -263,7 +264,7 @@ impl Engine {
             .map(|m| {
                 if Some(m) == transposed.moves().next() {
                     (m, Value::upper())
-                } else if Self::KILLERS.with_borrow(|ks| ks.contains(ply, pos.turn(), m)) {
+                } else if killers.contains(m) {
                     (m, Value::new(25))
                 } else if m.is_quiet() {
                     (m, Value::lower())

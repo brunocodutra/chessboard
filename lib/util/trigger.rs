@@ -7,13 +7,13 @@ pub struct Trigger(AtomicBool);
 impl Trigger {
     /// An armed trigger.
     #[inline(always)]
-    pub const fn armed() -> Self {
+    pub fn armed() -> Self {
         Trigger(AtomicBool::new(true))
     }
 
     /// A disarmed trigger.
     #[inline(always)]
-    pub const fn disarmed() -> Self {
+    pub fn disarmed() -> Self {
         Trigger(AtomicBool::new(false))
     }
 
