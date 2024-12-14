@@ -21,6 +21,8 @@ pub struct Engine {
     tt: TranspositionTable,
     #[cfg_attr(test, strategy(LazyJust::new(Killers::default)))]
     killers: Killers,
+    #[cfg_attr(test, strategy(LazyJust::new(History::default)))]
+    history: History,
 }
 
 impl Default for Engine {
@@ -41,31 +43,42 @@ impl Engine {
             driver: Driver::new(options.threads),
             tt: TranspositionTable::new(options.hash),
             killers: Killers::default(),
+            history: History::default(),
         }
     }
 
-    /// Records a `[Transposition`].
+    #[allow(clippy::too_many_arguments)]
     fn record(
         &self,
         pos: &Evaluator,
+        moves: &[(Move, Value)],
         bounds: Range<Score>,
         depth: Depth,
         ply: Ply,
         best: Move,
         score: Score,
     ) {
+        let draft = depth - ply;
         if score >= bounds.end && best.is_quiet() {
             self.killers.insert(ply, pos.turn(), best);
+            self.history.update(best, pos.turn(), draft.get());
+            for &(m, _) in moves.iter().rev() {
+                if m == best {
+                    break;
+                } else if m.is_quiet() {
+                    self.history.update(m, pos.turn(), -draft.get());
+                }
+            }
         }
 
         self.tt.set(
             pos.zobrist(),
             if score >= bounds.end {
-                Transposition::lower(depth - ply, score.normalize(-ply), best)
+                Transposition::lower(draft, score.normalize(-ply), best)
             } else if score <= bounds.start {
-                Transposition::upper(depth - ply, score.normalize(-ply), best)
+                Transposition::upper(draft, score.normalize(-ply), best)
             } else {
-                Transposition::exact(depth - ply, score.normalize(-ply), best)
+                Transposition::exact(draft, score.normalize(-ply), best)
             },
         );
     }
@@ -134,7 +147,7 @@ impl Engine {
         ply: Ply,
         ctrl: &Control,
     ) -> Result<Pv<N>, Interrupted> {
-        if ply < N && depth > ply && bounds.start + 1 < bounds.end {
+        if ply.cast::<usize>() < N && depth > ply && bounds.start + 1 < bounds.end {
             self.pvs(pos, bounds, depth, ply, ctrl)
         } else {
             Ok(self.pvs::<0>(pos, bounds, depth, ply, ctrl)?.convert())
@@ -267,7 +280,7 @@ impl Engine {
                 } else if killers.contains(m) {
                     (m, Value::new(25))
                 } else if m.is_quiet() {
-                    (m, Value::lower())
+                    (m, Value::lower() / 2 + self.history.get(m, pos.turn()))
                 } else {
                     let mut next = pos.material();
                     let material = next.evaluate();
@@ -313,7 +326,7 @@ impl Engine {
         };
 
         if tail >= beta || moves.is_empty() {
-            self.record(pos, bounds, depth, ply, head, tail.score());
+            self.record(pos, &[], bounds, depth, ply, head, tail.score());
             return Ok(head >> tail);
         }
 
@@ -327,7 +340,7 @@ impl Engine {
             next.play(m);
 
             self.tt.prefetch(next.zobrist());
-            if gain < 0 && !pos.is_check() && !next.is_check() {
+            if gain <= Value::lower() / 2 && !pos.is_check() && !next.is_check() {
                 if let Some(d) = self.lmp(alpha + next.evaluate(), draft) {
                     if d <= 0 || -self.nw::<0>(&next, -alpha, d + ply, ply + 1, ctrl)? <= alpha {
                         #[cfg(not(test))]
@@ -345,7 +358,7 @@ impl Engine {
             Ok(partial)
         })?;
 
-        self.record(pos, bounds, depth, ply, head, tail.score());
+        self.record(pos, &moves, bounds, depth, ply, head, tail.score());
         Ok(head >> tail)
     }
 

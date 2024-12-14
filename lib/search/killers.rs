@@ -1,8 +1,8 @@
 use crate::chess::{Color, Move};
 use crate::search::Ply;
 use crate::util::{Assume, Binary, Bits, Integer};
-use std::sync::atomic::AtomicU32;
-use std::{array, sync::atomic::Ordering::Relaxed};
+use std::array;
+use std::sync::atomic::{AtomicU32, Ordering::Relaxed};
 
 /// A pair of [killer moves].
 ///
