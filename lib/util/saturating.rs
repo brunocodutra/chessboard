@@ -1,4 +1,4 @@
-use crate::util::Integer;
+use crate::util::{Integer, Signed};
 use derive_more::{Debug, Display, Error};
 use std::fmt::{self, Formatter};
 use std::ops::{Add, Div, Mul, Neg, Sub};
@@ -9,19 +9,19 @@ use std::{cmp::Ordering, mem::size_of, num::Saturating as S, str::FromStr};
 #[cfg_attr(test, derive(test_strategy::Arbitrary))]
 #[cfg_attr(test, arbitrary(bound(T, Self: Debug)))]
 #[debug("Saturating({self})")]
-#[debug(bounds(T: Integer, T::Repr: Display))]
+#[debug(bounds(T: Integer<Repr: Signed>, T::Repr: Display))]
 #[repr(transparent)]
 pub struct Saturating<T>(T);
 
-unsafe impl<T: Integer> Integer for Saturating<T> {
+unsafe impl<T: Integer<Repr: Signed>> Integer for Saturating<T> {
     type Repr = T::Repr;
     const MIN: Self::Repr = T::MIN;
     const MAX: Self::Repr = T::MAX;
 }
 
-impl<T: Integer> Eq for Saturating<T> where Self: PartialEq<Self> {}
+impl<T: Integer<Repr: Signed>> Eq for Saturating<T> where Self: PartialEq<Self> {}
 
-impl<T: Integer, U: Integer> PartialEq<U> for Saturating<T> {
+impl<T: Integer<Repr: Signed>, U: Integer<Repr: Signed>> PartialEq<U> for Saturating<T> {
     #[inline(always)]
     fn eq(&self, other: &U) -> bool {
         if size_of::<T>() > size_of::<U>() {
@@ -32,14 +32,14 @@ impl<T: Integer, U: Integer> PartialEq<U> for Saturating<T> {
     }
 }
 
-impl<T: Integer> Ord for Saturating<T> {
+impl<T: Integer<Repr: Signed>> Ord for Saturating<T> {
     #[inline(always)]
     fn cmp(&self, other: &Self) -> Ordering {
         self.get().cmp(&other.get())
     }
 }
 
-impl<T: Integer, U: Integer> PartialOrd<U> for Saturating<T> {
+impl<T: Integer<Repr: Signed>, U: Integer<Repr: Signed>> PartialOrd<U> for Saturating<T> {
     #[inline(always)]
     fn partial_cmp(&self, other: &U) -> Option<Ordering> {
         if size_of::<T>() > size_of::<U>() {
@@ -50,7 +50,7 @@ impl<T: Integer, U: Integer> PartialOrd<U> for Saturating<T> {
     }
 }
 
-impl<T: Integer> Neg for Saturating<T>
+impl<T: Integer<Repr: Signed>> Neg for Saturating<T>
 where
     S<T::Repr>: Neg<Output = S<T::Repr>>,
 {
@@ -62,7 +62,7 @@ where
     }
 }
 
-impl<T: Integer, U: Integer> Add<U> for Saturating<T>
+impl<T: Integer<Repr: Signed>, U: Integer<Repr: Signed>> Add<U> for Saturating<T>
 where
     S<T::Repr>: Add<Output = S<T::Repr>>,
     S<U::Repr>: Add<Output = S<U::Repr>>,
@@ -79,7 +79,7 @@ where
     }
 }
 
-impl<T: Integer, U: Integer> Sub<U> for Saturating<T>
+impl<T: Integer<Repr: Signed>, U: Integer<Repr: Signed>> Sub<U> for Saturating<T>
 where
     S<T::Repr>: Sub<Output = S<T::Repr>>,
     S<U::Repr>: Sub<Output = S<U::Repr>>,
@@ -96,7 +96,7 @@ where
     }
 }
 
-impl<T: Integer, U: Integer> Mul<U> for Saturating<T>
+impl<T: Integer<Repr: Signed>, U: Integer<Repr: Signed>> Mul<U> for Saturating<T>
 where
     S<T::Repr>: Mul<Output = S<T::Repr>>,
     S<U::Repr>: Mul<Output = S<U::Repr>>,
@@ -113,7 +113,7 @@ where
     }
 }
 
-impl<T: Integer, U: Integer> Div<U> for Saturating<T>
+impl<T: Integer<Repr: Signed>, U: Integer<Repr: Signed>> Div<U> for Saturating<T>
 where
     S<T::Repr>: Div<Output = S<T::Repr>>,
     S<U::Repr>: Div<Output = S<U::Repr>>,
@@ -130,7 +130,7 @@ where
     }
 }
 
-impl<T: Integer> Display for Saturating<T>
+impl<T: Integer<Repr: Signed>> Display for Saturating<T>
 where
     T::Repr: Display,
 {
@@ -144,7 +144,7 @@ where
 #[display("failed to parse saturating integer")]
 pub struct ParseSaturatingIntegerError;
 
-impl<T: Integer> FromStr for Saturating<T>
+impl<T: Integer<Repr: Signed>> FromStr for Saturating<T>
 where
     T::Repr: FromStr,
 {
