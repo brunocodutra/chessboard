@@ -21,6 +21,8 @@ pub struct Engine {
     tt: TranspositionTable,
     #[cfg_attr(test, strategy(LazyJust::new(Killers::default)))]
     killers: Killers,
+    #[cfg_attr(test, strategy(LazyJust::new(History::default)))]
+    history: History,
 }
 
 impl Default for Engine {
@@ -41,6 +43,7 @@ impl Engine {
             driver: Driver::new(options.threads),
             tt: TranspositionTable::new(options.hash),
             killers: Killers::default(),
+            history: History::default(),
         }
     }
 
@@ -54,18 +57,20 @@ impl Engine {
         best: Move,
         score: Score,
     ) {
+        let draft = depth - ply;
         if score >= bounds.end && best.is_quiet() {
             self.killers.insert(ply, pos.turn(), best);
+            self.history.update(best, pos.turn(), draft);
         }
 
         self.tt.set(
             pos.zobrist(),
             if score >= bounds.end {
-                Transposition::lower(depth - ply, score.normalize(-ply), best)
+                Transposition::lower(draft, score.normalize(-ply), best)
             } else if score <= bounds.start {
-                Transposition::upper(depth - ply, score.normalize(-ply), best)
+                Transposition::upper(draft, score.normalize(-ply), best)
             } else {
-                Transposition::exact(depth - ply, score.normalize(-ply), best)
+                Transposition::exact(draft, score.normalize(-ply), best)
             },
         );
     }
@@ -267,7 +272,7 @@ impl Engine {
                 } else if killers.contains(m) {
                     (m, Value::new(25))
                 } else if m.is_quiet() {
-                    (m, Value::lower())
+                    (m, Value::lower() + self.history.get(m, pos.turn()))
                 } else {
                     let mut next = pos.material();
                     let material = next.evaluate();
