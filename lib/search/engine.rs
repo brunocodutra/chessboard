@@ -96,9 +96,10 @@ impl Engine {
     ///
     /// [reverse futility pruning]: https://www.chessprogramming.org/Reverse_Futility_Pruning
     fn rfp(&self, surplus: Score, draft: Depth) -> Option<Depth> {
-        match draft.get() {
-            1..7 => Some(draft - surplus / 100),
-            ..1 | 7.. => None,
+        match surplus.get() {
+            ..0 => None,
+            0..600 => Some(draft - surplus / 100),
+            600.. => Some(draft - 6),
         }
     }
 
@@ -242,11 +243,13 @@ impl Engine {
             return Ok(transposed.convert());
         }
 
-        if let Some(d) = self.rfp(transposed.score() - beta, draft) {
-            if !is_pv && d <= 0 {
-                #[cfg(not(test))]
-                // The reverse futility pruning heuristic is not exact.
-                return Ok(transposed.convert());
+        if let Some(t) = transposition {
+            if let Some(d) = self.rfp(*t.bounds().start() - beta, draft) {
+                if !is_pv && t.draft() >= d {
+                    #[cfg(not(test))]
+                    // The reverse futility pruning heuristic is not exact.
+                    return Ok(transposed.convert());
+                }
             }
         }
 
