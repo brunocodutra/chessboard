@@ -98,8 +98,8 @@ impl Engine {
     fn rfp(&self, surplus: Score, draft: Depth) -> Option<Depth> {
         match surplus.get() {
             ..0 => None,
-            0..600 => Some(draft - surplus / 100),
-            600.. => Some(draft - 6),
+            0..680 => Some(draft - (surplus + 40) / 120),
+            680.. => Some(draft - 6),
         }
     }
 
