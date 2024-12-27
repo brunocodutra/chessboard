@@ -1,32 +1,55 @@
+use std::sync::atomic::{AtomicU64, AtomicU8, Ordering};
 use std::time::{Duration, Instant};
+
+#[inline(always)]
+fn elapsed() -> Duration {
+    #[ctor::ctor]
+    static EPOCH: Instant = Instant::now();
+    Instant::now().duration_since(*EPOCH)
+}
 
 /// Tracks time towards a deadline.
 #[derive(Debug, Default)]
 pub struct Timer {
-    deadline: Option<Instant>,
+    spinner: AtomicU8,
+    deadline: Option<Duration>,
 }
 
 impl Timer {
     /// Constructs a timer that elapses after the given duration.
     #[inline(always)]
     pub const fn infinite() -> Self {
-        Timer { deadline: None }
+        Timer {
+            spinner: AtomicU8::new(0),
+            deadline: None,
+        }
     }
 
     /// Constructs a timer that elapses after the given duration.
     #[inline(always)]
     pub fn new(duration: Duration) -> Self {
         Timer {
-            deadline: Instant::now().checked_add(duration),
+            spinner: AtomicU8::new(255),
+            deadline: elapsed().checked_add(duration),
         }
     }
 
     /// Returns the time remaining if any.
     #[inline(always)]
     pub fn remaining(&self) -> Option<Duration> {
+        static MICROS: AtomicU64 = AtomicU64::new(0);
+
         match self.deadline {
-            Some(deadline) => deadline.checked_duration_since(Instant::now()),
             None => Some(Duration::MAX),
+            Some(deadline) => {
+                if self.spinner.fetch_add(1, Ordering::Relaxed) == 255 {
+                    let elapsed = elapsed();
+                    MICROS.fetch_max(elapsed.as_micros() as _, Ordering::Relaxed);
+                    deadline.checked_sub(elapsed)
+                } else {
+                    deadline.checked_sub(Duration::from_micros(MICROS.load(Ordering::Relaxed)))
+                }
+            }
         }
     }
 }
