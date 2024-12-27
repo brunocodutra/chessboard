@@ -1,7 +1,7 @@
 use crate::chess::{Move, Outcome};
 use crate::nnue::{Evaluator, Value};
 use crate::search::*;
-use crate::util::{Counter, Integer, Timer, Trigger};
+use crate::util::{Assume, Counter, Integer, Timer, Trigger};
 use arrayvec::ArrayVec;
 use std::{ops::Range, time::Duration};
 
@@ -180,10 +180,9 @@ impl Engine {
         ply: Ply,
         ctrl: &Control,
     ) -> Result<Pv<N>, Interrupted> {
-        debug_assert!(!bounds.is_empty());
-
         ctrl.interrupted()?;
         let is_root = ply == 0;
+        (bounds.start < bounds.end).assume();
         let (alpha, beta) = match pos.outcome() {
             None => self.mdp(ply, &bounds),
             Some(Outcome::DrawByThreefoldRepetition) if is_root => self.mdp(ply, &bounds),
@@ -508,12 +507,6 @@ mod tests {
     }
 
     #[proptest]
-    #[should_panic]
-    fn nw_panics_if_beta_is_too_small(e: Engine, pos: Evaluator, d: Depth, p: Ply) {
-        e.nw::<3>(&pos, Score::lower(), d, p, &Control::Unlimited)?;
-    }
-
-    #[proptest]
     fn nw_returns_transposition_if_beta_too_low(
         #[by_ref]
         #[filter(#e.tt.capacity() > 0)]
@@ -576,18 +569,6 @@ mod tests {
             e.nw::<3>(&pos, b, d, p, &Control::Unlimited)? < b,
             alphabeta(&pos, b - 1..b, d, p) < b
         );
-    }
-
-    #[proptest]
-    #[should_panic]
-    fn ab_panics_if_alpha_is_not_greater_than_beta(
-        e: Engine,
-        pos: Evaluator,
-        b: Range<Score>,
-        d: Depth,
-        p: Ply,
-    ) {
-        e.ab::<3>(&pos, b.end..b.start, d, p, &Control::Unlimited)?;
     }
 
     #[proptest]

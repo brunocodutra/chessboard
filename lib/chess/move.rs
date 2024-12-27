@@ -279,16 +279,6 @@ mod tests {
     }
 
     #[proptest]
-    #[should_panic]
-    fn constructing_capture_move_panics_with_invalid_promotion(
-        wc: Square,
-        #[filter(#wc != #wt)] wt: Square,
-        #[strategy(select(&[Role::Pawn, Role::King]))] p: Role,
-    ) {
-        Move::capture(wc, wt, Some(p));
-    }
-
-    #[proptest]
     fn quiet_move_can_be_constructed(wc: Square, #[filter(#wc != #wt)] wt: Square) {
         assert!(Move::regular(wc, wt, None).is_quiet());
     }
@@ -300,16 +290,6 @@ mod tests {
         #[strategy(select(&[Role::Knight, Role::Bishop, Role::Rook, Role::Queen]))] p: Role,
     ) {
         assert!(Move::regular(wc, wt, Some(p)).is_promotion());
-    }
-
-    #[proptest]
-    #[should_panic]
-    fn constructing_promotion_move_panics_with_invalid_promotion(
-        wc: Square,
-        #[filter(#wc != #wt)] wt: Square,
-        #[strategy(select(&[Role::Pawn, Role::King]))] p: Role,
-    ) {
-        Move::regular(wc, wt, Some(p));
     }
 
     #[proptest]
