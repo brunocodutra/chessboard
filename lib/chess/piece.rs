@@ -96,7 +96,7 @@ impl Piece {
     /// Constructs [`Piece`] from a pair of [`Color`] and [`Role`].
     #[inline(always)]
     pub fn new(r: Role, c: Color) -> Self {
-        <Self as Integer>::new(c.get() | r.get() << 1)
+        <Self as Integer>::new(c.get() | (r.get() << 1))
     }
 
     /// This piece's [`Role`].
