@@ -25,7 +25,7 @@ impl Square {
     /// Constructs [`Square`] from a pair of [`File`] and [`Rank`].
     #[inline(always)]
     pub fn new(f: File, r: Rank) -> Self {
-        <Self as Integer>::new(f.get() | r.get() << 3)
+        <Self as Integer>::new(f.get() | (r.get() << 3))
     }
 
     /// This square's [`File`].

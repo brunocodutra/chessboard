@@ -1,10 +1,11 @@
 #![cfg_attr(target_arch = "x86_64", feature(stdarch_x86_mm_shuffle))]
 #![feature(
     array_chunks,
-    round_char_boundary,
+    coverage_attribute,
     new_zeroed_alloc,
     optimize_attribute,
     ptr_as_ref_unchecked,
+    round_char_boundary,
     sync_unsafe_cell
 )]
 
