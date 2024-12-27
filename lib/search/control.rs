@@ -18,8 +18,10 @@ impl Control<'_> {
     /// A reference to the timer.
     #[inline(always)]
     pub fn timer(&self) -> &Timer {
+        static INFINITE: Timer = Timer::infinite();
+
         match self {
-            Control::Unlimited => &const { Timer::infinite() },
+            Control::Unlimited => &INFINITE,
             Control::Limited(_, timer, _) => timer,
         }
     }
