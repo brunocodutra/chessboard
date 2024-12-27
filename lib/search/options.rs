@@ -152,12 +152,6 @@ mod tests {
     }
 
     #[proptest]
-    #[should_panic]
-    fn hash_size_panics_if_size_too_large(#[strategy(HashSize::MAX + 1..)] n: usize) {
-        HashSize::new(n);
-    }
-
-    #[proptest]
     fn parsing_printed_hash_size_rounds_to_megabytes(h: HashSize) {
         assert_eq!(h.to_string().parse(), Ok(h >> 20 << 20));
     }
@@ -185,12 +179,6 @@ mod tests {
         #[strategy(ThreadCount::MIN..=ThreadCount::MAX)] n: usize,
     ) {
         assert_eq!(ThreadCount::new(n), n);
-    }
-
-    #[proptest]
-    #[should_panic]
-    fn thread_count_panics_if_count_too_large(#[strategy(ThreadCount::MAX + 1..)] n: usize) {
-        ThreadCount::new(n);
     }
 
     #[proptest]

@@ -1,4 +1,4 @@
-use crate::util::AlignTo64;
+use crate::util::{AlignTo64, Assume};
 use std::ops::Shl;
 
 /// The hidden layer.
@@ -44,8 +44,8 @@ impl<const N: usize> Hidden<N> {
         let mut y = _mm256_setr_epi32(self.bias, 0, 0, 0, 0, 0, 0, 0);
 
         for (w, i) in self.weight.iter().zip([us, them]) {
-            debug_assert_eq!(w.as_ptr() as usize % 32, 0);
-            debug_assert_eq!(i.as_ptr() as usize % 32, 0);
+            (w.as_ptr() as usize % 32 == 0).assume();
+            (i.as_ptr() as usize % 32 == 0).assume();
 
             for (a, x) in Iterator::zip(w.array_chunks::<128>(), i.array_chunks::<128>()) {
                 let a = transmute::<&[i8; 128], &[__m256i; 4]>(a);
@@ -101,8 +101,8 @@ impl<const N: usize> Hidden<N> {
         let mut y = _mm_setr_epi32(self.bias, 0, 0, 0);
 
         for (w, i) in self.weight.iter().zip([us, them]) {
-            debug_assert_eq!(w.as_ptr() as usize % 16, 0);
-            debug_assert_eq!(i.as_ptr() as usize % 16, 0);
+            (w.as_ptr() as usize % 16 == 0).assume();
+            (i.as_ptr() as usize % 16 == 0).assume();
 
             for (a, x) in Iterator::zip(w.array_chunks::<64>(), i.array_chunks::<64>()) {
                 let a = transmute::<&[i8; 64], &[__m128i; 4]>(a);

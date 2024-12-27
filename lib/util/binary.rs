@@ -1,4 +1,4 @@
-use crate::util::{Bits, Unsigned};
+use crate::util::{Assume, Bits, Unsigned};
 use std::fmt::Debug;
 
 /// Trait for types that can be encoded to binary.
@@ -36,7 +36,7 @@ impl<T: Binary<Bits: Default + Debug + Eq + PartialEq>> Binary for Option<T> {
             None => T::Bits::default(),
             Some(t) => {
                 let bits = t.encode();
-                debug_assert_ne!(bits, T::Bits::default());
+                (bits != T::Bits::default()).assume();
                 bits
             }
         }
@@ -72,11 +72,5 @@ mod tests {
         #[filter(#o != Some(Bits::default()))] o: Option<Bits<u8, 6>>,
     ) {
         assert_eq!(Option::decode(o.encode()), o);
-    }
-
-    #[proptest]
-    #[should_panic]
-    fn encoding_panics_on_aliasing() {
-        Some(Bits::<u8, 6>::default()).encode();
     }
 }

@@ -1,3 +1,4 @@
+use crate::util::Assume;
 use std::num::{NonZeroU128, NonZeroU16, NonZeroU32, NonZeroU64, NonZeroU8, NonZeroUsize};
 use std::{mem::transmute_copy, ops::*};
 
@@ -31,14 +32,16 @@ pub unsafe trait Integer: Copy {
     /// Casts from [`Integer::Repr`].
     #[inline(always)]
     fn new(i: Self::Repr) -> Self {
-        debug_assert!((Self::MIN..=Self::MAX).contains(&i));
+        (Self::MIN..=Self::MAX).contains(&i).assume();
         unsafe { transmute_copy(&i) }
     }
 
     /// Casts to [`Integer::Repr`].
     #[inline(always)]
     fn get(self) -> Self::Repr {
-        unsafe { transmute_copy(&self) }
+        let repr = unsafe { transmute_copy(&self) };
+        (Self::MIN..=Self::MAX).contains(&repr).assume();
+        repr
     }
 
     /// Casts to a [`Primitive`].
@@ -232,18 +235,6 @@ mod tests {
     #[proptest]
     fn integer_can_be_cast_from_repr(#[strategy(1u16..10)] i: u16) {
         assert_eq!(Digit::new(i).get(), i);
-    }
-
-    #[proptest]
-    #[should_panic]
-    fn integer_construction_panics_if_repr_smaller_than_min(#[strategy(..1u16)] i: u16) {
-        Digit::new(i);
-    }
-
-    #[proptest]
-    #[should_panic]
-    fn integer_construction_panics_if_repr_greater_than_max(#[strategy(10u16..)] i: u16) {
-        Digit::new(i);
     }
 
     #[proptest]

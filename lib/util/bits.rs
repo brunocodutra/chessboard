@@ -102,12 +102,6 @@ mod tests {
     }
 
     #[proptest]
-    #[should_panic]
-    fn constructor_panics_if_value_is_too_wide(#[strategy(u8::ones(6)..)] n: u8) {
-        Bits::<_, 5>::new(n);
-    }
-
-    #[proptest]
     fn get_returns_raw_collection_of_bits(b: Bits<u8, 5>) {
         assert_eq!(b.get(), b.0);
     }
@@ -162,7 +156,7 @@ mod tests {
 
     #[proptest]
     #[should_panic]
-    fn pop_ignores_underflow(mut a: Bits<u8, 3>) {
+    fn pop_panics_on_underflow(mut a: Bits<u8, 3>) {
         a.pop::<u16, 9>();
     }
 
