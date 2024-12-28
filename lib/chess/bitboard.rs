@@ -124,7 +124,6 @@ impl Bitboard {
 
         #[cold]
         #[ctor::ctor]
-        #[optimize(size)]
         #[inline(never)]
         unsafe fn init() {
             let lines = LINES.get().as_mut_unchecked();
@@ -168,7 +167,6 @@ impl Bitboard {
 
         #[cold]
         #[ctor::ctor]
-        #[optimize(size)]
         #[inline(never)]
         unsafe fn init() {
             let segments = SEGMENTS.get().as_mut_unchecked();

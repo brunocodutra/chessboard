@@ -36,7 +36,6 @@ static NNUE: SyncUnsafeCell<Nnue> = unsafe { MaybeUninit::zeroed().assume_init()
 
 #[cold]
 #[ctor::ctor]
-#[optimize(size)]
 #[inline(never)]
 unsafe fn init() {
     let encoded = include_bytes!("nnue/nn.zst").as_slice();

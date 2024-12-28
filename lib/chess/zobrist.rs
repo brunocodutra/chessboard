@@ -21,7 +21,6 @@ static ZOBRIST: SyncUnsafeCell<ZobristNumbers> = unsafe { MaybeUninit::zeroed().
 
 #[cold]
 #[ctor::ctor]
-#[optimize(size)]
 #[inline(never)]
 unsafe fn init() {
     let zobrist = ZOBRIST.get().as_mut_unchecked();
