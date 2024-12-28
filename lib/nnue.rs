@@ -1,5 +1,5 @@
 use byteorder::{LittleEndian, ReadBytesExt};
-use ruzstd::StreamingDecoder;
+use ruzstd::decoding::StreamingDecoder;
 use std::cell::SyncUnsafeCell;
 use std::io::{self, Read};
 use std::mem::{transmute, MaybeUninit};
