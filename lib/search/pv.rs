@@ -1,4 +1,5 @@
-use crate::{chess::Move, search::Score};
+use crate::search::{Depth, Score};
+use crate::{chess::Move, util::Integer};
 use std::cmp::Ordering;
 use std::fmt::{self, Display, Formatter, Write};
 use std::ops::{Neg, Shr};
@@ -11,7 +12,7 @@ use proptest::{collection::vec, prelude::*};
 /// [principal variation]: https://www.chessprogramming.org/Principal_Variation
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
 #[cfg_attr(test, derive(test_strategy::Arbitrary))]
-pub struct Pv<const N: usize> {
+pub struct Pv<const N: usize = { Depth::MAX as _ }> {
     score: Score,
     #[cfg_attr(test, strategy(vec(any::<Move>(), ..=N).prop_map(|ms| {
         let mut moves = [None; N];

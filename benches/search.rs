@@ -17,7 +17,7 @@ fn bench(reps: u64, options: &Options, limits: &Limits) -> Duration {
         let stopper = Trigger::armed();
         let pos = Evaluator::default();
         let timer = Instant::now();
-        e.search::<1>(&pos, limits, &stopper);
+        e.search(&pos, limits, &stopper);
         time += timer.elapsed();
     }
 
