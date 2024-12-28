@@ -368,14 +368,14 @@ impl Engine {
     ///
     /// [aspiration windows]: https://www.chessprogramming.org/Aspiration_Windows
     /// [iterative deepening]: https://www.chessprogramming.org/Iterative_Deepening
-    fn aw<const N: usize>(
+    fn aw(
         &self,
         pos: &Evaluator,
         limit: Depth,
         nodes: u64,
         time: &Range<Duration>,
         stopper: &Trigger,
-    ) -> Pv<N> {
+    ) -> Pv {
         let ctrl = Control::Limited(Counter::new(nodes), Timer::new(time.end), stopper);
         let mut pv = Pv::new(Score::lower(), []);
 
@@ -389,7 +389,6 @@ impl Engine {
                 _ => (pv.score() - delta, pv.score() + delta),
             };
 
-            const { assert!(N > 0) }
             let ctrl = if pv.moves().next().is_none() {
                 &Control::Unlimited
             } else if depth < limit {
@@ -447,12 +446,7 @@ impl Engine {
     }
 
     /// Searches for the [principal variation][`Pv`].
-    pub fn search<const N: usize>(
-        &mut self,
-        pos: &Evaluator,
-        limits: &Limits,
-        stopper: &Trigger,
-    ) -> Pv<N> {
+    pub fn search(&mut self, pos: &Evaluator, limits: &Limits, stopper: &Trigger) -> Pv {
         let time = self.time_to_search(pos, limits);
         self.aw(pos, limits.depth(), limits.nodes(), &time, stopper)
     }
@@ -520,7 +514,7 @@ mod tests {
     ) {
         use Control::Unlimited;
         e.tt.set(pos.zobrist(), Transposition::lower(d, s, m));
-        assert_eq!(e.nw::<3>(&pos, b, d, p, &Unlimited), Ok(Pv::new(s, [])));
+        assert_eq!(e.nw::<1>(&pos, b, d, p, &Unlimited), Ok(Pv::new(s, [])));
     }
 
     #[proptest]
@@ -537,7 +531,7 @@ mod tests {
     ) {
         use Control::Unlimited;
         e.tt.set(pos.zobrist(), Transposition::upper(d, s, m));
-        assert_eq!(e.nw::<3>(&pos, b, d, p, &Unlimited), Ok(Pv::new(s, [])));
+        assert_eq!(e.nw::<1>(&pos, b, d, p, &Unlimited), Ok(Pv::new(s, [])));
     }
 
     #[proptest]
@@ -554,7 +548,7 @@ mod tests {
     ) {
         use Control::Unlimited;
         e.tt.set(pos.zobrist(), Transposition::exact(d, sc, m));
-        assert_eq!(e.nw::<3>(&pos, b, d, p, &Unlimited), Ok(Pv::new(sc, [])));
+        assert_eq!(e.nw::<1>(&pos, b, d, p, &Unlimited), Ok(Pv::new(sc, [])));
     }
 
     #[proptest]
@@ -566,7 +560,7 @@ mod tests {
         #[filter(#p > 0)] p: Ply,
     ) {
         assert_eq!(
-            e.nw::<3>(&pos, b, d, p, &Control::Unlimited)? < b,
+            e.nw::<1>(&pos, b, d, p, &Control::Unlimited)? < b,
             alphabeta(&pos, b - 1..b, d, p) < b
         );
     }
@@ -581,7 +575,7 @@ mod tests {
     ) {
         let trigger = Trigger::armed();
         let ctrl = Control::Limited(Counter::new(0), Timer::infinite(), &trigger);
-        assert_eq!(e.ab::<3>(&pos, b, d, p, &ctrl), Err(Interrupted));
+        assert_eq!(e.ab::<1>(&pos, b, d, p, &ctrl), Err(Interrupted));
     }
 
     #[proptest]
@@ -595,7 +589,7 @@ mod tests {
         let trigger = Trigger::armed();
         let ctrl = Control::Limited(Counter::new(u64::MAX), Timer::new(Duration::ZERO), &trigger);
         std::thread::sleep(Duration::from_millis(1));
-        assert_eq!(e.ab::<3>(&pos, b, d, p, &ctrl), Err(Interrupted));
+        assert_eq!(e.ab::<1>(&pos, b, d, p, &ctrl), Err(Interrupted));
     }
 
     #[proptest]
@@ -608,7 +602,7 @@ mod tests {
     ) {
         let trigger = Trigger::disarmed();
         let ctrl = Control::Limited(Counter::new(u64::MAX), Timer::infinite(), &trigger);
-        assert_eq!(e.ab::<3>(&pos, b, d, p, &ctrl), Err(Interrupted));
+        assert_eq!(e.ab::<1>(&pos, b, d, p, &ctrl), Err(Interrupted));
     }
 
     #[proptest]
@@ -619,7 +613,7 @@ mod tests {
         d: Depth,
     ) {
         assert_eq!(
-            e.ab::<3>(&pos, b, d, Ply::upper(), &Control::Unlimited),
+            e.ab::<1>(&pos, b, d, Ply::upper(), &Control::Unlimited),
             Ok(Pv::new(pos.evaluate().saturate(), []))
         );
     }
@@ -633,7 +627,7 @@ mod tests {
         #[filter(#p > 0 || #pos.outcome() != Some(Outcome::DrawByThreefoldRepetition))] p: Ply,
     ) {
         assert_eq!(
-            e.ab::<3>(&pos, b, d, p, &Control::Unlimited),
+            e.ab::<1>(&pos, b, d, p, &Control::Unlimited),
             Ok(Pv::new(Score::new(0), []))
         );
     }
@@ -647,7 +641,7 @@ mod tests {
         p: Ply,
     ) {
         assert_eq!(
-            e.ab::<3>(&pos, b, d, p, &Control::Unlimited),
+            e.ab::<1>(&pos, b, d, p, &Control::Unlimited),
             Ok(Pv::new(Score::lower().normalize(p), []))
         );
     }
@@ -658,8 +652,8 @@ mod tests {
         let time = Duration::MAX..Duration::MAX;
 
         assert_eq!(
-            e.search::<1>(&pos, &Limits::Depth(d), &trigger).score(),
-            e.aw::<1>(&pos, d, u64::MAX, &time, &trigger).score()
+            e.search(&pos, &Limits::Depth(d), &trigger).score(),
+            e.aw(&pos, d, u64::MAX, &time, &trigger).score()
         );
     }
 
@@ -669,8 +663,8 @@ mod tests {
         let trigger = Trigger::armed();
 
         assert_eq!(
-            e.search::<1>(&pos, &limits, &trigger).score(),
-            e.search::<1>(&pos, &limits, &trigger).score()
+            e.search(&pos, &limits, &trigger).score(),
+            e.search(&pos, &limits, &trigger).score()
         );
     }
 
@@ -683,7 +677,7 @@ mod tests {
         let timer = Instant::now();
         let trigger = Trigger::armed();
         let limits = Limits::Time(Duration::from_millis(ms.into()));
-        e.search::<3>(&pos, &limits, &trigger);
+        e.search(&pos, &limits, &trigger);
         assert!(timer.elapsed() < Duration::from_secs(1));
     }
 
@@ -694,7 +688,7 @@ mod tests {
     ) {
         let limits = Duration::ZERO.into();
         let trigger = Trigger::armed();
-        assert_ne!(e.search::<3>(&pos, &limits, &trigger).moves().next(), None);
+        assert_ne!(e.search(&pos, &limits, &trigger).moves().next(), None);
     }
 
     #[proptest]
@@ -704,7 +698,7 @@ mod tests {
     ) {
         let limits = Depth::lower().into();
         let trigger = Trigger::armed();
-        assert_ne!(e.search::<3>(&pos, &limits, &trigger).moves().next(), None);
+        assert_ne!(e.search(&pos, &limits, &trigger).moves().next(), None);
     }
 
     #[proptest]
@@ -714,6 +708,6 @@ mod tests {
     ) {
         let limits = Limits::None;
         let trigger = Trigger::armed();
-        assert_ne!(e.search::<3>(&pos, &limits, &trigger).moves().next(), None);
+        assert_ne!(e.search(&pos, &limits, &trigger).moves().next(), None);
     }
 }
