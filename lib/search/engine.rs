@@ -380,7 +380,6 @@ impl Engine {
         let mut pv = Pv::new(Score::lower(), []);
 
         'id: for depth in Depth::iter() {
-            let mut overtime = time.end - time.start;
             let mut draft = depth;
             let mut delta = 5i16;
 
@@ -399,7 +398,7 @@ impl Engine {
 
             'aw: loop {
                 delta = delta.saturating_mul(2);
-                if ctrl.timer().remaining() < Some(overtime) {
+                if ctrl.timer().remaining() < Some(time.end - time.start) {
                     break 'id;
                 }
 
@@ -409,14 +408,12 @@ impl Engine {
 
                 match partial.score() {
                     score if (-lower..Score::upper()).contains(&-score) => {
-                        overtime /= 2;
                         draft = depth;
                         upper = lower / 2 + upper / 2;
                         lower = score - delta;
                     }
 
                     score if (upper..Score::upper()).contains(&score) => {
-                        overtime = time.end - time.start;
                         draft = draft - 1;
                         upper = score + delta;
                         pv = partial;
