@@ -31,7 +31,6 @@ impl Piece {
 
         #[cold]
         #[ctor::ctor]
-        #[optimize(size)]
         #[inline(never)]
         unsafe fn init() {
             let bitboard = BITBOARDS.get().as_mut_unchecked();

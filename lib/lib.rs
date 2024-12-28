@@ -3,7 +3,6 @@
     array_chunks,
     coverage_attribute,
     new_zeroed_alloc,
-    optimize_attribute,
     ptr_as_ref_unchecked,
     round_char_boundary,
     sync_unsafe_cell

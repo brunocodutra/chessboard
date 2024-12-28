@@ -91,7 +91,6 @@ impl From<Square> for Castles {
 
         #[cold]
         #[ctor::ctor]
-        #[optimize(size)]
         #[inline(never)]
         unsafe fn init() {
             let castles = CASTLES.get().as_mut_unchecked();
