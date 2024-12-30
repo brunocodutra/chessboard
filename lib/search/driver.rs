@@ -43,12 +43,12 @@ impl Driver {
         f: F,
     ) -> Result<(Move, Pv<N>), Interrupted>
     where
-        F: Fn(Score, Move, Value) -> Result<Pv<N>, ControlFlow> + Sync,
+        F: Fn(Score, Move, Value, usize) -> Result<Pv<N>, ControlFlow> + Sync,
     {
         match self {
             Self::Sequential => {
-                for &(m, gain) in moves.iter().rev() {
-                    match f(tail.score(), m, gain) {
+                for (idx, &(m, gain)) in moves.iter().rev().enumerate() {
+                    match f(tail.score(), m, gain, idx) {
                         Err(ControlFlow::Break) => break,
                         Err(ControlFlow::Continue) => continue,
                         Err(ControlFlow::Interrupt(e)) => return Err(e),
@@ -68,19 +68,19 @@ impl Driver {
                 let score = AtomicI16::new(tail.score().get());
                 let (head, tail, _) = moves
                     .par_iter()
-                    .enumerate()
                     .rev()
-                    .map(
-                        |(idx, &(m, gain))| match f(Score::new(score.load(Relaxed)), m, gain) {
+                    .enumerate()
+                    .map(|(idx, &(m, gain))| {
+                        match f(Score::new(score.load(Relaxed)), m, gain, idx) {
                             Err(ControlFlow::Break) => None,
                             Err(ControlFlow::Continue) => Some(Ok(None)),
                             Err(ControlFlow::Interrupt(e)) => Some(Err(e)),
                             Ok(partial) => {
                                 score.fetch_max(partial.score().get(), Relaxed);
-                                Some(Ok(Some((m, partial, idx))))
+                                Some(Ok(Some((m, partial, usize::MAX - idx))))
                             }
-                        },
-                    )
+                        }
+                    })
                     .while_some()
                     .chain([Ok(Some((head, tail, usize::MAX)))])
                     .try_reduce(
@@ -116,7 +116,7 @@ mod tests {
             });
 
         assert_eq!(
-            Driver::new(c).drive(h, t, &ms, |_, _, v| Ok(Pv::new(v.saturate(), []))),
+            Driver::new(c).drive(h, t, &ms, |_, _, v, _| Ok(Pv::new(v.saturate(), []))),
             Ok((head, tail))
         )
     }
