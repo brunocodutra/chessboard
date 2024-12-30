@@ -92,17 +92,6 @@ impl Engine {
         (bounds.start.max(lower), bounds.end.min(upper))
     }
 
-    /// An implementation of [reverse futility pruning].
-    ///
-    /// [reverse futility pruning]: https://www.chessprogramming.org/Reverse_Futility_Pruning
-    fn rfp(&self, surplus: Score, draft: Depth) -> Option<Depth> {
-        match surplus.get() {
-            ..0 => None,
-            0..680 => Some(draft - (surplus + 40) / 120),
-            680.. => Some(draft - 6),
-        }
-    }
-
     /// An implementation of [null move pruning].
     ///
     /// [null move pruning]: https://www.chessprogramming.org/Null_Move_Pruning
@@ -123,10 +112,21 @@ impl Engine {
         }
     }
 
-    /// An implementation of [late move pruning].
+    /// An implementation of [reverse futility pruning].
     ///
-    /// [late move pruning]: https://www.chessprogramming.org/Late_Move_Reductions
-    fn lmp(&self, deficit: Score, draft: Depth) -> Option<Depth> {
+    /// [reverse futility pruning]: https://www.chessprogramming.org/Reverse_Futility_Pruning
+    fn rfp(&self, surplus: Score, draft: Depth) -> Option<Depth> {
+        match surplus.get() {
+            ..0 => None,
+            0..680 => Some(draft - (surplus + 40) / 120),
+            680.. => Some(draft - 6),
+        }
+    }
+
+    /// An implementation of [futility pruning].
+    ///
+    /// [futility pruning]: https://www.chessprogramming.org/Futility_Pruning
+    fn fp(&self, deficit: Score, draft: Depth) -> Option<Depth> {
         let r = match deficit.get() {
             ..15 => return None,
             15..50 => 1,
@@ -135,6 +135,13 @@ impl Engine {
         };
 
         Some(draft - r - draft / 4)
+    }
+
+    /// An implementation of [late move reductions].
+    ///
+    /// [late move reductions]: https://www.chessprogramming.org/Late_Move_Reductions
+    fn lmr(&self, draft: Depth, idx: usize) -> i8 {
+        draft.get().max(1).ilog2() as i8 * idx.max(1).ilog2() as i8 / 3
     }
 
     /// The [alpha-beta] search.
@@ -332,7 +339,7 @@ impl Engine {
             return Ok(head >> tail);
         }
 
-        let (head, tail) = self.driver.drive(head, tail, &moves, |score, m, gain| {
+        let (head, tail) = self.driver.drive(head, tail, &moves, |score, m, gain, n| {
             let alpha = match score {
                 s if s >= beta => return Err(ControlFlow::Break),
                 s => s.max(alpha),
@@ -343,17 +350,24 @@ impl Engine {
 
             self.tt.prefetch(next.zobrist());
             if gain <= Value::lower() / 2 && !pos.is_check() && !next.is_check() {
-                if let Some(d) = self.lmp(alpha + next.evaluate(), draft) {
+                if let Some(d) = self.fp(alpha + next.evaluate(), draft) {
                     if d <= 0 || -self.nw::<0>(&next, -alpha, d + ply, ply + 1, ctrl)? <= alpha {
                         #[cfg(not(test))]
-                        // The late move pruning heuristic is not exact.
+                        // The futility pruning heuristic is not exact.
                         return Err(ControlFlow::Continue);
                     }
                 }
             }
 
-            let partial = match -self.nw(&next, -alpha, depth, ply + 1, ctrl)? {
-                partial if partial <= alpha || partial >= beta => partial,
+            let lmr = match self.lmr(draft, n) {
+                #[cfg(not(test))]
+                // The late move reduction heuristic is not exact.
+                r @ 1.. if !is_pv => r,
+                _ => 0,
+            };
+
+            let partial = match -self.nw(&next, -alpha, depth - lmr, ply + 1, ctrl)? {
+                partial if partial <= alpha || (partial >= beta && lmr <= 0) => partial,
                 _ => -self.ab(&next, -beta..-alpha, depth, ply + 1, ctrl)?,
             };
 
