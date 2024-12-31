@@ -362,7 +362,7 @@ impl Engine {
             let lmr = match self.lmr(draft, n) {
                 #[cfg(not(test))]
                 // The late move reduction heuristic is not exact.
-                r @ 1.. if !is_pv => r,
+                r @ 1.. => r - (is_pv as i8),
                 _ => 0,
             };
 
