@@ -213,8 +213,8 @@ impl<I: FusedStream<Item = String> + Unpin, O: Sink<String> + Unpin> Uci<I, O> {
                 }
 
                 ["uci"] => {
-                    let name = format!("id name {}", env!("CARGO_PKG_NAME"));
-                    let author = format!("id author {}", env!("CARGO_PKG_AUTHORS"));
+                    let name = "id name Cinder".to_string();
+                    let author = "id author Bruno Dutra".to_string();
 
                     let hash = format!(
                         "option name Hash type spin default {} min {} max {}",
