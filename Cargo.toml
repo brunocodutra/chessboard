@@ -1,10 +1,10 @@
 [package]
-name = "chessboard"
+name = "cinder"
 version = "0.1.0"
 authors = ["Bruno Dutra <brunocodutra@gmail.com>"]
 edition = "2021"
 description = "A chess engine"
-repository = "https://github.com/brunocodutra/chessboard.git"
+repository = "https://github.com/brunocodutra/cinder.git"
 license = "GPL-3.0"
 readme = "README.md"
 keywords = ["chess"]
@@ -66,7 +66,7 @@ path = "lib/lib.rs"
 bench = false
 
 [[bin]]
-name = "cli"
+name = "cinder"
 path = "bin/main.rs"
 bench = false
 

@@ -1,7 +1,6 @@
 ## Guidelines
 
-* All code submitted to Chessboard via pull requests is
-assumed to be [licensed under the GPL-3.0][LICENSE].
+* All contributions to Cinder via pull requests are assumed to be [licensed under the GPL-3.0][LICENSE].
 * Every code change must be covered by unit tests, use [cargo-llvm-cov] to generate the code coverage report:
   + `cargo llvm-cov --all-features --workspace --lcov --output-path lcov.info`
 * Besides `cargo test`, make sure [Clippy] and [rustfmt] checks also pass before submitting a pull request:
@@ -10,7 +9,7 @@ assumed to be [licensed under the GPL-3.0][LICENSE].
 * Follow [rustsec.org] advisories when introducing new dependencies, use [cargo-audit] to verify:
   + `cargo audit -D`
 
-[LICENSE]:        https://github.com/brunocodutra/chessboard/blob/master/LICENSE
+[LICENSE]:        https://github.com/brunocodutra/cinder/blob/master/LICENSE
 [rustsec.org]:    https://rustsec.org/advisories/
 
 [Clippy]:         https://github.com/rust-lang/rust-clippy#usage

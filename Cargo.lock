@@ -60,25 +60,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "baf1de4339761588bc0619e3cbc0120ee582ebb74b53b4efbf79117bd2da40fd"
 
 [[package]]
-name = "chessboard"
-version = "0.1.0"
-dependencies = [
- "arrayvec",
- "byteorder",
- "criterion",
- "criterion-macro",
- "ctor",
- "derive_more",
- "futures",
- "proptest",
- "rand",
- "rand_pcg",
- "rayon",
- "ruzstd",
- "test-strategy",
-]
-
-[[package]]
 name = "ciborium"
 version = "0.2.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -103,6 +84,25 @@ checksum = "57663b653d948a338bfb3eeba9bb2fd5fcfaecb9e199e87e1eda4d9e8b240fd9"
 dependencies = [
  "ciborium-io",
  "half",
+]
+
+[[package]]
+name = "cinder"
+version = "0.1.0"
+dependencies = [
+ "arrayvec",
+ "byteorder",
+ "criterion",
+ "criterion-macro",
+ "ctor",
+ "derive_more",
+ "futures",
+ "proptest",
+ "rand",
+ "rand_pcg",
+ "rayon",
+ "ruzstd",
+ "test-strategy",
 ]
 
 [[package]]

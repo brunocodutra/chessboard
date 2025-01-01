@@ -1,4 +1,4 @@
-[tasks.dist]
+[tasks.cinder]
 command = "cargo"
 args = [
     "build",

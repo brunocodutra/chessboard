@@ -107,4 +107,4 @@ jobs:
     - run: sudo apt install -y musl-tools
       if: runner.os == 'Linux'
     - run: cargo install --force cargo-make
-    - run: cargo make dist
+    - run: cargo make cinder
