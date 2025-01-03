@@ -1,5 +1,6 @@
+use crate::nnue::Value;
 use crate::util::{Binary, Bits, Integer, Saturating};
-use crate::{chess::Perspective, search::Ply};
+use crate::{chess::Perspective, search::Ply, util::Assume};
 
 #[derive(Debug, Default, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
 #[cfg_attr(test, derive(test_strategy::Arbitrary))]
@@ -16,14 +17,19 @@ unsafe impl Integer for ScoreRepr {
 pub type Score = Saturating<ScoreRepr>;
 
 impl Score {
+    const _CONDITION: () = const {
+        assert!(Value::MAX + Ply::MAX as i16 <= Self::MAX);
+        assert!(Value::MIN + Ply::MIN as i16 >= Self::MIN);
+    };
+
     /// Returns number of plies to mate, if one is in the horizon.
     ///
     /// Negative number of plies means the opponent is mating.
     #[inline(always)]
     pub fn mate(&self) -> Option<Ply> {
-        if *self <= Score::lower() - Ply::MIN {
+        if *self < Value::MIN {
             Some((Score::lower() - *self).saturate())
-        } else if *self >= Score::upper() - Ply::MAX {
+        } else if *self > Value::MAX {
             Some((Score::upper() - *self).saturate())
         } else {
             None
@@ -33,13 +39,27 @@ impl Score {
     /// Normalizes mate scores relative to `ply`.
     #[inline(always)]
     pub fn normalize(&self, ply: Ply) -> Self {
-        if *self <= Score::lower() - Ply::MIN {
-            (*self + ply).min(Score::lower() - Ply::MIN)
-        } else if *self >= Score::upper() - Ply::MAX {
-            (*self - ply).max(Score::upper() - Ply::MAX)
+        if *self < Value::MIN {
+            Value::lower().convert::<Score>().assume().min(*self + ply)
+        } else if *self > Value::MAX {
+            Value::upper().convert::<Score>().assume().max(*self - ply)
         } else {
             *self
         }
+    }
+
+    /// Mating score at `ply`
+    #[inline(always)]
+    pub fn mating(ply: Ply) -> Self {
+        (ply >= 0).assume();
+        Self::upper().normalize(ply)
+    }
+
+    /// Mated score at `ply`
+    #[inline(always)]
+    pub fn mated(ply: Ply) -> Self {
+        (ply >= 0).assume();
+        Self::lower().normalize(ply)
     }
 }
 

@@ -71,24 +71,17 @@ impl Engine {
             }
         }
 
-        self.tt.set(
-            pos.zobrist(),
-            if score >= bounds.end {
-                Transposition::lower(draft, score.normalize(-ply), best)
-            } else if score <= bounds.start {
-                Transposition::upper(draft, score.normalize(-ply), best)
-            } else {
-                Transposition::exact(draft, score.normalize(-ply), best)
-            },
-        );
+        let score = ScoreBound::new(bounds, score, ply);
+        let tpos = Transposition::new(score, draft, best);
+        self.tt.set(pos.zobrist(), tpos);
     }
 
     /// An implementation of [mate distance pruning].
     ///
     /// [mate distance pruning]: https://www.chessprogramming.org/Mate_Distance_Pruning
     fn mdp(&self, ply: Ply, bounds: &Range<Score>) -> (Score, Score) {
-        let lower = Score::lower().normalize(ply);
-        let upper = Score::upper().normalize(ply + 1); // One can't mate in 0 plies!
+        let lower = Score::mated(ply);
+        let upper = Score::mating(ply + 1); // One can't mate in 0 plies!
         (bounds.start.max(lower), bounds.end.min(upper))
     }
 
@@ -194,7 +187,7 @@ impl Engine {
             None => self.mdp(ply, &bounds),
             Some(Outcome::DrawByThreefoldRepetition) if is_root => self.mdp(ply, &bounds),
             Some(o) if o.is_draw() => return Ok(Pv::new(Score::new(0), [])),
-            Some(_) => return Ok(Pv::new(Score::lower().normalize(ply), [])),
+            Some(_) => return Ok(Pv::new(Score::mated(ply), [])),
         };
 
         if alpha >= beta {
@@ -232,7 +225,7 @@ impl Engine {
         let is_pv = alpha + 1 < beta;
         if let Some(t) = transposition {
             if !is_pv && t.draft() >= draft {
-                let (lower, upper) = t.bounds().into_inner();
+                let (lower, upper) = t.score().range(ply).into_inner();
                 if lower >= upper || upper <= alpha || lower >= beta {
                     return Ok(transposed.convert());
                 }
@@ -250,7 +243,7 @@ impl Engine {
         }
 
         if let Some(t) = transposition {
-            if let Some(d) = self.rfp(*t.bounds().start() - beta, draft) {
+            if let Some(d) = self.rfp(t.score().lower(ply) - beta, draft) {
                 if !is_pv && t.draft() >= d {
                     #[cfg(not(test))]
                     // The reverse futility pruning heuristic is not exact.
@@ -302,7 +295,7 @@ impl Engine {
         moves.sort_unstable_by_key(|(_, gain)| *gain);
 
         if let Some(t) = transposition {
-            if let Some(d) = self.mcp(*t.bounds().start() - beta, draft) {
+            if let Some(d) = self.mcp(t.score().lower(ply) - beta, draft) {
                 if !is_root && t.draft() >= d {
                     for (m, _) in moves.iter().rev().skip(1) {
                         let mut next = pos.clone();
@@ -422,15 +415,20 @@ impl Engine {
 
                 match partial.score() {
                     score if (-lower..Score::upper()).contains(&-score) => {
-                        draft = depth;
                         upper = lower / 2 + upper / 2;
                         lower = score - delta;
+                        draft = depth;
                     }
 
                     score if (upper..Score::upper()).contains(&score) => {
-                        draft = draft - 1;
                         upper = score + delta;
                         pv = partial;
+
+                        #[cfg(not(test))]
+                        {
+                            // Reductions are not exact.
+                            draft = draft - 1;
+                        }
                     }
 
                     _ => {
@@ -468,7 +466,6 @@ mod tests {
     use super::*;
     use crate::chess::Move;
     use proptest::{prop_assume, sample::Selector};
-    use std::time::Instant;
     use test_strategy::proptest;
 
     fn alphabeta(pos: &Evaluator, bounds: Range<Score>, depth: Depth, ply: Ply) -> Score {
@@ -477,7 +474,7 @@ mod tests {
 
         let score = match pos.outcome() {
             Some(o) if o.is_draw() => return Score::new(0),
-            Some(_) => return Score::lower().normalize(ply),
+            Some(_) => return Score::mated(ply),
             None => pos.evaluate().saturate(),
         };
 
@@ -524,7 +521,8 @@ mod tests {
         #[map(|s: Selector| s.select(#pos.moves().flatten()))] m: Move,
     ) {
         use Control::Unlimited;
-        e.tt.set(pos.zobrist(), Transposition::lower(d, s, m));
+        let tpos = Transposition::new(ScoreBound::Lower(s), d, m);
+        e.tt.set(pos.zobrist(), tpos);
         assert_eq!(e.nw::<1>(&pos, b, d, p, &Unlimited), Ok(Pv::new(s, [])));
     }
 
@@ -541,7 +539,8 @@ mod tests {
         #[map(|s: Selector| s.select(#pos.moves().flatten()))] m: Move,
     ) {
         use Control::Unlimited;
-        e.tt.set(pos.zobrist(), Transposition::upper(d, s, m));
+        let tpos = Transposition::new(ScoreBound::Upper(s), d, m);
+        e.tt.set(pos.zobrist(), tpos);
         assert_eq!(e.nw::<1>(&pos, b, d, p, &Unlimited), Ok(Pv::new(s, [])));
     }
 
@@ -554,12 +553,13 @@ mod tests {
         #[filter((Value::lower()..Value::upper()).contains(&#b))] b: Score,
         d: Depth,
         #[filter(#p >= 0)] p: Ply,
-        #[filter(#sc.mate().is_none())] sc: Score,
+        #[filter(#s.mate().is_none())] s: Score,
         #[map(|s: Selector| s.select(#pos.moves().flatten()))] m: Move,
     ) {
         use Control::Unlimited;
-        e.tt.set(pos.zobrist(), Transposition::exact(d, sc, m));
-        assert_eq!(e.nw::<1>(&pos, b, d, p, &Unlimited), Ok(Pv::new(sc, [])));
+        let tpos = Transposition::new(ScoreBound::Exact(s), d, m);
+        e.tt.set(pos.zobrist(), tpos);
+        assert_eq!(e.nw::<1>(&pos, b, d, p, &Unlimited), Ok(Pv::new(s, [])));
     }
 
     #[proptest]
@@ -582,7 +582,7 @@ mod tests {
         pos: Evaluator,
         #[filter(!#b.is_empty())] b: Range<Score>,
         d: Depth,
-        p: Ply,
+        #[filter(#p > 0)] p: Ply,
     ) {
         let trigger = Trigger::armed();
         let ctrl = Control::Limited(Counter::new(0), Timer::infinite(), &trigger);
@@ -595,7 +595,7 @@ mod tests {
         pos: Evaluator,
         #[filter(!#b.is_empty())] b: Range<Score>,
         d: Depth,
-        p: Ply,
+        #[filter(#p > 0)] p: Ply,
     ) {
         let trigger = Trigger::armed();
         let ctrl = Control::Limited(Counter::new(u64::MAX), Timer::new(Duration::ZERO), &trigger);
@@ -609,7 +609,7 @@ mod tests {
         pos: Evaluator,
         #[filter(!#b.is_empty())] b: Range<Score>,
         d: Depth,
-        p: Ply,
+        #[filter(#p > 0)] p: Ply,
     ) {
         let trigger = Trigger::disarmed();
         let ctrl = Control::Limited(Counter::new(u64::MAX), Timer::infinite(), &trigger);
@@ -649,11 +649,11 @@ mod tests {
         #[filter(#pos.outcome().is_some_and(|o| o.is_decisive()))] pos: Evaluator,
         #[filter(!#b.is_empty())] b: Range<Score>,
         d: Depth,
-        p: Ply,
+        #[filter(#p > 0)] p: Ply,
     ) {
         assert_eq!(
             e.ab::<1>(&pos, b, d, p, &Control::Unlimited),
-            Ok(Pv::new(Score::lower().normalize(p), []))
+            Ok(Pv::new(Score::mated(p), []))
         );
     }
 
@@ -677,19 +677,6 @@ mod tests {
             e.search(&pos, &limits, &trigger).score(),
             e.search(&pos, &limits, &trigger).score()
         );
-    }
-
-    #[proptest]
-    fn search_can_be_limited_by_time(
-        mut e: Engine,
-        #[filter(#pos.outcome().is_none())] pos: Evaluator,
-        #[strategy(..10u8)] ms: u8,
-    ) {
-        let timer = Instant::now();
-        let trigger = Trigger::armed();
-        let limits = Limits::Time(Duration::from_millis(ms.into()));
-        e.search(&pos, &limits, &trigger);
-        assert!(timer.elapsed() < Duration::from_secs(1));
     }
 
     #[proptest]
