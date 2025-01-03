@@ -1,8 +1,9 @@
 use crate::chess::{Color, Move};
 use crate::search::Ply;
 use crate::util::{Assume, Binary, Bits, Integer};
-use std::array;
+use derive_more::Debug;
 use std::sync::atomic::{AtomicU32, Ordering::Relaxed};
+use std::{array, mem::size_of};
 
 /// A pair of [killer moves].
 ///
@@ -29,7 +30,7 @@ impl Killer {
 }
 
 impl Binary for Killer {
-    type Bits = Bits<u32, 32>;
+    type Bits = Bits<u32, { 2 * <Option<Move> as Binary>::Bits::BITS }>;
 
     #[inline(always)]
     fn encode(&self) -> Self::Bits {
@@ -49,6 +50,7 @@ impl Binary for Killer {
 ///
 /// [killer moves]: https://www.chessprogramming.org/Killer_Move
 #[derive(Debug)]
+#[debug("Killers({})", size_of::<Self>())]
 pub struct Killers([[AtomicU32; 2]; Ply::MAX as usize]);
 
 impl Default for Killers {
@@ -82,6 +84,7 @@ mod tests {
     use crate::util::Integer;
     use proptest::sample::size_range;
     use std::collections::HashSet;
+    use std::fmt::Debug;
     use test_strategy::proptest;
 
     #[proptest]

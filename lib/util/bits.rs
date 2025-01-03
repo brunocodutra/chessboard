@@ -41,6 +41,12 @@ unsafe impl<T: Unsigned + Primitive, const W: u32> Integer for Bits<T, W> {
 }
 
 impl<T: Unsigned, const W: u32> Bits<T, W> {
+    /// The bit width.
+    pub const BITS: u32 = const {
+        assert!(size_of::<T>() * 8 >= W as usize);
+        W
+    };
+
     /// Returns a slice of bits.
     #[inline(always)]
     pub fn slice<R: RangeBounds<u32>>(&self, r: R) -> Self {

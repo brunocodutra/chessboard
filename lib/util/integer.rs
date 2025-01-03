@@ -1,6 +1,6 @@
 use crate::util::Assume;
 use std::num::{NonZeroU128, NonZeroU16, NonZeroU32, NonZeroU64, NonZeroU8, NonZeroUsize};
-use std::{mem::transmute_copy, ops::*};
+use std::{hint::unreachable_unchecked, mem::transmute_copy, ops::*};
 
 /// Trait for types that can be represented by a contiguous range of primitive integers.
 ///
@@ -30,6 +30,7 @@ pub unsafe trait Integer: Copy {
     }
 
     /// Casts from [`Integer::Repr`].
+    #[track_caller]
     #[inline(always)]
     fn new(i: Self::Repr) -> Self {
         (Self::MIN..=Self::MAX).contains(&i).assume();
@@ -171,7 +172,7 @@ macro_rules! impl_primitive_for {
                         32 => (self as i32).cast(),
                         64 => (self as i64).cast(),
                         128 => (self as i128).cast(),
-                        _ => unsafe { std::hint::unreachable_unchecked() },
+                        _ => unsafe { unreachable_unchecked() },
                     }
                 }
             }

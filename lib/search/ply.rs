@@ -14,7 +14,7 @@ unsafe impl Integer for PlyRepr {
     const MAX: Self::Repr = 95;
 
     #[cfg(test)]
-    const MAX: Self::Repr = 3;
+    const MAX: Self::Repr = 7;
 }
 
 /// The number of half-moves played.

@@ -1,12 +1,14 @@
 use crate::chess::{Color, Move};
 use crate::util::Assume;
-use std::array;
+use derive_more::Debug;
 use std::sync::atomic::{AtomicI8, Ordering::Relaxed};
+use std::{array, mem::size_of};
 
 /// [Historical statistics] about a [`Move`].
 ///
 /// [Historical statistics]: https://www.chessprogramming.org/History_Heuristic
 #[derive(Debug)]
+#[debug("History({})", size_of::<Self>())]
 pub struct History([[[AtomicI8; 2]; 64]; 64]);
 
 impl Default for History {
@@ -41,6 +43,7 @@ impl History {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::fmt::Debug;
     use test_strategy::proptest;
 
     #[proptest]
