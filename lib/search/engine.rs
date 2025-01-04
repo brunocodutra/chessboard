@@ -114,8 +114,8 @@ impl Engine {
     fn rfp(&self, surplus: Score, draft: Depth) -> Option<Depth> {
         match surplus.get() {
             ..0 => None,
-            s @ 0..680 => Some(draft - (s + 40) / 120),
-            680.. => Some(draft - 6),
+            s @ 0..440 => Some(draft - (s + 40) / 120),
+            440.. => Some(draft - 4),
         }
     }
 
@@ -201,49 +201,32 @@ impl Engine {
         };
 
         #[cfg(not(test))]
-        let mut depth = depth;
-
-        #[cfg(not(test))]
-        let mut alpha = alpha;
-
-        if !is_root {
+        let mut depth = match transposition {
             #[cfg(not(test))]
-            if transposition.is_some() && pos.is_check() {
-                // The check extension heuristic is not exact.
-                depth = depth + 1;
-            }
+            // The check extension heuristic is not exact.
+            Some(_) if !is_root && pos.is_check() => depth + 1,
 
             #[cfg(not(test))]
-            if transposition.is_none() && !pos.is_check() {
-                // The internal iterative reduction heuristic is not exact.
-                depth = depth - 2;
-            }
-        }
+            // The internal iterative reduction heuristic is not exact.
+            None if !is_root && !pos.is_check() => depth - 2,
+
+            _ => depth,
+        };
 
         let draft = depth - ply;
         let quiesce = draft <= 0;
         let is_pv = alpha + 1 < beta;
         if let Some(t) = transposition {
-            if !is_pv && t.draft() >= draft {
-                let (lower, upper) = t.score().range(ply).into_inner();
-                if lower >= upper || upper <= alpha || lower >= beta {
+            let (lower, upper) = t.score().range(ply).into_inner();
+
+            #[allow(clippy::collapsible_if)]
+            if lower >= upper || upper <= alpha || lower >= beta {
+                if !is_pv && t.draft() >= draft {
                     return Ok(transposed.convert());
                 }
             }
-        }
 
-        #[cfg(not(test))]
-        if quiesce {
-            // The stand pat heuristic is not exact.
-            alpha = transposed.score().max(alpha);
-        }
-
-        if alpha >= beta || ply >= Ply::MAX {
-            return Ok(transposed.convert());
-        }
-
-        if let Some(t) = transposition {
-            if let Some(d) = self.rfp(t.score().lower(ply) - beta, draft) {
+            if let Some(d) = self.rfp(lower - beta, draft) {
                 if !is_pv && t.draft() >= d {
                     #[cfg(not(test))]
                     // The reverse futility pruning heuristic is not exact.
@@ -252,7 +235,16 @@ impl Engine {
             }
         }
 
-        if let Some(d) = self.nmp(transposed.score() - beta, draft) {
+        let alpha = match quiesce {
+            #[cfg(not(test))]
+            // The stand pat heuristic is not exact.
+            true => transposed.score().max(alpha),
+            _ => alpha,
+        };
+
+        if alpha >= beta || ply >= Ply::MAX {
+            return Ok(transposed.convert());
+        } else if let Some(d) = self.nmp(transposed.score() - beta, draft) {
             if !is_pv && !pos.is_check() && pos.pieces(pos.turn()).len() > 1 {
                 if d <= 0 {
                     #[cfg(not(test))]
