@@ -90,8 +90,8 @@ impl Engine {
     /// [null move pruning]: https://www.chessprogramming.org/Null_Move_Pruning
     fn nmp(&self, surplus: Score, draft: Depth) -> Option<Depth> {
         match surplus.get() {
-            0.. => Some(draft - 2 - draft / 4),
             ..0 => None,
+            0.. => Some(draft - 2 - draft / 4),
         }
     }
 
@@ -99,9 +99,12 @@ impl Engine {
     ///
     /// [multi-cut pruning]: https://www.chessprogramming.org/Multi-Cut
     fn mcp(&self, surplus: Score, draft: Depth) -> Option<Depth> {
-        match surplus.get() {
-            0.. if draft >= 6 => Some(draft / 2),
-            _ => None,
+        match draft.get() {
+            ..6 => None,
+            6.. => match surplus.get() {
+                ..0 => None,
+                0.. => Some(draft / 2),
+            },
         }
     }
 
@@ -109,10 +112,13 @@ impl Engine {
     ///
     /// [reverse futility pruning]: https://www.chessprogramming.org/Reverse_Futility_Pruning
     fn rfp(&self, surplus: Score, draft: Depth) -> Option<Depth> {
-        match surplus.get() {
-            ..0 => None,
-            0..680 => Some(draft - (surplus + 40) / 120),
-            680.. => Some(draft - 6),
+        match draft.get() {
+            ..1 => None,
+            1.. => match surplus.get() {
+                ..80 => None,
+                80..680 => Some(draft - (surplus + 40) / 120),
+                680.. => Some(draft - 6),
+            },
         }
     }
 
@@ -120,14 +126,25 @@ impl Engine {
     ///
     /// [futility pruning]: https://www.chessprogramming.org/Futility_Pruning
     fn fp(&self, deficit: Score, draft: Depth) -> Option<Depth> {
-        let r = match deficit.get() {
-            ..15 => return None,
-            15..50 => 1,
-            50..100 => 2,
-            100.. => 3,
-        };
+        match deficit.get() {
+            ..0 => None,
+            0..15 => Some(draft),
+            15..50 => Some(draft - 1),
+            50..100 => Some(draft - 2),
+            100.. => Some(draft - 3),
+        }
+    }
 
-        Some(draft - r - draft / 4)
+    /// An implementation of futility reductions.
+    fn fr(&self, deficit: Score, draft: Depth) -> Option<Depth> {
+        match draft.get() {
+            ..1 => None,
+            1.. => match deficit.get() {
+                ..15 => None,
+                15..105 => Some(draft - (deficit + 30) / 45 - draft / 4),
+                105.. => Some(draft - 3 - draft / 4),
+            },
+        }
     }
 
     /// An implementation of [late move reductions].
@@ -343,8 +360,13 @@ impl Engine {
 
             self.tt.prefetch(next.zobrist());
             if gain <= Value::lower() / 2 && !pos.is_check() && !next.is_check() {
-                if let Some(d) = self.fp(alpha + next.evaluate(), draft) {
-                    if d <= 0 || -self.nw::<0>(&next, -alpha, d + ply, ply + 1, ctrl)? <= alpha {
+                let deficit = alpha + next.evaluate();
+                if self.fp(deficit, draft).is_some_and(|d| d <= 0) {
+                    #[cfg(not(test))]
+                    // The razoring heuristic is not exact.
+                    return Err(ControlFlow::Break);
+                } else if let Some(d) = self.fr(deficit, draft) {
+                    if -self.nw::<0>(&next, -alpha, d + ply, ply + 1, ctrl)? <= alpha {
                         #[cfg(not(test))]
                         // The futility pruning heuristic is not exact.
                         return Err(ControlFlow::Continue);
