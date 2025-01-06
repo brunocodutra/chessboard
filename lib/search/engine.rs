@@ -90,8 +90,8 @@ impl Engine {
     /// [null move pruning]: https://www.chessprogramming.org/Null_Move_Pruning
     fn nmp(&self, surplus: Score, draft: Depth) -> Option<Depth> {
         match surplus.get() {
-            0.. => Some(draft - 2 - draft / 4),
             ..0 => None,
+            0.. => Some(draft - 2 - draft / 4),
         }
     }
 
@@ -99,9 +99,12 @@ impl Engine {
     ///
     /// [multi-cut pruning]: https://www.chessprogramming.org/Multi-Cut
     fn mcp(&self, surplus: Score, draft: Depth) -> Option<Depth> {
-        match surplus.get() {
-            0.. if draft >= 6 => Some(draft / 2),
-            _ => None,
+        match draft.get() {
+            ..6 => None,
+            6.. => match surplus.get() {
+                ..0 => None,
+                0.. => Some(draft / 2),
+            },
         }
     }
 
@@ -109,10 +112,13 @@ impl Engine {
     ///
     /// [reverse futility pruning]: https://www.chessprogramming.org/Reverse_Futility_Pruning
     fn rfp(&self, surplus: Score, draft: Depth) -> Option<Depth> {
-        match surplus.get() {
-            ..0 => None,
-            0..680 => Some(draft - (surplus + 40) / 120),
-            680.. => Some(draft - 6),
+        match draft.get() {
+            ..1 => None,
+            1.. => match surplus.get() {
+                ..80 => None,
+                80..680 => Some(draft - (surplus + 40) / 120),
+                680.. => Some(draft - 6),
+            },
         }
     }
 
@@ -120,14 +126,14 @@ impl Engine {
     ///
     /// [futility pruning]: https://www.chessprogramming.org/Futility_Pruning
     fn fp(&self, deficit: Score, draft: Depth) -> Option<Depth> {
-        let r = match deficit.get() {
-            ..15 => return None,
-            15..50 => 1,
-            50..100 => 2,
-            100.. => 3,
-        };
-
-        Some(draft - r - draft / 4)
+        match draft.get() {
+            ..1 => None,
+            1.. => match deficit.get() {
+                ..15 => None,
+                15..105 => Some(draft - (deficit + 30) / 45 - draft / 4),
+                105.. => Some(draft - 3 - draft / 4),
+            },
+        }
     }
 
     /// An implementation of [late move reductions].
@@ -347,7 +353,10 @@ impl Engine {
                     if d <= 0 || -self.nw::<0>(&next, -alpha, d + ply, ply + 1, ctrl)? <= alpha {
                         #[cfg(not(test))]
                         // The futility pruning heuristic is not exact.
-                        return Err(ControlFlow::Continue);
+                        return match draft.get() {
+                            ..3 => Err(ControlFlow::Break),
+                            3.. => Err(ControlFlow::Continue),
+                        };
                     }
                 }
             }
