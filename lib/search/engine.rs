@@ -112,13 +112,10 @@ impl Engine {
     ///
     /// [reverse futility pruning]: https://www.chessprogramming.org/Reverse_Futility_Pruning
     fn rfp(&self, surplus: Score, draft: Depth) -> Option<Depth> {
-        match draft.get() {
-            ..1 => None,
-            1.. => match surplus.get() {
-                ..80 => None,
-                80..680 => Some(draft - (surplus + 40) / 120),
-                680.. => Some(draft - 6),
-            },
+        match surplus.get() {
+            ..0 => None,
+            s @ 0..680 => Some(draft - (s + 40) / 120),
+            680.. => Some(draft - 6),
         }
     }
 
@@ -126,21 +123,18 @@ impl Engine {
     ///
     /// [futility pruning]: https://www.chessprogramming.org/Futility_Pruning
     fn fp(&self, deficit: Score, draft: Depth) -> Option<Depth> {
-        match draft.get() {
-            ..1 => None,
-            1.. => match deficit.get() {
-                ..15 => None,
-                15..105 => Some(draft - (deficit + 30) / 45 - draft / 4),
-                105.. => Some(draft - 3 - draft / 4),
-            },
+        match deficit.get() {
+            ..0 => None,
+            d @ 0..90 => Some(draft - (d + 30) / 40),
+            90.. => Some(draft - 3),
         }
     }
 
     /// An implementation of [late move reductions].
     ///
     /// [late move reductions]: https://www.chessprogramming.org/Late_Move_Reductions
-    fn lmr(&self, draft: Depth, idx: usize) -> i8 {
-        draft.get().max(1).ilog2() as i8 * idx.max(1).ilog2() as i8 / 3
+    fn lmr(&self, draft: Depth, idx: usize) -> i16 {
+        draft.get().max(1).ilog2() as i16 * idx.max(1).ilog2() as i16 / 3
     }
 
     /// The [alpha-beta] search.
@@ -348,23 +342,22 @@ impl Engine {
             next.play(m);
 
             self.tt.prefetch(next.zobrist());
-            if gain <= Value::lower() / 2 && !pos.is_check() && !next.is_check() {
-                if let Some(d) = self.fp(alpha + next.evaluate(), draft) {
-                    if d <= 0 || -self.nw::<0>(&next, -alpha, d + ply, ply + 1, ctrl)? <= alpha {
-                        #[cfg(not(test))]
-                        // The futility pruning heuristic is not exact.
-                        return match draft.get() {
-                            ..3 => Err(ControlFlow::Break),
-                            3.. => Err(ControlFlow::Continue),
-                        };
-                    }
+            if draft < 4 && !pos.is_check() && !next.is_check() && gain < Value::lower() / 2 {
+                let deficit = alpha + next.evaluate();
+                if self.fp(deficit, draft).is_some_and(|d| d <= 0) {
+                    #[cfg(not(test))]
+                    // The futility pruning heuristic is not exact.
+                    return match draft.get() {
+                        ..3 => Err(ControlFlow::Break),
+                        3.. => Err(ControlFlow::Continue),
+                    };
                 }
             }
 
             let lmr = match self.lmr(draft, n) {
                 #[cfg(not(test))]
                 // The late move reduction heuristic is not exact.
-                r @ 1.. => r - (is_pv as i8),
+                r @ 1.. => r - (is_pv as i16),
                 _ => 0,
             };
 
