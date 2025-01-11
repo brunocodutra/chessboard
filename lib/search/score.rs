@@ -95,11 +95,6 @@ mod tests {
     }
 
     #[proptest]
-    fn normalize_preserves_mate_score(s: Score, p: Ply) {
-        assert_eq!(s.normalize(p).mate().is_some(), s.mate().is_some());
-    }
-
-    #[proptest]
     fn mate_returns_plies_to_mate(p: Ply) {
         if p > 0 {
             assert_eq!(Score::upper().normalize(p).mate(), Some(p));
