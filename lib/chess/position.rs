@@ -4,7 +4,7 @@ use arrayvec::{ArrayVec, CapacityError};
 use derive_more::{Debug, Display, Error, From};
 use std::fmt::{self, Formatter};
 use std::hash::{Hash, Hasher};
-use std::num::{NonZeroU16, NonZeroU32};
+use std::num::NonZeroU32;
 use std::str::FromStr;
 
 #[cfg(test)]
@@ -243,7 +243,7 @@ pub struct Position {
     zobrist: Zobrist,
     checkers: Bitboard,
     pinned: Bitboard,
-    history: [[Option<NonZeroU16>; 32]; 2],
+    history: [[Option<NonZeroU32>; 32]; 2],
 }
 
 impl Default for Position {
@@ -394,7 +394,7 @@ impl Position {
     /// How many other times this position has repeated.
     #[inline(always)]
     pub fn repetitions(&self) -> usize {
-        match NonZeroU16::new(self.zobrist().cast()) {
+        match NonZeroU32::new(self.zobrist().cast()) {
             None => 0,
             hash => {
                 let history = &self.history[self.turn() as usize];
@@ -538,7 +538,7 @@ impl Position {
             self.board.halfmoves += 1;
             let entries = self.history[turn as usize].len();
             self.history[turn as usize].copy_within(..entries - 1, 1);
-            self.history[turn as usize][0] = NonZeroU16::new(self.zobrist().cast());
+            self.history[turn as usize][0] = NonZeroU32::new(self.zobrist().cast());
         }
 
         self.board.turn = !self.board.turn;
@@ -627,7 +627,7 @@ impl Position {
         self.board.halfmoves += 1;
         let entries = self.history[turn as usize].len();
         self.history[turn as usize].copy_within(..entries - 1, 1);
-        self.history[turn as usize][0] = NonZeroU16::new(self.zobrist.cast());
+        self.history[turn as usize][0] = NonZeroU32::new(self.zobrist.cast());
 
         self.board.turn = !self.board.turn;
         self.zobrist ^= ZobristNumbers::turn();
@@ -909,15 +909,11 @@ mod tests {
     }
 
     #[proptest]
-    fn threefold_repetition_implies_draw(
-        #[filter(#pos.outcome().is_none())] mut pos: Position,
-        z: NonZeroU16,
-    ) {
-        let zobrist = NonZeroU16::new(pos.zobrist().cast());
+    fn threefold_repetition_implies_draw(#[filter(#pos.outcome().is_none() )] mut pos: Position) {
+        let zobrist = NonZeroU32::new(pos.zobrist().cast());
         prop_assume!(zobrist.is_some());
 
-        let history = [zobrist, Some(z), zobrist, Some(z)];
-        pos.history[pos.turn() as usize][..4].clone_from_slice(&history);
+        pos.history[pos.turn() as usize][..2].clone_from_slice(&[zobrist, zobrist]);
         assert!(pos.is_draw_by_threefold_repetition());
         assert_eq!(pos.outcome(), Some(Outcome::DrawByThreefoldRepetition));
     }
