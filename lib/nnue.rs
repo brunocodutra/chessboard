@@ -27,8 +27,8 @@ pub use value::*;
 /// [NNUE]: https://www.chessprogramming.org/NNUE
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
 struct Nnue {
-    ft: Transformer<i16, { Positional::LEN }>,
-    psqt: Transformer<i32, { Material::LEN }>,
+    ft: Affine<i16, { Positional::LEN }>,
+    psqt: Linear<i32, { Material::LEN }>,
     hidden: [Hidden<{ Positional::LEN }>; Material::LEN],
 }
 
@@ -74,12 +74,12 @@ impl Nnue {
     }
 
     #[inline(always)]
-    fn psqt() -> &'static Transformer<i32, { Material::LEN }> {
+    fn psqt() -> &'static Linear<i32, { Material::LEN }> {
         unsafe { &NNUE.get().as_ref_unchecked().psqt }
     }
 
     #[inline(always)]
-    fn ft() -> &'static Transformer<i16, { Positional::LEN }> {
+    fn ft() -> &'static Affine<i16, { Positional::LEN }> {
         unsafe { &NNUE.get().as_ref_unchecked().ft }
     }
 

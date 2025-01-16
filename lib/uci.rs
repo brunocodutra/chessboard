@@ -205,10 +205,8 @@ impl<I: FusedStream<Item = String> + Unpin, O: Sink<String> + Unpin> Uci<I, O> {
                 ["eval"] => {
                     let pos = &self.position;
                     let turn = self.position.turn();
-                    let mat = pos.material().evaluate().perspective(turn);
-                    let psn = pos.positional().evaluate().perspective(turn);
-                    let val = pos.evaluate().perspective(turn);
-                    let info = format!("info material {mat:+} positional {psn:+} value {val:+}");
+                    let value = pos.evaluate().perspective(turn);
+                    let info = format!("info value {value:+}");
                     self.output.send(info).await?;
                 }
 

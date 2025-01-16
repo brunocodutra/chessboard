@@ -271,15 +271,12 @@ impl Engine {
             .map(|m| {
                 if Some(m) == transposed.moves().next() {
                     (m, Value::upper())
+                } else if !m.is_quiet() {
+                    (m, pos.gain(m))
                 } else if killers.contains(m) {
                     (m, Value::new(25))
-                } else if m.is_quiet() {
-                    (m, Value::lower() / 2 + self.history.get(m, pos.turn()))
                 } else {
-                    let mut next = pos.material();
-                    let material = next.evaluate();
-                    next.play(m);
-                    (m, -next.evaluate() - material)
+                    (m, Value::lower() / 2 + self.history.get(m, pos.turn()))
                 }
             })
             .collect();
@@ -458,7 +455,6 @@ impl Engine {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::chess::Move;
     use proptest::{prop_assume, sample::Selector};
     use test_strategy::proptest;
 

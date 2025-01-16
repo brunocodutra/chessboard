@@ -2,8 +2,8 @@ use crate::chess::*;
 use crate::util::{Assume, Integer};
 use derive_more::{Debug, Display, Error};
 use std::fmt::{self, Formatter, Write};
+use std::io::Write as _;
 use std::str::{self, FromStr};
-use std::{io::Write as _, ops::Index};
 
 /// The chess board.
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
@@ -133,33 +133,9 @@ impl Board {
     /// Toggles a piece on a square.
     #[inline(always)]
     pub fn toggle(&mut self, p: Piece, sq: Square) {
-        debug_assert!(self[sq].is_none_or(|q| p == q));
+        debug_assert!(self.piece_on(sq).is_none_or(|q| p == q));
         self.colors[p.color() as usize] ^= sq.bitboard();
         self.roles[p.role() as usize] ^= sq.bitboard();
-    }
-}
-
-/// Retrieves the [`Piece`] at a given [`Square`], if any.
-impl Index<Square> for Board {
-    type Output = Option<Piece>;
-
-    #[inline(always)]
-    fn index(&self, sq: Square) -> &Self::Output {
-        match self.piece_on(sq) {
-            Some(Piece::WhitePawn) => &Some(Piece::WhitePawn),
-            Some(Piece::WhiteKnight) => &Some(Piece::WhiteKnight),
-            Some(Piece::WhiteBishop) => &Some(Piece::WhiteBishop),
-            Some(Piece::WhiteRook) => &Some(Piece::WhiteRook),
-            Some(Piece::WhiteQueen) => &Some(Piece::WhiteQueen),
-            Some(Piece::WhiteKing) => &Some(Piece::WhiteKing),
-            Some(Piece::BlackPawn) => &Some(Piece::BlackPawn),
-            Some(Piece::BlackKnight) => &Some(Piece::BlackKnight),
-            Some(Piece::BlackBishop) => &Some(Piece::BlackBishop),
-            Some(Piece::BlackRook) => &Some(Piece::BlackRook),
-            Some(Piece::BlackQueen) => &Some(Piece::BlackQueen),
-            Some(Piece::BlackKing) => &Some(Piece::BlackKing),
-            None => &None,
-        }
     }
 }
 
@@ -173,7 +149,7 @@ impl Display for Board {
                 buffer[0] = if sq.rank() == Rank::First { b' ' } else { b'/' };
             }
 
-            match self[sq] {
+            match self.piece_on(sq) {
                 None => skip += 1,
                 Some(p) => {
                     buffer[1] = buffer[0];
@@ -321,35 +297,35 @@ mod tests {
     #[proptest]
     fn iter_returns_pieces_and_squares(b: Board) {
         for (p, sq) in b.iter() {
-            assert_eq!(b[sq], Some(p));
+            assert_eq!(b.piece_on(sq), Some(p));
         }
     }
 
     #[proptest]
     fn by_color_returns_squares_occupied_by_pieces_of_a_color(b: Board, c: Color) {
         for sq in b.by_color(c) {
-            assert_eq!(b[sq].map(|p| p.color()), Some(c));
+            assert_eq!(b.piece_on(sq).map(|p| p.color()), Some(c));
         }
     }
 
     #[proptest]
     fn by_color_returns_squares_occupied_by_pieces_of_a_role(b: Board, r: Role) {
         for sq in b.by_role(r) {
-            assert_eq!(b[sq].map(|p| p.role()), Some(r));
+            assert_eq!(b.piece_on(sq).map(|p| p.role()), Some(r));
         }
     }
 
     #[proptest]
     fn by_piece_returns_squares_occupied_by_a_piece(b: Board, p: Piece) {
         for sq in b.by_piece(p) {
-            assert_eq!(b[sq], Some(p));
+            assert_eq!(b.piece_on(sq), Some(p));
         }
     }
 
     #[proptest]
     fn king_returns_square_occupied_by_a_king(b: Board, c: Color) {
         if let Some(sq) = b.king(c) {
-            assert_eq!(b[sq], Some(Piece::new(Role::King, c)));
+            assert_eq!(b.piece_on(sq), Some(Piece::new(Role::King, c)));
         }
     }
 
@@ -362,35 +338,33 @@ mod tests {
     }
 
     #[proptest]
-    fn toggle_removes_piece_from_square(mut b: Board, #[filter(#b[#sq].is_some())] sq: Square) {
-        let p = b[sq].unwrap();
+    fn toggle_removes_piece_from_square(
+        mut b: Board,
+        #[filter(#b.piece_on(#sq).is_some())] sq: Square,
+    ) {
+        let p = b.piece_on(sq).unwrap();
         b.toggle(p, sq);
-        assert_eq!(b[sq], None);
+        assert_eq!(b.piece_on(sq), None);
     }
 
     #[proptest]
     fn toggle_places_piece_on_square(
         mut b: Board,
-        #[filter(#b[#sq].is_none())] sq: Square,
+        #[filter(#b.piece_on(#sq).is_none())] sq: Square,
         p: Piece,
     ) {
         b.toggle(p, sq);
-        assert_eq!(b[sq], Some(p));
+        assert_eq!(b.piece_on(sq), Some(p));
     }
 
     #[proptest]
     #[should_panic]
     fn toggle_panics_if_square_occupied_by_other_piece(
         mut b: Board,
-        #[filter(#b[#sq].is_some())] sq: Square,
-        #[filter(Some(#p) != #b[#sq])] p: Piece,
+        #[filter(#b.piece_on(#sq).is_some())] sq: Square,
+        #[filter(Some(#p) != #b.piece_on(#sq))] p: Piece,
     ) {
         b.toggle(p, sq);
-    }
-
-    #[proptest]
-    fn board_can_be_indexed_by_square(b: Board, sq: Square) {
-        assert_eq!(b[sq], b.piece_on(sq));
     }
 
     #[proptest]
