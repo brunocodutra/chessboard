@@ -1,6 +1,6 @@
 use crate::chess::{Color, Move, ParsePositionError, Perspective, Piece, Position, Role, Square};
-use crate::nnue::{Accumulator, Feature, Material, Positional, Value};
-use crate::util::Integer;
+use crate::nnue::{Accumulator, Feature, Material, Nnue, Positional, Value};
+use crate::util::{Assume, Integer};
 use arrayvec::ArrayVec;
 use derive_more::{Debug, Deref, Display};
 use std::str::FromStr;
@@ -12,14 +12,14 @@ use proptest::prelude::*;
 #[derive(Debug, Display, Clone, Eq, PartialEq, Hash, Deref)]
 #[debug("Evaluator({self})")]
 #[display("{pos}")]
-pub struct Evaluator<T: Accumulator = (Material, Positional)> {
+pub struct Evaluator {
     #[deref]
     pos: Position,
-    acc: T,
+    acc: (Material, Positional),
 }
 
 #[cfg(test)]
-impl<T: 'static + Accumulator> Arbitrary for Evaluator<T> {
+impl Arbitrary for Evaluator {
     type Parameters = ();
     type Strategy = BoxedStrategy<Self>;
 
@@ -34,10 +34,11 @@ impl Default for Evaluator {
     }
 }
 
-impl<T: Accumulator> Evaluator<T> {
+impl Evaluator {
     /// Constructs the evaluator from a [`Position`].
     pub fn new(pos: Position) -> Self {
-        let mut acc = T::default();
+        let mut acc: (Material, Positional) = Default::default();
+
         for side in Color::iter() {
             let ksq = pos.king(side);
             for (p, s) in pos.iter() {
@@ -46,13 +47,6 @@ impl<T: Accumulator> Evaluator<T> {
         }
 
         Evaluator { pos, acc }
-    }
-
-    /// The [`Position`]'s evaluation.
-    pub fn evaluate(&self) -> Value {
-        let phase = (self.occupied().len() - 1) / 4;
-        let value = self.acc.evaluate(self.turn(), phase) >> 7;
-        value.saturate()
     }
 
     /// Play a [null-move].
@@ -83,17 +77,13 @@ impl<T: Accumulator> Evaluator<T> {
 
         for side in sides {
             let ksq = self.king(side);
-            let old = Piece::new(role, turn);
-            let new = Piece::new(promotion.unwrap_or(role), turn);
-            self.acc.replace(
-                side,
-                Feature::new(side, ksq, old, wc),
-                Feature::new(side, ksq, new, wt),
-            );
+            let old = Feature::new(side, ksq, Piece::new(role, turn), wc);
+            let new = Feature::new(side, ksq, Piece::new(promotion.unwrap_or(role), turn), wt);
+            self.acc.replace(side, old, new);
 
-            if let Some((r, s)) = capture {
+            if let Some((r, sq)) = capture {
                 let victim = Piece::new(r, !turn);
-                self.acc.remove(side, Feature::new(side, ksq, victim, s));
+                self.acc.remove(side, Feature::new(side, ksq, victim, sq));
             } else if role == Role::King && (wt - wc).abs() == 2 {
                 let rook = Piece::new(Role::Rook, turn);
                 let (wc, wt) = if wt > wc {
@@ -102,31 +92,68 @@ impl<T: Accumulator> Evaluator<T> {
                     (Square::A1.perspective(turn), Square::D1.perspective(turn))
                 };
 
-                self.acc.replace(
-                    side,
-                    Feature::new(side, ksq, rook, wc),
-                    Feature::new(side, ksq, rook, wt),
-                );
+                let old = Feature::new(side, ksq, rook, wc);
+                let new = Feature::new(side, ksq, rook, wt);
+                self.acc.replace(side, old, new);
             }
         }
     }
-}
 
-impl Evaluator {
-    /// The [`Position`]'s material evaluator.
-    pub fn material(&self) -> Evaluator<Material> {
-        Evaluator {
-            pos: self.pos.clone(),
-            acc: self.acc.0.clone(),
+    /// Estimates the material gain of a move.
+    pub fn gain(&self, m: Move) -> Value {
+        let psqt = Nnue::psqt();
+        let turn = self.turn();
+        let promotion = m.promotion();
+        let (wc, wt) = (m.whence(), m.whither());
+        let role = self[wc].assume().role();
+        let phase = (self.occupied().len() - 1 - m.is_capture() as usize) / 4;
+        let mut deltas = [0i32, 0i32];
+
+        for (delta, side) in deltas.iter_mut().zip([turn, !turn]) {
+            let ksq = self.king(side);
+
+            let old = Feature::new(side, ksq, Piece::new(role, turn), wc);
+            *delta -= psqt.get(old.cast::<usize>()).assume().get(phase).assume();
+
+            let new = Feature::new(side, ksq, Piece::new(promotion.unwrap_or(role), turn), wt);
+            *delta += psqt.get(new.cast::<usize>()).assume().get(phase).assume();
+
+            if m.is_capture() {
+                let (victim, target) = match self[wt] {
+                    Some(p) => (p, wt),
+                    None => (
+                        Piece::new(Role::Pawn, !turn),
+                        Square::new(wt.file(), wc.rank()),
+                    ),
+                };
+
+                let cap = Feature::new(side, ksq, victim, target);
+                *delta -= psqt.get(cap.cast::<usize>()).assume().get(phase).assume();
+            } else if role == Role::King && (wt - wc).abs() == 2 {
+                let rook = Piece::new(Role::Rook, turn);
+                let (wc, wt) = if wt > wc {
+                    (Square::H1.perspective(turn), Square::F1.perspective(turn))
+                } else {
+                    (Square::A1.perspective(turn), Square::D1.perspective(turn))
+                };
+
+                let old = Feature::new(side, ksq, rook, wc);
+                *delta -= psqt.get(old.cast::<usize>()).assume().get(phase).assume();
+
+                let new = Feature::new(side, ksq, rook, wt);
+                *delta += psqt.get(new.cast::<usize>()).assume().get(phase).assume();
+            }
         }
+
+        let value = (deltas[0] - deltas[1]) >> 7;
+        value.saturate()
     }
 
-    /// The [`Position`]'s positional evaluator.
-    pub fn positional(&self) -> Evaluator<Positional> {
-        Evaluator {
-            pos: self.pos.clone(),
-            acc: self.acc.1.clone(),
-        }
+    /// The [`Position`]'s evaluation.
+    pub fn evaluate(&self) -> Value {
+        let phase = (self.occupied().len() - 1) / 4;
+        let value = self.acc.evaluate(self.turn(), phase) >> 7;
+        value.saturate()
     }
 }
 

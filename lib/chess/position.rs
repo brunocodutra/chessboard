@@ -4,8 +4,7 @@ use arrayvec::{ArrayVec, CapacityError};
 use derive_more::{Debug, Display, Error, From};
 use std::fmt::{self, Formatter};
 use std::hash::{Hash, Hasher};
-use std::num::NonZeroU32;
-use std::str::FromStr;
+use std::{num::NonZeroU32, ops::Index, str::FromStr};
 
 #[cfg(test)]
 use proptest::{prelude::*, sample::*};
@@ -652,6 +651,30 @@ impl Position {
     }
 }
 
+/// Retrieves the [`Piece`] at a given [`Square`], if any.
+impl Index<Square> for Position {
+    type Output = Option<Piece>;
+
+    #[inline(always)]
+    fn index(&self, sq: Square) -> &Self::Output {
+        match self.board.piece_on(sq) {
+            Some(Piece::WhitePawn) => &Some(Piece::WhitePawn),
+            Some(Piece::WhiteKnight) => &Some(Piece::WhiteKnight),
+            Some(Piece::WhiteBishop) => &Some(Piece::WhiteBishop),
+            Some(Piece::WhiteRook) => &Some(Piece::WhiteRook),
+            Some(Piece::WhiteQueen) => &Some(Piece::WhiteQueen),
+            Some(Piece::WhiteKing) => &Some(Piece::WhiteKing),
+            Some(Piece::BlackPawn) => &Some(Piece::BlackPawn),
+            Some(Piece::BlackKnight) => &Some(Piece::BlackKnight),
+            Some(Piece::BlackBishop) => &Some(Piece::BlackBishop),
+            Some(Piece::BlackRook) => &Some(Piece::BlackRook),
+            Some(Piece::BlackQueen) => &Some(Piece::BlackQueen),
+            Some(Piece::BlackKing) => &Some(Piece::BlackKing),
+            None => &None,
+        }
+    }
+}
+
 impl Display for Position {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         Display::fmt(&self.board, f)
@@ -736,7 +759,7 @@ mod tests {
     #[proptest]
     fn occupied_returns_non_empty_squares(pos: Position) {
         for sq in pos.occupied() {
-            assert_ne!(pos.board[sq], None);
+            assert_ne!(pos[sq], None);
         }
     }
 
@@ -747,7 +770,7 @@ mod tests {
 
     #[proptest]
     fn king_returns_square_occupied_by_a_king(pos: Position, c: Color) {
-        assert_eq!(pos.board[pos.king(c)], Some(Piece::new(Role::King, c)));
+        assert_eq!(pos[pos.king(c)], Some(Piece::new(Role::King, c)));
     }
 
     #[proptest]
@@ -832,12 +855,12 @@ mod tests {
         assert_ne!(pos, prev);
         assert_ne!(pos.turn(), prev.turn());
 
-        assert_eq!(pos.board[m.whence()], None);
+        assert_eq!(pos[m.whence()], None);
         assert_eq!(
-            pos.board[m.whither()],
+            pos[m.whither()],
             m.promotion()
                 .map(|r| Piece::new(r, prev.turn()))
-                .or_else(|| prev.board[m.whence()])
+                .or_else(|| prev[m.whence()])
         );
 
         assert_eq!(

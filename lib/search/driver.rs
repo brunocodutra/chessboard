@@ -102,7 +102,6 @@ impl Driver {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{chess::Move, nnue::Value};
     use test_strategy::proptest;
 
     #[proptest]
