@@ -59,14 +59,17 @@ impl Engine {
         score: Score,
     ) {
         let draft = depth - ply;
-        if score >= bounds.end && best.is_quiet() {
-            self.killers.insert(ply, pos.turn(), best);
-            self.history.update(best, pos.turn(), draft.get());
+        if score >= bounds.end {
+            if best.is_quiet() {
+                self.killers.insert(pos, ply, best);
+            }
+
+            self.history.update(pos, best, draft.get());
             for &(m, _) in moves.iter().rev() {
-                if m == best {
+                if m != best {
+                    self.history.update(pos, m, -draft.get());
+                } else {
                     break;
-                } else if m.is_quiet() {
-                    self.history.update(m, pos.turn(), -draft.get());
                 }
             }
         }
@@ -263,21 +266,25 @@ impl Engine {
             }
         }
 
-        let killers = self.killers.get(ply, pos.turn());
+        let killers = self.killers.get(pos, ply);
         let mut moves: ArrayVec<_, 255> = pos
             .moves()
             .filter(|ms| !quiesce || !ms.is_quiet())
             .flatten()
             .map(|m| {
                 if Some(m) == transposed.moves().next() {
-                    (m, Value::upper())
-                } else if !m.is_quiet() {
-                    (m, pos.gain(m))
+                    return (m, Value::upper());
                 } else if killers.contains(m) {
-                    (m, Value::new(25))
-                } else {
-                    (m, Value::lower() / 2 + self.history.get(m, pos.turn()))
+                    return (m, Value::new(25));
                 }
+
+                let gain = if m.is_quiet() {
+                    Value::lower() / 2
+                } else {
+                    pos.gain(m)
+                };
+
+                (m, gain + self.history.get(pos, m))
             })
             .collect();
 
