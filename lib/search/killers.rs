@@ -1,9 +1,9 @@
-use crate::chess::{Color, Move};
+use crate::chess::{Move, Position};
 use crate::search::Ply;
-use crate::util::{Assume, Binary, Bits, Integer};
+use crate::util::{AlignTo64, Assume, Binary, Bits, Integer};
 use derive_more::Debug;
+use std::mem::{size_of, MaybeUninit};
 use std::sync::atomic::{AtomicU32, Ordering::Relaxed};
-use std::{array, mem::size_of};
 
 /// A pair of [killer moves].
 ///
@@ -51,20 +51,20 @@ impl Binary for Killer {
 /// [killer moves]: https://www.chessprogramming.org/Killer_Move
 #[derive(Debug)]
 #[debug("Killers({})", size_of::<Self>())]
-pub struct Killers([[AtomicU32; 2]; Ply::MAX as usize]);
+pub struct Killers(AlignTo64<[[AtomicU32; 2]; Ply::MAX as usize]>);
 
 impl Default for Killers {
     #[inline(always)]
     fn default() -> Self {
-        Killers(array::from_fn(|_| [AtomicU32::new(0), AtomicU32::new(0)]))
+        Killers(unsafe { MaybeUninit::zeroed().assume_init() })
     }
 }
 
 impl Killers {
     /// Adds a killer move to the set at a given ply for a given side to move.
     #[inline(always)]
-    pub fn insert(&self, ply: Ply, side: Color, m: Move) {
-        let slot = &self.0.get(ply.cast::<usize>()).assume()[side.cast::<usize>()];
+    pub fn insert(&self, pos: &Position, ply: Ply, m: Move) {
+        let slot = &self.0.get(ply.cast::<usize>()).assume()[pos.turn().cast::<usize>()];
         let mut killer = Killer::decode(Bits::new(slot.load(Relaxed)));
         killer.insert(m);
         slot.store(killer.encode().get(), Relaxed);
@@ -72,8 +72,8 @@ impl Killers {
 
     /// Returns the known killer moves at a given ply for a given side to move.
     #[inline(always)]
-    pub fn get(&self, ply: Ply, side: Color) -> Killer {
-        let slot = &self.0.get(ply.cast::<usize>()).assume()[side.cast::<usize>()];
+    pub fn get(&self, pos: &Position, ply: Ply) -> Killer {
+        let slot = &self.0.get(ply.cast::<usize>()).assume()[pos.turn().cast::<usize>()];
         Killer::decode(Bits::new(slot.load(Relaxed)))
     }
 }
@@ -124,13 +124,13 @@ mod tests {
 
     #[proptest]
     fn get_turns_killers_at_ply_for_the_side_to_move(
+        pos: Position,
         #[filter((0..Ply::MAX).contains(&#p.get()))] p: Ply,
-        c: Color,
         m: Move,
     ) {
         let ks = Killers::default();
-        ks.insert(p, c, m);
-        let k = ks.get(p, c);
+        ks.insert(&pos, p, m);
+        let k = ks.get(&pos, p);
         assert_eq!(k.0, Some(m));
     }
 }
