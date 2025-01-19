@@ -64,7 +64,7 @@ mod tests {
         #[filter(#pos.outcome().is_none())] pos: Position,
         #[map(|s: Selector| s.select(#pos.moves().flatten()))] m: Move,
         #[map(|s: Selector| s.select(#pos.moves().flatten()))]
-        #[filter(#m != #n)]
+        #[filter((#m.whence(), #m.whither()) != (#n.whence(), #n.whither()))]
         n: Move,
         b: i8,
     ) {

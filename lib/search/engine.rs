@@ -275,11 +275,11 @@ impl Engine {
                 if Some(m) == transposed.moves().next() {
                     return (m, Value::upper());
                 } else if killers.contains(m) {
-                    return (m, Value::new(25));
+                    return (m, Value::new(128));
                 }
 
                 let gain = if m.is_quiet() {
-                    Value::lower() / 2
+                    Value::new(0)
                 } else {
                     pos.gain(m)
                 };
@@ -338,7 +338,7 @@ impl Engine {
             next.play(m);
 
             self.tt.prefetch(next.zobrist());
-            if draft < 4 && !pos.is_check() && !next.is_check() && gain < Value::lower() / 2 {
+            if gain < 0 && draft < 4 && !pos.is_check() && !next.is_check() {
                 let deficit = alpha + next.evaluate();
                 if self.fp(deficit, draft).is_some_and(|d| d <= 0) {
                     #[cfg(not(test))]
