@@ -349,7 +349,7 @@ impl Engine {
 
         let (head, tail) = self.driver.drive(head, tail, &moves, |score, m, gain, n| {
             let alpha = match score {
-                s if s >= beta => return Err(ControlFlow::Break),
+                s if s >= beta => return Ok(None),
                 s => s.max(alpha),
             };
 
@@ -362,10 +362,7 @@ impl Engine {
                 if self.fp(deficit, draft).is_some_and(|d| d <= 0) {
                     #[cfg(not(test))]
                     // The futility pruning heuristic is not exact.
-                    return match draft.get() {
-                        ..3 => Err(ControlFlow::Break),
-                        3.. => Err(ControlFlow::Continue),
-                    };
+                    return Ok(None);
                 }
             }
 
@@ -381,7 +378,7 @@ impl Engine {
                 _ => -self.ab(&next, -beta..-alpha, depth, ply + 1, ctrl)?,
             };
 
-            Ok(partial)
+            Ok(Some(partial))
         })?;
 
         self.record(pos, &moves, bounds, depth, ply, head, tail.score());

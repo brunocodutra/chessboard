@@ -1,18 +1,9 @@
 use crate::search::{Interrupted, Pv, Score, ThreadCount};
 use crate::util::{Assume, Integer};
 use crate::{chess::Move, nnue::Value};
-use derive_more::From;
 use rayon::{prelude::*, ThreadPool, ThreadPoolBuilder};
 use std::cmp::max_by_key;
 use std::sync::atomic::{AtomicI16, Ordering};
-
-/// Whether the search should be [`Interrupted`] or exited early.
-#[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, From)]
-pub enum ControlFlow {
-    Interrupt(Interrupted),
-    Continue,
-    Break,
-}
 
 /// A parallel search driver.
 #[derive(Debug)]
@@ -43,16 +34,14 @@ impl Driver {
         f: F,
     ) -> Result<(Move, Pv<N>), Interrupted>
     where
-        F: Fn(Score, Move, Value, usize) -> Result<Pv<N>, ControlFlow> + Sync,
+        F: Fn(Score, Move, Value, usize) -> Result<Option<Pv<N>>, Interrupted> + Sync,
     {
         match self {
             Self::Sequential => {
                 for (idx, &(m, gain)) in moves.iter().rev().enumerate() {
-                    match f(tail.score(), m, gain, idx) {
-                        Err(ControlFlow::Break) => break,
-                        Err(ControlFlow::Continue) => continue,
-                        Err(ControlFlow::Interrupt(e)) => return Err(e),
-                        Ok(partial) => {
+                    match f(tail.score(), m, gain, idx)? {
+                        None => break,
+                        Some(partial) => {
                             if partial > tail {
                                 (head, tail) = (m, partial)
                             }
@@ -71,17 +60,15 @@ impl Driver {
                     .rev()
                     .enumerate()
                     .map(|(idx, &(m, gain))| {
-                        match f(Score::new(score.load(Relaxed)), m, gain, idx) {
-                            Err(ControlFlow::Break) => None,
-                            Err(ControlFlow::Continue) => Some(Ok(None)),
-                            Err(ControlFlow::Interrupt(e)) => Some(Err(e)),
-                            Ok(partial) => {
+                        match f(Score::new(score.load(Relaxed)), m, gain, idx)? {
+                            None => Ok(None),
+                            Some(partial) => {
                                 score.fetch_max(partial.score().get(), Relaxed);
-                                Some(Ok(Some((m, partial, usize::MAX - idx))))
+                                Ok(Some((m, partial, usize::MAX - idx)))
                             }
                         }
                     })
-                    .while_some()
+                    .take_any_while(|x| matches!(x, Ok(Some(_))))
                     .chain([Ok(Some((head, tail, usize::MAX)))])
                     .try_reduce(
                         || None,
@@ -115,7 +102,7 @@ mod tests {
             });
 
         assert_eq!(
-            Driver::new(c).drive(h, t, &ms, |_, _, v, _| Ok(Pv::new(v.saturate(), []))),
+            Driver::new(c).drive(h, t, &ms, |_, _, v, _| Ok(Some(Pv::new(v.saturate(), [])))),
             Ok((head, tail))
         )
     }
