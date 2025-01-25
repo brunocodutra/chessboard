@@ -3,7 +3,7 @@ use crate::nnue::{Evaluator, Value};
 use crate::search::*;
 use crate::util::{Assume, Counter, Integer, Timer, Trigger};
 use arrayvec::ArrayVec;
-use std::{ops::Range, time::Duration};
+use std::{ops::Range, thread, time::Duration};
 
 #[cfg(test)]
 use crate::search::{HashSize, ThreadCount};
@@ -15,8 +15,7 @@ use proptest::strategy::LazyJust;
 #[derive(Debug)]
 #[cfg_attr(test, derive(test_strategy::Arbitrary))]
 pub struct Engine {
-    #[cfg_attr(test, map(|c: ThreadCount| Driver::new(c)))]
-    driver: Driver,
+    threads: ThreadCount,
     #[cfg_attr(test, map(|s: HashSize| TranspositionTable::new(s)))]
     tt: TranspositionTable,
     #[cfg_attr(test, strategy(LazyJust::new(Killers::default)))]
@@ -40,7 +39,7 @@ impl Engine {
     /// Initializes the engine with the given [`Options`].
     pub fn with_options(options: &Options) -> Self {
         Engine {
-            driver: Driver::new(options.threads),
+            threads: options.threads,
             tt: TranspositionTable::new(options.hash),
             killers: Killers::default(),
             history: History::default(),
@@ -332,7 +331,7 @@ impl Engine {
             }
         }
 
-        let (head, tail) = match moves.pop() {
+        let (mut head, mut tail) = match moves.pop() {
             None => return Ok(transposed.convert()),
             Some((m, _)) => {
                 let mut next = pos.clone();
@@ -347,9 +346,9 @@ impl Engine {
             return Ok(head >> tail);
         }
 
-        let (head, tail) = self.driver.drive(head, tail, &moves, |score, m, gain, n| {
-            let alpha = match score {
-                s if s >= beta => return Ok(None),
+        for (idx, &(m, gain)) in moves.iter().rev().enumerate() {
+            let alpha = match tail.score() {
+                s if s >= beta => break,
                 s => s.max(alpha),
             };
 
@@ -362,11 +361,11 @@ impl Engine {
                 if self.fp(deficit, draft).is_some_and(|d| d <= 0) {
                     #[cfg(not(test))]
                     // The futility pruning heuristic is not exact.
-                    return Ok(None);
+                    break;
                 }
             }
 
-            let lmr = match self.lmr(draft, n) {
+            let lmr = match self.lmr(draft, idx) {
                 #[cfg(not(test))]
                 // The late move reduction heuristic is not exact.
                 r @ 1.. => r - (is_pv as i16),
@@ -378,8 +377,10 @@ impl Engine {
                 _ => -self.ab(&next, -beta..-alpha, depth, ply + 1, ctrl)?,
             };
 
-            Ok(Some(partial))
-        })?;
+            if partial > tail {
+                (head, tail) = (m, partial);
+            }
+        }
 
         self.record(pos, &moves, bounds, depth, ply, head, tail.score());
         Ok(head >> tail)
@@ -389,15 +390,15 @@ impl Engine {
     ///
     /// [aspiration windows]: https://www.chessprogramming.org/Aspiration_Windows
     /// [iterative deepening]: https://www.chessprogramming.org/Iterative_Deepening
-    fn aw(
+    fn aw<const N: usize>(
         &self,
         pos: &Evaluator,
         limit: Depth,
-        nodes: u64,
+        nodes: &Counter,
         time: &Range<Duration>,
         stopper: &Trigger,
-    ) -> Pv {
-        let ctrl = Control::Limited(Counter::new(nodes), Timer::new(time.end), stopper);
+    ) -> Pv<N> {
+        let timer = Timer::new(time.end);
         let mut pv = Pv::new(Score::lower(), []);
 
         'id: for depth in Depth::iter() {
@@ -409,10 +410,10 @@ impl Engine {
                 _ => (pv.score() - delta, pv.score() + delta),
             };
 
-            let ctrl = if pv.moves().next().is_none() {
-                &Control::Unlimited
+            let ctrl = if N > 0 && pv.moves().next().is_none() {
+                Control::Unlimited
             } else if depth < limit {
-                &ctrl
+                Control::Limited(nodes, &timer, stopper)
             } else {
                 break 'id;
             };
@@ -423,7 +424,7 @@ impl Engine {
                     break 'id;
                 }
 
-                let Ok(partial) = self.ab(pos, lower..upper, draft, Ply::new(0), ctrl) else {
+                let Ok(partial) = self.ab(pos, lower..upper, draft, Ply::new(0), &ctrl) else {
                     break 'id;
                 };
 
@@ -470,8 +471,18 @@ impl Engine {
 
     /// Searches for the [principal variation][`Pv`].
     pub fn search(&mut self, pos: &Evaluator, limits: &Limits, stopper: &Trigger) -> Pv {
+        let nodes = Counter::new(limits.nodes());
         let time = self.time_to_search(pos, limits);
-        self.aw(pos, limits.depth(), limits.nodes(), &time, stopper)
+
+        thread::scope(|s| {
+            for _ in 1..self.threads.get() {
+                s.spawn(|| self.aw::<0>(pos, limits.depth(), &nodes, &time, stopper));
+            }
+
+            let pv = self.aw(pos, limits.depth(), &nodes, &time, stopper);
+            stopper.disarm();
+            pv
+        })
     }
 }
 
@@ -597,8 +608,10 @@ mod tests {
         d: Depth,
         #[filter(#p > 0)] p: Ply,
     ) {
+        let nodes = Counter::new(0);
+        let timer = Timer::infinite();
         let trigger = Trigger::armed();
-        let ctrl = Control::Limited(Counter::new(0), Timer::infinite(), &trigger);
+        let ctrl = Control::Limited(&nodes, &timer, &trigger);
         assert_eq!(e.ab::<1>(&pos, b, d, p, &ctrl), Err(Interrupted));
     }
 
@@ -610,8 +623,10 @@ mod tests {
         d: Depth,
         #[filter(#p > 0)] p: Ply,
     ) {
+        let nodes = Counter::new(u64::MAX);
+        let timer = Timer::new(Duration::ZERO);
         let trigger = Trigger::armed();
-        let ctrl = Control::Limited(Counter::new(u64::MAX), Timer::new(Duration::ZERO), &trigger);
+        let ctrl = Control::Limited(&nodes, &timer, &trigger);
         std::thread::sleep(Duration::from_millis(1));
         assert_eq!(e.ab::<1>(&pos, b, d, p, &ctrl), Err(Interrupted));
     }
@@ -624,8 +639,10 @@ mod tests {
         d: Depth,
         #[filter(#p > 0)] p: Ply,
     ) {
+        let nodes = Counter::new(u64::MAX);
+        let timer = Timer::infinite();
         let trigger = Trigger::disarmed();
-        let ctrl = Control::Limited(Counter::new(u64::MAX), Timer::infinite(), &trigger);
+        let ctrl = Control::Limited(&nodes, &timer, &trigger);
         assert_eq!(e.ab::<1>(&pos, b, d, p, &ctrl), Err(Interrupted));
     }
 
@@ -672,23 +689,22 @@ mod tests {
 
     #[proptest]
     fn search_finds_the_minimax_score(mut e: Engine, pos: Evaluator, #[filter(#d > 1)] d: Depth) {
-        let trigger = Trigger::armed();
         let time = Duration::MAX..Duration::MAX;
+        let nodes = Counter::new(u64::MAX);
 
         assert_eq!(
-            e.search(&pos, &Limits::Depth(d), &trigger).score(),
-            e.aw(&pos, d, u64::MAX, &time, &trigger).score()
+            e.search(&pos, &Limits::Depth(d), &Trigger::armed()).score(),
+            e.aw::<0>(&pos, d, &nodes, &time, &Trigger::armed()).score()
         );
     }
 
     #[proptest]
     fn search_is_stable(mut e: Engine, pos: Evaluator, d: Depth) {
         let limits = Limits::Depth(d);
-        let trigger = Trigger::armed();
 
         assert_eq!(
-            e.search(&pos, &limits, &trigger).score(),
-            e.search(&pos, &limits, &trigger).score()
+            e.search(&pos, &limits, &Trigger::armed()).score(),
+            e.search(&pos, &limits, &Trigger::armed()).score()
         );
     }
 

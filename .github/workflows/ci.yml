@@ -14,19 +14,19 @@ jobs:
   fmt:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
     - run: cargo fmt --all -- --check
 
   clippy:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
     - run: cargo clippy --all-targets --all-features -- -D warnings
 
   audit:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
     - run: cargo install --force cargo-audit
     - run: cargo generate-lockfile
     - run: cargo audit
@@ -34,14 +34,14 @@ jobs:
   check:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
     - uses: dtolnay/rust-toolchain@nightly
     - run: cargo check --all-targets --all-features --workspace
 
   doc:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
     - uses: dtolnay/rust-toolchain@nightly
     - run: cargo doc --all-features --workspace --no-deps
 
@@ -53,7 +53,7 @@ jobs:
       matrix:
         os: [ubuntu-latest, windows-latest, macOS-latest]
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
     - uses: dtolnay/rust-toolchain@nightly
     - run: cargo test --all-targets --all-features --workspace
 
@@ -65,24 +65,23 @@ jobs:
       matrix:
         sanitizer: [address, leak, memory, thread]
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
     - run: cargo test --tests --all-features --workspace --target x86_64-unknown-linux-gnu -Zbuild-std -Zunstable-options --config='build.rustflags = ["-Zsanitizer=${{ matrix.sanitizer }}"]' -- --test-threads=1
       env:
         CC: "clang"
         CFLAGS: "-fsanitize=${{ matrix.sanitizer }}"
-        TSAN_OPTIONS: "suppressions=tsan"
 
   coverage:
     needs: [test]
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
     - uses: dtolnay/rust-toolchain@nightly
-    - uses: taiki-e/install-action@cargo-llvm-cov
+    - run: cargo install --force cargo-llvm-cov
     - run: cargo llvm-cov --all-features --workspace --lcov --output-path lcov.info
       env:
         PROPTEST_CASES: 32
-    - uses: codecov/codecov-action@v3
+    - uses: codecov/codecov-action@v5
       with:
         token: ${{secrets.CODECOV_TOKEN}}
         files: lcov.info
@@ -95,16 +94,7 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, windows-latest, macOS-latest]
-        include:
-        - os: ubuntu-latest
-          target: x86_64-unknown-linux-musl
-        - os: windows-latest
-          target: x86_64-pc-windows-msvc
-        - os: macOS-latest
-          target: x86_64-apple-darwin
     steps:
-    - uses: actions/checkout@v3
-    - run: sudo apt install -y musl-tools
-      if: runner.os == 'Linux'
+    - uses: actions/checkout@v4
     - run: cargo install --force cargo-make
     - run: cargo make cinder

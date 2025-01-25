@@ -38,11 +38,10 @@ futures = { version = "0.3.31", default-features = false, features = [
 ] }
 rand = { version = "0.8.5", default-features = false, features = ["std", "min_const_gen"] }
 rand_pcg = { version = "0.3.1", default-features = false }
-rayon = { version = "1.10.0", default-features = false }
 ruzstd = { version = "0.8.0", default-features = false, features = ["std"] }
 
 [dev-dependencies]
-criterion = { version = "0.5.1", default-features = false, features = ["rayon"] }
+criterion = { version = "0.5.1", default-features = false }
 criterion-macro = { version = "0.4.0", default-features = false }
 proptest = { version = "1.6.0", default-features = false, features = ["std"] }
 test-strategy = { version = "0.4.0", default-features = false }
