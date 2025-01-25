@@ -7,7 +7,7 @@ use derive_more::{Display, Error};
 pub struct Interrupted;
 
 /// The search control.
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Copy, Clone)]
 pub enum Control<'a> {
     #[default]
     Unlimited,

@@ -1,55 +1,38 @@
-use crate::chess::{Move, Outcome};
+use crate::chess::{Move, Outcome, Position};
 use crate::nnue::{Evaluator, Value};
 use crate::search::*;
-use crate::util::{Assume, Counter, Integer, Timer, Trigger};
+use crate::util::{AlignTo64, Assume, Counter, Integer, Timer, Trigger};
 use arrayvec::ArrayVec;
-use std::{ops::Range, thread, time::Duration};
-
-#[cfg(test)]
-use crate::search::{HashSize, ThreadCount};
+use derive_more::Deref;
+use std::{mem::swap, ops::Range, thread, time::Duration};
 
 #[cfg(test)]
 use proptest::strategy::LazyJust;
 
 /// A chess engine.
-#[derive(Debug)]
-#[cfg_attr(test, derive(test_strategy::Arbitrary))]
-pub struct Engine {
-    threads: ThreadCount,
-    #[cfg_attr(test, map(|s: HashSize| TranspositionTable::new(s)))]
-    tt: TranspositionTable,
-    #[cfg_attr(test, strategy(LazyJust::new(Killers::default)))]
-    killers: Killers,
-    #[cfg_attr(test, strategy(LazyJust::new(History::default)))]
-    history: History,
+#[derive(Debug, Clone, Deref)]
+pub struct Search<'a> {
+    #[deref]
+    engine: &'a Engine,
+    ctrl: Control<'a>,
+    killers: AlignTo64<[Killers; Ply::MAX as usize + 1]>,
 }
 
-impl Default for Engine {
-    fn default() -> Self {
-        Self::new()
-    }
-}
+impl<'a> Search<'a> {
+    fn new(engine: &'a Engine, ctrl: Control<'a>) -> Self {
+        let killers = AlignTo64([Killers::default(); Ply::MAX as usize + 1]);
 
-impl Engine {
-    /// Initializes the engine with the default [`Options`].
-    pub fn new() -> Self {
-        Self::with_options(&Options::default())
-    }
-
-    /// Initializes the engine with the given [`Options`].
-    pub fn with_options(options: &Options) -> Self {
-        Engine {
-            threads: options.threads,
-            tt: TranspositionTable::new(options.hash),
-            killers: Killers::default(),
-            history: History::default(),
+        Search {
+            engine,
+            ctrl,
+            killers,
         }
     }
 
     #[allow(clippy::too_many_arguments)]
     fn record(
-        &self,
-        pos: &Evaluator,
+        &mut self,
+        pos: &Position,
         moves: &[(Move, Value)],
         bounds: Range<Score>,
         depth: Depth,
@@ -60,7 +43,7 @@ impl Engine {
         let draft = depth - ply;
         if score >= bounds.end {
             if best.is_quiet() {
-                self.killers.insert(pos, ply, best);
+                self.killers[ply.cast::<usize>()].insert(best);
             }
 
             self.history.update(pos, best, draft.get());
@@ -154,46 +137,53 @@ impl Engine {
     ///
     /// [alpha-beta]: https://www.chessprogramming.org/Alpha-Beta
     fn ab<const N: usize>(
-        &self,
+        &mut self,
         pos: &Evaluator,
         bounds: Range<Score>,
         depth: Depth,
         ply: Ply,
-        ctrl: &Control,
     ) -> Result<Pv<N>, Interrupted> {
         if ply.cast::<usize>() < N && depth > ply && bounds.start + 1 < bounds.end {
-            self.pvs(pos, bounds, depth, ply, ctrl)
+            self.pvs(pos, bounds, depth, ply)
         } else {
-            Ok(self.pvs::<0>(pos, bounds, depth, ply, ctrl)?.convert())
+            Ok(self.pvs::<0>(pos, bounds, depth, ply)?.convert())
         }
+    }
+
+    /// The full-window alpha-beta search.
+    fn fw<const N: usize>(
+        &mut self,
+        pos: &Evaluator,
+        depth: Depth,
+        ply: Ply,
+    ) -> Result<Pv<N>, Interrupted> {
+        self.ab(pos, Score::lower()..Score::upper(), depth, ply)
     }
 
     /// The [zero-window] alpha-beta search.
     ///
     /// [zero-window]: https://www.chessprogramming.org/Null_Window
     fn nw<const N: usize>(
-        &self,
+        &mut self,
         pos: &Evaluator,
         beta: Score,
         depth: Depth,
         ply: Ply,
-        ctrl: &Control,
     ) -> Result<Pv<N>, Interrupted> {
-        self.ab(pos, beta - 1..beta, depth, ply, ctrl)
+        self.ab(pos, beta - 1..beta, depth, ply)
     }
 
     /// An implementation of the [PVS] variation of the alpha-beta search.
     ///
     /// [PVS]: https://www.chessprogramming.org/Principal_Variation_Search
     fn pvs<const N: usize>(
-        &self,
+        &mut self,
         pos: &Evaluator,
         bounds: Range<Score>,
         depth: Depth,
         ply: Ply,
-        ctrl: &Control,
     ) -> Result<Pv<N>, Interrupted> {
-        ctrl.interrupted()?;
+        self.ctrl.interrupted()?;
         let is_root = ply == 0;
         (bounds.start < bounds.end).assume();
         let (alpha, beta) = match pos.outcome() {
@@ -275,7 +265,7 @@ impl Engine {
                     let mut next = pos.clone();
                     next.pass();
                     self.tt.prefetch(next.zobrist());
-                    if -self.nw::<0>(&next, -beta + 1, d + ply, ply + 1, ctrl)? >= beta {
+                    if -self.nw::<0>(&next, -beta + 1, d + ply, ply + 1)? >= beta {
                         #[cfg(not(test))]
                         // The null move pruning heuristic is not exact.
                         return Ok(transposed.convert());
@@ -284,7 +274,7 @@ impl Engine {
             }
         }
 
-        let killers = self.killers.get(pos, ply);
+        let killer = self.killers[ply.cast::<usize>()];
         let mut moves: ArrayVec<_, 255> = pos
             .moves()
             .filter(|ms| !quiesce || !ms.is_quiet())
@@ -292,7 +282,7 @@ impl Engine {
             .map(|m| {
                 if Some(m) == transposed.moves().next() {
                     return (m, Value::upper());
-                } else if killers.contains(m) {
+                } else if killer.contains(m) {
                     return (m, Value::new(128));
                 }
 
@@ -315,7 +305,7 @@ impl Engine {
                         let mut next = pos.clone();
                         next.play(*m);
                         self.tt.prefetch(next.zobrist());
-                        if -self.nw::<0>(&next, -beta + 1, d + ply, ply + 1, ctrl)? >= beta {
+                        if -self.nw::<0>(&next, -beta + 1, d + ply, ply + 1)? >= beta {
                             #[cfg(not(test))]
                             // The multi-cut pruning heuristic is not exact.
                             return Ok(transposed.convert());
@@ -337,7 +327,7 @@ impl Engine {
                 let mut next = pos.clone();
                 next.play(m);
                 self.tt.prefetch(next.zobrist());
-                (m, -self.ab(&next, -beta..-alpha, depth, ply + 1, ctrl)?)
+                (m, -self.ab(&next, -beta..-alpha, depth, ply + 1)?)
             }
         };
 
@@ -372,9 +362,9 @@ impl Engine {
                 _ => 0,
             };
 
-            let partial = match -self.nw(&next, -alpha, depth - lmr, ply + 1, ctrl)? {
+            let partial = match -self.nw(&next, -alpha, depth - lmr, ply + 1)? {
                 partial if partial <= alpha || (partial >= beta && lmr <= 0) => partial,
-                _ => -self.ab(&next, -beta..-alpha, depth, ply + 1, ctrl)?,
+                _ => -self.ab(&next, -beta..-alpha, depth, ply + 1)?,
             };
 
             if partial > tail {
@@ -391,17 +381,20 @@ impl Engine {
     /// [aspiration windows]: https://www.chessprogramming.org/Aspiration_Windows
     /// [iterative deepening]: https://www.chessprogramming.org/Iterative_Deepening
     fn aw<const N: usize>(
-        &self,
+        &mut self,
         pos: &Evaluator,
         limit: Depth,
-        nodes: &Counter,
-        time: &Range<Duration>,
-        stopper: &Trigger,
+        time: Range<Duration>,
     ) -> Pv<N> {
-        let timer = Timer::new(time.end);
-        let mut pv = Pv::new(Score::lower(), []);
+        let mut ctrl = Control::Unlimited;
+        swap(&mut self.ctrl, &mut ctrl);
+        self.fw::<0>(pos, Depth::new(0), Ply::new(0)).assume();
+        let mut pv = self.fw(pos, Depth::new(1), Ply::new(0)).assume();
+        swap(&mut self.ctrl, &mut ctrl);
 
-        'id: for depth in Depth::iter() {
+        let mut depth = Depth::new(1);
+        'id: while depth < limit {
+            depth = depth + 1;
             let mut draft = depth;
             let mut delta = 5i16;
 
@@ -410,21 +403,13 @@ impl Engine {
                 _ => (pv.score() - delta, pv.score() + delta),
             };
 
-            let ctrl = if N > 0 && pv.moves().next().is_none() {
-                Control::Unlimited
-            } else if depth < limit {
-                Control::Limited(nodes, &timer, stopper)
-            } else {
-                break 'id;
-            };
-
             'aw: loop {
                 delta = delta.saturating_mul(2);
-                if ctrl.timer().remaining() < Some(time.end - time.start) {
+                if self.ctrl.timer().remaining() < Some(time.end - time.start) {
                     break 'id;
                 }
 
-                let Ok(partial) = self.ab(pos, lower..upper, draft, Ply::new(0), &ctrl) else {
+                let Ok(partial) = self.ab(pos, lower..upper, draft, Ply::new(0)) else {
                     break 'id;
                 };
 
@@ -456,8 +441,41 @@ impl Engine {
 
         pv
     }
+}
 
-    fn time_to_search(&self, pos: &Evaluator, limits: &Limits) -> Range<Duration> {
+/// A chess engine.
+#[derive(Debug)]
+#[cfg_attr(test, derive(test_strategy::Arbitrary))]
+pub struct Engine {
+    threads: ThreadCount,
+    #[cfg_attr(test, map(|s: HashSize| TranspositionTable::new(s)))]
+    tt: TranspositionTable,
+    #[cfg_attr(test, strategy(LazyJust::new(History::default)))]
+    history: History,
+}
+
+impl Default for Engine {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl Engine {
+    /// Initializes the engine with the default [`Options`].
+    pub fn new() -> Self {
+        Self::with_options(&Options::default())
+    }
+
+    /// Initializes the engine with the given [`Options`].
+    pub fn with_options(options: &Options) -> Self {
+        Engine {
+            threads: options.threads,
+            tt: TranspositionTable::new(options.hash),
+            history: History::default(),
+        }
+    }
+
+    fn time_to_search(&self, pos: &Position, limits: &Limits) -> Range<Duration> {
         let (clock, inc) = match limits {
             Limits::Clock(c, i) => (c, i),
             _ => return limits.time()..limits.time(),
@@ -470,16 +488,21 @@ impl Engine {
     }
 
     /// Searches for the [principal variation][`Pv`].
-    pub fn search(&mut self, pos: &Evaluator, limits: &Limits, stopper: &Trigger) -> Pv {
-        let nodes = Counter::new(limits.nodes());
+    pub fn search(&self, pos: &Evaluator, limits: &Limits, stopper: &Trigger) -> Pv {
         let time = self.time_to_search(pos, limits);
+        let nodes = Counter::new(limits.nodes());
+        let timer = Timer::new(time.end);
+        let ctrl = Control::Limited(&nodes, &timer, stopper);
+        let mut search = Search::new(self, ctrl);
 
         thread::scope(|s| {
             for _ in 1..self.threads.get() {
-                s.spawn(|| self.aw::<0>(pos, limits.depth(), &nodes, &time, stopper));
+                let time = time.clone();
+                let mut search = search.clone();
+                s.spawn(move || search.aw::<0>(pos, limits.depth(), time));
             }
 
-            let pv = self.aw(pos, limits.depth(), &nodes, &time, stopper);
+            let pv = search.aw(pos, limits.depth(), time);
             stopper.disarm();
             pv
         })
@@ -544,10 +567,10 @@ mod tests {
         #[filter(#s.mate().is_none() && #s >= #b)] s: Score,
         #[map(|s: Selector| s.select(#pos.moves().flatten()))] m: Move,
     ) {
-        use Control::Unlimited;
         let tpos = Transposition::new(ScoreBound::Lower(s), d, m);
         e.tt.set(pos.zobrist(), tpos);
-        assert_eq!(e.nw::<1>(&pos, b, d, p, &Unlimited), Ok(Pv::new(s, [])));
+        let mut search = Search::new(&e, Control::Unlimited);
+        assert_eq!(search.nw::<1>(&pos, b, d, p), Ok(Pv::new(s, [])));
     }
 
     #[proptest]
@@ -562,10 +585,10 @@ mod tests {
         #[filter(#s.mate().is_none() && #s < #b)] s: Score,
         #[map(|s: Selector| s.select(#pos.moves().flatten()))] m: Move,
     ) {
-        use Control::Unlimited;
         let tpos = Transposition::new(ScoreBound::Upper(s), d, m);
         e.tt.set(pos.zobrist(), tpos);
-        assert_eq!(e.nw::<1>(&pos, b, d, p, &Unlimited), Ok(Pv::new(s, [])));
+        let mut search = Search::new(&e, Control::Unlimited);
+        assert_eq!(search.nw::<1>(&pos, b, d, p), Ok(Pv::new(s, [])));
     }
 
     #[proptest]
@@ -580,10 +603,10 @@ mod tests {
         #[filter(#s.mate().is_none())] s: Score,
         #[map(|s: Selector| s.select(#pos.moves().flatten()))] m: Move,
     ) {
-        use Control::Unlimited;
         let tpos = Transposition::new(ScoreBound::Exact(s), d, m);
         e.tt.set(pos.zobrist(), tpos);
-        assert_eq!(e.nw::<1>(&pos, b, d, p, &Unlimited), Ok(Pv::new(s, [])));
+        let mut search = Search::new(&e, Control::Unlimited);
+        assert_eq!(search.nw::<1>(&pos, b, d, p), Ok(Pv::new(s, [])));
     }
 
     #[proptest]
@@ -594,8 +617,10 @@ mod tests {
         d: Depth,
         #[filter(#p > 0)] p: Ply,
     ) {
+        let mut search = Search::new(&e, Control::Unlimited);
+
         assert_eq!(
-            e.nw::<1>(&pos, b, d, p, &Control::Unlimited)? < b,
+            search.nw::<1>(&pos, b, d, p)? < b,
             alphabeta(&pos, b - 1..b, d, p) < b
         );
     }
@@ -612,7 +637,8 @@ mod tests {
         let timer = Timer::infinite();
         let trigger = Trigger::armed();
         let ctrl = Control::Limited(&nodes, &timer, &trigger);
-        assert_eq!(e.ab::<1>(&pos, b, d, p, &ctrl), Err(Interrupted));
+        let mut search = Search::new(&e, ctrl);
+        assert_eq!(search.ab::<1>(&pos, b, d, p), Err(Interrupted));
     }
 
     #[proptest]
@@ -627,8 +653,9 @@ mod tests {
         let timer = Timer::new(Duration::ZERO);
         let trigger = Trigger::armed();
         let ctrl = Control::Limited(&nodes, &timer, &trigger);
+        let mut search = Search::new(&e, ctrl);
         std::thread::sleep(Duration::from_millis(1));
-        assert_eq!(e.ab::<1>(&pos, b, d, p, &ctrl), Err(Interrupted));
+        assert_eq!(search.ab::<1>(&pos, b, d, p), Err(Interrupted));
     }
 
     #[proptest]
@@ -643,7 +670,8 @@ mod tests {
         let timer = Timer::infinite();
         let trigger = Trigger::disarmed();
         let ctrl = Control::Limited(&nodes, &timer, &trigger);
-        assert_eq!(e.ab::<1>(&pos, b, d, p, &ctrl), Err(Interrupted));
+        let mut search = Search::new(&e, ctrl);
+        assert_eq!(search.ab::<1>(&pos, b, d, p), Err(Interrupted));
     }
 
     #[proptest]
@@ -653,8 +681,10 @@ mod tests {
         #[filter(!#b.is_empty())] b: Range<Score>,
         d: Depth,
     ) {
+        let mut search = Search::new(&e, Control::Unlimited);
+
         assert_eq!(
-            e.ab::<1>(&pos, b, d, Ply::upper(), &Control::Unlimited),
+            search.ab::<1>(&pos, b, d, Ply::upper()),
             Ok(Pv::new(pos.evaluate().saturate(), []))
         );
     }
@@ -667,8 +697,10 @@ mod tests {
         d: Depth,
         #[filter(#p > 0 || #pos.outcome() != Some(Outcome::DrawByThreefoldRepetition))] p: Ply,
     ) {
+        let mut search = Search::new(&e, Control::Unlimited);
+
         assert_eq!(
-            e.ab::<1>(&pos, b, d, p, &Control::Unlimited),
+            search.ab::<1>(&pos, b, d, p),
             Ok(Pv::new(Score::new(0), []))
         );
     }
@@ -681,25 +713,31 @@ mod tests {
         d: Depth,
         #[filter(#p > 0)] p: Ply,
     ) {
+        let mut search = Search::new(&e, Control::Unlimited);
+
         assert_eq!(
-            e.ab::<1>(&pos, b, d, p, &Control::Unlimited),
+            search.ab::<1>(&pos, b, d, p),
             Ok(Pv::new(Score::mated(p), []))
         );
     }
 
     #[proptest]
-    fn search_finds_the_minimax_score(mut e: Engine, pos: Evaluator, #[filter(#d > 1)] d: Depth) {
+    fn search_finds_the_minimax_score(e: Engine, pos: Evaluator, #[filter(#d > 1)] d: Depth) {
         let time = Duration::MAX..Duration::MAX;
         let nodes = Counter::new(u64::MAX);
+        let timer = Timer::new(time.end);
+        let trigger = Trigger::armed();
+        let ctrl = Control::Limited(&nodes, &timer, &trigger);
+        let mut search = Search::new(&e, ctrl);
 
         assert_eq!(
             e.search(&pos, &Limits::Depth(d), &Trigger::armed()).score(),
-            e.aw::<0>(&pos, d, &nodes, &time, &Trigger::armed()).score()
+            search.aw::<0>(&pos, d, time).score()
         );
     }
 
     #[proptest]
-    fn search_is_stable(mut e: Engine, pos: Evaluator, d: Depth) {
+    fn search_is_stable(e: Engine, pos: Evaluator, d: Depth) {
         let limits = Limits::Depth(d);
 
         assert_eq!(
@@ -710,7 +748,7 @@ mod tests {
 
     #[proptest]
     fn search_extends_time_to_find_some_pv(
-        mut e: Engine,
+        e: Engine,
         #[filter(#pos.outcome().is_none())] pos: Evaluator,
     ) {
         let limits = Duration::ZERO.into();
@@ -720,7 +758,7 @@ mod tests {
 
     #[proptest]
     fn search_extends_depth_to_find_some_pv(
-        mut e: Engine,
+        e: Engine,
         #[filter(#pos.outcome().is_none())] pos: Evaluator,
     ) {
         let limits = Depth::lower().into();
@@ -730,7 +768,7 @@ mod tests {
 
     #[proptest]
     fn search_ignores_stopper_to_find_some_pv(
-        mut e: Engine,
+        e: Engine,
         #[filter(#pos.outcome().is_none())] pos: Evaluator,
     ) {
         let limits = Limits::None;
