@@ -1,6 +1,5 @@
 mod control;
 mod depth;
-mod driver;
 mod engine;
 mod history;
 mod killers;
@@ -13,7 +12,6 @@ mod transposition;
 
 pub use control::*;
 pub use depth::*;
-pub use driver::*;
 pub use engine::*;
 pub use history::*;
 pub use killers::*;

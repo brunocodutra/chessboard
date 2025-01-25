@@ -11,7 +11,7 @@ pub struct Interrupted;
 pub enum Control<'a> {
     #[default]
     Unlimited,
-    Limited(Counter, Timer, &'a Trigger),
+    Limited(&'a Counter, &'a Timer, &'a Trigger),
 }
 
 impl Control<'_> {
