@@ -93,7 +93,7 @@ impl Engine {
     fn nmp(&self, surplus: Score, draft: Depth) -> Option<Depth> {
         match surplus.get() {
             ..0 => None,
-            0.. => Some(draft - 2 - draft / 4),
+            0.. => Some(draft - 3 - draft / 4),
         }
     }
 
