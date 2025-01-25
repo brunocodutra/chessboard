@@ -1,19 +1,14 @@
-use crate::chess::{Move, Position};
-use crate::search::Ply;
-use crate::util::{AlignTo64, Assume, Binary, Bits, Integer};
-use derive_more::Debug;
-use std::mem::{size_of, MaybeUninit};
-use std::sync::atomic::{AtomicU32, Ordering::Relaxed};
+use crate::chess::Move;
 
-/// A pair of [killer moves].
+/// A set of [killer moves].
 ///
 /// [killer moves]: https://www.chessprogramming.org/Killer_Move
 #[derive(Debug, Default, Copy, Clone, Eq, PartialEq, Hash)]
 #[cfg_attr(test, derive(test_strategy::Arbitrary))]
-pub struct Killer(Option<Move>, Option<Move>);
+pub struct Killers(Option<Move>, Option<Move>);
 
-impl Killer {
-    /// Adds a killer move to the pair.
+impl Killers {
+    /// Adds a killer move to the set.
     #[inline(always)]
     pub fn insert(&mut self, m: Move) {
         if self.0 != Some(m) {
@@ -22,79 +17,23 @@ impl Killer {
         }
     }
 
-    /// Whether a move is a killer.
+    /// Whether a move is in the set.
     #[inline(always)]
     pub fn contains(&self, m: Move) -> bool {
         self.0 == Some(m) || self.1 == Some(m)
     }
 }
 
-impl Binary for Killer {
-    type Bits = Bits<u32, { 2 * <Option<Move> as Binary>::Bits::BITS }>;
-
-    #[inline(always)]
-    fn encode(&self) -> Self::Bits {
-        let mut bits = Bits::default();
-        bits.push(self.1.encode());
-        bits.push(self.0.encode());
-        bits
-    }
-
-    #[inline(always)]
-    fn decode(mut bits: Self::Bits) -> Self {
-        Killer(Binary::decode(bits.pop()), Binary::decode(bits.pop()))
-    }
-}
-
-/// A set of [killer moves] indexed by [`Ply`] and side to move.
-///
-/// [killer moves]: https://www.chessprogramming.org/Killer_Move
-#[derive(Debug)]
-#[debug("Killers({})", size_of::<Self>())]
-pub struct Killers(AlignTo64<[[AtomicU32; 2]; Ply::MAX as usize]>);
-
-impl Default for Killers {
-    #[inline(always)]
-    fn default() -> Self {
-        Killers(unsafe { MaybeUninit::zeroed().assume_init() })
-    }
-}
-
-impl Killers {
-    /// Adds a killer move to the set at a given ply for a given side to move.
-    #[inline(always)]
-    pub fn insert(&self, pos: &Position, ply: Ply, m: Move) {
-        let slot = &self.0.get(ply.cast::<usize>()).assume()[pos.turn().cast::<usize>()];
-        let mut killer = Killer::decode(Bits::new(slot.load(Relaxed)));
-        killer.insert(m);
-        slot.store(killer.encode().get(), Relaxed);
-    }
-
-    /// Returns the known killer moves at a given ply for a given side to move.
-    #[inline(always)]
-    pub fn get(&self, pos: &Position, ply: Ply) -> Killer {
-        let slot = &self.0.get(ply.cast::<usize>()).assume()[pos.turn().cast::<usize>()];
-        Killer::decode(Bits::new(slot.load(Relaxed)))
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::util::Integer;
     use proptest::sample::size_range;
     use std::collections::HashSet;
-    use std::fmt::Debug;
     use test_strategy::proptest;
 
     #[proptest]
-    fn decoding_encoded_killer(k: Killer) {
-        assert_eq!(Killer::decode(k.encode()), k);
-    }
-
-    #[proptest]
     fn contains_returns_true_only_if_inserted(m: Move) {
-        let mut k = Killer::default();
+        let mut k = Killers::default();
         assert!(!k.contains(m));
         k.insert(m);
         assert!(k.contains(m));
@@ -102,35 +41,23 @@ mod tests {
 
     #[proptest]
     fn insert_avoids_duplicated_moves(m: Move) {
-        let mut k = Killer::default();
+        let mut k = Killers::default();
 
         k.insert(m);
         k.insert(m);
 
-        assert_eq!(k, Killer(Some(m), None));
+        assert_eq!(k, Killers(Some(m), None));
     }
 
     #[proptest]
     fn insert_keeps_most_recent(#[any(size_range(2..10).lift())] ms: HashSet<Move>, m: Move) {
-        let mut k = Killer::default();
+        let mut k = Killers::default();
 
         for m in ms {
             k.insert(m);
         }
 
         k.insert(m);
-        assert_eq!(k.0, Some(m));
-    }
-
-    #[proptest]
-    fn get_turns_killers_at_ply_for_the_side_to_move(
-        pos: Position,
-        #[filter((0..Ply::MAX).contains(&#p.get()))] p: Ply,
-        m: Move,
-    ) {
-        let ks = Killers::default();
-        ks.insert(&pos, p, m);
-        let k = ks.get(&pos, p);
         assert_eq!(k.0, Some(m));
     }
 }
