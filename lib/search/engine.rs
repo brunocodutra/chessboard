@@ -146,7 +146,7 @@ impl<'a> Search<'a> {
         if ply.cast::<usize>() < N && depth > ply && bounds.start + 1 < bounds.end {
             self.pvs(pos, bounds, depth, ply)
         } else {
-            Ok(self.pvs::<0>(pos, bounds, depth, ply)?.convert())
+            Ok(self.pvs::<0>(pos, bounds, depth, ply)?.truncate())
         }
     }
 
@@ -189,17 +189,17 @@ impl<'a> Search<'a> {
         let (alpha, beta) = match pos.outcome() {
             None => self.mdp(ply, &bounds),
             Some(Outcome::DrawByThreefoldRepetition) if is_root => self.mdp(ply, &bounds),
-            Some(o) if o.is_draw() => return Ok(Pv::new(Score::new(0), [])),
-            Some(_) => return Ok(Pv::new(Score::mated(ply), [])),
+            Some(o) if o.is_draw() => return Ok(Pv::empty(Score::new(0))),
+            Some(_) => return Ok(Pv::empty(Score::mated(ply))),
         };
 
         if alpha >= beta {
-            return Ok(Pv::new(alpha, []));
+            return Ok(Pv::empty(alpha));
         }
 
         let transposition = self.tt.get(pos.zobrist());
         let transposed = match transposition {
-            None => Pv::new(pos.evaluate().saturate(), []),
+            None => Pv::empty(pos.evaluate().saturate()),
             Some(t) => t.transpose(ply),
         };
 
@@ -225,7 +225,7 @@ impl<'a> Search<'a> {
             #[allow(clippy::collapsible_if)]
             if lower >= upper || upper <= alpha || lower >= beta {
                 if !is_pv && t.draft() >= draft {
-                    return Ok(transposed.convert());
+                    return Ok(transposed.truncate());
                 }
             }
 
@@ -233,7 +233,7 @@ impl<'a> Search<'a> {
                 if !is_pv && t.draft() >= d {
                     #[cfg(not(test))]
                     // The razoring heuristic is not exact.
-                    return Ok(transposed.convert());
+                    return Ok(transposed.truncate());
                 }
             }
 
@@ -241,7 +241,7 @@ impl<'a> Search<'a> {
                 if !is_pv && t.draft() >= d {
                     #[cfg(not(test))]
                     // The reverse futility pruning heuristic is not exact.
-                    return Ok(transposed.convert());
+                    return Ok(transposed.truncate());
                 }
             }
         }
@@ -254,13 +254,13 @@ impl<'a> Search<'a> {
         };
 
         if alpha >= beta || ply >= Ply::MAX {
-            return Ok(transposed.convert());
+            return Ok(transposed.truncate());
         } else if let Some(d) = self.nmp(transposed.score() - beta, draft) {
             if !is_pv && !pos.is_check() && pos.pieces(pos.turn()).len() > 1 {
                 if d <= 0 {
                     #[cfg(not(test))]
                     // The null move pruning heuristic is not exact.
-                    return Ok(transposed.convert());
+                    return Ok(transposed.truncate());
                 } else {
                     let mut next = pos.clone();
                     next.pass();
@@ -268,7 +268,7 @@ impl<'a> Search<'a> {
                     if -self.nw::<0>(&next, -beta + 1, d + ply, ply + 1)? >= beta {
                         #[cfg(not(test))]
                         // The null move pruning heuristic is not exact.
-                        return Ok(transposed.convert());
+                        return Ok(transposed.truncate());
                     }
                 }
             }
@@ -280,7 +280,7 @@ impl<'a> Search<'a> {
             .filter(|ms| !quiesce || !ms.is_quiet())
             .flatten()
             .map(|m| {
-                if Some(m) == transposed.moves().next() {
+                if Some(m) == transposed.head() {
                     return (m, Value::upper());
                 } else if killer.contains(m) {
                     return (m, Value::new(128));
@@ -308,7 +308,7 @@ impl<'a> Search<'a> {
                         if -self.nw::<0>(&next, -beta + 1, d + ply, ply + 1)? >= beta {
                             #[cfg(not(test))]
                             // The multi-cut pruning heuristic is not exact.
-                            return Ok(transposed.convert());
+                            return Ok(transposed.truncate());
                         }
                     }
 
@@ -322,7 +322,7 @@ impl<'a> Search<'a> {
         }
 
         let (mut head, mut tail) = match moves.pop() {
-            None => return Ok(transposed.convert()),
+            None => return Ok(transposed.truncate()),
             Some((m, _)) => {
                 let mut next = pos.clone();
                 next.play(m);
@@ -570,7 +570,7 @@ mod tests {
         let tpos = Transposition::new(ScoreBound::Lower(s), d, m);
         e.tt.set(pos.zobrist(), tpos);
         let mut search = Search::new(&e, Control::Unlimited);
-        assert_eq!(search.nw::<1>(&pos, b, d, p), Ok(Pv::new(s, [])));
+        assert_eq!(search.nw::<1>(&pos, b, d, p), Ok(Pv::empty(s)));
     }
 
     #[proptest]
@@ -588,7 +588,7 @@ mod tests {
         let tpos = Transposition::new(ScoreBound::Upper(s), d, m);
         e.tt.set(pos.zobrist(), tpos);
         let mut search = Search::new(&e, Control::Unlimited);
-        assert_eq!(search.nw::<1>(&pos, b, d, p), Ok(Pv::new(s, [])));
+        assert_eq!(search.nw::<1>(&pos, b, d, p), Ok(Pv::empty(s)));
     }
 
     #[proptest]
@@ -606,7 +606,7 @@ mod tests {
         let tpos = Transposition::new(ScoreBound::Exact(s), d, m);
         e.tt.set(pos.zobrist(), tpos);
         let mut search = Search::new(&e, Control::Unlimited);
-        assert_eq!(search.nw::<1>(&pos, b, d, p), Ok(Pv::new(s, [])));
+        assert_eq!(search.nw::<1>(&pos, b, d, p), Ok(Pv::empty(s)));
     }
 
     #[proptest]
@@ -685,7 +685,7 @@ mod tests {
 
         assert_eq!(
             search.ab::<1>(&pos, b, d, Ply::upper()),
-            Ok(Pv::new(pos.evaluate().saturate(), []))
+            Ok(Pv::empty(pos.evaluate().saturate()))
         );
     }
 
@@ -699,10 +699,7 @@ mod tests {
     ) {
         let mut search = Search::new(&e, Control::Unlimited);
 
-        assert_eq!(
-            search.ab::<1>(&pos, b, d, p),
-            Ok(Pv::new(Score::new(0), []))
-        );
+        assert_eq!(search.ab::<1>(&pos, b, d, p), Ok(Pv::empty(Score::new(0))));
     }
 
     #[proptest]
@@ -717,7 +714,7 @@ mod tests {
 
         assert_eq!(
             search.ab::<1>(&pos, b, d, p),
-            Ok(Pv::new(Score::mated(p), []))
+            Ok(Pv::empty(Score::mated(p)))
         );
     }
 
@@ -753,7 +750,7 @@ mod tests {
     ) {
         let limits = Duration::ZERO.into();
         let trigger = Trigger::armed();
-        assert_ne!(e.search(&pos, &limits, &trigger).moves().next(), None);
+        assert_ne!(e.search(&pos, &limits, &trigger).head(), None);
     }
 
     #[proptest]
@@ -763,7 +760,7 @@ mod tests {
     ) {
         let limits = Depth::lower().into();
         let trigger = Trigger::armed();
-        assert_ne!(e.search(&pos, &limits, &trigger).moves().next(), None);
+        assert_ne!(e.search(&pos, &limits, &trigger).head(), None);
     }
 
     #[proptest]
@@ -773,6 +770,6 @@ mod tests {
     ) {
         let limits = Limits::None;
         let trigger = Trigger::armed();
-        assert_ne!(e.search(&pos, &limits, &trigger).moves().next(), None);
+        assert_ne!(e.search(&pos, &limits, &trigger).head(), None);
     }
 }

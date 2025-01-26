@@ -91,14 +91,14 @@ impl<I: FusedStream<Item = String> + Unpin, O: Sink<String> + Unpin> Uci<I, O> {
         };
 
         let info = match pv.score().mate() {
-            Some(p) if p > 0 => format!("info score mate {} pv {pv}", (p + 1) / 2),
-            Some(p) => format!("info score mate {} pv {pv}", (p - 1) / 2),
-            None => format!("info score cp {:+} pv {pv}", pv.score()),
+            Some(p) if p > 0 => format!("info score mate {} pv {}", (p + 1) / 2, pv.moves()),
+            Some(p) => format!("info score mate {} pv {}", (p - 1) / 2, pv.moves()),
+            None => format!("info score cp {:+} pv {}", pv.score(), pv.moves()),
         };
 
         self.output.send(info).await?;
 
-        if let Some(m) = pv.moves().next() {
+        if let Some(m) = pv.head() {
             self.output.send(format!("bestmove {m}")).await?;
         }
 

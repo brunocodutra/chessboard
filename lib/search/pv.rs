@@ -1,39 +1,25 @@
-use crate::search::{Depth, Score};
+use crate::search::{Depth, Line, Score};
 use crate::{chess::Move, util::Integer};
+use derive_more::{Constructor, Deref};
 use std::cmp::Ordering;
-use std::fmt::{self, Display, Formatter, Write};
 use std::ops::{Neg, Shr};
-
-#[cfg(test)]
-use proptest::{collection::vec, prelude::*};
 
 /// The [principal variation].
 ///
 /// [principal variation]: https://www.chessprogramming.org/Principal_Variation
-#[derive(Debug, Clone, Eq, PartialEq, Hash)]
+#[derive(Debug, Clone, Eq, PartialEq, Hash, Deref, Constructor)]
 #[cfg_attr(test, derive(test_strategy::Arbitrary))]
 pub struct Pv<const N: usize = { Depth::MAX as _ }> {
     score: Score,
-    #[cfg_attr(test, strategy(vec(any::<Move>(), ..=N).prop_map(|ms| {
-        let mut moves = [None; N];
-        for (m, n) in moves.iter_mut().zip(ms) {
-            *m = Some(n);
-        }
-        moves
-    })))]
-    moves: [Option<Move>; N],
+    #[deref]
+    moves: Line<N>,
 }
 
 impl<const N: usize> Pv<N> {
-    /// Constructs a [`Pv`].
+    /// An empty principal variation.
     #[inline(always)]
-    pub fn new<I: IntoIterator<Item = Move>>(score: Score, ms: I) -> Self {
-        let mut moves = [None; N];
-        for (m, n) in moves.iter_mut().zip(ms) {
-            *m = Some(n);
-        }
-
-        Pv { score, moves }
+    pub fn empty(score: Score) -> Self {
+        Self::new(score, Line::empty())
     }
 
     /// The score from the point of view of the side to move.
@@ -44,14 +30,14 @@ impl<const N: usize> Pv<N> {
 
     /// The sequence of [`Move`]s in this principal variation.
     #[inline(always)]
-    pub fn moves(&self) -> impl Iterator<Item = Move> + '_ {
-        self.moves.iter().map_while(|m| *m)
+    pub fn moves(&self) -> &Line<N> {
+        &self.moves
     }
 
-    /// Converts to a principal variation of a different length.
+    /// Truncates to a principal variation of a different length.
     #[inline(always)]
-    pub fn convert<const M: usize>(self) -> Pv<M> {
-        Pv::new(self.score(), self.moves())
+    pub fn truncate<const M: usize>(self) -> Pv<M> {
+        Pv::new(self.score, self.moves.truncate())
     }
 }
 
@@ -103,31 +89,8 @@ impl<const N: usize> Shr<Pv<N>> for Move {
     type Output = Pv<N>;
 
     #[inline(always)]
-    fn shr(self, mut pv: Pv<N>) -> Self::Output {
-        if N > 0 {
-            pv.moves.copy_within(..N - 1, 1);
-            pv.moves[0] = Some(self);
-        }
-
-        pv
-    }
-}
-
-impl<const N: usize> Display for Pv<N> {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        let mut moves = self.moves();
-        let Some(head) = moves.next() else {
-            return Ok(());
-        };
-
-        Display::fmt(&head, f)?;
-
-        for m in moves {
-            f.write_char(' ')?;
-            Display::fmt(&m, f)?;
-        }
-
-        Ok(())
+    fn shr(self, pv: Pv<N>) -> Self::Output {
+        Pv::new(pv.score, Line::cons(self, pv.moves))
     }
 }
 
@@ -135,11 +98,6 @@ impl<const N: usize> Display for Pv<N> {
 mod tests {
     use super::*;
     use test_strategy::proptest;
-
-    #[proptest]
-    fn score_returns_score(pv: Pv<3>) {
-        assert_eq!(pv.score(), pv.score);
-    }
 
     #[proptest]
     fn pv_with_larger_score_is_larger(p: Pv<3>, #[filter(#p.score() != #q.score())] q: Pv<3>) {
@@ -153,10 +111,7 @@ mod tests {
 
     #[proptest]
     fn negation_preserves_moves(pv: Pv<3>) {
-        assert_eq!(
-            pv.moves().collect::<Vec<_>>(),
-            pv.neg().moves().collect::<Vec<_>>()
-        );
+        assert_eq!(pv.clone().moves(), pv.neg().moves());
     }
 
     #[proptest]
@@ -165,20 +120,20 @@ mod tests {
     }
 
     #[proptest]
-    fn shift_changes_moves(pv: Pv<3>, m: Move) {
-        assert_eq!(m.shr(pv).moves().next(), Some(m));
+    fn shift_prepends_move(pv: Pv<3>, m: Move) {
+        assert_eq!(m.shr(pv).head(), Some(m));
     }
 
     #[proptest]
-    fn convert_preserves_score(pv: Pv<3>) {
-        assert_eq!(pv.score(), pv.convert::<0>().score());
+    fn truncate_preserves_score(pv: Pv<3>) {
+        assert_eq!(pv.score(), pv.truncate::<0>().score());
     }
 
     #[proptest]
-    fn convert_truncates_moves(pv: Pv<3>) {
+    fn truncate_discards_moves(pv: Pv<3>) {
         assert_eq!(
-            pv.moves().take(2).collect::<Vec<_>>(),
-            pv.convert::<2>().moves().collect::<Vec<_>>()
+            &pv.moves().clone().truncate::<2>(),
+            pv.truncate::<2>().moves()
         );
     }
 }
