@@ -1,5 +1,5 @@
 use crate::chess::{Move, Zobrist};
-use crate::search::{Depth, HashSize, Ply, Pv, Score};
+use crate::search::{Depth, HashSize, Line, Ply, Pv, Score};
 use crate::util::{Assume, Binary, Bits, Integer};
 use derive_more::Debug;
 use std::ops::{Index, Range, RangeInclusive};
@@ -146,7 +146,7 @@ impl Transposition {
     /// The principal variation normalized to [`Ply`].
     #[inline(always)]
     pub fn transpose(&self, ply: Ply) -> Pv<1> {
-        Pv::new(self.score().bound(ply), [self.best])
+        Pv::new(self.score().bound(ply), Line::singular(self.best))
     }
 }
 
