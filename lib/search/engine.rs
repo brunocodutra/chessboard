@@ -1,7 +1,7 @@
 use crate::chess::{Move, Outcome, Position};
 use crate::nnue::{Evaluator, Value};
 use crate::search::*;
-use crate::util::{AlignTo64, Assume, Counter, Integer, Timer, Trigger};
+use crate::util::{Assume, Counter, Integer, Timer, Trigger};
 use arrayvec::ArrayVec;
 use derive_more::Deref;
 use std::{mem::swap, ops::Range, thread, time::Duration};
@@ -15,17 +15,20 @@ pub struct Search<'a> {
     #[deref]
     engine: &'a Engine,
     ctrl: Control<'a>,
-    killers: AlignTo64<[Killers; Ply::MAX as usize + 1]>,
+    killers: [Killers; Ply::MAX as usize + 1],
+    continuation: [Option<&'a Reply>; Ply::MAX as usize + 1],
 }
 
 impl<'a> Search<'a> {
     fn new(engine: &'a Engine, ctrl: Control<'a>) -> Self {
-        let killers = AlignTo64([Killers::default(); Ply::MAX as usize + 1]);
+        let killers = [Killers::default(); Ply::MAX as usize + 1];
+        let continuation = [None; Ply::MAX as usize + 1];
 
         Search {
             engine,
             ctrl,
             killers,
+            continuation,
         }
     }
 
@@ -47,11 +50,18 @@ impl<'a> Search<'a> {
             }
 
             self.history.update(pos, best, draft.get());
+
+            let counter = self.continuation.get(ply.cast::<usize>().wrapping_sub(1));
+            counter.update(pos, best, draft.get());
+
             for &(m, _) in moves.iter().rev() {
-                if m != best {
-                    self.history.update(pos, m, -draft.get());
-                } else {
+                if m == best {
                     break;
+                } else {
+                    self.history.update(pos, m, -draft.get());
+
+                    let counter = self.continuation.get(ply.cast::<usize>().wrapping_sub(1));
+                    counter.update(pos, m, -draft.get())
                 }
             }
         }
@@ -265,6 +275,7 @@ impl<'a> Search<'a> {
                     let mut next = pos.clone();
                     next.pass();
                     self.tt.prefetch(next.zobrist());
+                    self.continuation[ply.cast::<usize>()] = None;
                     if -self.nw::<0>(&next, -beta + 1, d + ply, ply + 1)? >= beta {
                         #[cfg(not(test))]
                         // The null move pruning heuristic is not exact.
@@ -292,7 +303,8 @@ impl<'a> Search<'a> {
                     pos.gain(m)
                 };
 
-                (m, gain + self.history.get(pos, m))
+                let counter = self.continuation.get(ply.cast::<usize>().wrapping_sub(1));
+                (m, gain + self.history.get(pos, m) + counter.get(pos, m))
             })
             .collect();
 
@@ -305,6 +317,8 @@ impl<'a> Search<'a> {
                         let mut next = pos.clone();
                         next.play(*m);
                         self.tt.prefetch(next.zobrist());
+                        self.continuation[ply.cast::<usize>()] =
+                            Some(self.engine.continuation.reply(pos, *m));
                         if -self.nw::<0>(&next, -beta + 1, d + ply, ply + 1)? >= beta {
                             #[cfg(not(test))]
                             // The multi-cut pruning heuristic is not exact.
@@ -327,6 +341,8 @@ impl<'a> Search<'a> {
                 let mut next = pos.clone();
                 next.play(m);
                 self.tt.prefetch(next.zobrist());
+                self.continuation[ply.cast::<usize>()] =
+                    Some(self.engine.continuation.reply(pos, m));
                 (m, -self.ab(&next, -beta..-alpha, depth, ply + 1)?)
             }
         };
@@ -362,6 +378,7 @@ impl<'a> Search<'a> {
                 _ => 0,
             };
 
+            self.continuation[ply.cast::<usize>()] = Some(self.engine.continuation.reply(pos, m));
             let partial = match -self.nw(&next, -alpha, depth - lmr, ply + 1)? {
                 partial if partial <= alpha || (partial >= beta && lmr <= 0) => partial,
                 _ => -self.ab(&next, -beta..-alpha, depth, ply + 1)?,
@@ -452,6 +469,8 @@ pub struct Engine {
     tt: TranspositionTable,
     #[cfg_attr(test, strategy(LazyJust::new(History::default)))]
     history: History,
+    #[cfg_attr(test, strategy(LazyJust::new(Continuation::default)))]
+    continuation: Continuation,
 }
 
 impl Default for Engine {
@@ -472,6 +491,7 @@ impl Engine {
             threads: options.threads,
             tt: TranspositionTable::new(options.hash),
             history: History::default(),
+            continuation: Continuation::default(),
         }
     }
 

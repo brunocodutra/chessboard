@@ -1,6 +1,8 @@
+mod continuation;
 mod control;
 mod depth;
 mod engine;
+mod gravity;
 mod history;
 mod killers;
 mod limits;
@@ -11,9 +13,11 @@ mod pv;
 mod score;
 mod transposition;
 
+pub use continuation::*;
 pub use control::*;
 pub use depth::*;
 pub use engine::*;
+pub use gravity::*;
 pub use history::*;
 pub use killers::*;
 pub use limits::*;

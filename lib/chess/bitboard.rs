@@ -4,6 +4,11 @@ use derive_more::{Debug, *};
 use std::fmt::{self, Formatter, Write};
 use std::{cell::SyncUnsafeCell, mem::MaybeUninit};
 
+/// The [butterfly board].
+///
+/// [butterfly board]: https://www.chessprogramming.org/Butterfly_Boards
+pub type Butterfly<T> = [[T; 64]; 64];
+
 /// A set of squares on a chess board.
 #[derive(
     Default,
@@ -119,7 +124,7 @@ impl Bitboard {
     /// ```
     #[inline(always)]
     pub fn line(whence: Square, whither: Square) -> Self {
-        static LINES: SyncUnsafeCell<[[Bitboard; 64]; 64]> =
+        static LINES: SyncUnsafeCell<Butterfly<Bitboard>> =
             unsafe { MaybeUninit::zeroed().assume_init() };
 
         #[cold]
@@ -162,7 +167,7 @@ impl Bitboard {
     /// ```
     #[inline(always)]
     pub fn segment(whence: Square, whither: Square) -> Self {
-        static SEGMENTS: SyncUnsafeCell<[[Bitboard; 64]; 64]> =
+        static SEGMENTS: SyncUnsafeCell<Butterfly<Bitboard>> =
             unsafe { MaybeUninit::zeroed().assume_init() };
 
         #[cold]
