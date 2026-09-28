@@ -4,7 +4,7 @@ use bytemuck::Zeroable;
 use std::array;
 
 const I: usize = Ln::LEN;
-const O: usize = Ln::LEN / 2;
+const O: usize = Ln::LEN;
 
 /// A hidden connection.
 #[derive(Debug, Zeroable)]
@@ -82,13 +82,10 @@ impl<S: for<'a> Synapse<Input<'a> = Ln<'a>>> Synapse for Lnn<S> {
             }
         }
 
-        let output: Aligned<[V2<f32>; O / W2]> =
-            Aligned(array::from_fn(|j| bs[j] + acc[j].iter().sum::<V2<f32>>()));
-
-        let active = Aligned([
-            output.map(|i| i.simd_max(Simd::splat(0.)).powi::<2>()),
-            output.map(|i| i.simd_min(Simd::splat(0.)).powi::<2>()),
-        ]);
+        let active: Aligned<[V2<f32>; O / W2]> = Aligned(array::from_fn(|j| {
+            let out = bs[j] + acc[j].iter().sum::<V2<f32>>();
+            out * out.abs()
+        }));
 
         self.next.forward(active.cast_ref())
     }

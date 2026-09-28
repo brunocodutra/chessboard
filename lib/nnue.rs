@@ -113,11 +113,11 @@ const impl Nnue {
 
         for phase in Phase::iter() {
             let nn = &mut nnue.nn[phase];
-            let mut weight = [[0i8; Li::LEN]; Ln::LEN / 2];
+            let mut weight = [[0i8; Li::LEN]; Ln::LEN];
             cursor += unsafe { copy_bytes(&mut weight, &bytes[cursor..]) };
-            let mut blocks = [[0i8; 4]; Li::LEN * Ln::LEN / 8];
+            let mut blocks = [[0i8; 4]; Li::LEN * Ln::LEN / 4];
             arrange_in_blocks(&weight, &mut blocks);
-            interleave(&blocks, &mut nn.weight.0, Ln::LEN);
+            interleave(&blocks, &mut nn.weight.0, Ln::LEN * 2);
         }
 
         for phase in Phase::iter() {
@@ -132,7 +132,7 @@ const impl Nnue {
 
         for phase in Phase::iter() {
             let nn = &mut nnue.nn[phase].next.next;
-            let mut weight = [[0f32; Ln::LEN]; Ln::LEN / 2];
+            let mut weight = [[0f32; Ln::LEN]; Ln::LEN];
             cursor += unsafe { copy_bytes(&mut weight, &bytes[cursor..]) };
             arrange_in_blocks(&weight, &mut nn.weight.0);
         }
@@ -144,7 +144,7 @@ const impl Nnue {
 
         for phase in Phase::iter() {
             let nn = &mut nnue.nn[phase].next.next.next;
-            let mut weight = [[0f32; Ln::LEN]; Ln::LEN / 2];
+            let mut weight = [[0f32; Ln::LEN]; Ln::LEN];
             cursor += unsafe { copy_bytes(&mut weight, &bytes[cursor..]) };
             arrange_in_blocks(&weight, &mut nn.weight.0);
         }

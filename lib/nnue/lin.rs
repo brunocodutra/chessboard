@@ -4,7 +4,7 @@ use bytemuck::Zeroable;
 use std::array;
 
 const I: usize = Li::LEN;
-const O: usize = Ln::LEN / 2;
+const O: usize = Ln::LEN;
 
 /// The input connection.
 #[derive(Debug, Zeroable)]
@@ -109,15 +109,11 @@ impl<S: for<'a> Synapse<Input<'a> = Ln<'a>, Output = V2<f32>>> Synapse for Lin<S
             }
         }
 
-        let output: Aligned<[V2<f32>; O / W2]> = Aligned(array::from_fn(|j| {
+        let active: Aligned<[V2<f32>; O / W2]> = Aligned(array::from_fn(|j| {
             let sum = acc[j].iter().sum::<V2<i32>>();
-            sum.cast::<f32>().mul_add(Simd::splat(I2F), bs[j])
+            let out = sum.cast::<f32>().mul_add(Simd::splat(I2F), bs[j]);
+            out * out.abs()
         }));
-
-        let active = Aligned([
-            output.map(|i| i.simd_max(Simd::splat(0.)).powi::<2>()),
-            output.map(|i| i.simd_min(Simd::splat(0.)).powi::<2>()),
-        ]);
 
         F2V * self.next.forward(active.cast_ref()).reduce_sum()
     }
