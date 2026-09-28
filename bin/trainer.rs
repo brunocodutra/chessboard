@@ -534,11 +534,11 @@ impl<'a> Trainer<'a> {
                 (pp + ti + ka).crelu()
             };
 
-            let mut l12 = builder.new_affine("l12/", Li::LEN, Phase::LEN * Ln::LEN / 2);
+            let mut l12 = builder.new_affine("l12/", Li::LEN, Phase::LEN * Ln::LEN);
             l12.weights = l12.weights.faux_quantise(HLQ.cast(), true);
 
-            let l23 = builder.new_affine("l23/", Ln::LEN, Phase::LEN * Ln::LEN / 2);
-            let l34 = builder.new_affine("l34/", Ln::LEN, Phase::LEN * Ln::LEN / 2);
+            let l23 = builder.new_affine("l23/", Ln::LEN, Phase::LEN * Ln::LEN);
+            let l34 = builder.new_affine("l34/", Ln::LEN, Phase::LEN * Ln::LEN);
             let l4o = builder.new_affine("l4o/", Ln::LEN, Phase::LEN);
 
             let shape = Shape::new(Phase::LEN, Ln::LEN);
@@ -554,11 +554,11 @@ impl<'a> Trainer<'a> {
 
             let l1a = stm.concat(ntm);
             let l2 = l12.forward(l1a).select(phase);
-            let l2a = l2.concat(-l2).sqrrelu();
+            let l2a = l2 * l2.abs();
             let l3 = l23.forward(l2a).select(phase);
-            let l3a = l3.concat(-l3).sqrrelu();
+            let l3a = l3 * l3.abs();
             let l4 = l34.forward(l3a).select(phase);
-            let l4a = l4.concat(-l4).sqrrelu();
+            let l4a = l4 * l4.abs();
             let out = l4o.forward(l4a).select(phase) + r2o.matmul(l2a).select(phase);
 
             let ones = builder.new_constant(Shape::new(1, Li::LEN), &[1.0; Li::LEN]);

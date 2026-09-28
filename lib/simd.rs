@@ -10,7 +10,6 @@ mod mulhi;
 mod nzs;
 mod pack;
 mod permute;
-mod powi;
 mod shlv;
 mod shuffle;
 
@@ -26,7 +25,6 @@ pub use mulhi::*;
 pub use nzs::*;
 pub use pack::*;
 pub use permute::*;
-pub use powi::*;
 pub use shlv::*;
 pub use shuffle::*;
 
