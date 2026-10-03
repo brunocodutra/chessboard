@@ -167,13 +167,6 @@ impl Board {
         }
     }
 
-    /// Game [`Phase`].
-    #[inline(always)]
-    #[cfg_attr(feature = "no_panic", no_panic::no_panic)]
-    pub fn phase(&self) -> Phase {
-        Phase::new((self.occupied().count() - 1) as u8 / 4)
-    }
-
     /// The [`Placement`].
     #[inline(always)]
     #[cfg_attr(feature = "no_panic", no_panic::no_panic)]

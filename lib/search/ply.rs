@@ -9,14 +9,8 @@ pub struct PlyRepr(#[cfg_attr(test, strategy(Self::MIN..=Self::MAX))] <PlyRepr a
 
 const unsafe impl Num for PlyRepr {
     type Repr = i16;
-
     const MIN: Self::Repr = 0;
-
-    #[cfg(not(test))]
-    const MAX: Self::Repr = 159;
-
-    #[cfg(test)]
-    const MAX: Self::Repr = 7;
+    const MAX: Self::Repr = (Ply::LEN - 1).cast();
 }
 
 const unsafe impl Int for PlyRepr {}
@@ -25,7 +19,11 @@ const unsafe impl Int for PlyRepr {}
 pub type Ply = Bounded<PlyRepr>;
 
 const impl Ply {
-    pub const LEN: usize = Self::MAX as usize + 1;
+    #[cfg(not(test))]
+    pub const LEN: usize = 160;
+
+    #[cfg(test)]
+    pub const LEN: usize = 8;
 }
 
 const impl<T> Index<Ply> for [T; Ply::LEN] {

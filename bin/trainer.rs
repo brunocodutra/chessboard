@@ -17,7 +17,7 @@ use bullet_trainer::optimiser::adam::{AdamW, AdamWParams};
 use bullet_trainer::reader::{DataReader, ReadMapLoader};
 use bullet_trainer::run::{DefaultDevice, Step, TrainingSchedule, TrainingSteps, train};
 use bytemuck::zeroed;
-use cinder::chess::{Bitboard, Board, Color, Phase, Piece, Position, Role, Square};
+use cinder::chess::{Bitboard, Board, Color, Piece, Position, Role, Square};
 use cinder::nnue::*;
 use cinder::util::{Assume, Int, Num, StaticSeq};
 use clap::{Args, Parser, Subcommand};

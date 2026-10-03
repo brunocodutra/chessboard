@@ -145,7 +145,7 @@ impl<'a> Active<'a> {
             return ControlFlow::Continue;
         };
 
-        #[allow(clippy::if_same_then_else)]
+        #[expect(clippy::if_same_then_else)]
         if self.abort.load(Ordering::Relaxed) {
             return ControlFlow::Abort;
         } else if self.global_nodes + self.nodes % LAP >= self.limits.max_nodes() {

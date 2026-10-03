@@ -15,13 +15,13 @@ pub struct Castles(Bits<u8, 4>);
 const unsafe impl Num for Castles {
     type Repr = u8;
     const MIN: Self::Repr = 0;
-    const MAX: Self::Repr = 15;
+    const MAX: Self::Repr = (Self::LEN - 1).cast();
 }
 
 const unsafe impl Int for Castles {}
 
 const impl Castles {
-    pub const LEN: usize = Self::MAX as usize + 1;
+    pub const LEN: usize = 16;
 
     /// No castling rights.
     #[inline(always)]

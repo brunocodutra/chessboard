@@ -1,3 +1,4 @@
+use crate::nnue::arch;
 use crate::util::{Assume, Int, Num};
 use std::ops::{Index, IndexMut};
 
@@ -11,13 +12,13 @@ pub struct Phase(#[cfg_attr(test, strategy(Self::MIN..=Self::MAX))] <Phase as Nu
 const unsafe impl Num for Phase {
     type Repr = u8;
     const MIN: Self::Repr = 0;
-    const MAX: Self::Repr = 7;
+    const MAX: Self::Repr = (Self::LEN - 1).cast();
 }
 
 const unsafe impl Int for Phase {}
 
 const impl Phase {
-    pub const LEN: usize = Self::MAX as usize + 1;
+    pub const LEN: usize = arch::SPECIALISTS;
 }
 
 const impl<T> Index<Phase> for [T; Phase::LEN] {

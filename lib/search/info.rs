@@ -1,31 +1,34 @@
-use crate::search::{Depth, Pv, Score};
-use crate::util::Num;
+use crate::search::{Depth, Pv};
+use derive_more::with_trait::{Deref, DerefMut};
 use std::time::Duration;
 
-/// Information about the search result.
-#[derive(Debug, Clone, Copy)]
+/// Search statistics.
+#[derive(Debug, Default, Clone, Copy)]
 #[cfg_attr(test, derive(test_strategy::Arbitrary))]
-pub struct Info {
-    depth: Depth,
-    seldepth: u16,
-    time: Duration,
-    nodes: u64,
-    tbhits: u64,
-    hashfull: f32,
-    pv: Pv,
+pub struct Stats {
+    /// The depth searched.
+    pub depth: Depth,
+    /// The deepest ply searched.
+    pub seldepth: u16,
+    /// The duration searched.
+    pub time: Duration,
+    /// The number of nodes searched.
+    pub nodes: u64,
+    /// The number of successful tablebase probes.
+    pub tbhits: u64,
+    /// The fraction of transposition table slots in use.
+    pub hashfull: f32,
 }
 
-impl Info {
-    /// The duration searched.
+impl Stats {
     #[inline(always)]
-    pub fn new<const N: usize>(
+    pub fn new(
         depth: Depth,
         seldepth: u16,
         time: Duration,
         nodes: u64,
         tbhits: u64,
         hashfull: f32,
-        pv: Pv<N>,
     ) -> Self {
         Self {
             depth,
@@ -34,62 +37,33 @@ impl Info {
             nodes,
             tbhits,
             hashfull,
-            pv: pv.truncate(),
         }
     }
+}
 
-    /// The depth searched.
-    #[inline(always)]
-    pub fn depth(&self) -> Depth {
-        self.depth
-    }
+/// Information about the search result.
+#[derive(Debug, Clone, Copy, Deref, DerefMut)]
+#[cfg_attr(test, derive(test_strategy::Arbitrary))]
+pub struct Info {
+    #[deref]
+    #[deref_mut]
+    stats: Stats,
+    pub pv: Pv,
+}
 
-    /// The deepest ply searched.
+impl Info {
     #[inline(always)]
-    pub fn seldepth(&self) -> u16 {
-        self.seldepth
-    }
-
-    /// The duration searched.
-    #[inline(always)]
-    pub fn time(&self) -> Duration {
-        self.time
-    }
-
-    /// The number of nodes searched.
-    #[inline(always)]
-    pub fn nodes(&self) -> u64 {
-        self.nodes
-    }
-
-    /// The number of successful tablebase probes.
-    #[inline(always)]
-    pub fn tbhits(&self) -> u64 {
-        self.tbhits
-    }
-
-    /// The fraction of transposition table slots in use.
-    #[inline(always)]
-    pub fn hashfull(&self) -> f32 {
-        self.hashfull
-    }
-
-    /// The search score.
-    #[inline(always)]
-    pub fn score(&self) -> Score {
-        self.pv.score()
-    }
-
-    /// The principal variation.
-    #[inline(always)]
-    pub fn pv(&self) -> Pv {
-        self.pv
+    pub fn new<const N: usize>(stats: Stats, pv: Pv<N>) -> Self {
+        Self {
+            stats,
+            pv: pv.truncate(),
+        }
     }
 }
 
 impl From<Pv> for Info {
     #[inline(always)]
     fn from(pv: Pv) -> Self {
-        Info::new(Depth::new(0), 0, Duration::ZERO, 0, 0, 0.0, pv)
+        Info::new(Stats::default(), pv)
     }
 }

@@ -29,7 +29,7 @@ const impl Color {
     #[expect(dead_code)]
     const REQUIRES: () = const { assert!(size_of::<Self>() == size_of::<Option<Self>>()) };
 
-    pub const LEN: usize = Self::MAX as usize + 1;
+    pub const LEN: usize = Self::MAX as usize - Self::MIN as usize + 1;
 }
 
 const impl Flip for Color {

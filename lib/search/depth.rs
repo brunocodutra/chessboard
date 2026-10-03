@@ -8,20 +8,22 @@ pub struct DepthRepr(#[cfg_attr(test, strategy(Self::MIN..=Self::MAX))] <DepthRe
 
 const unsafe impl Num for DepthRepr {
     type Repr = i8;
-
     const MIN: Self::Repr = 0;
-
-    #[cfg(not(test))]
-    const MAX: Self::Repr = 127;
-
-    #[cfg(test)]
-    const MAX: Self::Repr = 3;
+    const MAX: Self::Repr = (Depth::LEN - 1).cast();
 }
 
 const unsafe impl Int for DepthRepr {}
 
 /// The search depth.
 pub type Depth = Bounded<DepthRepr>;
+
+const impl Depth {
+    #[cfg(not(test))]
+    pub const LEN: usize = 128;
+
+    #[cfg(test)]
+    pub const LEN: usize = 4;
+}
 
 impl Binary for Depth {
     type Bits = Bits<u8, 7>;

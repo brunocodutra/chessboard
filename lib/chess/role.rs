@@ -33,7 +33,7 @@ const impl Role {
     #[expect(dead_code)]
     const REQUIRES: () = const { assert!(size_of::<Self>() == size_of::<Option<Self>>()) };
 
-    pub const LEN: usize = Self::MAX as usize + 1;
+    pub const LEN: usize = Self::MAX as usize - Self::MIN as usize + 1;
 
     pub const ENCODER: u8x64 = const {
         let mut encoder = [0xFFu8; 16];

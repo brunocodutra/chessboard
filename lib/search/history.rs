@@ -7,7 +7,7 @@ use derive_more::with_trait::Debug;
 /// Historical statistics about a [`Move`] in butterfly form.
 #[derive(Debug, Zeroable)]
 #[debug("ButterflyHistory")]
-#[allow(clippy::type_complexity)]
+#[expect(clippy::type_complexity)]
 pub struct ButterflyHistory([[[Butterfly<[[Graviton; 2]; 2]>; 2]; 2]; 2]);
 
 impl Default for ButterflyHistory {

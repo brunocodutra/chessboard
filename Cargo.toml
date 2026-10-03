@@ -13,6 +13,7 @@ default-run = "cinder"
 unexpected_cfgs = { level = "warn", check-cfg = ['cfg(coverage)'] }
 
 [features]
+permuter = ["dep:rand"]
 spsa = ["dep:rand", "dep:ron", "dep:serde"]
 trainer = ["dep:bullet", "dep:bullet_trainer", "dep:rand"]
 no_panic = ["dep:no-panic"]
@@ -86,6 +87,10 @@ test-strategy = { version = "0.4.5" }
 [build-dependencies]
 anyhow = { version = "1.0.102" }
 brotli = { version = "9.0.0" }
+bytemuck = { version = "1.25.0", features = [
+    "extern_crate_std",
+    "latest_stable_rust",
+] }
 
 [profile.dev]
 opt-level = 3
@@ -112,6 +117,11 @@ path = "lib/lib.rs"
 [[bin]]
 name = "cinder"
 path = "bin/cinder.rs"
+
+[[bin]]
+name = "permuter"
+path = "bin/permuter.rs"
+required-features = ["permuter"]
 
 [[bin]]
 name = "spsa"

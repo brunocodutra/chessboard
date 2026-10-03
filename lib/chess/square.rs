@@ -36,7 +36,7 @@ const impl Square {
     #[expect(dead_code)]
     const REQUIRES: () = const { assert!(size_of::<Self>() == size_of::<Option<Self>>()) };
 
-    pub const LEN: usize = Self::MAX as usize + 1;
+    pub const LEN: usize = Self::MAX as usize - Self::MIN as usize + 1;
 
     /// Constructs [`Square`] from a pair of [`File`] and [`Rank`].
     #[inline(always)]

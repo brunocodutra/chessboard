@@ -1,6 +1,4 @@
-use crate::chess::Move;
-use crate::search::{Depth, HashSize, Info, Mate, MoveOverhead, Pv, SyzygyPath, ThreadCount};
-use crate::util::Num;
+use crate::{chess::Move, search::*, util::Num};
 use std::fmt::{self, Display, Formatter};
 use std::{ops::Mul, time::Duration};
 
@@ -31,13 +29,27 @@ impl From<Option<Move>> for Outbound {
 impl From<Info> for Outbound {
     fn from(info: Info) -> Self {
         Outbound::Info {
-            depth: info.depth(),
-            seldepth: info.seldepth(),
-            time: info.time(),
-            nodes: info.nodes(),
-            tbhits: info.tbhits(),
-            hashfull: info.hashfull().mul(1000.0).saturate(),
-            pv: Some(info.pv()),
+            depth: info.depth,
+            seldepth: info.seldepth,
+            time: info.time,
+            nodes: info.nodes,
+            tbhits: info.tbhits,
+            hashfull: info.hashfull.mul(1000.0).saturate(),
+            pv: Some(info.pv),
+        }
+    }
+}
+
+impl From<Stats> for Outbound {
+    fn from(summary: Stats) -> Self {
+        Outbound::Info {
+            depth: summary.depth,
+            seldepth: summary.seldepth,
+            time: summary.time,
+            nodes: summary.nodes,
+            tbhits: summary.tbhits,
+            hashfull: summary.hashfull.mul(1000.0).saturate(),
+            pv: None,
         }
     }
 }

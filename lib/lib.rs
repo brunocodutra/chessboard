@@ -33,7 +33,6 @@
     clippy::elidable_lifetime_names,
     clippy::empty_drop,
     clippy::empty_enum_variants_with_brackets,
-    clippy::empty_enums,
     clippy::empty_structs_with_brackets,
     clippy::equatable_if_let,
     clippy::error_impl_error,
