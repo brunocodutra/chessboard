@@ -17,7 +17,6 @@ const impl Default for FullmoveRepr {
 
 const unsafe impl Num for FullmoveRepr {
     type Repr = i32;
-
     const MIN: Self::Repr = 1;
     const MAX: Self::Repr = i32::MAX;
 }

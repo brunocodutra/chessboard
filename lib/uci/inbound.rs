@@ -46,6 +46,8 @@ pub enum Inbound {
     },
     Bench {
         depth: Option<Depth>,
+        nodes: Option<u64>,
+        time: Option<Duration>,
     },
     Perft(u8),
     SetOptionHash(HashSize),
@@ -165,6 +167,22 @@ impl UciParser {
                 }
             }
 
+            (args, "bench") => {
+                let time = field("movetime", millis);
+                let nodes = field("nodes", int);
+                let depth = field("depth", int);
+                let params = gather3((time, nodes, depth));
+                let mut bench = terminated(opt(params), eof).map(Option::unwrap_or_default);
+                let (_, (time, nodes, depth)) = bench.parse(args).finish()?;
+                Ok(Inbound::Bench { depth, nodes, time })
+            }
+
+            (args, "perft") => {
+                let mut perft = terminated(t(int).map(Inbound::Perft), eof);
+                let (_, uci) = perft.parse(args).finish()?;
+                Ok(uci)
+            }
+
             (args, "setoption") => {
                 let option = |n| preceded((t(tag("name")), tag_no_case(n), t(tag("value"))), rest);
 
@@ -186,19 +204,6 @@ impl UciParser {
 
                 let mut setoption = terminated(options, eof);
                 let (_, uci) = setoption.parse(args).finish()?;
-                Ok(uci)
-            }
-
-            (args, "bench") => {
-                let depth = field("depth", int);
-                let mut bench = terminated(opt(depth).map(|depth| Inbound::Bench { depth }), eof);
-                let (_, uci) = bench.parse(args).finish()?;
-                Ok(uci)
-            }
-
-            (args, "perft") => {
-                let mut perft = terminated(t(int).map(Inbound::Perft), eof);
-                let (_, uci) = perft.parse(args).finish()?;
                 Ok(uci)
             }
 
@@ -470,6 +475,58 @@ mod tests {
                 binc: None,
                 mtg: None,
                 mate: Some(n)
+            })
+        );
+    }
+
+    #[proptest]
+    #[cfg_attr(miri, ignore)]
+    fn parsing_bench_with_depth_succeeds(mut p: UciParser, d: Depth) {
+        assert_eq!(
+            p.parse(&format!("bench depth {d}")),
+            Ok(Inbound::Bench {
+                depth: Some(d),
+                nodes: None,
+                time: None,
+            })
+        );
+    }
+
+    #[proptest]
+    #[cfg_attr(miri, ignore)]
+    fn parsing_bench_with_nodes_succeeds(mut p: UciParser, n: u64) {
+        assert_eq!(
+            p.parse(&format!("bench nodes {n}")),
+            Ok(Inbound::Bench {
+                depth: None,
+                nodes: Some(n),
+                time: None,
+            })
+        );
+    }
+
+    #[proptest]
+    #[cfg_attr(miri, ignore)]
+    fn parsing_bench_with_movetime_succeeds(mut p: UciParser, t: u64) {
+        assert_eq!(
+            p.parse(&format!("bench movetime {t}")),
+            Ok(Inbound::Bench {
+                depth: None,
+                nodes: None,
+                time: Some(Duration::from_millis(t)),
+            })
+        );
+    }
+
+    #[proptest]
+    #[cfg_attr(miri, ignore)]
+    fn parsing_bench_with_no_arguments_succeeds(mut p: UciParser) {
+        assert_eq!(
+            p.parse("bench"),
+            Ok(Inbound::Bench {
+                depth: None,
+                nodes: None,
+                time: None,
             })
         );
     }

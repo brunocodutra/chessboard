@@ -3,7 +3,7 @@ use std::simd::prelude::*;
 
 /// Trait for [`Simd<u32, _>` ] types that implement `nnz`.
 pub trait Nzs<const N: usize> {
-    /// Fills `self` with indices to non-zero_elements.
+    /// Fills `self` with indices to non-zero elements.
     fn nzs(&mut self, ns: &[[V2<u32>; 2]; N]) -> usize;
 }
 

@@ -1,5 +1,5 @@
 use crate::util::{Assume, Int, Num, ones};
-use crate::{chess::*, simd::*};
+use crate::{chess::*, nnue::arch, simd::*};
 use bytemuck::zeroed;
 use std::array;
 use std::ops::{BitAnd, Index, IndexMut, Not};
@@ -13,7 +13,7 @@ pub struct PSQFeature(#[cfg_attr(test, strategy(Self::MIN..=Self::MAX))] <PSQFea
 const unsafe impl Num for PSQFeature {
     type Repr = u16;
     const MIN: Self::Repr = 0;
-    const MAX: Self::Repr = Self::LEN as Self::Repr - 1;
+    const MAX: Self::Repr = (Self::LEN - 1).cast();
 }
 
 const unsafe impl Int for PSQFeature {}
@@ -70,18 +70,18 @@ pub struct KingBucket(#[cfg_attr(test, strategy(Self::MIN..=Self::MAX))] <KingBu
 const unsafe impl Num for KingBucket {
     type Repr = u8;
     const MIN: Self::Repr = 0;
-    const MAX: Self::Repr = 63;
+    const MAX: Self::Repr = (Self::LEN - 1).cast();
 }
 
 const unsafe impl Int for KingBucket {}
 
 impl KingBucket {
-    pub const LEN: usize = Self::MAX as usize + 1;
+    pub const LEN: usize = arch::BUCKETS;
 
     #[inline(always)]
     pub fn new(side: Color, ksq: Square) -> Self {
         #[rustfmt::skip]
-        const BUCKETS: [u8; 64] = [
+        const BUCKETS: [u8; KingBucket::LEN] = [
             32, 33, 34, 35,  3,  2,  1,  0,
             36, 37, 38, 39,  7,  6,  5,  4,
             40, 41, 42, 43, 11, 10,  9,  8,
@@ -121,12 +121,15 @@ pub struct KAFeature(#[cfg_attr(test, strategy(Self::MIN..=Self::MAX))] <KAFeatu
 const unsafe impl Num for KAFeature {
     type Repr = u16;
     const MIN: Self::Repr = 0;
-    const MAX: Self::Repr = Self::LEN as Self::Repr - 1;
+    const MAX: Self::Repr = (Self::LEN - 1).cast();
 }
 
 const unsafe impl Int for KAFeature {}
 
 impl KAFeature {
+    #[expect(dead_code)]
+    const REQUIRES: () = const { assert!(Self::LEN == arch::KA) };
+
     /// The total number of different king-piece-square features.
     pub const LEN: usize = PSQFeature::LEN * KingBucket::LEN / 2;
 
@@ -172,7 +175,7 @@ pub struct TIFeature(#[cfg_attr(test, strategy(Self::MIN..=Self::MAX))] <TIFeatu
 const unsafe impl Num for TIFeature {
     type Repr = u16;
     const MIN: Self::Repr = 0;
-    const MAX: Self::Repr = Self::LEN as Self::Repr - 1;
+    const MAX: Self::Repr = (Self::LEN - 1).cast();
 }
 
 const unsafe impl Int for TIFeature {}
@@ -191,6 +194,9 @@ const fn threat_index_for(role: Role) -> [u16; 65] {
 }
 
 impl TIFeature {
+    #[expect(dead_code)]
+    const REQUIRES: () = const { assert!(Self::LEN == arch::TI) };
+
     const PAWN_INDEX: u16 = 84;
     const KNIGHT_INDICES: [u16; 65] = threat_index_for(Role::Knight);
     const BISHOP_INDICES: [u16; 65] = threat_index_for(Role::Bishop);
@@ -330,7 +336,7 @@ pub struct PFeature(#[cfg_attr(test, strategy(Self::MIN..=Self::MAX))] <PFeature
 const unsafe impl Num for PFeature {
     type Repr = u8;
     const MIN: Self::Repr = 0;
-    const MAX: Self::Repr = Self::LEN as Self::Repr - 1;
+    const MAX: Self::Repr = (Self::LEN - 1).cast();
 }
 
 const unsafe impl Int for PFeature {}
@@ -385,12 +391,15 @@ pub struct PPFeature(#[cfg_attr(test, strategy(Self::MIN..=Self::MAX))] <PPFeatu
 const unsafe impl Num for PPFeature {
     type Repr = u16;
     const MIN: Self::Repr = 0;
-    const MAX: Self::Repr = Self::LEN as Self::Repr - 1;
+    const MAX: Self::Repr = (Self::LEN - 1).cast();
 }
 
 const unsafe impl Int for PPFeature {}
 
 impl PPFeature {
+    #[expect(dead_code)]
+    const REQUIRES: () = const { assert!(Self::LEN == arch::PP) };
+
     /// The total number of different pawn-pawn features.
     pub const LEN: usize = PFeature::LEN * (PFeature::LEN - 1) / 2;
 
@@ -427,7 +436,7 @@ impl PPFeature {
             for f in File::iter() {
                 let mut i = 0;
 
-                #[allow(clippy::explicit_counter_loop)]
+                #[expect(clippy::explicit_counter_loop)]
                 for sq in PPFeature::WINDOW[f].transpose() {
                     assert!(i < 32);
                     indices[f].as_mut_array()[i] = sq.transpose().cast();

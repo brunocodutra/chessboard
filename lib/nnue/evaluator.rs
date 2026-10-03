@@ -183,6 +183,13 @@ impl Evaluator {
         self.ply
     }
 
+    /// Game [`Phase`].
+    #[inline(always)]
+    #[cfg_attr(feature = "no_panic", no_panic::no_panic)]
+    pub fn phase(&self) -> Phase {
+        Phase::new((self.occupied().count() - 1) as u8 / 4)
+    }
+
     /// Whether `m` is reversible.
     #[inline(always)]
     #[cfg_attr(feature = "no_panic", no_panic::no_panic)]

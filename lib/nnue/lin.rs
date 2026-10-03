@@ -3,6 +3,9 @@ use crate::{simd::*, util::Assume};
 use bytemuck::Zeroable;
 use std::array;
 
+#[cfg(feature = "permuter")]
+use crate::nnue::sparsity::ActivationHistory;
+
 const I: usize = Li::LEN;
 const O: usize = Ln::LEN;
 
@@ -49,6 +52,9 @@ impl<S: for<'a> Synapse<Input<'a> = Ln<'a>, Output = V2<f32>>> Synapse for Lin<S
 
         let mut nzs = Aligned([0u16; I / 4]);
         let nzs_len = nzs.nzs(active.cast_ref::<[[V2<u32>; 2]; I / W2 / 8]>());
+
+        #[cfg(feature = "permuter")]
+        ActivationHistory::record(active.cast_ref());
 
         let xs: &[u8x4; I / 4] = active.cast_ref();
         let ws: &[[V8<i8>; O / W2]; I / 4] = self.weight.cast_ref();

@@ -14,13 +14,13 @@ pub struct Idx(#[cfg_attr(test, strategy(Self::MIN..=Self::MAX))] <Idx as Num>::
 const unsafe impl Num for Idx {
     type Repr = u8;
     const MIN: Self::Repr = 0;
-    const MAX: Self::Repr = 15;
+    const MAX: Self::Repr = (Self::LEN - 1).cast();
 }
 
 const unsafe impl Int for Idx {}
 
 const impl Idx {
-    pub const LEN: usize = Self::MAX as usize + 1;
+    pub const LEN: usize = 16;
 
     pub const KING: Self = zeroed();
 

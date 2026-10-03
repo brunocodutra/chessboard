@@ -10,7 +10,6 @@ pub struct HalfmoveRepr(
 
 const unsafe impl Num for HalfmoveRepr {
     type Repr = i8;
-
     const MIN: Self::Repr = 0;
     const MAX: Self::Repr = 100;
 }

@@ -43,7 +43,7 @@ const unsafe impl Num for Side {
 const unsafe impl Int for Side {}
 
 const impl Side {
-    pub const LEN: usize = Self::MAX as usize + 1;
+    pub const LEN: usize = Self::MAX as usize - Self::MIN as usize + 1;
 }
 
 const impl From<bool> for Side {

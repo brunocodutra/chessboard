@@ -82,7 +82,6 @@ trait MoveGen<C: MoveCollector> {
     fn noisy(pos: &Position, wt: Bitboard, collector: &mut C) -> Result<(), C::Error>;
 }
 
-#[expect(clippy::empty_enums)]
 enum MovesGenerator<const CHECKS: usize> {}
 
 impl<const CHECKS: usize> MovesGenerator<CHECKS> {
@@ -452,13 +451,6 @@ impl Position {
     #[cfg_attr(feature = "no_panic", no_panic::no_panic)]
     pub fn king(&self, side: Color) -> Square {
         self.board.king(side).assume()
-    }
-
-    /// Game [`Phase`].
-    #[inline(always)]
-    #[cfg_attr(feature = "no_panic", no_panic::no_panic)]
-    pub fn phase(&self) -> Phase {
-        self.board.phase()
     }
 
     /// [`Square`]s occupied.

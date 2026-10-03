@@ -1,4 +1,5 @@
-use crate::{nnue::Accumulator, simd::*};
+use crate::nnue::{Accumulator, arch};
+use crate::simd::*;
 
 /// Trait for types that represent layers in a neural network.
 pub trait Layer {
@@ -33,4 +34,4 @@ impl Layer for Li<'_> {
 }
 
 /// The n-th hidden layer.
-pub type Ln<'a> = &'a Aligned<[f32; 32]>;
+pub type Ln<'a> = &'a Aligned<[f32; arch::LN]>;

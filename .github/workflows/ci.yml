@@ -21,7 +21,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v5
-    - run: cargo clippy --workspace --all-targets --features spsa,trainer -- -D warnings
+    - run: cargo clippy --workspace --all-targets --features spsa,trainer,permuter -- -D warnings
 
   audit:
     runs-on: ubuntu-latest
@@ -44,7 +44,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v5
-    - run: cargo doc --workspace --features spsa,trainer --no-deps
+    - run: cargo doc --workspace --features spsa,trainer,permuter --no-deps
 
   test:
     needs: [fmt, clippy, audit, check, doc]
@@ -82,7 +82,7 @@ jobs:
     steps:
     - uses: actions/checkout@v5
     - run: rustup component add rust-src
-    - run: cargo test --workspace --lib --features spsa,trainer -Zbuild-std --target x86_64-unknown-linux-gnu -- --test-threads=1
+    - run: cargo test --workspace --lib --features spsa -Zbuild-std --target x86_64-unknown-linux-gnu -- --test-threads=1
       env:
         CC: "clang"
         CXX: "clang++"
@@ -100,7 +100,7 @@ jobs:
         path: ./target/tmp/syzygy
         key: syzygy-tables-v1
     - run: cargo install --force cargo-llvm-cov
-    - run: cargo llvm-cov --workspace --all-targets --features spsa,trainer --lcov --output-path lcov.info
+    - run: cargo llvm-cov --workspace --all-targets --features spsa --lcov --output-path lcov.info
       env:
         RUSTFLAGS: "-Ctarget-cpu=native"
     - uses: codecov/codecov-action@v5

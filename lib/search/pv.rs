@@ -141,7 +141,7 @@ mod tests {
     use test_strategy::proptest;
 
     #[proptest]
-    #[allow(clippy::nonminimal_bool, clippy::double_comparisons)]
+    #[expect(clippy::nonminimal_bool, clippy::double_comparisons)]
     fn pv_ordering_is_consistent(p: Pv, q: Pv) {
         assert_eq!(p == q, p.partial_cmp(&q) == Some(Ordering::Equal));
         assert_eq!(p < q, p.partial_cmp(&q) == Some(Ordering::Less));

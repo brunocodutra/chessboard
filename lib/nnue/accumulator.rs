@@ -1,4 +1,5 @@
-use crate::{nnue::Layer, simd::*};
+use crate::nnue::{Layer, arch};
+use crate::simd::*;
 use bytemuck::{Zeroable, zeroed};
 use derive_more::with_trait::{Debug, Deref, DerefMut};
 
@@ -16,6 +17,6 @@ impl Default for Accumulator {
 }
 
 impl Layer for Accumulator {
-    const LEN: usize = 1024;
+    const LEN: usize = arch::LI;
     type Neuron = i16;
 }

@@ -2,7 +2,8 @@
 
 use anyhow::Error as Failure;
 use cinder::uci::{Outbound, Uci, UciParser};
-use cinder::{util::thread, warn};
+use cinder::util::thread::{self, Handle};
+use cinder::warn;
 use clap::Parser;
 use futures::{channel::mpsc::unbounded, executor::block_on, sink::unfold as sink};
 use std::future::ready;
@@ -51,11 +52,13 @@ fn main() -> Result<(), Failure> {
         }
     });
 
-    let handle = thread::spawn(move || {
+    let handle: Handle<Result<(), Failure>> = thread::spawn(move || {
         let mut stdout = stdout().lock();
         let output = sink((), move |_, o: Outbound| ready(writeln!(stdout, "{o}")));
         Ok(block_on(Uci::new(input, output).run())?)
     });
 
-    handle.join()
+    handle.join()?;
+
+    Ok(())
 }
