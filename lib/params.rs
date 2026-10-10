@@ -230,6 +230,8 @@ params! {
     nmr_depth_limit: [2.6817758],
     nmr_depth: [0.3716022],
     nmr_score: [0.14075977, 0.13366544, 3.1927316],
+    nmv_depth_limit: [16.0],
+    nmv_draft: [0.75, -0.75],
     fhp_depth_limit: [2.2592714],
     fhp_margin_scalar: [170.64804, 18.890638],
     fhp_margin_depth: [19.776033],

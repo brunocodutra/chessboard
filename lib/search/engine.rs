@@ -74,6 +74,7 @@ struct LocalData {
 struct Stack {
     pv: Pv,
     pos: Evaluator,
+    nmr_min_ply: Ply,
     attention: Option<NonNull<Nodes>>,
     continuation: [Option<NonNull<PieceToHistory>>; Ply::LEN],
     correction: [Option<NonNull<Correction<1>>>; Ply::LEN],
@@ -87,6 +88,7 @@ impl Stack {
         Self {
             pv,
             pos,
+            nmr_min_ply: zeroed(),
             attention: zeroed(),
             continuation: zeroed(),
             correction: zeroed(),
@@ -812,11 +814,25 @@ impl<'a> Searcher<'a> {
                 let ours = self.stack.pos.by_color(turn);
                 let pawns = self.stack.pos.by_role(Role::Pawn);
                 let kings = self.stack.pos.by_role(Role::King);
-                if is_cut && (ours & !(pawns ^ kings)).any() {
+                if is_cut && ply >= self.stack.nmr_min_ply && (ours & !(pawns ^ kings)).any() {
                     if let Some(r) = Self::nmr(depth, stand_pat - beta) {
-                        let pv = -self.next(None).nw(depth - r - 1.0, -beta + 1, false)?;
+                        let nmr_depth = depth - r;
+                        let pv = -self.next(None).nw(nmr_depth - 1.0, -beta + 1, false)?;
                         if pv >= beta && !pv.is_winning() {
-                            return Ok(pv.clip(lower, upper).truncate());
+                            if self.stack.nmr_min_ply > 0 || depth < *Params::nmv_depth_limit(0) {
+                                return Ok(pv.clip(lower, upper).truncate());
+                            }
+
+                            let gamma = *Params::nmv_draft(0);
+                            let delta = *Params::nmv_draft(1);
+                            let draft = nmr_depth.mul_add(gamma, delta);
+                            self.stack.nmr_min_ply = ply + draft.saturate::<i16>();
+                            let verified = self.nw(nmr_depth - 1.0, beta, false);
+                            self.stack.nmr_min_ply = zeroed();
+
+                            if verified? >= beta {
+                                return Ok(pv.clip(lower, upper).truncate());
+                            }
                         }
                     }
                 }
