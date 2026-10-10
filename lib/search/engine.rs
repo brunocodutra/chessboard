@@ -6,7 +6,7 @@ use derive_more::with_trait::{Debug, Deref, DerefMut, Display, Error};
 use futures::channel::mpsc::{UnboundedReceiver, unbounded};
 use futures::stream::{FusedStream, Stream, StreamExt};
 use std::debug_assert_matches;
-use std::ops::{Add, Mul, Range};
+use std::ops::{Add, Mul, Range, Sub};
 use std::task::{Context, Poll};
 use std::time::{Duration, Instant};
 use std::{array, path::Path, pin::Pin, ptr::NonNull, slice, str::FromStr};
@@ -429,26 +429,6 @@ impl<'a> Searcher<'a> {
         (bounds.start.max(lower), bounds.end.min(upper))
     }
 
-    /// Computes the null move reduction.
-    #[inline(always)]
-    #[cfg_attr(feature = "no_panic", no_panic::no_panic)]
-    fn nmr(depth: f32, surplus: Score) -> Option<f32> {
-        if depth < *Params::nmr_depth_limit(0) {
-            return None;
-        }
-
-        match surplus.get() {
-            ..1 => None,
-            s @ 1.. => {
-                let gamma = *Params::nmr_score(0);
-                let delta = *Params::nmr_score(1);
-                let limit = *Params::nmr_score(2);
-                let flat = gamma.mul_add(s.cast(), delta).min(limit);
-                Some(Params::nmr_depth(0).mul_add(depth, flat))
-            }
-        }
-    }
-
     /// Computes the futility margin.
     #[inline(always)]
     #[cfg_attr(feature = "no_panic", no_panic::no_panic)]
@@ -809,14 +789,29 @@ impl<'a> Searcher<'a> {
                 }
             }
 
-            if !beta.is_losing() && !stand_pat.is_winning() {
+            if depth >= *Params::nmr_depth_limit(0) && ply >= self.stack.nmr_min_ply && is_cut {
                 let turn = self.stack.pos.turn();
                 let ours = self.stack.pos.by_color(turn);
                 let pawns = self.stack.pos.by_role(Role::Pawn);
                 let kings = self.stack.pos.by_role(Role::King);
-                if is_cut && ply >= self.stack.nmr_min_ply && (ours & !(pawns ^ kings)).any() {
-                    if let Some(r) = Self::nmr(depth, stand_pat - beta) {
-                        let nmr_depth = depth - r;
+                if !beta.is_losing() && !stand_pat.is_winning() && (ours & !(pawns ^ kings)).any() {
+                    let margin = convolve([
+                        (1.0, Params::nmr_margin_scalar(..)),
+                        (depth, Params::nmr_margin_depth(..)),
+                        (is_improving.cast(), Params::nmr_margin_is_improving(..)),
+                    ]);
+
+                    let margin = margin.max(0.0);
+                    if stand_pat - margin.cast::<i16>() >= beta {
+                        let reduction = convolve([
+                            (1.0, Params::nmr_depth_scalar(..)),
+                            (stand_pat.sub(beta).cast(), Params::nmr_depth_margin(..)),
+                            (is_improving.cast(), Params::nmr_depth_is_improving(..)),
+                        ]);
+
+                        let nmr_depth = Params::nmr_depth(0)
+                            .mul_add(depth, -reduction.min(*Params::nmr_limit(0)));
+
                         let pv = -self.next(None).nw(nmr_depth - 1.0, -beta + 1, false)?;
                         if pv >= beta && !pv.is_winning() {
                             if self.stack.nmr_min_ply > 0 || depth < *Params::nmv_depth_limit(0) {
