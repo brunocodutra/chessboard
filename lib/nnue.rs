@@ -5,11 +5,10 @@ use std::{ptr, slice};
 mod accumulator;
 mod evaluator;
 mod feature;
+mod l12;
+mod l23;
+mod l3o;
 mod layer;
-mod lin;
-mod lnn;
-mod lno;
-mod lro;
 mod phase;
 mod synapse;
 mod transformer;
@@ -22,11 +21,10 @@ pub mod sparsity;
 pub use accumulator::*;
 pub use evaluator::*;
 pub use feature::*;
+pub use l3o::*;
+pub use l12::*;
+pub use l23::*;
 pub use layer::*;
-pub use lin::*;
-pub use lnn::*;
-pub use lno::*;
-pub use lro::*;
 pub use phase::*;
 pub use synapse::*;
 pub use transformer::*;
@@ -56,7 +54,7 @@ static NNUE: Nnue = Nnue::new();
 #[derive(Debug, Zeroable)]
 pub struct Nnue {
     transformer: Transformer,
-    nn: [Lin<Lro<Lnn<Lnn<Lno>>>>; Phase::LEN],
+    nn: [L12<L23<L3o>>; Phase::LEN],
 }
 
 const impl Nnue {
@@ -72,13 +70,6 @@ const impl Nnue {
 
         for phase in Phase::iter() {
             let nn = &mut nnue.nn[phase];
-            cursor += unsafe { copy_bytes(&mut nn.weight.0, &bytes[cursor..]) };
-            cursor += unsafe { copy_bytes(&mut nn.bias.0, &bytes[cursor..]) };
-
-            let nn = &mut nn.next;
-            cursor += unsafe { copy_bytes(&mut nn.weight.0, &bytes[cursor..]) };
-
-            let nn = &mut nn.next;
             cursor += unsafe { copy_bytes(&mut nn.weight.0, &bytes[cursor..]) };
             cursor += unsafe { copy_bytes(&mut nn.bias.0, &bytes[cursor..]) };
 
@@ -100,7 +91,7 @@ const impl Nnue {
     }
 
     #[inline(always)]
-    pub fn nn(phase: Phase) -> &'static Lin<Lro<Lnn<Lnn<Lno>>>> {
+    pub fn nn(phase: Phase) -> &'static L12<L23<L3o>> {
         &NNUE.nn[phase]
     }
 }

@@ -1,20 +1,20 @@
-use crate::nnue::{Layer, Ln, Synapse};
+use crate::nnue::{F2V, L3, Layer, Synapse};
 use crate::simd::*;
 use bytemuck::Zeroable;
 use std::array;
 
-const I: usize = Ln::LEN;
+const I: usize = L3::LEN;
 
-/// A residual connection.
+/// The output connection.
 #[derive(Debug, Zeroable)]
-pub struct Lro<S> {
+pub struct L3o {
+    pub bias: Aligned<[f32; I]>,
     pub weight: Aligned<[f32; I]>,
-    pub next: S,
 }
 
-impl<S: for<'a> Synapse<Input<'a> = Ln<'a>, Output = V2<f32>>> Synapse for Lro<S> {
-    type Input<'a> = Ln<'a>;
-    type Output = V2<f32>;
+impl Synapse for L3o {
+    type Input<'a> = L3<'a>;
+    type Output = f32;
 
     #[inline(always)]
     #[cfg_attr(feature = "no_panic", no_panic::no_panic)]
@@ -23,7 +23,8 @@ impl<S: for<'a> Synapse<Input<'a> = Ln<'a>, Output = V2<f32>>> Synapse for Lro<S
 
         let xs: &[V2<f32>; I / W2] = input.cast_ref();
         let ws: &[V2<f32>; I / W2] = self.weight.cast_ref();
-        let res: [_; I / W2] = array::from_fn(|i| ws[i] * xs[i]);
-        res.iter().sum::<V2<f32>>() + self.next.forward(input)
+        let bs: &[V2<f32>; I / W2] = self.bias.cast_ref();
+        let output: [_; I / W2] = array::from_fn(|i| ws[i].mul_add(xs[i], bs[i]));
+        output.iter().sum::<V2<f32>>().reduce_sum() * F2V
     }
 }

@@ -26,12 +26,15 @@ impl<T: Layer> Layer for Aligned<T> {
 }
 
 /// The first hidden layer.
-pub type Li<'a> = (&'a Accumulator, &'a Accumulator);
+pub type L1<'a> = (&'a Accumulator, &'a Accumulator);
 
-impl Layer for Li<'_> {
+impl Layer for L1<'_> {
     const LEN: usize = Accumulator::LEN;
     type Neuron = <Accumulator as Layer>::Neuron;
 }
 
-/// The n-th hidden layer.
-pub type Ln<'a> = &'a Aligned<[f32; arch::LN]>;
+/// The second hidden layer.
+pub type L2<'a> = &'a Aligned<[f32; arch::L2]>;
+
+/// The third hidden layer.
+pub type L3<'a> = &'a Aligned<[f32; arch::L3]>;

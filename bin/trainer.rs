@@ -15,18 +15,18 @@ use bullet_trainer::model::*;
 use bullet_trainer::optimiser::Optimiser;
 use bullet_trainer::optimiser::ranger::{Ranger, RangerParams};
 use bullet_trainer::reader::{DataReader, ReadMapLoader};
-use bullet_trainer::run::{DefaultDevice, Step, TrainingSchedule, TrainingSteps, train};
+use bullet_trainer::run::{DefaultDevice, HostPool, Step, TrainingSchedule, TrainingSteps, train};
 use bytemuck::zeroed;
 use cinder::chess::{Bitboard, Board, Color, Piece, Position, Role, Square};
 use cinder::nnue::*;
-use cinder::util::{Assume, Int, Num, StaticSeq};
+use cinder::util::{Assume, FloatRepr, Int, Num, StaticSeq};
 use clap::{Args, Parser, Subcommand};
 use derive_more::with_trait::Deref;
 use rand::{prelude::*, rng};
 use std::cell::{Cell, RefCell};
 use std::cmp::{Ordering, Reverse};
 use std::collections::BinaryHeap;
-use std::ops::{BitAnd, Div, RangeInclusive};
+use std::ops::{BitAnd, Div, Mul, RangeInclusive};
 use std::sync::atomic::{AtomicU64, Ordering::Relaxed};
 use std::{fmt::Debug, fs::create_dir_all, num::NonZero, slice, thread::available_parallelism};
 
@@ -340,10 +340,6 @@ impl Features {
     }
 }
 
-fn sigmoid(x: f32) -> f32 {
-    1.0 / (1.0 + (-x).exp())
-}
-
 #[rustfmt::skip]
 type Inputs = (((((((SparseInput, SparseInput), SparseInput), SparseInput), SparseInput), SparseInput), SparseInput), DenseInput<f32>);
 
@@ -389,16 +385,15 @@ fn make_mapper(
         assert!(ti_cnt <= TIFeature::MAX_ACTIVE);
         assert!(ka_cnt <= KAFeature::MAX_ACTIVE);
 
-        phase[0] = phaser.bucket(pos).cast();
-
         let score = f32::from(pos.score);
-        let p = (score - TARGET_SCORE_OFFSET) / TARGET_SCORE_SCALING;
-        let pm = (-score - TARGET_SCORE_OFFSET) / TARGET_SCORE_SCALING;
-        let score_wdl = 0.5 * (1.0 + sigmoid(p) - sigmoid(pm));
+        let qp = (score - TARGET_SCORE_OFFSET) / TARGET_SCORE_SCALING;
+        let qn = (-score - TARGET_SCORE_OFFSET) / TARGET_SCORE_SCALING;
+        let score_wdl = 0.5 * (1.0 + qp.sigmoid() - qn.sigmoid());
 
         let result = f32::from(pos.result) / 2.0;
         let blend = wdl.blend(step.batch(), step.superbatch(), step.final_superbatch());
         target[0] = blend * result + (1.0 - blend) * score_wdl;
+        phase[0] = phaser.bucket(pos).cast();
     })
 }
 
@@ -534,35 +529,31 @@ impl<'a> Trainer<'a> {
                 (pp + ti + ka).crelu()
             };
 
-            let mut l12 = builder.new_affine("l12/", Li::LEN, Phase::LEN * Ln::LEN);
+            let mut l12 = builder.new_affine("l12/", L1::LEN, Phase::LEN * L2::LEN);
             l12.weights = l12.weights.faux_quantise(HLQ.cast(), true);
 
-            let l23 = builder.new_affine("l23/", Ln::LEN, Phase::LEN * Ln::LEN);
-            let l34 = builder.new_affine("l34/", Ln::LEN, Phase::LEN * Ln::LEN);
-            let l4o = builder.new_affine("l4o/", Ln::LEN, Phase::LEN);
+            let l23 = builder.new_affine("l23/", L2::LEN, Phase::LEN * (L3::LEN - L2::LEN) * 2);
+            let l3o = builder.new_affine("l3o/", L3::LEN, Phase::LEN);
 
-            let shape = Shape::new(Phase::LEN, Ln::LEN);
-            let r2o = builder.new_weights("r2o/w", shape, InitSettings::Zeroed);
-
-            let stm_lo = ft(stm_pp, stm_ti, stm_ka, 0, Li::LEN / 2);
-            let stm_hi = ft(stm_pp, stm_ti, stm_ka, Li::LEN / 2, Li::LEN);
-            let ntm_lo = ft(ntm_pp, ntm_ti, ntm_ka, 0, Li::LEN / 2);
-            let ntm_hi = ft(ntm_pp, ntm_ti, ntm_ka, Li::LEN / 2, Li::LEN);
+            let stm_lo = ft(stm_pp, stm_ti, stm_ka, 0, L1::LEN / 2);
+            let stm_hi = ft(stm_pp, stm_ti, stm_ka, L1::LEN / 2, L1::LEN);
+            let ntm_lo = ft(ntm_pp, ntm_ti, ntm_ka, 0, L1::LEN / 2);
+            let ntm_hi = ft(ntm_pp, ntm_ti, ntm_ka, L1::LEN / 2, L1::LEN);
 
             let stm = (stm_lo * stm_hi).faux_quantise(1.0 / (I2F * HLQ as f32), true);
             let ntm = (ntm_lo * ntm_hi).faux_quantise(1.0 / (I2F * HLQ as f32), true);
 
             let l1a = stm.concat(ntm);
             let l2 = l12.forward(l1a).select(phase);
-            let l2a = l2 * l2.abs();
+            let l2a = l2.abs() * l2;
             let l3 = l23.forward(l2a).select(phase);
-            let l3a = l3 * l3.abs();
-            let l4 = l34.forward(l3a).select(phase);
-            let l4a = l4 * l4.abs();
-            let out = l4o.forward(l4a).select(phase) + r2o.matmul(l2a).select(phase);
+            let l3g = l3.slice_rows(0, L3::LEN - L2::LEN);
+            let l3v = l3.slice_rows(L3::LEN - L2::LEN, (L3::LEN - L2::LEN) * 2);
+            let l3a = l3g.sqrrelu().mul(l3v).concat(l2a);
+            let out = l3o.forward(l3a).select(phase);
 
-            let ones = builder.new_constant(Shape::new(1, Li::LEN), &[1.0; Li::LEN]);
-            let l1_reg = ones.matmul(l1a) / Li::LEN as f32;
+            let ones = builder.new_constant(Shape::new(1, L1::LEN), &[1.0; L1::LEN]);
+            let l1_reg = ones.matmul(l1a) / L1::LEN as f32;
 
             let score = F2V * out;
             let qp = (score - INFERRED_SCORE_OFFSET) / INFERRED_SCORE_SCALING;
@@ -599,24 +590,21 @@ impl<'a> Trainer<'a> {
                 .round()
                 .quantise::<i8>(HLQ),
             SavedFormat::id("l12/b"),
-            SavedFormat::id("r2o/w").transpose(),
             SavedFormat::id("l23/w").transpose(),
             SavedFormat::id("l23/b"),
-            SavedFormat::id("l34/w").transpose(),
-            SavedFormat::id("l34/b"),
-            SavedFormat::id("l4o/w").transpose(),
-            SavedFormat::id("l4o/b"),
+            SavedFormat::id("l3o/w").transpose(),
+            SavedFormat::id("l3o/b"),
         ];
 
+        let params = RangerParams::default();
         let device = DefaultDevice::new(0).or_bail()?;
         let weights = ModelWeights::new(&model, 0x111D59E599BE370C);
-        let params = RangerParams::default();
         let mut optimiser = Optimiser::new(model, weights, device, params).or_bail()?;
 
         optimiser.set_params(RangerParams {
             min_weight: f32::MIN,
             max_weight: f32::MAX,
-            ..RangerParams::default()
+            ..params
         });
 
         for id in ["pp/w", "ti/w", "ka/w", "ka/psq"] {
@@ -625,7 +613,7 @@ impl<'a> Trainer<'a> {
                 RangerParams {
                     min_weight: -FT_CLIP,
                     max_weight: FT_CLIP,
-                    ..RangerParams::default()
+                    ..params
                 },
             );
         }
@@ -635,7 +623,7 @@ impl<'a> Trainer<'a> {
             RangerParams {
                 min_weight: -HL_CLIP,
                 max_weight: HL_CLIP,
-                ..RangerParams::default()
+                ..params
             },
         );
 
@@ -658,11 +646,25 @@ impl<'a> Trainer<'a> {
         self.optimiser.load_from_checkpoint(&checkpoint).or_bail()
     }
 
+    fn load_weights_from_checkpoint(
+        &mut self,
+        stage: usize,
+        superbatch: usize,
+    ) -> Result<(), Failure> {
+        let checkpoint = format!(
+            "{}/stage{stage}-{superbatch}/optimiser_state/weights.bin",
+            self.checkpoints,
+        );
+
+        self.optimiser.load_weights_from_file(&checkpoint).or_bail()
+    }
+
     fn eval(&mut self, positions: usize, worst: usize, settled_score: f32) -> Result<(), Failure> {
         let device = self.optimiser.device();
         let model = self.optimiser.definition();
         let weights = self.optimiser.weights();
 
+        let pool = HostPool::new(device.clone());
         let mut evaluator = ModelEvaluator::new(model, device.clone()).or_bail()?;
         evaluator.load_device_weights(weights).or_bail()?;
 
@@ -699,7 +701,8 @@ impl<'a> Trainer<'a> {
         let mut offenders = BinaryHeap::with_capacity(worst + 1);
 
         for board in &boards {
-            let batch = mapper.map(slice::from_ref(board), Step::default(), 1);
+            let data = slice::from_ref(board);
+            let batch = mapper.map(&pool, data, Step::default(), 1).or_bail()?;
             let inputs = batch.to_device(&device).or_bail()?;
             let output = evaluator.evaluate(&inputs).or_bail()?.get("output");
             let output = output.ok_or_else(|| Failure::msg("missing `output` node"))?;
@@ -816,6 +819,7 @@ impl<'a> Trainer<'a> {
         let schedule = TrainingSchedule {
             log_rate: self.log_rate,
             lr_schedule: lr.boxed(),
+            track_grad_norms: false,
             steps: TrainingSteps {
                 batch_size: self.batch_size,
                 batches_per_superbatch: self.batches_per_superbatch,
@@ -965,7 +969,7 @@ struct Orchestrator {
     mode: Mode,
 }
 
-/// Controls whether to resume training from a checkpoint.
+/// Controls how training is started, resumed, restarted, or evaluated.
 #[derive(Debug, Subcommand)]
 enum Mode {
     /// Start training from scratch.
@@ -977,6 +981,16 @@ enum Mode {
         #[clap(long)]
         stage: usize,
         /// The superbatch to resume from
+        #[clap(long)]
+        superbatch: usize,
+    },
+
+    /// Restarts from a checkpoint's weights with a fresh optimiser state.
+    Restart {
+        /// The stage to restart from
+        #[clap(long)]
+        stage: usize,
+        /// The superbatch to restart from
         #[clap(long)]
         superbatch: usize,
     },
@@ -1009,6 +1023,11 @@ impl Orchestrator {
             Mode::Start => trainer.train(0, 0),
             Mode::Resume { stage, superbatch } => {
                 trainer.load_from_checkpoint(*stage, *superbatch)?;
+                trainer.train(*stage, *superbatch)
+            }
+
+            Mode::Restart { stage, superbatch } => {
+                trainer.load_weights_from_checkpoint(*stage, *superbatch)?;
                 trainer.train(*stage, *superbatch)
             }
 

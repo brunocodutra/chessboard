@@ -270,7 +270,8 @@ fn main() {
 
     println!("current: {:.2}%", verification.sparsity(&current) * 100.0);
     println!("annealed: {:.2}%", verification.sparsity(&annealed) * 100.0);
-    if verification.sparsity(&annealed) > verification.sparsity(&current) {
+
+    if annealed != current && verification.sparsity(&annealed) >= verification.sparsity(&current) {
         let best: Permutation = array::from_fn(|i| arch::PERMUTATION[annealed[i]]);
         println!("permutation: {:?}", best);
     }
