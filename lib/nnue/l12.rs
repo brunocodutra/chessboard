@@ -1,4 +1,4 @@
-use crate::nnue::{F2V, FTQ, I2F, Layer, Li, Ln, Synapse};
+use crate::nnue::{FTQ, I2F, L1, L2, Layer, Synapse};
 use crate::{simd::*, util::Assume};
 use bytemuck::Zeroable;
 use std::array;
@@ -6,19 +6,19 @@ use std::array;
 #[cfg(feature = "permuter")]
 use crate::nnue::sparsity::ActivationHistory;
 
-const I: usize = Li::LEN;
-const O: usize = Ln::LEN;
+const I: usize = L1::LEN;
+const O: usize = L2::LEN;
 
 /// The input connection.
 #[derive(Debug, Zeroable)]
-pub struct Lin<S> {
+pub struct L12<S> {
     pub bias: Aligned<[f32; O]>,
     pub weight: Aligned<[[i8; 4]; I * O / 4]>,
     pub next: S,
 }
 
-impl<S: for<'a> Synapse<Input<'a> = Ln<'a>, Output = V2<f32>>> Synapse for Lin<S> {
-    type Input<'a> = Li<'a>;
+impl<S: for<'a> Synapse<Input<'a> = L2<'a>, Output = f32>> Synapse for L12<S> {
+    type Input<'a> = L1<'a>;
     type Output = f32;
 
     #[inline(always)]
@@ -60,52 +60,21 @@ impl<S: for<'a> Synapse<Input<'a> = Ln<'a>, Output = V2<f32>>> Synapse for Lin<S
         let ws: &[[V8<i8>; O / W2]; I / 4] = self.weight.cast_ref();
         let bs: &[V2<f32>; O / W2] = self.bias.cast_ref();
 
-        #[cfg(target_feature = "avx512f")]
-        const K: usize = 4;
-
-        #[cfg(not(target_feature = "avx512f"))]
-        const K: usize = 2;
-
+        const K: usize = unroll(O / W2);
         let mut acc = Aligned([[Simd::splat(0); K]; O / W2]);
 
-        (nzs_len <= nzs.len()).assume();
+        #[allow(clippy::modulo_one)]
         for i in (0..nzs_len - nzs_len % K).step_by(K) {
-            let nz0 = *nzs.get(i).assume() as usize;
-            let nz1 = *nzs.get(i + 1).assume() as usize;
-
-            #[cfg(target_feature = "avx512f")]
-            let nz2 = *nzs.get(i + 2).assume() as usize;
-            #[cfg(target_feature = "avx512f")]
-            let nz3 = *nzs.get(i + 3).assume() as usize;
-
-            let x0 = Aligned([*xs.get(nz0).assume(); W2]);
-            let x1 = Aligned([*xs.get(nz1).assume(); W2]);
-
-            #[cfg(target_feature = "avx512f")]
-            let x2 = Aligned([*xs.get(nz2).assume(); W2]);
-            #[cfg(target_feature = "avx512f")]
-            let x3 = Aligned([*xs.get(nz3).assume(); W2]);
-
-            let w0 = ws.get(nz0).assume();
-            let w1 = ws.get(nz1).assume();
-
-            #[cfg(target_feature = "avx512f")]
-            let w2 = ws.get(nz2).assume();
-            #[cfg(target_feature = "avx512f")]
-            let w3 = ws.get(nz3).assume();
+            let idx: [usize; K] = array::from_fn(|k| *nzs.get(i + k).assume() as usize);
+            let x: [V8<u8>; K] = idx.map(|nz| Aligned([*xs.get(nz).assume(); W2]).cast());
+            let w: [[V8<i8>; O / W2]; K] = idx.map(|nz| *ws.get(nz).assume());
 
             for (j, a) in acc.iter_mut().enumerate() {
-                a[0] = w0[j].mul_add_4x8(x0.cast(), a[0]);
-                a[1] = w1[j].mul_add_4x8(x1.cast(), a[1]);
-
-                #[cfg(target_feature = "avx512f")]
-                {
-                    a[2] = w2[j].mul_add_4x8(x2.cast(), a[2]);
-                    a[3] = w3[j].mul_add_4x8(x3.cast(), a[3]);
-                }
+                *a = array::from_fn(|k| w[k][j].mul_add_4x8(x[k], a[k]));
             }
         }
 
+        #[allow(clippy::modulo_one)]
         for i in nzs_len - nzs_len % K..nzs_len {
             let nz = *nzs.get(i).assume() as usize;
             let x = Aligned([*xs.get(nz).assume(); W2]);
@@ -115,12 +84,12 @@ impl<S: for<'a> Synapse<Input<'a> = Ln<'a>, Output = V2<f32>>> Synapse for Lin<S
             }
         }
 
-        let active: Aligned<[V2<f32>; O / W2]> = Aligned(array::from_fn(|j| {
+        let output: Aligned<[V2<f32>; O / W2]> = Aligned(array::from_fn(|j| {
             let sum = acc[j].iter().sum::<V2<i32>>();
             let out = sum.cast::<f32>().mul_add(Simd::splat(I2F), bs[j]);
             out * out.abs()
         }));
 
-        F2V * self.next.forward(active.cast_ref()).reduce_sum()
+        self.next.forward(output.cast_ref())
     }
 }

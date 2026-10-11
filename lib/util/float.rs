@@ -7,9 +7,9 @@ use std::{hint::unreachable_unchecked, mem::transmute_copy, ops::*};
 ///
 /// * Must never be `NaN`.
 /// * Must only be implemented for types that can be safely transmuted to and from [`Num::Repr`].
-pub const unsafe trait Float: [const] Num
+pub unsafe trait Float: Num
 where
-    Self::Repr: [const] FloatRepr,
+    Self::Repr: FloatRepr,
 {
     /// Linearly interpolates between `a` and `b`.
     ///
@@ -21,20 +21,22 @@ where
 }
 
 /// Marker trait for primitive floats.
-pub const trait FloatRepr:
-    [const] NumRepr
-    + [const] Float<Repr = Self>
-    + [const] PartialEq
-    + [const] PartialOrd
-    + [const] Add<Output = Self>
-    + [const] AddAssign
-    + [const] Sub<Output = Self>
-    + [const] SubAssign
-    + [const] Mul<Output = Self>
-    + [const] MulAssign
-    + [const] Div<Output = Self>
-    + [const] DivAssign
+pub trait FloatRepr:
+    NumRepr
+    + Float<Repr = Self>
+    + PartialEq
+    + PartialOrd
+    + Neg<Output = Self>
+    + Add<Output = Self>
+    + AddAssign
+    + Sub<Output = Self>
+    + SubAssign
+    + Mul<Output = Self>
+    + MulAssign
+    + Div<Output = Self>
+    + DivAssign
 {
+    fn sigmoid(self) -> Self;
 }
 
 macro_rules! impl_float_repr_for {
@@ -105,9 +107,14 @@ macro_rules! impl_float_repr_for {
             }
         }
 
-        const impl FloatRepr for $f {}
+        impl FloatRepr for $f {
+            #[inline(always)]
+            fn sigmoid(self) -> Self {
+                1.0 / (1.0 + <$f>::exp(-self))
+            }
+        }
 
-        const unsafe impl Float for $f {
+        unsafe impl Float for $f {
             #[inline(always)]
             fn lerp(self, a: Self, b: Self) -> Self {
                 <$f>::mul_add(self, b - a, a)
@@ -128,13 +135,13 @@ mod tests {
     #[repr(transparent)]
     struct Unit(#[strategy(Self::MIN..=Self::MAX)] <Unit as Num>::Repr);
 
-    const unsafe impl Num for Unit {
+    unsafe impl Num for Unit {
         type Repr = f64;
-        const MIN: Self::Repr = -1.;
-        const MAX: Self::Repr = 1.;
+        const MIN: Self::Repr = -1.0;
+        const MAX: Self::Repr = 1.0;
     }
 
-    const unsafe impl Float for Unit {}
+    unsafe impl Float for Unit {}
 
     #[proptest]
     fn float_can_be_cast_from_repr(#[strategy(Unit::MIN..Unit::MAX)] f: f64) {

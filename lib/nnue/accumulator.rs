@@ -17,6 +17,6 @@ impl Default for Accumulator {
 }
 
 impl Layer for Accumulator {
-    const LEN: usize = arch::LI;
+    const LEN: usize = arch::L1;
     type Neuron = i16;
 }

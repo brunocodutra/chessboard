@@ -131,7 +131,7 @@ const unsafe impl Num for Graviton {
     const MAX: Self::Repr = 1.0;
 }
 
-const unsafe impl Float for Graviton {}
+unsafe impl Float for Graviton {}
 
 impl Stat for Graviton {
     type Value = <Self as Num>::Repr;

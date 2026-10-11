@@ -6,12 +6,12 @@ use std::{env, fs::File, path::Path};
 include!("lib/nnue/arch.rs");
 
 /// Reorders one accumulator row by [`PERMUTATION`].
-fn permute<T: Copy>(row: &mut [T; LI]) {
+fn permute<T: Copy>(row: &mut [T; L1]) {
     let mut dst = *row;
 
     for (i, &p) in PERMUTATION.iter().enumerate() {
         dst[i] = row[p];
-        dst[i + LI / 2] = row[p + LI / 2];
+        dst[i + L1 / 2] = row[p + L1 / 2];
     }
 
     *row = dst;
@@ -52,14 +52,14 @@ fn main() -> Result<(), Failure> {
     let mut input = Decompressor::new(File::open(nnue)?, 4096);
     let mut output = BufWriter::new(File::create(&dst)?);
 
-    let mut row = [0i8; LI];
+    let mut row = [0i8; L1];
     for _ in 0..FEATURES {
         input.read_exact(bytemuck::bytes_of_mut(&mut row))?;
         permute(&mut row);
         output.write_all(bytemuck::bytes_of(&row))?;
     }
 
-    let mut bias = [0i16; LI];
+    let mut bias = [0i16; L1];
     input.read_exact(bytemuck::bytes_of_mut(&mut bias))?;
     permute(&mut bias);
     output.write_all(bytemuck::bytes_of(&bias))?;
@@ -67,58 +67,38 @@ fn main() -> Result<(), Failure> {
     let mut specialists: [Vec<u8>; SPECIALISTS] = std::array::from_fn(|_| Vec::new());
 
     for specialist in &mut specialists {
-        let mut weight = [[0i8; LI]; LN];
+        let mut weight = [[0i8; L1]; L2];
         input.read_exact(bytemuck::bytes_of_mut(&mut weight))?;
         weight.iter_mut().for_each(permute);
-        let mut blocks = [[0i8; 4]; LI * LN / 4];
+        let mut blocks = [[0i8; 4]; L1 * L2 / 4];
         arrange_in_blocks(&weight, &mut blocks);
-        let mut dst = [[0i8; 4]; LI * LN / 4];
-        interleave(&blocks, &mut dst, LN * 2);
+        let mut dst = [[0i8; 4]; L1 * L2 / 4];
+        interleave(&blocks, &mut dst, L2 * 2);
         specialist.extend_from_slice(bytemuck::bytes_of(&dst));
     }
 
     for specialist in &mut specialists {
-        let mut bias = [0f32; LN];
+        let mut bias = [0f32; L2];
         input.read_exact(bytemuck::bytes_of_mut(&mut bias))?;
         specialist.extend_from_slice(bytemuck::bytes_of(&bias));
     }
 
     for specialist in &mut specialists {
-        let mut weight = [0f32; LN];
+        let mut weight = [[0f32; L2]; (L3 - L2) * 2];
         input.read_exact(bytemuck::bytes_of_mut(&mut weight))?;
-        specialist.extend_from_slice(bytemuck::bytes_of(&weight));
-    }
-
-    for specialist in &mut specialists {
-        let mut weight = [[0f32; LN]; LN];
-        input.read_exact(bytemuck::bytes_of_mut(&mut weight))?;
-        let mut dst = [[0f32; 1]; LN * LN];
+        let mut dst = [[0f32; 1]; L2 * (L3 - L2) * 2];
         arrange_in_blocks(&weight, &mut dst);
         specialist.extend_from_slice(bytemuck::bytes_of(&dst));
     }
 
     for specialist in &mut specialists {
-        let mut bias = [0f32; LN];
+        let mut bias = [0f32; (L3 - L2) * 2];
         input.read_exact(bytemuck::bytes_of_mut(&mut bias))?;
         specialist.extend_from_slice(bytemuck::bytes_of(&bias));
     }
 
     for specialist in &mut specialists {
-        let mut weight = [[0f32; LN]; LN];
-        input.read_exact(bytemuck::bytes_of_mut(&mut weight))?;
-        let mut dst = [[0f32; 1]; LN * LN];
-        arrange_in_blocks(&weight, &mut dst);
-        specialist.extend_from_slice(bytemuck::bytes_of(&dst));
-    }
-
-    for specialist in &mut specialists {
-        let mut bias = [0f32; LN];
-        input.read_exact(bytemuck::bytes_of_mut(&mut bias))?;
-        specialist.extend_from_slice(bytemuck::bytes_of(&bias));
-    }
-
-    for specialist in &mut specialists {
-        let mut weight = [0f32; LN];
+        let mut weight = [0f32; L3];
         input.read_exact(bytemuck::bytes_of_mut(&mut weight))?;
         specialist.extend_from_slice(bytemuck::bytes_of(&weight));
     }
@@ -126,8 +106,7 @@ fn main() -> Result<(), Failure> {
     for specialist in &mut specialists {
         let mut bias = 0f32;
         input.read_exact(bytemuck::bytes_of_mut(&mut bias))?;
-        let bias = [bias / LN as f32; LN];
-        specialist.extend_from_slice(bytemuck::bytes_of(&bias));
+        specialist.extend_from_slice(bytemuck::bytes_of(&[bias / L3 as f32; L3]));
     }
 
     for specialist in &specialists {
