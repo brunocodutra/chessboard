@@ -814,8 +814,9 @@ impl<'a> Searcher<'a> {
                 let kings = self.stack.pos.by_role(Role::King);
                 if is_cut && (ours & !(pawns ^ kings)).any() {
                     if let Some(r) = Self::nmr(depth, stand_pat - beta) {
-                        if -self.next(None).nw(depth - r - 1.0, -beta + 1, false)? >= beta {
-                            return Ok(Pv::empty(stand_pat).clip(lower, upper));
+                        let pv = -self.next(None).nw(depth - r - 1.0, -beta + 1, false)?;
+                        if pv >= beta && !pv.is_winning() {
+                            return Ok(pv.clip(lower, upper).truncate());
                         }
                     }
                 }
