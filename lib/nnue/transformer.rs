@@ -1,15 +1,22 @@
 use crate::nnue::{Accumulator, KAFeature, Layer, PPFeature, TIFeature};
-use crate::simd::*;
-use crate::util::{Assume, Num};
+use crate::{simd::*, util::Num};
 use bytemuck::Zeroable;
 use derive_more::with_trait::Debug;
 use std::hint::unreachable_unchecked;
+use std::mem::transmute;
 
+const K: usize = 8;
 const N: usize = Accumulator::LEN;
+
+#[inline(always)]
+#[cfg_attr(feature = "no_panic", no_panic::no_panic)]
+fn load(chunk: &[i8; W4]) -> V4<i16> {
+    V4::from_array(*chunk).cast()
+}
 
 /// The NNUE feature transformer.
 #[derive(Debug, Zeroable)]
-#[debug("Transformer<{N}>")]
+#[debug("Transformer")]
 pub struct Transformer {
     pub bias: Aligned<[i16; N]>,
     pub ka: Aligned<[[i8; N]; KAFeature::LEN]>,
@@ -24,165 +31,367 @@ impl Transformer {
         *accumulator = self.bias;
     }
 
-    /// Updates `dst` by adding and removing [`KAFeature`]s from `src`.
+    /// Updates `dst` by adding and removing features from `src`.
     #[inline(always)]
     #[cfg_attr(feature = "no_panic", no_panic::no_panic)]
-    pub fn accumulate_ka(
+    #[expect(clippy::too_many_arguments)]
+    pub fn accumulate(
         &self,
         src: &Aligned<[i16; N]>,
         dst: &mut Aligned<[i16; N]>,
-        sub: &[KAFeature],
-        add: &[KAFeature],
+        kas: &[KAFeature],
+        kaa: &[KAFeature],
+        tis: &[TIFeature],
+        tia: &[TIFeature],
+        pps: &[PPFeature],
+        ppa: &[PPFeature],
     ) {
-        match (sub, add) {
-            ([s1], [a1]) => {
-                let s1 = self.ka.get(s1.cast::<usize>()).assume();
-                let a1 = self.ka.get(a1.cast::<usize>()).assume();
+        const { assert!(N.is_multiple_of(W4 * K)) }
+        let src = src.cast_ref::<[[V4<i16>; K]; N / W4 / K]>();
+        let dst = dst.cast_mut::<[[V4<i16>; K]; N / W4 / K]>();
 
-                for i in 0..N {
-                    dst[i] = src[i] + a1[i] as i16 - s1[i] as i16;
+        let kal = kas.len().max(kaa.len());
+        let til = tis.len().max(tia.len());
+        let ppl = pps.len().max(ppa.len());
+
+        for i in 0..N / W4 / K {
+            let mut regs = src[i];
+
+            for j in 0..kal {
+                match (kas.get(j), kaa.get(j)) {
+                    (Some(s), Some(a)) => unsafe {
+                        let s = self.ka.get_unchecked(s.cast::<usize>());
+                        let a = self.ka.get_unchecked(a.cast::<usize>());
+
+                        let s = &transmute::<&[i8; N], &[[[i8; W4]; K]; N / W4 / K]>(s)[i];
+                        let a = &transmute::<&[i8; N], &[[[i8; W4]; K]; N / W4 / K]>(a)[i];
+
+                        regs[0] += load(&a[0]) - load(&s[0]);
+                        regs[1] += load(&a[1]) - load(&s[1]);
+                        regs[2] += load(&a[2]) - load(&s[2]);
+                        regs[3] += load(&a[3]) - load(&s[3]);
+                        regs[4] += load(&a[4]) - load(&s[4]);
+                        regs[5] += load(&a[5]) - load(&s[5]);
+                        regs[6] += load(&a[6]) - load(&s[6]);
+                        regs[7] += load(&a[7]) - load(&s[7]);
+                    },
+
+                    (Some(s), None) => unsafe {
+                        let s = self.ka.get_unchecked(s.cast::<usize>());
+                        let s = &transmute::<&[i8; N], &[[[i8; W4]; K]; N / W4 / K]>(s)[i];
+
+                        regs[0] -= load(&s[0]);
+                        regs[1] -= load(&s[1]);
+                        regs[2] -= load(&s[2]);
+                        regs[3] -= load(&s[3]);
+                        regs[4] -= load(&s[4]);
+                        regs[5] -= load(&s[5]);
+                        regs[6] -= load(&s[6]);
+                        regs[7] -= load(&s[7]);
+                    },
+
+                    (None, Some(a)) => unsafe {
+                        let a = self.ka.get_unchecked(a.cast::<usize>());
+                        let a = &transmute::<&[i8; N], &[[[i8; W4]; K]; N / W4 / K]>(a)[i];
+
+                        regs[0] += load(&a[0]);
+                        regs[1] += load(&a[1]);
+                        regs[2] += load(&a[2]);
+                        regs[3] += load(&a[3]);
+                        regs[4] += load(&a[4]);
+                        regs[5] += load(&a[5]);
+                        regs[6] += load(&a[6]);
+                        regs[7] += load(&a[7]);
+                    },
+
+                    (None, None) => unsafe { unreachable_unchecked() },
                 }
             }
 
-            ([s1, s2], [a1]) => {
-                let s1 = self.ka.get(s1.cast::<usize>()).assume();
-                let s2 = self.ka.get(s2.cast::<usize>()).assume();
-                let a1 = self.ka.get(a1.cast::<usize>()).assume();
+            for j in 0..til {
+                match (tis.get(j), tia.get(j)) {
+                    (Some(s), Some(a)) => unsafe {
+                        let s = self.ti.get_unchecked(s.cast::<usize>());
+                        let a = self.ti.get_unchecked(a.cast::<usize>());
 
-                for i in 0..N {
-                    dst[i] = src[i] + a1[i] as i16 - s1[i] as i16 - s2[i] as i16;
+                        let s = &transmute::<&[i8; N], &[[[i8; W4]; K]; N / W4 / K]>(s)[i];
+                        let a = &transmute::<&[i8; N], &[[[i8; W4]; K]; N / W4 / K]>(a)[i];
+
+                        regs[0] += load(&a[0]) - load(&s[0]);
+                        regs[1] += load(&a[1]) - load(&s[1]);
+                        regs[2] += load(&a[2]) - load(&s[2]);
+                        regs[3] += load(&a[3]) - load(&s[3]);
+                        regs[4] += load(&a[4]) - load(&s[4]);
+                        regs[5] += load(&a[5]) - load(&s[5]);
+                        regs[6] += load(&a[6]) - load(&s[6]);
+                        regs[7] += load(&a[7]) - load(&s[7]);
+                    },
+
+                    (Some(s), None) => unsafe {
+                        let s = self.ti.get_unchecked(s.cast::<usize>());
+                        let s = &transmute::<&[i8; N], &[[[i8; W4]; K]; N / W4 / K]>(s)[i];
+
+                        regs[0] -= load(&s[0]);
+                        regs[1] -= load(&s[1]);
+                        regs[2] -= load(&s[2]);
+                        regs[3] -= load(&s[3]);
+                        regs[4] -= load(&s[4]);
+                        regs[5] -= load(&s[5]);
+                        regs[6] -= load(&s[6]);
+                        regs[7] -= load(&s[7]);
+                    },
+
+                    (None, Some(a)) => unsafe {
+                        let a = self.ti.get_unchecked(a.cast::<usize>());
+                        let a = &transmute::<&[i8; N], &[[[i8; W4]; K]; N / W4 / K]>(a)[i];
+
+                        regs[0] += load(&a[0]);
+                        regs[1] += load(&a[1]);
+                        regs[2] += load(&a[2]);
+                        regs[3] += load(&a[3]);
+                        regs[4] += load(&a[4]);
+                        regs[5] += load(&a[5]);
+                        regs[6] += load(&a[6]);
+                        regs[7] += load(&a[7]);
+                    },
+
+                    (None, None) => unsafe { unreachable_unchecked() },
                 }
             }
 
-            ([s1, s2], [a1, a2]) => {
-                let s1 = self.ka.get(s1.cast::<usize>()).assume();
-                let s2 = self.ka.get(s2.cast::<usize>()).assume();
-                let a1 = self.ka.get(a1.cast::<usize>()).assume();
-                let a2 = self.ka.get(a2.cast::<usize>()).assume();
+            for j in 0..ppl {
+                match (pps.get(j), ppa.get(j)) {
+                    (Some(s), Some(a)) => unsafe {
+                        let s = self.pp.get_unchecked(s.cast::<usize>());
+                        let a = self.pp.get_unchecked(a.cast::<usize>());
 
-                for i in 0..N {
-                    dst[i] = src[i] + a1[i] as i16 - s1[i] as i16 + a2[i] as i16 - s2[i] as i16;
+                        let s = &transmute::<&[i8; N], &[[[i8; W4]; K]; N / W4 / K]>(s)[i];
+                        let a = &transmute::<&[i8; N], &[[[i8; W4]; K]; N / W4 / K]>(a)[i];
+
+                        regs[0] += load(&a[0]) - load(&s[0]);
+                        regs[1] += load(&a[1]) - load(&s[1]);
+                        regs[2] += load(&a[2]) - load(&s[2]);
+                        regs[3] += load(&a[3]) - load(&s[3]);
+                        regs[4] += load(&a[4]) - load(&s[4]);
+                        regs[5] += load(&a[5]) - load(&s[5]);
+                        regs[6] += load(&a[6]) - load(&s[6]);
+                        regs[7] += load(&a[7]) - load(&s[7]);
+                    },
+
+                    (Some(s), None) => unsafe {
+                        let s = self.pp.get_unchecked(s.cast::<usize>());
+                        let s = &transmute::<&[i8; N], &[[[i8; W4]; K]; N / W4 / K]>(s)[i];
+
+                        regs[0] -= load(&s[0]);
+                        regs[1] -= load(&s[1]);
+                        regs[2] -= load(&s[2]);
+                        regs[3] -= load(&s[3]);
+                        regs[4] -= load(&s[4]);
+                        regs[5] -= load(&s[5]);
+                        regs[6] -= load(&s[6]);
+                        regs[7] -= load(&s[7]);
+                    },
+
+                    (None, Some(a)) => unsafe {
+                        let a = self.pp.get_unchecked(a.cast::<usize>());
+                        let a = &transmute::<&[i8; N], &[[[i8; W4]; K]; N / W4 / K]>(a)[i];
+
+                        regs[0] += load(&a[0]);
+                        regs[1] += load(&a[1]);
+                        regs[2] += load(&a[2]);
+                        regs[3] += load(&a[3]);
+                        regs[4] += load(&a[4]);
+                        regs[5] += load(&a[5]);
+                        regs[6] += load(&a[6]);
+                        regs[7] += load(&a[7]);
+                    },
+
+                    (None, None) => unsafe { unreachable_unchecked() },
                 }
             }
 
-            _ => unsafe { unreachable_unchecked() },
+            dst[i] = regs;
         }
     }
 
-    /// Updates `acc` by adding and removing [`KAFeature`]s.
+    /// Updates `acc` by adding and removing features.
     #[inline(always)]
     #[cfg_attr(feature = "no_panic", no_panic::no_panic)]
-    pub fn accumulate_ka_in_place(
+    #[expect(clippy::too_many_arguments)]
+    pub fn accumulate_in_place(
         &self,
         acc: &mut Aligned<[i16; N]>,
-        sub: Option<KAFeature>,
-        add: Option<KAFeature>,
+        kas: &[KAFeature],
+        kaa: &[KAFeature],
+        tis: &[TIFeature],
+        tia: &[TIFeature],
+        pps: &[PPFeature],
+        ppa: &[PPFeature],
     ) {
-        match (sub, add) {
-            (Some(s1), Some(a1)) => {
-                let s1 = self.ka.get(s1.cast::<usize>()).assume();
-                let a1 = self.ka.get(a1.cast::<usize>()).assume();
+        const { assert!(N.is_multiple_of(W4 * K)) }
+        let acc = acc.cast_mut::<[[V4<i16>; K]; N / W4 / K]>();
 
-                for i in 0..N {
-                    acc[i] += a1[i] as i16 - s1[i] as i16;
+        let kal = kas.len().max(kaa.len());
+        let til = tis.len().max(tia.len());
+        let ppl = pps.len().max(ppa.len());
+
+        for i in 0..N / W4 / K {
+            let mut regs = acc[i];
+
+            for j in 0..kal {
+                match (kas.get(j), kaa.get(j)) {
+                    (Some(s), Some(a)) => unsafe {
+                        let s = self.ka.get_unchecked(s.cast::<usize>());
+                        let a = self.ka.get_unchecked(a.cast::<usize>());
+
+                        let s = &transmute::<&[i8; N], &[[[i8; W4]; K]; N / W4 / K]>(s)[i];
+                        let a = &transmute::<&[i8; N], &[[[i8; W4]; K]; N / W4 / K]>(a)[i];
+
+                        regs[0] += load(&a[0]) - load(&s[0]);
+                        regs[1] += load(&a[1]) - load(&s[1]);
+                        regs[2] += load(&a[2]) - load(&s[2]);
+                        regs[3] += load(&a[3]) - load(&s[3]);
+                        regs[4] += load(&a[4]) - load(&s[4]);
+                        regs[5] += load(&a[5]) - load(&s[5]);
+                        regs[6] += load(&a[6]) - load(&s[6]);
+                        regs[7] += load(&a[7]) - load(&s[7]);
+                    },
+
+                    (Some(s), None) => unsafe {
+                        let s = self.ka.get_unchecked(s.cast::<usize>());
+                        let s = &transmute::<&[i8; N], &[[[i8; W4]; K]; N / W4 / K]>(s)[i];
+
+                        regs[0] -= load(&s[0]);
+                        regs[1] -= load(&s[1]);
+                        regs[2] -= load(&s[2]);
+                        regs[3] -= load(&s[3]);
+                        regs[4] -= load(&s[4]);
+                        regs[5] -= load(&s[5]);
+                        regs[6] -= load(&s[6]);
+                        regs[7] -= load(&s[7]);
+                    },
+
+                    (None, Some(a)) => unsafe {
+                        let a = self.ka.get_unchecked(a.cast::<usize>());
+                        let a = &transmute::<&[i8; N], &[[[i8; W4]; K]; N / W4 / K]>(a)[i];
+
+                        regs[0] += load(&a[0]);
+                        regs[1] += load(&a[1]);
+                        regs[2] += load(&a[2]);
+                        regs[3] += load(&a[3]);
+                        regs[4] += load(&a[4]);
+                        regs[5] += load(&a[5]);
+                        regs[6] += load(&a[6]);
+                        regs[7] += load(&a[7]);
+                    },
+
+                    (None, None) => unsafe { unreachable_unchecked() },
                 }
             }
 
-            (Some(s1), None) => {
-                let s1 = self.ka.get(s1.cast::<usize>()).assume();
+            for j in 0..til {
+                match (tis.get(j), tia.get(j)) {
+                    (Some(s), Some(a)) => unsafe {
+                        let s = self.ti.get_unchecked(s.cast::<usize>());
+                        let a = self.ti.get_unchecked(a.cast::<usize>());
 
-                for i in 0..N {
-                    acc[i] -= s1[i] as i16;
+                        let s = &transmute::<&[i8; N], &[[[i8; W4]; K]; N / W4 / K]>(s)[i];
+                        let a = &transmute::<&[i8; N], &[[[i8; W4]; K]; N / W4 / K]>(a)[i];
+
+                        regs[0] += load(&a[0]) - load(&s[0]);
+                        regs[1] += load(&a[1]) - load(&s[1]);
+                        regs[2] += load(&a[2]) - load(&s[2]);
+                        regs[3] += load(&a[3]) - load(&s[3]);
+                        regs[4] += load(&a[4]) - load(&s[4]);
+                        regs[5] += load(&a[5]) - load(&s[5]);
+                        regs[6] += load(&a[6]) - load(&s[6]);
+                        regs[7] += load(&a[7]) - load(&s[7]);
+                    },
+
+                    (Some(s), None) => unsafe {
+                        let s = self.ti.get_unchecked(s.cast::<usize>());
+                        let s = &transmute::<&[i8; N], &[[[i8; W4]; K]; N / W4 / K]>(s)[i];
+
+                        regs[0] -= load(&s[0]);
+                        regs[1] -= load(&s[1]);
+                        regs[2] -= load(&s[2]);
+                        regs[3] -= load(&s[3]);
+                        regs[4] -= load(&s[4]);
+                        regs[5] -= load(&s[5]);
+                        regs[6] -= load(&s[6]);
+                        regs[7] -= load(&s[7]);
+                    },
+
+                    (None, Some(a)) => unsafe {
+                        let a = self.ti.get_unchecked(a.cast::<usize>());
+                        let a = &transmute::<&[i8; N], &[[[i8; W4]; K]; N / W4 / K]>(a)[i];
+
+                        regs[0] += load(&a[0]);
+                        regs[1] += load(&a[1]);
+                        regs[2] += load(&a[2]);
+                        regs[3] += load(&a[3]);
+                        regs[4] += load(&a[4]);
+                        regs[5] += load(&a[5]);
+                        regs[6] += load(&a[6]);
+                        regs[7] += load(&a[7]);
+                    },
+
+                    (None, None) => unsafe { unreachable_unchecked() },
                 }
             }
 
-            (None, Some(a1)) => {
-                let a1 = self.ka.get(a1.cast::<usize>()).assume();
+            for j in 0..ppl {
+                match (pps.get(j), ppa.get(j)) {
+                    (Some(s), Some(a)) => unsafe {
+                        let s = self.pp.get_unchecked(s.cast::<usize>());
+                        let a = self.pp.get_unchecked(a.cast::<usize>());
 
-                for i in 0..N {
-                    acc[i] += a1[i] as i16;
+                        let s = &transmute::<&[i8; N], &[[[i8; W4]; K]; N / W4 / K]>(s)[i];
+                        let a = &transmute::<&[i8; N], &[[[i8; W4]; K]; N / W4 / K]>(a)[i];
+
+                        regs[0] += load(&a[0]) - load(&s[0]);
+                        regs[1] += load(&a[1]) - load(&s[1]);
+                        regs[2] += load(&a[2]) - load(&s[2]);
+                        regs[3] += load(&a[3]) - load(&s[3]);
+                        regs[4] += load(&a[4]) - load(&s[4]);
+                        regs[5] += load(&a[5]) - load(&s[5]);
+                        regs[6] += load(&a[6]) - load(&s[6]);
+                        regs[7] += load(&a[7]) - load(&s[7]);
+                    },
+
+                    (Some(s), None) => unsafe {
+                        let s = self.pp.get_unchecked(s.cast::<usize>());
+                        let s = &transmute::<&[i8; N], &[[[i8; W4]; K]; N / W4 / K]>(s)[i];
+
+                        regs[0] -= load(&s[0]);
+                        regs[1] -= load(&s[1]);
+                        regs[2] -= load(&s[2]);
+                        regs[3] -= load(&s[3]);
+                        regs[4] -= load(&s[4]);
+                        regs[5] -= load(&s[5]);
+                        regs[6] -= load(&s[6]);
+                        regs[7] -= load(&s[7]);
+                    },
+
+                    (None, Some(a)) => unsafe {
+                        let a = self.pp.get_unchecked(a.cast::<usize>());
+                        let a = &transmute::<&[i8; N], &[[[i8; W4]; K]; N / W4 / K]>(a)[i];
+
+                        regs[0] += load(&a[0]);
+                        regs[1] += load(&a[1]);
+                        regs[2] += load(&a[2]);
+                        regs[3] += load(&a[3]);
+                        regs[4] += load(&a[4]);
+                        regs[5] += load(&a[5]);
+                        regs[6] += load(&a[6]);
+                        regs[7] += load(&a[7]);
+                    },
+
+                    (None, None) => unsafe { unreachable_unchecked() },
                 }
             }
 
-            _ => unsafe { unreachable_unchecked() },
-        }
-    }
-
-    /// Updates `acc` by adding and removing [`TIFeature`]s.
-    #[inline(always)]
-    #[cfg_attr(feature = "no_panic", no_panic::no_panic)]
-    pub fn accumulate_ti_in_place(
-        &self,
-        acc: &mut Aligned<[i16; N]>,
-        sub: Option<TIFeature>,
-        add: Option<TIFeature>,
-    ) {
-        match (sub, add) {
-            (Some(s1), Some(a1)) => {
-                let s1 = self.ti.get(s1.cast::<usize>()).assume();
-                let a1 = self.ti.get(a1.cast::<usize>()).assume();
-
-                for i in 0..N {
-                    acc[i] += a1[i] as i16 - s1[i] as i16;
-                }
-            }
-
-            (Some(s1), None) => {
-                let s1 = self.ti.get(s1.cast::<usize>()).assume();
-
-                for i in 0..N {
-                    acc[i] -= s1[i] as i16;
-                }
-            }
-
-            (None, Some(a1)) => {
-                let a1 = self.ti.get(a1.cast::<usize>()).assume();
-
-                for i in 0..N {
-                    acc[i] += a1[i] as i16;
-                }
-            }
-
-            _ => unsafe { unreachable_unchecked() },
-        }
-    }
-
-    /// Updates `acc` by adding and removing [`PPFeature`]s.
-    #[inline(always)]
-    #[cfg_attr(feature = "no_panic", no_panic::no_panic)]
-    pub fn accumulate_pp_in_place(
-        &self,
-        acc: &mut Aligned<[i16; N]>,
-        sub: Option<PPFeature>,
-        add: Option<PPFeature>,
-    ) {
-        match (sub, add) {
-            (Some(s1), Some(a1)) => {
-                let s1 = self.pp.get(s1.cast::<usize>()).assume();
-                let a1 = self.pp.get(a1.cast::<usize>()).assume();
-
-                for i in 0..N {
-                    acc[i] += a1[i] as i16 - s1[i] as i16;
-                }
-            }
-
-            (Some(s1), None) => {
-                let s1 = self.pp.get(s1.cast::<usize>()).assume();
-
-                for i in 0..N {
-                    acc[i] -= s1[i] as i16;
-                }
-            }
-
-            (None, Some(a1)) => {
-                let a1 = self.pp.get(a1.cast::<usize>()).assume();
-
-                for i in 0..N {
-                    acc[i] += a1[i] as i16;
-                }
-            }
-
-            _ => unsafe { unreachable_unchecked() },
+            acc[i] = regs;
         }
     }
 }
