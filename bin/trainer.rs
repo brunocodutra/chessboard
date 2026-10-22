@@ -13,7 +13,7 @@ use bullet::value::loader::SfBinpackLoader;
 use bullet::value::save::{save_to_checkpoint, write_losses};
 use bullet_trainer::model::*;
 use bullet_trainer::optimiser::Optimiser;
-use bullet_trainer::optimiser::adam::{AdamW, AdamWParams};
+use bullet_trainer::optimiser::ranger::{Ranger, RangerParams};
 use bullet_trainer::reader::{DataReader, ReadMapLoader};
 use bullet_trainer::run::{DefaultDevice, Step, TrainingSchedule, TrainingSteps, train};
 use bytemuck::zeroed;
@@ -479,7 +479,7 @@ impl ErrorStats {
 struct Trainer<'a> {
     #[deref]
     orchestrator: &'a Orchestrator,
-    optimiser: Optimiser<ExecutionContext, AdamW<ExecutionContext>>,
+    optimiser: Optimiser<ExecutionContext, Ranger<ExecutionContext>>,
     inputs: ModelInputs<Inputs>,
     features: Features,
     phaser: Phaser,
@@ -610,32 +610,32 @@ impl<'a> Trainer<'a> {
 
         let device = DefaultDevice::new(0).or_bail()?;
         let weights = ModelWeights::new(&model, 0x111D59E599BE370C);
-        let params = AdamWParams::default();
+        let params = RangerParams::default();
         let mut optimiser = Optimiser::new(model, weights, device, params).or_bail()?;
 
-        optimiser.set_params(AdamWParams {
+        optimiser.set_params(RangerParams {
             min_weight: f32::MIN,
             max_weight: f32::MAX,
-            ..AdamWParams::default()
+            ..RangerParams::default()
         });
 
         for id in ["pp/w", "ti/w", "ka/w", "ka/psq"] {
             optimiser.set_params_for_weight(
                 id,
-                AdamWParams {
+                RangerParams {
                     min_weight: -FT_CLIP,
                     max_weight: FT_CLIP,
-                    ..AdamWParams::default()
+                    ..RangerParams::default()
                 },
             );
         }
 
         optimiser.set_params_for_weight(
             "l12/w",
-            AdamWParams {
+            RangerParams {
                 min_weight: -HL_CLIP,
                 max_weight: HL_CLIP,
-                ..AdamWParams::default()
+                ..RangerParams::default()
             },
         );
 
